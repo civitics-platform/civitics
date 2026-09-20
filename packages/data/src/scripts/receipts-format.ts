@@ -78,6 +78,13 @@ export interface JobFiring {
   /** `data_sync_log.status` for the row this firing wrote, when one correlates. */
   sync_status: string | null;
   skip_reason: string | null;
+  /**
+   * FIX-1178 (d) — `metadata.phase_seconds`, the rule-tagger's DELETE/INSERT
+   * split, as the raw jsonb text. NULL for every other job, and for a cadence
+   * that timed nothing (the gated weekly branch skipping as
+   * `skipped_unchanged`), which is why it renders as an em dash and not a zero.
+   */
+  phase_seconds?: string | null;
 }
 
 export interface JobVerdict extends JobFiring {
@@ -306,6 +313,23 @@ export interface VmRow {
   relpages: number | null;
 }
 
+/**
+ * FIX-1169 — one relation's visibility map as it stood FIVE MINUTES BEFORE its
+ * vacuum ran, written by `record_vm_probe()` into `pipeline_state`.
+ *
+ * The distinction from `VmRow` above is the whole point. `vm_before` is stamped
+ * at the 06:00 daily's run start, which is AFTER all three vacuums (03:00 FR,
+ * 04:30 EC, 04:50 FE) — it measures what the vacuum LEFT. This measures what
+ * the vacuum FOUND, which is the reading the gate decision needs and the one
+ * nothing was taking.
+ */
+export interface VmProbeRow extends VmRow {
+  /** The probe label: `pre-fr`, `pre-ec`, `pre-fe`. */
+  label: string;
+  /** When the probe ran (ISO-8601 UTC). */
+  at: string | null;
+}
+
 export interface DailySection {
   /** The most recent firing of any status — what actually happened last. */
   run_started_at: string | null;
@@ -395,6 +419,8 @@ export interface ReceiptsData {
   cron_jobs: JobVerdict[];
   daily: DailySection;
   vacuums: VacuumRow[];
+  /** FIX-1169 — the pre-vacuum visibility-map readings, one row per relation. */
+  vm_probes: VmProbeRow[];
   fec: FecSection;
   interlock: InterlockSection;
   canary: { run_started_at: string | null; conditions: CanaryCondition[] };
@@ -550,7 +576,7 @@ export function renderMarkdown(d: ReceiptsData): string {
   p("");
   p(
     table(
-      ["job", "active", "schedule", "pipeline", "last firing (UTC)", "duration", "cron status", "band", "verdict", "detail"],
+      ["job", "active", "schedule", "pipeline", "last firing (UTC)", "duration", "phases", "cron status", "band", "verdict", "detail"],
       d.cron_jobs.map((j) => [
         j.jobname,
         j.active ? "yes" : "**no**",
@@ -558,6 +584,8 @@ export function renderMarkdown(d: ReceiptsData): string {
         j.pipeline === null ? "—" : "`" + j.pipeline + "`",
         j.last_start,
         fmtSeconds(j.duration_s),
+        // FIX-1178 (d). One column, `—` when the run stamped nothing.
+        j.phase_seconds == null ? "—" : "`" + j.phase_seconds + "`",
         j.cron_status,
         j.band === null ? "—" : j.band.lo_s + "–" + j.band.hi_s + " s",
         j.verdict === "in-band" ? "in-band" : "**" + j.verdict + "**",
@@ -645,7 +673,32 @@ export function renderMarkdown(d: ReceiptsData): string {
       d.vacuums.map((v) => [v.jobname, v.start_time, fmtSeconds(v.duration_s), v.status]),
     ),
   );
-  p(queryBlock(d.queries, ["vacuums"]));
+  p("### Before the vacuum — `record_vm_probe()` (FIX-1169)");
+  p("");
+  p(
+    "Taken five minutes BEFORE each vacuum, so this is what the vacuum FOUND. " +
+      "The `vm_before` block in section 3 is stamped at the 06:00 daily's run start, " +
+      "which is after all three vacuums — it is what they LEFT. Reading only that one " +
+      "is why FIX-1169's gate question (would skipping this run have been safe?) had " +
+      "no evidence behind it.",
+  );
+  p("");
+  p(
+    d.vm_probes.length === 0
+      ? "_No probe rows yet. The three jobs (`vm-probe-pre-fr` 02:55, `vm-probe-pre-ec` 04:25, `vm-probe-pre-fe` 04:45 UTC) first fire the morning after they are scheduled._\n"
+      : table(
+          ["label", "probed at (UTC)", "relation", "pct_all_visible", "n_dead_tup", "relpages"],
+          d.vm_probes.map((v) => [
+            v.label,
+            v.at,
+            v.relation,
+            v.pct_all_visible,
+            v.n_dead_tup,
+            v.relpages,
+          ]),
+        ),
+  );
+  p(queryBlock(d.queries, ["vacuums", "vm_probes"]));
 
   // 5 -------------------------------------------------------------------
   p("## 5. FEC — drop probe, watermarks, emit set");

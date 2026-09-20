@@ -364,6 +364,17 @@ function fixture(): ReceiptsData {
     vacuums: [
       { jobname: "ec-vacuum-analyze", start_time: "2026-09-12T04:30:00Z", duration_s: 124.3, status: "succeeded" },
     ],
+    // FIX-1169 — the pre-vacuum reading, five minutes ahead of the row above.
+    vm_probes: [
+      {
+        label: "pre-ec",
+        at: "2026-09-12T04:25:00Z",
+        relation: "entity_connections",
+        pct_all_visible: 61.4,
+        n_dead_tup: 412_003,
+        relpages: 329_008,
+      },
+    ],
     fec: {
       drop_probe: [{ key: "cycle", value: "2026" }],
       indiv_watermark: [{ key: "2026", value: "Sun, 06 Sep 2026 15:54:54 GMT" }],

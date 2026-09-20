@@ -56,6 +56,7 @@ import {
   type UnitTiming,
   type VacuumRow,
   type VmRow,
+  type VmProbeRow,
   compareToBand,
   nominalDate,
   renderJson,
@@ -333,7 +334,11 @@ SELECT j.jobid, j.jobname, j.schedule, j.active,
        r.return_message,
        EXTRACT(epoch FROM (r.end_time - r.start_time))::numeric   AS duration_s,
        s.status                                                   AS sync_status,
-       s.metadata->>'skip_reason'                                 AS skip_reason
+       s.metadata->>'skip_reason'                                 AS skip_reason,
+       -- FIX-1178 (d) — the daily rule-tagger's delete/insert split, when the
+       -- run stamped one. Absent for every other job and for a cadence that
+       -- timed nothing, which renders as an em dash rather than a zero.
+       s.metadata->>'phase_seconds'                               AS phase_seconds
 FROM cron.job j
 JOIN jp ON jp.jobid = j.jobid
 LEFT JOIN last_run r ON r.jobid = j.jobid
@@ -417,6 +422,19 @@ WHERE c.oid IN ('public.entity_connections'::regclass,
                 'public.financial_entities'::regclass,
                 'public.financial_relationships'::regclass)
 ORDER BY c.relname`;
+
+/**
+ * FIX-1169 — the pre-vacuum visibility-map probes.
+ *
+ * One row per label, upserted by `record_vm_probe()` five minutes before each
+ * vacuum. Ordered by key so `pre-ec` / `pre-fe` / `pre-fr` render in a stable
+ * order rather than in whatever order the last upsert left.
+ */
+const Q_VM_PROBES = `
+SELECT key, value
+FROM public.pipeline_state
+WHERE key LIKE 'vm_probe:%'
+ORDER BY key`;
 
 const Q_VACUUMS = `
 SELECT j.jobname, d.start_time, d.status,
@@ -668,6 +686,7 @@ async function main(): Promise<void> {
       return_message: str(row["return_message"]),
       sync_status: str(row["sync_status"]),
       skip_reason: str(row["skip_reason"]),
+      phase_seconds: str(row["phase_seconds"]),
     }));
 
     const bands = loadBands(resolveOutDir(args.outDir));
@@ -710,6 +729,23 @@ async function main(): Promise<void> {
       duration_s: num(v["duration_s"]),
       status: str(v["status"]) ?? "—",
     }));
+
+    // FIX-1169 — the pre-vacuum probes. One pipeline_state row per label,
+    // overwritten daily; the history lives in these files, not in the table.
+    const probeRows = await r.run<Record<string, unknown>>("vm_probes", Q_VM_PROBES);
+    const vmProbes: VmProbeRow[] = probeRows.flatMap((row) => {
+      const label = String(row["key"] ?? "").replace(/^vm_probe:/, "");
+      const value = (row["value"] ?? {}) as { at?: unknown; vm?: unknown };
+      const at = iso(value.at);
+      return (Array.isArray(value.vm) ? (value.vm as Record<string, unknown>[]) : []).map((v) => ({
+        label,
+        at,
+        relation: str(v["relation"]) ?? "(unnamed)",
+        pct_all_visible: num(v["pct_all_visible"]),
+        n_dead_tup: num(v["n_dead_tup"]),
+        relpages: num(v["relpages"]),
+      }));
+    });
 
     const stateRows = await r.run<Record<string, unknown>>("fec_state", Q_FEC_STATE);
     const stateByKey = new Map<string, Record<string, unknown>>();
@@ -769,6 +805,7 @@ async function main(): Promise<void> {
         weekly_elapsed_seconds: num(weekly0?.["elapsed_seconds"]),
       },
       vacuums,
+      vm_probes: vmProbes,
       fec: {
         drop_probe: flatten(stateByKey.get("fec_drop_probe")),
         indiv_watermark: flattenWatermark(stateByKey.get("fec_indiv_watermark")),
