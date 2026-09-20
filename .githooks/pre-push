@@ -57,6 +57,23 @@ echo "[pre-push] ✓ @civitics/data typecheck clean."
 # for humans too) and narrower than `--ignore-scripts` (which would unwire the
 # hook for every other consumer of `pnpm install`). Drift and ancestry are both
 # still gated on PRs by fixes-integrity.yml, which checks out `fetch-depth: 0`.
+#
+# FIX-1200 UPDATE — THE GUARD NOW SELF-DETECTS, AND THIS EARLY EXIT STAYS.
+# `classifySha` used to key its escape on whether the SHA's OBJECT was present,
+# which is precisely what the second failure mode above defeats. It now computes
+# trunk reachability ONCE per run (`git rev-parse --is-shallow-repository`, the
+# same test this block makes) and classifies every SHA `unknown` when trunk is
+# not judgeable — so the false-positive class is fixed inside the tool, and the
+# gate would be correct in CI even without this block.
+#
+# Kept anyway, for two reasons that are not redundancy-for-its-own-sake:
+#   * Belt and braces. The guard's correctness is now the thing being trusted;
+#     this block does not depend on it being right.
+#   * It saves the typecheck minute above on every CI push that could not have
+#     learned anything from the check.
+# What changes is the MEANING of this exit: it is an optimisation now, not a
+# workaround. If it were deleted tomorrow, CI would pass, quietly and honestly,
+# instead of aborting on a false accusation.
 
 trunk_skip_reason=""
 if [ -n "$GITHUB_ACTIONS" ]; then

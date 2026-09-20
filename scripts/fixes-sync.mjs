@@ -163,12 +163,71 @@ function trunkAncestorPrefixes(trunk) {
   return byLen;
 }
 
+// FIX-1200 — is trunk reachable ENOUGH to judge ancestry here, at all?
+//
+// The old escape hatch was per-SHA and keyed on the wrong thing: `cat-file -e`
+// asks "is this OBJECT present", and answers yes in exactly the case that
+// breaks. A depth-1 clone that then fetches a sibling branch with depth 11 HAS
+// the objects and HAS a resolving `origin/main` — but `rev-list origin/main`
+// yields ONE commit, so `merge-base --is-ancestor` answers 1 for genuine
+// ancestors and every landed FIX is accused of being stranded (cc-136 §1
+// reproduced this; it accused FIX-960 and FIX-962).
+//
+// So the precondition is a property of the CLONE, computed once per run, not a
+// property of each SHA.
+//
+// WHY `--is-shallow-repository` AND NOT "rev-list --count >= the oldest
+// done.log SHA's distance". The count test needs the history it is trying to
+// prove it has: in the failing case `rev-list --count origin/main` is 1, so any
+// distance derived from it is meaningless rather than merely small, and in the
+// truncated-before-that-SHA case the object is absent and the `cat-file -e`
+// escape below already covers it. `--is-shallow-repository` is one cheap call
+// that answers the actual question — does this clone have the full history
+// ancestry is defined over — and it cannot be fooled by a deep sibling fetch,
+// which is the shape that caused the bug. A shallow repo stays shallow for
+// `rev-list` purposes no matter which branch was fetched deeply.
+//
+// When trunk is NOT judgeable, every SHA classifies "unknown" — never
+// "not-ancestor". "unknown" already means "no evidence either way" everywhere
+// downstream: `evaluateTrunkViolations` skips an ID whose SHAs are all unknown
+// rather than failing it, and the FIX-461 off-trunk filter only drops on an
+// explicit "not-ancestor". Drift detection is untouched; only the ancestry
+// claim is withheld.
+let _trunkJudgeable = null;
+let _trunkNotJudgeableAnnounced = false;
+function trunkJudgeable(trunk) {
+  if (_trunkJudgeable === null) {
+    if (!trunk) {
+      _trunkJudgeable = { ok: false, why: "no origin/main ref resolves here" };
+    } else if (git("rev-parse --is-shallow-repository").out === "true") {
+      _trunkJudgeable = { ok: false, why: "shallow clone" };
+    } else {
+      _trunkJudgeable = { ok: true, why: null };
+    }
+  }
+  if (!_trunkJudgeable.ok && !_trunkNotJudgeableAnnounced) {
+    _trunkNotJudgeableAnnounced = true;
+    console.warn(
+      `[fixes-sync] trunk not judgeable here (${_trunkJudgeable.why}) — ancestry skipped, drift still checked`,
+    );
+  }
+  return _trunkJudgeable.ok;
+}
+
+/** Test seam: forget the memoised verdict (and the once-per-run warning). */
+export function _resetTrunkJudgeable() {
+  _trunkJudgeable = null;
+  _trunkNotJudgeableAnnounced = false;
+}
+
 // Classify a single SHA against trunk: "ancestor" | "not-ancestor" | "unknown".
-// "unknown" = not a real hex SHA (sentinel like `backfill`/`reopen`), or the
-// object isn't in this clone (shallow) — neither is a violation. Memoized.
+// "unknown" = not a real hex SHA (sentinel like `backfill`/`reopen`), the object
+// isn't in this clone, or trunk isn't reachable enough to judge (FIX-1200) —
+// none of these is a violation. Memoized.
 const _shaClassCache = new Map();
 function classifySha(sha, trunk) {
   if (!SHA_RE.test(sha)) return "unknown";
+  if (!trunkJudgeable(trunk)) return "unknown";
   const cacheKey = `${trunk}\0${sha}`;
   if (_shaClassCache.has(cacheKey)) return _shaClassCache.get(cacheKey);
   let verdict;

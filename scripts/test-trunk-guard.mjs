@@ -28,7 +28,7 @@
 // write and there is no way to interleave with a child process from here. The
 // seam can only make the guard fire — there is no value that suppresses it.
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, dirname, join } from "node:path";
@@ -194,18 +194,18 @@ console.log("\nassertTrunkUnmoved against real git:");
 // ── 3. Real scripts, spawned ────────────────────────────────────────────────
 // Proves the guard is wired into the write paths, not just importable.
 console.log("\nwired into the real scripts (child processes):");
+// spawnSync, not execFileSync: execFileSync RETURNS stdout and throws away
+// stderr on success, so a script that exits 0 while printing a warning to
+// stderr looked silent from here. FIX-1200's "say why, once" line is exactly
+// that shape — a warning on a run that succeeds.
 function runScript(script, args, { cwd, env = {} }) {
-  try {
-    const out = execFileSync(process.execPath, [script, ...args], {
-      cwd,
-      encoding: "utf8",
-      env: { ...process.env, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { code: 0, out, err: "" };
-  } catch (e) {
-    return { code: e.status ?? 1, out: e.stdout ?? "", err: e.stderr ?? "" };
-  }
+  const r = spawnSync(process.execPath, [script, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return { code: r.status ?? 1, out: r.stdout ?? "", err: r.stderr ?? "" };
 }
 
 for (const [label, script, args] of [
@@ -250,6 +250,151 @@ for (const [label, script, args] of [
     readFileSync(fixesPath, "utf8") !== beforeText || readFileSync(donePath, "utf8") !== beforeDone,
     "neither file changed on the control run — the abort case is vacuous",
   );
+}
+
+// ── FIX-1200: ancestry is claimed only where trunk is reachable ─────────────
+//
+// cc-136 §1 reproduced the bug this guards: a depth-1 clone that then fetches a
+// SIBLING branch more deeply has the objects and a resolving `origin/main`, so
+// the old per-SHA `cat-file -e` escape never fired — but `rev-list origin/main`
+// yields ONE commit, so `merge-base --is-ancestor` answered 1 for commits that
+// genuinely ARE on trunk, and every landed FIX was accused of being stranded.
+// It accused FIX-960 and FIX-962 that way.
+//
+// The fixture has to be exactly that shape. A plain `--depth 1` clone with no
+// sibling fetch would also pass a test that only asserts "no accusation",
+// because the SHA's object is absent and the OLD escape hatch already covered
+// it — so the test would be green against the pre-change source. The deeper
+// sibling fetch is what makes it a wrong-but-green fixture (rule 105): it fails
+// against the old `classifySha` and passes against the new one.
+console.log("\nFIX-1200 — trunk reachability gates the ancestry claim:");
+{
+  const repo = newRepoPair();
+  // A few more commits on main, each closing a FIX, so done.log has real SHAs
+  // that ARE ancestors of trunk — the population the bug falsely accused.
+  for (const n of [2, 3, 4]) {
+    writeFileSync(join(repo.work, "docs", "FIXES.md"),
+      readFileSync(join(repo.work, "docs", "FIXES.md"), "utf8") +
+        `- 🟠 S — **bullet ${n}** — placeholder. <!--id:FIX-00${n}-->\n`);
+    git(repo.work, ["add", "-A"]);
+    git(repo.work, ["commit", "-m", `feat: work ${n}\n\nVerified: local\nFixes: FIX-00${n}`]);
+  }
+  // The sibling branches off an EARLY commit, not the tip. That is what makes
+  // the deeper sibling fetch drag in a commit which IS on trunk but is NOT in
+  // the depth-1 `origin/main` — the exact population the bug accused.
+  //
+  // The fetch depth also has to stay SHORTER than the history, or git decides
+  // the repository is complete, deletes `.git/shallow`, and the fixture is a
+  // full clone wearing a shallow label. (`--depth 11` against this four-commit
+  // repo did precisely that, and every assertion below passed vacuously.)
+  const earlySha = git(repo.work, ["rev-parse", "HEAD~2"]);
+  git(repo.work, ["checkout", "-q", "-b", "sibling", earlySha]);
+  writeFileSync(join(repo.work, "SIBLING.md"), "sibling\n");
+  git(repo.work, ["add", "-A"]);
+  git(repo.work, ["commit", "-m", "chore: sibling tip"]);
+  git(repo.work, ["checkout", "-q", "main"]);
+  git(repo.work, ["push", "origin", "main", "sibling"]);
+
+  // Populate done.log from the FULL clone, where ancestry IS judgeable.
+  const seeded = runScript(SYNC_SCRIPT, [], { cwd: repo.work });
+  assertEq("FIX-1200 — full clone: sync succeeds", seeded.code, 0);
+  const doneLog = readFileSync(join(repo.work, "docs", "done.log"), "utf8");
+  assertTrue(
+    "FIX-1200 — full clone: done.log recorded the on-trunk completions",
+    /FIX-004/.test(doneLog),
+    `done.log:\n${doneLog}`,
+  );
+
+  // The done.log those rows live in has to be ON ORIGIN, or the shallow clone
+  // gets the empty seeded one, evaluates nothing, and every assertion below is
+  // about a run that never classified a single SHA.
+  git(repo.work, ["add", "-A"]);
+  git(repo.work, ["commit", "-m", "chore(fixes): sync status"]);
+  git(repo.work, ["push", "origin", "main"]);
+
+  // The shallow clone, cc-136's exact shape: depth-1 main + a deeper sibling.
+  const shallow = join(repo.root, "shallow");
+  // `--depth` is SILENTLY IGNORED for a local-path clone — git hardlinks the
+  // object store instead. The file:// URL forces the real transport, which is
+  // what actually truncates history. Without it this fixture is a full clone
+  // wearing a shallow label and the whole case is vacuous.
+  // A Windows path needs the third slash — `file://C:/x` parses `C:` as a HOST
+  // and git clones nothing shallow at all, silently.
+  const originPath = repo.origin.replace(/\\/g, "/");
+  const originUrl = /^[A-Za-z]:/.test(originPath) ? `file:///${originPath}` : `file://${originPath}`;
+  execFileSync("git", ["clone", "--quiet", "--depth", "1", "--branch", "main", originUrl, shallow], {
+    stdio: "ignore",
+  });
+  git(shallow, ["config", "core.hooksPath", join(repo.root, "no-hooks")]);
+  execFileSync("git", ["fetch", "--quiet", "--depth", "2", "origin", "sibling"], {
+    cwd: shallow,
+    stdio: "ignore",
+  });
+  assertEq(
+    "FIX-1200 — fixture really is shallow",
+    git(shallow, ["rev-parse", "--is-shallow-repository"]),
+    "true",
+  );
+  assertEq(
+    "FIX-1200 — fixture really does truncate trunk to one commit",
+    git(shallow, ["rev-list", "--count", "origin/main"]),
+    "1",
+  );
+  // ...and FIX-002's object IS present — dragged in by the sibling fetch, since
+  // the sibling branched from that commit. This is the assertion that makes the
+  // fixture wrong-but-green against the OLD code: `cat-file -e` succeeds, so the
+  // old per-SHA escape does NOT fire, and `merge-base --is-ancestor` against a
+  // one-commit origin/main then answers "not an ancestor" about a commit that
+  // is demonstrably on trunk. Drop this and the test would pass either way.
+  const shaOf = (id) =>
+    doneLog.split("\n").find((l) => l.includes(`| ${id} |`))?.split("|")[2]?.trim();
+  const landed = shaOf("FIX-002");
+  assertTrue(
+    "FIX-1200 — an on-trunk SHA's object IS present in the shallow clone",
+    landed !== undefined && git(shallow, ["cat-file", "-t", landed]) === "commit",
+    `FIX-002 sha: ${landed ?? "(none found)"} — fixture cannot prove the old escape was bypassed`,
+  );
+  assertTrue(
+    "FIX-1200 — ...but it is NOT in the truncated origin/main",
+    git(shallow, ["rev-list", "origin/main"]).split("\n").every((s) => !s.startsWith(landed ?? "\0")),
+    "the fixture's origin/main still contains it — nothing would have been accused",
+  );
+
+  const shallowCheck = runScript(SYNC_SCRIPT, ["--check-trunk"], { cwd: shallow });
+  assertEq("FIX-1200 — shallow clone: ZERO accusations (exit 0)", shallowCheck.code, 0);
+  assertTrue(
+    "FIX-1200 — shallow clone: says why, once",
+    /trunk not judgeable here \(shallow clone\)/.test(shallowCheck.err + shallowCheck.out),
+    `output: ${(shallowCheck.err + shallowCheck.out).slice(0, 300) || "(empty)"}`,
+  );
+  assertTrue(
+    "FIX-1200 — shallow clone: never says not-ancestor",
+    !/off-trunk/.test(shallowCheck.out + shallowCheck.err),
+    `output: ${(shallowCheck.out + shallowCheck.err).slice(0, 300)}`,
+  );
+
+  // The inverse — a FULL clone with a SHA genuinely off trunk MUST still accuse.
+  // Without this the case above is satisfied by a guard that accuses nobody.
+  const full = join(repo.root, "full");
+  execFileSync("git", ["clone", "--quiet", repo.origin, full], { stdio: "ignore" });
+  git(full, ["config", "core.hooksPath", join(repo.root, "no-hooks")]);
+  // A REAL commit that exists here but is not on main: the sibling tip.
+  git(full, ["fetch", "--quiet", "origin", "sibling:sibling"]);
+  const offTrunk = git(full, ["rev-parse", "sibling"]);
+  writeFileSync(join(full, "docs", "FIXES.md"),
+    readFileSync(join(full, "docs", "FIXES.md"), "utf8") +
+      "- 🟠 S — **off-trunk bullet** — placeholder. <!--id:FIX-099-->\n");
+  writeFileSync(join(full, "docs", "done.log"),
+    readFileSync(join(full, "docs", "done.log"), "utf8") +
+      `2026-09-20 | FIX-099 | ${offTrunk.slice(0, 8)} | local-only | feat: off-trunk work\n`);
+  const fullCheck = runScript(SYNC_SCRIPT, ["--check-trunk"], { cwd: full });
+  assertEq("FIX-1200 — full clone: an off-trunk SHA still accuses (exit 1)", fullCheck.code, 1);
+  assertTrue(
+    "FIX-1200 — full clone: names the off-trunk id",
+    /FIX-099/.test(fullCheck.out + fullCheck.err),
+    `output: ${(fullCheck.out + fullCheck.err).slice(0, 400)}`,
+  );
+
 }
 
 // ── cleanup ─────────────────────────────────────────────────────────────────
