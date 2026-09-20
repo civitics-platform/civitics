@@ -13,8 +13,23 @@ import { createAdminClient } from "@civitics/db";
 import { renderNotificationEmail, sendEmail } from "./email";
 import { fetchChunkedByIds } from "./paginate";
 
-type EntityType = "official" | "agency";
-type EventType = "official_vote" | "new_proposal" | "initiative_status";
+// Mirrors the follow_entity_type enum. It shipped as ('official','agency') in
+// 20260418200000_community_auth.sql and gained 'jurisdiction' in
+// 20260528180300_follow_entity_type_add_jurisdiction.sql; this union was never
+// widened to match, so a jurisdiction-scoped notification could not be typed
+// even though the column accepts one. Surfaced by FIX-560's claim-outcome
+// mapping, which is the first caller to pass a jurisdiction entity.
+type EntityType = "official" | "agency" | "jurisdiction";
+// FIX-560 — `claim_outcome` is the first PER-RECIPIENT value here. The other
+// three are follow fan-out events delivered by notifyFollowers(); a claim
+// outcome has an audience of exactly one (the claimant) and is delivered by
+// createNotification(). The enum value is added by
+// 20260920040000_fix560_claim_outcome_notification_event.sql.
+type EventType =
+  | "official_vote"
+  | "new_proposal"
+  | "initiative_status"
+  | "claim_outcome";
 
 export type NotifyFollowersInput = {
   entityType: EntityType;

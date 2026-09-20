@@ -2,10 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { requireGrantsAdmin } from "../_lib";
 import { computeExpiry } from "../../../officials/claim/_lib";
+import { createNotification } from "@/lib/notifications";
+import {
+  buildClaimOutcomeNotification,
+  type ClaimGrant,
+  type ClaimOutcome,
+} from "@/lib/claim-notification";
 
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// FIX-560 — tell the claimant. BEST-EFFORT: the review write has already
+// committed by the time this runs, so a notification failure must never turn a
+// successful approve/reject into a 500 the operator would retry (a retry hits
+// the pending-only 409 and looks like the action failed). Logged, swallowed.
+async function notifyClaimant(
+  grant: ClaimGrant,
+  outcome: ClaimOutcome,
+  targetName: string | null,
+): Promise<void> {
+  try {
+    await createNotification(buildClaimOutcomeNotification(grant, outcome, targetName));
+  } catch (err) {
+    console.error("[/api/admin/grants/[id]] claim-outcome notification failed", err);
+  }
+}
 
 // POST /api/admin/grants/[id]  body: { action: 'approve' | 'reject' }
 //
@@ -173,21 +195,28 @@ export async function POST(
 
   const reviewedAt = new Date();
 
+  // The target official, read ONCE for both branches. Approve needs the term
+  // dates for expiry (decision 8); FIX-560 needs full_name for the notification
+  // body, and reject needs it too — so the read moved out of the approve branch
+  // rather than being duplicated into reject.
+  let official: { term_end: string | null; current_term_end: string | null; full_name: string | null } | null = null;
+  if (grant.target_type === "official" && grant.target_id) {
+    const { data } = await admin
+      .from("officials")
+      .select("term_end, current_term_end, full_name")
+      .eq("id", grant.target_id)
+      .maybeSingle();
+    official = data ?? null;
+  }
+  const targetName = official?.full_name ?? null;
+
   if (action === "approve") {
     // Expiry follows the target official's term when known (decision 8).
-    let expiresAt = computeExpiry(null, null, reviewedAt);
-    if (grant.target_type === "official" && grant.target_id) {
-      const { data: official } = await admin
-        .from("officials")
-        .select("term_end, current_term_end")
-        .eq("id", grant.target_id)
-        .maybeSingle();
-      expiresAt = computeExpiry(
-        official?.term_end ?? null,
-        official?.current_term_end ?? null,
-        reviewedAt,
-      );
-    }
+    const expiresAt = computeExpiry(
+      official?.term_end ?? null,
+      official?.current_term_end ?? null,
+      reviewedAt,
+    );
 
     const { error: grantErr } = await admin
       .from("entity_grants")
@@ -219,6 +248,8 @@ export async function POST(
       actor_id: adminId,
     });
 
+    await notifyClaimant(grant, "approved", targetName);
+
     return NextResponse.json({ ok: true, status: "active", expires_at: expiresAt.toISOString() });
   }
 
@@ -247,6 +278,8 @@ export async function POST(
     event: "rejected",
     actor_id: adminId,
   });
+
+  await notifyClaimant(grant, "rejected", targetName);
 
   return NextResponse.json({ ok: true, status: "revoked" });
 }

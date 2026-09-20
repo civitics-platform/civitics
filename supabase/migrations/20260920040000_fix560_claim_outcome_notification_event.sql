@@ -1,0 +1,31 @@
+-- =============================================================================
+-- 20260920040000_fix560_claim_outcome_notification_event.sql
+-- FIX-560 (1/1): notify the claimant when an official-profile claim is
+-- approved or rejected.
+--
+-- notification_event_type (20260418200000_community_auth.sql:14) shipped as
+-- ('official_vote', 'new_proposal', 'initiative_status') — every value is a
+-- FOLLOW fan-out event. A claim outcome is the first per-recipient event the
+-- enum has to carry: the audience is one user (the claimant), not the followers
+-- of an entity, and it is delivered by createNotification() rather than
+-- notifyFollowers().
+--
+-- Until this value existed, /api/admin/grants/[id] wrote entity_grants,
+-- grant_evidence and grant_events and told the claimant nothing. A claim
+-- submitted through /officials/claim sat in the pending queue and its approval
+-- or rejection was visible only by re-polling /api/officials/claim-status.
+--
+-- WHY ITS OWN MIGRATION:
+--   Postgres forbids USING a newly-added enum value in the same transaction it
+--   was added, and the CLI runs each migration file in one transaction. Nothing
+--   in SQL uses the value — the only consumer is the TypeScript insert in
+--   apps/civitics/src/lib/notifications.ts — but the repo convention (see
+--   20260528180000 and 20260528180300) is to isolate ADD VALUE so it COMMITs
+--   before anything can reference it. Portable across local Docker and Pro.
+--
+-- notifications.entity_type stays follow_entity_type (official|agency|
+-- jurisdiction) and is left NULL for grant targets outside that vocabulary
+-- ('global', 'institution') — the notification still lands, without an entity.
+-- =============================================================================
+
+ALTER TYPE public.notification_event_type ADD VALUE IF NOT EXISTS 'claim_outcome';

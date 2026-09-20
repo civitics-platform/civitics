@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { computeExpiry } from "./_lib";
+import { createNotification } from "@/lib/notifications";
+import { buildClaimOutcomeNotification } from "@/lib/claim-notification";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +173,28 @@ export async function POST(request: NextRequest) {
       actor_id: null,
       metadata: { source: "official_claim_exact_email" },
     });
+
+    // FIX-560 — the auto-approve answers `approved: true` synchronously, so the
+    // claimant already knows. The notification is still written: it is the only
+    // durable record in their inbox, and it makes the two approval paths
+    // (auto here, admin in /api/admin/grants/[id]) indistinguishable to a
+    // reader of the feed. Best-effort — the grant is already live.
+    try {
+      await createNotification(
+        buildClaimOutcomeNotification(
+          {
+            user_id: user.id,
+            role: "official",
+            target_type: "official",
+            target_id: officialId,
+          },
+          "approved",
+          official.full_name,
+        ),
+      );
+    } catch (err) {
+      console.error("[/api/officials/claim] claim-outcome notification failed", err);
+    }
 
     return NextResponse.json({
       approved: true,
