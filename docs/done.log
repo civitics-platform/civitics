@@ -1459,3 +1459,7 @@
 2026-09-19 | FIX-1185 | 3c2e312b | prod-only | fix(db): FIX-1185 / FIX-1128 — the replacement bound has its prod receipt; two consecutive clean dailies
 2026-09-19 | FIX-1187 | e60a65c8 | prod-only | fix(officials): FIX-1187 set 2 — four Senators hold their Senate money; FIX-1192's stub-side join measured on prod
 2026-09-19 | FIX-1192 | e60a65c8 | prod-only | fix(officials): FIX-1187 set 2 — four Senators hold their Senate money; FIX-1192's stub-side join measured on prod
+2026-09-20 | FIX-1180 | b429b350 | prod-only | feat(db): FIX-1180 — votes (official_id, voted_at DESC NULLS LAST) built CONCURRENTLY on prod; idempotent migration twin; get_official_page untouched
+2026-09-20 | FIX-1200 | 27a37b75 | local-only | fix(fixes-sync): FIX-1200 — trunk ancestry is judged only when trunk is reachable; a shallow clone classifies unknown, never not-ancestor
+2026-09-20 | FIX-1201 | 4c90dc33 | local-only | feat(data): FIX-1201 — the deferred-tail banner reads owner schedules live; TAIL_OWNERS carries no schedule text
+2026-09-20 | FIX-1202 | e59c972d | local-only | fix(officials): FIX-1202 — a failed get_official_page renders a degraded, noindex, uncached state instead of an empty official
