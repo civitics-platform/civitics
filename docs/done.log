@@ -1463,3 +1463,7 @@
 2026-09-20 | FIX-1200 | 27a37b75 | local-only | fix(fixes-sync): FIX-1200 — trunk ancestry is judged only when trunk is reachable; a shallow clone classifies unknown, never not-ancestor
 2026-09-20 | FIX-1201 | 4c90dc33 | local-only | feat(data): FIX-1201 — the deferred-tail banner reads owner schedules live; TAIL_OWNERS carries no schedule text
 2026-09-20 | FIX-1202 | e59c972d | local-only | fix(officials): FIX-1202 — a failed get_official_page renders a degraded, noindex, uncached state instead of an empty official
+2026-09-20 | FIX-1031 | f8ab8291 | closes-as-superseded | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
+2026-09-20 | FIX-1107 | f8ab8291 | closes-as-redirected | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
+2026-09-20 | FIX-982 | f8ab8291 | closes-as-recognized | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
+2026-09-20 | FIX-997 | f8ab8291 | closes-as-superseded | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
