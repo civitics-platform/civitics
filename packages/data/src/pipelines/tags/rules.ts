@@ -410,8 +410,17 @@ export function buildOfficialIndustryTags(
 // ---------------------------------------------------------------------------
 
 export type IndustryOverride = {
-  /** financial_entities.id, resolved via the fec_committee_id join. */
+  /**
+   * financial_entities.id. Resolved via the fec_committee_id join for a
+   * committee-keyed row, or taken straight from financial_entity_id for a
+   * FIX-922 uuid-keyed one.
+   */
   entity_id: string;
+  /**
+   * The table's primary key. 'C…' for a committee-keyed row; the synthetic
+   * 'fe:<uuid>' for a FIX-922 uuid-keyed one, which is what lands in
+   * entity_tags.metadata so a reader can tell the two provenances apart.
+   */
   fec_committee_id: string;
   /**
    * NULL is a POSITIVE ASSERTION — "this donor carries no industry, ever" — not
@@ -1365,23 +1374,41 @@ export async function tagFinancialEntities(db: any): Promise<number> {
   // Logged loudly but NOT thrown: the right response to a merged committee is to
   // re-point one override row, not to stop tagging 228,959 entities every night
   // (prod count as of 2026-09-04; this comment said ~78k until FIX-976).
+  //
+  // FIX-922: TWO arms. A committee-keyed row (financial_entity_id IS NULL)
+  // resolves through fec_committee_id as it always has; a uuid-keyed row
+  // resolves through financial_entities.id, which is the only way to address a
+  // donor that has no committee id at all — $416,500 across four donors on prod,
+  // two of them oil_gas escapees of exactly the kind FIX-921 swept.
+  //
+  // Written as two LEFT JOINs rather than `ON a = b OR c = d` so each arm is an
+  // index lookup the planner can actually use (financial_entities_fec_committee
+  // unique index / the pkey) instead of a join filter. The uuid arm is joined
+  // rather than COALESCE'd straight off the column ON PURPOSE: there is no FK
+  // (see the migration header), so a dangling uuid must land in the orphan
+  // warning below exactly like a dangling committee id does.
   type OverrideRow = {
     entity_id: string | null;
     fec_committee_id: string;
+    financial_entity_id: string | null;
     industry: string | null;
     audited_sector: string | null;
     source: string;
   };
   const overrideRows = await timed("financial_entity_industry_overrides (direct-pg)", () =>
     selectDirect<OverrideRow>(
-      `SELECT fe.id AS entity_id,
+      `SELECT COALESCE(fe_id.id, fe_cmte.id) AS entity_id,
               o.fec_committee_id,
+              o.financial_entity_id,
               o.industry,
               o.audited_sector,
               o.source
          FROM public.financial_entity_industry_overrides o
-         LEFT JOIN public.financial_entities fe
-                ON fe.fec_committee_id = o.fec_committee_id
+         LEFT JOIN public.financial_entities fe_cmte
+                ON o.financial_entity_id IS NULL
+               AND fe_cmte.fec_committee_id = o.fec_committee_id
+         LEFT JOIN public.financial_entities fe_id
+                ON fe_id.id = o.financial_entity_id
         ORDER BY o.fec_committee_id`,
     ),
   );
@@ -1389,7 +1416,7 @@ export async function tagFinancialEntities(db: any): Promise<number> {
   const orphanOverrides = overrideRows.filter((r) => !r.entity_id);
   if (orphanOverrides.length > 0) {
     console.error(
-      `    [FIX-916] ${orphanOverrides.length} override(s) reference an fec_committee_id ` +
+      `    [FIX-916] ${orphanOverrides.length} override(s) reference a financial entity ` +
         `absent from financial_entities — these donors keep their uncurated tags: ` +
         `${orphanOverrides.slice(0, 10).map((r) => r.fec_committee_id).join(", ")}` +
         `${orphanOverrides.length > 10 ? ", …" : ""}`,

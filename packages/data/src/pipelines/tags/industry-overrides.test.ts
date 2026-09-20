@@ -394,3 +394,129 @@ test("FIX-921: CNG Holdings is finance — the false positive that started this"
   assert.equal(cng!.industry, "finance");
   assert.equal(cng!.sector, "consumer_lending");
 });
+
+// ---------------------------------------------------------------------------
+// FIX-922 — the uuid-keyed arm: an override for a donor with NO committee id.
+//
+// The FIX-916 table is keyed on fec_committee_id PRIMARY KEY, which silently
+// excludes every donor that is not an FEC committee. Measured on prod
+// 2026-09-20 that is 4 donating, industry-tagged donors worth $416,500, two of
+// them oil_gas escapees of exactly the kind the FIX-921 cohort above swept —
+// and unreachable by it.
+//
+// The DB half (the CHECK and the partial unique actually firing, and the
+// reader resolving both arms) is a rolled-back transaction against local
+// Docker, recorded in the FIX-922 verification block. What is pinned here is
+// the shape the migration and the reader must keep.
+// ---------------------------------------------------------------------------
+
+const FIX922_MIGRATION_PATH = join(
+  REPO_ROOT, "supabase", "migrations",
+  "20260920060000_fix922_industry_override_financial_entity_id.sql",
+);
+const RULES_PATH = join(__dirname, "rules.ts");
+
+// The two prod escapees, by financial_entities.id.
+const RIDGE_COAL = "a222d616-0487-48ac-af68-0ec7eca301ba";
+const CUMBERLAND = "8a1e3c6f-03b1-46d0-9f61-42693de6f154";
+
+test("FIX-922: a uuid-keyed override carries its synthetic key into the tag metadata", () => {
+  // The applier is key-agnostic — it joins on entity_id — so what this pins is
+  // that the PROVENANCE reaching entity_tags.metadata distinguishes a
+  // uuid-keyed curation ('fe:<uuid>') from a committee-keyed one ('C…'). A
+  // reader of the tag would otherwise have no way to tell which arm wrote it.
+  const overrides: IndustryOverride[] = [
+    {
+      entity_id: RIDGE_COAL,
+      fec_committee_id: `fe:${RIDGE_COAL}`,
+      industry: "mining",
+      audited_sector: "coal",
+      source: "fix922",
+    },
+  ];
+  const out = applyIndustryOverrides([ruleTag(RIDGE_COAL, "oil_gas")], overrides);
+  const industry = out.filter((t) => t.tag_category === "industry");
+
+  assert.equal(industry.length, 1);
+  assert.equal(industry[0]?.tag, "mining");
+  assert.equal(industry[0]?.generated_by, "curated");
+  assert.equal(
+    (industry[0]?.metadata as Record<string, unknown>)["fec_committee_id"],
+    `fe:${RIDGE_COAL}`,
+  );
+  // The keyword row it displaced is gone, not merely outnumbered.
+  assert.equal(out.filter((t) => t.generated_by === "rule").length, 0);
+});
+
+test("FIX-922: a NULL uuid-keyed override de-tags, exactly like a committee-keyed one", () => {
+  // Both escapees are oil_gas today and the likely curation is NONE (neither is
+  // an industry). NULL must SUPPRESS, not merely omit — the FIX-916 contract.
+  const overrides: IndustryOverride[] = [
+    { entity_id: RIDGE_COAL, fec_committee_id: `fe:${RIDGE_COAL}`, industry: null, audited_sector: "trust", source: "fix922" },
+    { entity_id: CUMBERLAND, fec_committee_id: `fe:${CUMBERLAND}`, industry: null, audited_sector: "leadership_or_party_pac", source: "fix922" },
+  ];
+  const out = applyIndustryOverrides(
+    [ruleTag(RIDGE_COAL, "oil_gas"), ruleTag(CUMBERLAND, "oil_gas"), ruleTag(ENT_C, "oil_gas")],
+    overrides,
+  );
+  const industry = out.filter((t) => t.tag_category === "industry");
+  assert.equal(industry.length, 1, "only the un-overridden donor keeps its tag");
+  assert.equal(industry[0]?.entity_id, ENT_C);
+});
+
+test("FIX-922: the migration's CHECK makes the synthetic key and the uuid mutually derivable", () => {
+  // A prefix-only rule ('fe:%') would accept 'fe:<some other uuid>', i.e. a row
+  // whose primary key names one entity and whose uuid column names another.
+  // Drift alarm: weaken the constraint and this fails.
+  const sql = readFileSync(FIX922_MIGRATION_PATH, "utf8");
+  assert.ok(
+    /financial_entity_id IS NULL\s+AND fec_committee_id NOT LIKE 'fe:%'/.test(sql),
+    "the committee arm must forbid the 'fe:' prefix",
+  );
+  assert.ok(
+    /financial_entity_id IS NOT NULL\s+AND fec_committee_id = 'fe:' \|\| financial_entity_id::text/.test(sql),
+    "the uuid arm must pin the key to 'fe:' || the uuid, not merely to the prefix",
+  );
+  assert.ok(
+    /CREATE UNIQUE INDEX[^;]*\(financial_entity_id\)\s*\n?\s*WHERE financial_entity_id IS NOT NULL/.test(sql),
+    "one override per entity on the uuid arm",
+  );
+});
+
+test("FIX-922: the migration adds NO foreign key — a dangling id must surface, not cascade", () => {
+  // FIX-916's reader comment is explicit that an unresolvable override is
+  // surfaced and counted rather than silently vanishing, because the likely
+  // cause is a FIX-544 merge and the fix is to re-point one row. ON DELETE
+  // CASCADE would instead delete a hand-audited assignment when a merge drops
+  // the loser entity. This is the alarm on that decision.
+  const sql = readFileSync(FIX922_MIGRATION_PATH, "utf8");
+  assert.ok(
+    !/REFERENCES\s+public\.financial_entities/i.test(sql),
+    "a FK here would cascade-delete curated rows on an entity merge",
+  );
+});
+
+test("FIX-922: the tagger reads BOTH arms, each as its own indexable join", () => {
+  // `ON a = b OR c = d` would typecheck, return the right rows, and plan as a
+  // join filter rather than two index lookups. Measured on the local clone the
+  // two-LEFT-JOIN form plans as Index Scan (fec_committee_id_key) + Index Only
+  // Scan (pkey, 0 heap fetches). Pin the shape.
+  const src = readFileSync(RULES_PATH, "utf8");
+  assert.ok(
+    /COALESCE\(fe_id\.id, fe_cmte\.id\) AS entity_id/.test(src),
+    "the reader must resolve entity_id from either arm",
+  );
+  assert.ok(
+    /LEFT JOIN public\.financial_entities fe_cmte\s+ON o\.financial_entity_id IS NULL\s+AND fe_cmte\.fec_committee_id = o\.fec_committee_id/.test(src),
+    "the committee arm must be a LEFT JOIN restricted to committee-keyed rows",
+  );
+  assert.ok(
+    /LEFT JOIN public\.financial_entities fe_id\s+ON fe_id\.id = o\.financial_entity_id/.test(src),
+    "the uuid arm must be a LEFT JOIN on the pkey — joined, not COALESCE'd off " +
+      "the column, so a dangling uuid still reaches the orphan warning",
+  );
+  assert.ok(
+    !/ON fe\.fec_committee_id = o\.fec_committee_id\s+ORDER BY/.test(src),
+    "the single-arm reader must be gone",
+  );
+});

@@ -3049,6 +3049,7 @@ export type Database = {
           created_at: string
           display_name_at_audit: string | null
           fec_committee_id: string
+          financial_entity_id: string | null
           industry: string | null
           note: string | null
           source: string
@@ -3058,6 +3059,7 @@ export type Database = {
           created_at?: string
           display_name_at_audit?: string | null
           fec_committee_id: string
+          financial_entity_id?: string | null
           industry?: string | null
           note?: string | null
           source?: string
@@ -3067,6 +3069,7 @@ export type Database = {
           created_at?: string
           display_name_at_audit?: string | null
           fec_committee_id?: string
+          financial_entity_id?: string | null
           industry?: string | null
           note?: string | null
           source?: string
