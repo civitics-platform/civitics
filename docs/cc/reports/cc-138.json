@@ -1,0 +1,60 @@
+{
+  "cc": "138",
+  "prompt": "cc-prompt-138-fix1201-tail-owners-live-fix1200-classify-sha-trunk-reachability-fix1178-phase-stamps-fix1180-votes-index-empty-official-page-fix1169-pre-vacuum-probe.md",
+  "started_at": "2026-09-20T18:02:57Z",
+  "finished_at": "2026-09-20T19:10:00Z",
+  "head_before": "0dde8253",
+  "head_after": "f3a788f5",
+  "commits": [
+    {
+      "sha": "4c90dc33",
+      "subject": "feat(data): FIX-1201 — the deferred-tail banner reads owner schedules live; TAIL_OWNERS carries no schedule text"
+    },
+    {
+      "sha": "27a37b75",
+      "subject": "fix(fixes-sync): FIX-1200 — trunk ancestry is judged only when trunk is reachable; a shallow clone classifies unknown, never not-ancestor"
+    },
+    {
+      "sha": "5381b57b",
+      "subject": "feat(db): FIX-1178 (d) — run_rule_taggers stamps phase_seconds (delete / insert); rebuild_pre_vote_timing_tags split into two timed halves; receipts render it"
+    },
+    {
+      "sha": "43fb13ac",
+      "subject": "feat(db): FIX-1169 — pre-vacuum visibility-map probes for FR / EC+votes / FE, stamped before each vacuum job; receipts render them"
+    },
+    {
+      "sha": "e59c972d",
+      "subject": "fix(officials): FIX-1202 — a failed get_official_page renders a degraded, noindex, uncached state instead of an empty official"
+    },
+    {
+      "sha": "b429b350",
+      "subject": "feat(db): FIX-1180 — votes (official_id, voted_at DESC NULLS LAST) built CONCURRENTLY on prod; idempotent migration twin; get_official_page untouched"
+    },
+    {
+      "sha": "02fa0d6f",
+      "subject": "docs(fixes): FIX-1201 / 1200 / 1178 / 1180 / 1169 / 1193 / 1199 / 1202 appends"
+    },
+    {
+      "sha": "f3a788f5",
+      "subject": "chore(fixes): sync status after FIX-1201 / FIX-1200 / FIX-1202 / FIX-1180"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1201",
+    "FIX-1200",
+    "FIX-1202",
+    "FIX-1180"
+  ],
+  "fixes_filed": [
+    "FIX-1202"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20260920010000_fix1178d_rule_taggers_phase_seconds.sql",
+    "20260920020000_fix1180_votes_official_voted_at_desc.sql",
+    "20260920030000_fix1169_pre_vacuum_vm_probes.sql"
+  ],
+  "prod_writes": "One CREATE INDEX CONCURRENTLY on public.votes (votes_official_voted_at_desc, 16 MB, 8.55 s, 18:50 UTC) and one `pnpm db:push:prod` of the three migrations above (pending 3 -> 0). No data rewrite, no VACUUM, no hand firing, no set. The three vm-probe jobs are now live on prod's scheduler.",
+  "ci": "green",
+  "stopped_items": []
+}
