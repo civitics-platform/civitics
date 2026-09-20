@@ -1467,3 +1467,7 @@
 2026-09-20 | FIX-1107 | f8ab8291 | closes-as-redirected | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
 2026-09-20 | FIX-982 | f8ab8291 | closes-as-recognized | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
 2026-09-20 | FIX-997 | f8ab8291 | closes-as-superseded | docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended
+2026-09-20 | FIX-560 | 35db707b | local-only | feat(notifications): FIX-560 — claim approve/reject notifies the claimant; claim_outcome event
+2026-09-20 | FIX-888 | 21fe62a6 | local-only | feat(explorer): FIX-888 — ids-groups are session-scoped and the save dialog says so
+2026-09-20 | FIX-922 | e7f3e1e3 | local-only | feat(tags): FIX-922 — industry overrides can address a financial entity with no committee id
+2026-09-20 | FIX-938 | bc591f27 | local-only | feat(ai): FIX-938 — prompt_version joins the ai_summary_cache key; a prompt edit misses the cache
