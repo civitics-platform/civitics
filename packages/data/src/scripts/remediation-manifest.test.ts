@@ -181,10 +181,13 @@ test("every fr-rewrite landing script prints the tail table before its go-ahead 
     // owners map is read first. A call that passes `owners` without reading it
     // would not compile, but a call that drops the third argument compiles fine
     // and silently prints `?` in both columns, which is the shape this pins.
-    const readAt = src.indexOf("readOwnerSchedules(client)");
+    // FIX-1201 renamed the accessor to the memoised `readOwnerSchedulesOnce`,
+    // because the deferred-tail BANNER also needs the map and is printed from
+    // call sites that main() has not reached yet. Same contract, one query.
+    const readAt = src.indexOf("readOwnerSchedulesOnce(client)");
     assert.ok(
       readAt > -1 && readAt < printAt,
-      `${file}: readOwnerSchedules(client) must be called before printTailTable() ` +
+      `${file}: readOwnerSchedulesOnce(client) must be called before printTailTable() ` +
         `(${readAt} vs ${printAt}). Without it the schedule/guarded columns render ` +
         `'?', which reads as 'nothing owns this' to anyone who did not write it.`,
     );

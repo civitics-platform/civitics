@@ -178,3 +178,40 @@ export async function readOwnerSchedules(client: {
     ]),
   );
 }
+
+/** One in-flight/settled read per client, so a run asks `cron.job` exactly once. */
+const OWNER_SCHEDULE_CACHE = new WeakMap<object, Promise<Map<string, OwnerSchedule>>>();
+
+/**
+ * `readOwnerSchedules`, memoised per client — FIX-1201.
+ *
+ * The deferred-tail banner is printed from inside `runVacuum` / `runMvsAndVacuum`
+ * / `runRollups`, which are reached on several different paths and NOT always
+ * after the point where `main()` reads the owners for the tail cost table. So
+ * the banner cannot simply be handed the map `main()` already has without
+ * threading an optional parameter through some twenty call sites, most of which
+ * would only ever pass it through.
+ *
+ * Memoising the read instead keeps the property that actually matters — ONE
+ * `cron.job` query per run, whoever asks first — while leaving
+ * `printDeferredTail(kind, owners?)` a pure function of its arguments, which is
+ * what makes it unit-testable with stubbed rows.
+ *
+ * The promise is cached, not the value, so two concurrent callers share one
+ * query rather than racing two. A rejection is not cached: the entry is dropped
+ * so a later caller can retry, and a failed owner read degrades the banner to
+ * `?` (the `printTailTable` convention: "nobody looked", not "nothing owns it")
+ * rather than failing a remediation run.
+ */
+export async function readOwnerSchedulesOnce(client: {
+  query: (sql: string) => Promise<{ rows: CronJobPipeline[] }>;
+}): Promise<Map<string, OwnerSchedule>> {
+  const hit = OWNER_SCHEDULE_CACHE.get(client);
+  if (hit) return hit;
+  const p = readOwnerSchedules(client).catch((err: unknown) => {
+    OWNER_SCHEDULE_CACHE.delete(client);
+    throw err;
+  });
+  OWNER_SCHEDULE_CACHE.set(client, p);
+  return p;
+}

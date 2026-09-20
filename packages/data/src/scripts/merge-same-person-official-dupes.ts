@@ -85,7 +85,7 @@ import {
   usd,
 } from "./fec-orphan-classify";
 import { declareRemediationTail, printTailTable, readManifest, manifestArg } from "./remediation-manifest";
-import { readOwnerSchedules } from "../lib/cron-job-pipelines";
+import { readOwnerSchedulesOnce } from "../lib/cron-job-pipelines";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
@@ -157,7 +157,7 @@ async function runVacuum(client: Client, defer = false): Promise<void> {
   // FIX-1153 — the scheduled *-vacuum-analyze jobs own this on prod;
   // a script-run VACUUM of these tables is a front-door incident (FIX-1144).
   if (defer) {
-    printDeferredTail("vacuum");
+    printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;
   }
   console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
@@ -187,7 +187,7 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
   // parallel hash build over financial_entities cannot resize its DSM segment,
   // and these scripts only set that GUC on LOCAL (see main()).
   if (defer) {
-    printDeferredTail("mvs");
+    printDeferredTail("mvs", await readOwnerSchedulesOnce(client));
     await runVacuum(client, defer);
     return;
   }
@@ -1524,7 +1524,7 @@ async function runRollups(client: Client, prod: boolean, defer = false): Promise
     // 28-row set-2 apply and produced 70 of its 202 statement cancellations;
     // refresh_group_donor_rollup() had no scheduled owner at all until FIX-1165
     // gave it one, rather than leaving it to whichever remediation ran next.
-    if (defer) printDeferredTail("heavy");
+    if (defer) printDeferredTail("heavy", await readOwnerSchedulesOnce(client));
     const heavySteps: ReadonlyArray<readonly [string, string]> = defer
       ? []
       : [
@@ -2127,7 +2127,7 @@ async function main(): Promise<void> {
   }
 
   // FIX-1165 (c) — the cost table, before anything is written.
-  const owners = await readOwnerSchedules(client);
+  const owners = await readOwnerSchedulesOnce(client);
   printTailTable(declareRemediationTail(defer), defer, owners);
   await client.query("BEGIN");
   try {
@@ -2693,7 +2693,10 @@ async function main(): Promise<void> {
 
   console.log(
     "\nSTALE UNTIL THEIR OWN SCHEDULE (not rebuildable here at reasonable cost):\n" +
-      "  entity_connections            — twice-weekly rebuild (Sun + Wed 08:00 UTC)\n" +
+      // FIX-1201 — no clock in an operator-facing string. This one's owner is a
+      // GitHub Actions schedule, not a cron.job row, so there is nothing to read
+      // live; naming the workflow is the honest form, and it cannot go stale.
+      "  entity_connections            — twice-weekly rebuild (GitHub Actions: rebuild-entity-connections.yml)\n" +
       "  entity_connection_stats(_mv)  — pg_cron, derived from entity_connections\n" +
       "  browse_facet_counts           — pg_cron",
   );

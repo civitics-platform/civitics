@@ -27,7 +27,8 @@
  * THE TAIL is the shared FIX-1074 drain. Every platform-scoped step is declared
  * and left to its scheduled owner, the VACUUM included — the residue is ~209k FR
  * rows, 1.4% of the table and under the 0.02 autovacuum trigger, so
- * fr-vacuum-analyze (Mon 01:00) collects it. If a future manifest exceeds ~1M
+ * fr-vacuum-analyze collects it (schedule read live at print time — FIX-1201;
+ * this comment said "Mon 01:00" until FIX-1191 made it daily). If a manifest exceeds ~1M
  * rows that answer changes to a supervised window; the script says so.
  */
 
@@ -40,7 +41,7 @@ import {
   requireManifestOnProd,
   type Manifest,
 } from "./remediation-manifest";
-import { readOwnerSchedules } from "../lib/cron-job-pipelines";
+import { readOwnerSchedulesOnce } from "../lib/cron-job-pipelines";
 import { drainFrRewrite, isCancellation } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 
@@ -221,7 +222,7 @@ async function main(): Promise<void> {
     // `if (!apply)` return, which is the siblings' shape exactly: dry run and
     // apply both print it, and `printTable: false` on the drain below is what
     // stops the apply path printing it a second time.
-    const owners = await readOwnerSchedules(client);
+    const owners = await readOwnerSchedulesOnce(client);
     printTailTable(declareRemediationTail(defer), defer, owners);
 
     if (!apply) {

@@ -100,7 +100,7 @@ import {
   requireManifestOnProd,
   type DiffInput,
 } from "./remediation-manifest";
-import { readOwnerSchedules } from "../lib/cron-job-pipelines";
+import { readOwnerSchedulesOnce } from "../lib/cron-job-pipelines";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 
@@ -385,7 +385,7 @@ async function budgeted(
 
 async function runVacuum(client: Client, defer = false): Promise<void> {
   if (defer) {
-    printDeferredTail("vacuum");
+    printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;
   }
   console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
@@ -414,7 +414,7 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
   // parallel hash build over financial_entities cannot resize its DSM segment,
   // and these scripts only set that GUC on LOCAL (see main()).
   if (defer) {
-    printDeferredTail("mvs");
+    printDeferredTail("mvs", await readOwnerSchedulesOnce(client));
     await runVacuum(client, defer);
     return;
   }
@@ -466,7 +466,7 @@ async function runRollups(client: Client, prod: boolean, defer = false): Promise
 
     // FIX-1153 — the search index is the 06:00 daily's ninth unit and the
     // treemap is treemap-individuals-global-refresh's whole job.
-    if (defer) printDeferredTail("heavy");
+    if (defer) printDeferredTail("heavy", await readOwnerSchedulesOnce(client));
     // FIX-1165 — ALL THREE defer, not just the search index. The first two used
     // to run unconditionally, which is precisely the bug: on the 2026-09-07
     // set-2 apply, a 28-row manifest, rebuild_financial_entity_ie_totals() ran
@@ -764,7 +764,7 @@ async function main(): Promise<void> {
 
   // FIX-1165 (c) — the tail's cost table, printed BEFORE the go-ahead so the
   // trade is visible at decision time rather than discovered at minute 28.
-  const owners = await readOwnerSchedules(client);
+  const owners = await readOwnerSchedulesOnce(client);
   printTailTable(declareRemediationTail(defer), defer, owners);
 
   if (!apply) {

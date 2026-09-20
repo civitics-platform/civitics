@@ -17,6 +17,11 @@
  */
 
 import { fecOfficePrefixFor, roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
+// FIX-1201 — the deferred-tail banner renders its schedule/guarded columns with
+// the SAME function the FIX-1193 tail cost table uses, so the two can never
+// disagree about what `?` or `NOT SCHEDULED` means.
+import { ownerColumns } from "./remediation-manifest";
+import type { OwnerSchedule } from "../lib/cron-job-pipelines";
 
 // ---------------------------------------------------------------------------
 // The enumeration query
@@ -1017,31 +1022,72 @@ export function deferTails(argv: string[]): boolean {
   return argv.includes("--defer-tails");
 }
 
-/** Who collects a tail this run is skipping. Schedules are prod, UTC. */
+/**
+ * Who collects a tail this run is skipping — FIX-1201.
+ *
+ * NO SCHEDULE TEXT LIVES HERE. Each entry is a job NAME and what that job
+ * collects; the schedule is read live from `cron.job` at print time via
+ * `readOwnerSchedulesOnce()` and rendered by `ownerColumns()`, the same function
+ * the FIX-1193 tail cost table uses.
+ *
+ * It used to carry the schedule as a literal — `"fr-vacuum-analyze
+ * financial_relationships   Mon 01:00"` — and that string was wrong the moment
+ * FIX-1191 moved the job to daily 03:00. It was wrong in the worst possible
+ * place: the set-2 apply printed `Mon 01:00` to the operator at 18:5x on
+ * 2026-09-19, about forty minutes before the migration that made it wrong landed
+ * (cc-132 §9g). FIX-1193 had already fixed exactly this defect in the cost
+ * table; this is the same defect at the site FIX-1193 did not reach, and it is
+ * the operator-facing one — the line someone reads to decide whether deferring a
+ * vacuum is safe.
+ *
+ * A hard-coded schedule is a second source of truth that cannot be kept honest,
+ * because nothing fails when it drifts. One query per run is cheaper.
+ */
 export const TAIL_OWNERS = {
   vacuum: [
-    "fr-vacuum-analyze            financial_relationships   Mon 01:00",
-    "officials-vacuum-analyze     officials                 Mon 01:30",
-    "ec-vacuum-analyze            entity_connections        daily 04:30 (FIX-1152)",
-    "fe-vacuum-analyze            financial_entities        daily 04:50 (FIX-1152)",
+    { job: "fr-vacuum-analyze", collects: "financial_relationships" },
+    { job: "officials-vacuum-analyze", collects: "officials" },
+    { job: "ec-vacuum-analyze", collects: "entity_connections" },
+    { job: "fe-vacuum-analyze", collects: "financial_entities" },
   ],
   heavy: [
-    "refresh-derived-mvs-daily    rebuild_entity_search_index()      daily 06:00",
-    "treemap-individuals-global-refresh  refresh_treemap_individuals_global()  Tue 14:00",
+    { job: "refresh-derived-mvs-daily", collects: "rebuild_entity_search_index()" },
+    {
+      job: "treemap-individuals-global-refresh",
+      collects: "refresh_treemap_individuals_global()",
+    },
     // FIX-1165 — these two shipped OUTSIDE the deferral and had to be added after a
     // prod run found them. Both are platform-scoped: their cost does not move when
     // the manifest goes from 28 rows to 2,736.
-    "fec-bulk pipeline            rebuild_financial_entity_ie_totals()  weekly + drop probe",
-    "group-donor-rollup-refresh   refresh_group_donor_rollup()          Wed 03:10 (FIX-1165)",
+    { job: "fec-bulk pipeline", collects: "rebuild_financial_entity_ie_totals()" },
+    { job: "group-donor-rollup-refresh", collects: "refresh_group_donor_rollup()" },
   ],
   mvs: [
-    "refresh-derived-mvs-weekly   chord_industry / donor_type / donor_state / official_sector_dollars   Tue 00:47",
-    "refresh-derived-mvs-daily    homepage_stats_mv, official_homepage_stats_mv                         daily 06:00",
+    {
+      job: "refresh-derived-mvs-weekly",
+      collects: "chord_industry / donor_type / donor_state / official_sector_dollars",
+    },
+    {
+      job: "refresh-derived-mvs-daily",
+      collects: "homepage_stats_mv, official_homepage_stats_mv",
+    },
   ],
 } as const;
 
-/** Print what is being skipped and who picks it up. */
-export function printDeferredTail(kind: keyof typeof TAIL_OWNERS): void {
+/**
+ * Print what is being skipped and who picks it up — FIX-1201.
+ *
+ * `owners` is the map `readOwnerSchedulesOnce(client)` returns, the same one
+ * `printTailTable` takes. Omit it and every schedule renders `?`, which
+ * `ownerColumns` deliberately spells differently from `NOT SCHEDULED`: "nobody
+ * looked" is not "nothing owns it", and a banner that manufactured orphan
+ * signals out of a map nobody read would be worse than the stale string it
+ * replaced.
+ */
+export function printDeferredTail(
+  kind: keyof typeof TAIL_OWNERS,
+  owners?: ReadonlyMap<string, OwnerSchedule>,
+): void {
   const what =
     kind === "vacuum"
       ? "VACUUM (ANALYZE)"
@@ -1050,7 +1096,23 @@ export function printDeferredTail(kind: keyof typeof TAIL_OWNERS): void {
         : "platform-scoped rebuilds (search index, treemap, IE totals, group rollup)";
   console.log(`\n── ${what} — DEFERRED (--defer-tails) ──`);
   console.log("  Skipped here; collected by:");
-  for (const line of TAIL_OWNERS[kind]) console.log(`    ${line}`);
+  const rows = TAIL_OWNERS[kind].map((o) => ({ ...o, ...ownerColumns(o.job, owners) }));
+  const jw = Math.max(...rows.map((r) => r.job.length));
+  const cw = Math.max(...rows.map((r) => r.collects.length));
+  const sw = Math.max(8, ...rows.map((r) => r.schedule.length));
+  console.log(
+    `    ${"job".padEnd(jw)}  ${"collects".padEnd(cw)}  ${"schedule".padEnd(sw)}  guarded`,
+  );
+  for (const r of rows) {
+    console.log(
+      `    ${r.job.padEnd(jw)}  ${r.collects.padEnd(cw)}  ${r.schedule.padEnd(sw)}  ${r.guarded}`,
+    );
+  }
+  if (!owners) {
+    console.log(
+      "    ! owner schedules NOT READ — `?` is 'nobody looked', not 'nothing owns it'.",
+    );
+  }
   if (kind === "vacuum") {
     console.log("  On prod this is not an optimisation — a script-run VACUUM of these tables");
     console.log("  is a front-door incident (FIX-1144). The scheduled owners are the path.");
