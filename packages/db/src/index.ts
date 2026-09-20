@@ -510,6 +510,16 @@ export {
 } from "./ai-pricing";
 export type { ModelPricing } from "./ai-pricing";
 
+// FIX-938 — ai_summary_cache prompt versions. Here for the same reason pricing
+// is: the producers live in packages/ai, packages/data and apps/civitics, and
+// a constant they must all agree on cannot live in any one of them.
+export {
+  SUMMARY_PROMPT_VERSIONS,
+  LEGACY_PROMPT_VERSION,
+  UNREGISTERED_PROMPT_VERSION,
+  summaryPromptVersion,
+} from "./ai-prompt-versions";
+
 // FIX-1130 — the front-door wedge detector's pure decision logic. The route
 // (apps/civitics/app/api/cron/front-door-watch) does the I/O; everything that
 // decides lives here so the 2026-08-31 incident is replayable as a test.

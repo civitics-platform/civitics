@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * Supabase Auth session cookies). No new secret.
  */
 
-import { createServerClient, createAdminClient } from "@civitics/db";
+import { createServerClient, createAdminClient, summaryPromptVersion } from "@civitics/db";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -236,6 +236,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             model,
             tokens_used: parsed.tokens_used ?? null,
             metadata,
+            // FIX-938 — same cache keys as the drain CLI path; same version.
+            prompt_version: summaryPromptVersion(queueRow.entity_type, summaryType),
           },
           { onConflict: "entity_type,entity_id,summary_type" },
         );

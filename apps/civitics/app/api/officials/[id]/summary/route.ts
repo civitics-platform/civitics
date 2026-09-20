@@ -38,7 +38,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
-import { calculateCostUsd, createAdminClient } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, summaryPromptVersion } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 // FIX-796 — header handler-owned: only the two summary-bearing 200s are
 // CDN-cached, so a transient null is never pinned at the edge. FIX-1029 makes
@@ -99,6 +99,9 @@ export async function GET(
       .eq("entity_type", "official")
       .eq("entity_id", id)
       .eq("summary_type", "profile")
+      // FIX-938 — a GENERATE path: a row produced under an older prompt version
+      // is a MISS, and the upsert below replaces it in place.
+      .eq("prompt_version", summaryPromptVersion("official", "profile"))
       .maybeSingle();
 
     if (cacheRes.data?.summary_text) {
@@ -248,6 +251,7 @@ export async function GET(
           summary_text: summaryText,
           model: MODELS.haiku,
           tokens_used: tokensUsed,
+          prompt_version: summaryPromptVersion("official", "profile"),
         },
         { onConflict: "entity_type,entity_id,summary_type" }
       ),

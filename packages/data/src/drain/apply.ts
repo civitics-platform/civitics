@@ -12,6 +12,7 @@
  * until retry_count >= 3, then permanent 'failed').
  */
 
+import { summaryPromptVersion } from "@civitics/db";
 import { checkTagVocabulary } from "./vocabulary";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -259,6 +260,11 @@ export async function applyResult(db: Db, r: SubmitResult): Promise<ApplyOutcome
           model,
           tokens_used: parsed.tokens_used ?? null,
           metadata,
+          // FIX-938 — the drain's prompts/summary.md writes the SAME cache keys
+          // as the pipeline and the on-demand routes, so it stamps the same
+          // per-pair version. Editing summary.md without bumping the constant
+          // fails drain-prompt-version.test.ts.
+          prompt_version: summaryPromptVersion(queueRow.entity_type, summaryType),
         },
         { onConflict: "entity_type,entity_id,summary_type" },
       );

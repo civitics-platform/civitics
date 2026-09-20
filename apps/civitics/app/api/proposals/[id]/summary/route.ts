@@ -14,7 +14,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { calculateCostUsd, createAdminClient } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, summaryPromptVersion } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 // FIX-796 — header handler-owned: only the two summary-bearing 200s are
 // CDN-cached. The `summary: null` variants (kill switch, spend cap, closed
@@ -57,6 +57,16 @@ export async function GET(
       .select("summary_text")
       .eq("entity_type", "proposal")
       .eq("entity_id", id)
+      // FIX-938 — a GENERATE path: a row produced under an older prompt version
+      // is a MISS, and the upsert below replaces it in place.
+      //
+      // summary_type is pinned here too. It was absent, so this read matched ANY
+      // summary_type for the proposal while the upsert below writes
+      // 'plain_language' specifically — a proposal carrying a second
+      // summary_type would make .maybeSingle() error on multiple rows, be
+      // swallowed by the catch, and regenerate on every single request.
+      .eq("summary_type", "plain_language")
+      .eq("prompt_version", summaryPromptVersion("proposal", "plain_language"))
       .maybeSingle();
 
     if (cacheRes.data?.summary_text) {
@@ -163,6 +173,7 @@ export async function GET(
           summary_text: summaryText,
           model: MODELS.haiku,
           tokens_used: tokensUsed,
+          prompt_version: summaryPromptVersion("proposal", "plain_language"),
         },
         { onConflict: "entity_type,entity_id,summary_type" }
       ),

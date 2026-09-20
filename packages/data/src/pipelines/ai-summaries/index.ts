@@ -25,7 +25,7 @@
  *   pnpm --filter @civitics/data data:ai-summaries-new
  */
 
-import { calculateCostUsd, createAdminClient, agencyFullName, rowsOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, agencyFullName, rowsOrThrow, selectAllKeyset, afterKey, summaryPromptVersion } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { sleep } from "../utils";
@@ -113,7 +113,9 @@ async function writeSummaryCache(
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (db as any).from("ai_summary_cache").upsert(
-    { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed, metadata },
+    { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed, metadata,
+      // FIX-938 — stamp the version this text was produced under.
+      prompt_version: summaryPromptVersion(entityType, summaryType) },
     { onConflict: "entity_type,entity_id,summary_type" }
   );
 }
@@ -178,6 +180,10 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
       .select("id, entity_id")
       .eq("entity_type", "proposal")
       .eq("summary_type", "plain_language")
+      // FIX-938 — "already summarized" means "summarized under the CURRENT
+      // prompt". A row from an older version must not suppress regeneration,
+      // or a prompt fix would never reach any entity already in the table.
+      .eq("prompt_version", summaryPromptVersion("proposal", "plain_language"))
       // FIX-984: keyed on the `id` pkey, not `entity_id` — nothing constrains
       // one (entity_type, summary_type) pair to one row per entity, and a
       // repeated key makes a keyset walk skip the duplicate silently.
@@ -353,6 +359,8 @@ export async function fetchOfficials(db: ReturnType<typeof createAdminClient>): 
       .select("id, entity_id")
       .eq("entity_type", "official")
       .eq("summary_type", "profile")
+      // FIX-938 — current-version rows only; see the proposal preload above.
+      .eq("prompt_version", summaryPromptVersion("official", "profile"))
       .order("id") // FIX-984 keyset key -- see the proposal preload above
       .limit(limit), "id", after),
     { key: (r) => r.id },

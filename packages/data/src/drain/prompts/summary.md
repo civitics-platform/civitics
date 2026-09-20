@@ -1,3 +1,11 @@
+<!-- prompt-version: 2026-09-20 -->
+<!-- FIX-938: this MUST equal SUMMARY_PROMPT_VERSIONS for every
+     (entity_type, summary_type) pair this task writes, in
+     packages/db/src/ai-prompt-versions.ts. Change the wording below and
+     bump BOTH in the same commit, or already-cached entities keep this
+     file's old framing forever. Pinned by
+     packages/data/src/drain/drain-prompt-version.test.ts. -->
+
 # Enrichment worker — SUMMARY task
 
 You are generating plain-language summaries for civic entities for the Civitics

@@ -11,7 +11,7 @@
  *   pnpm --filter @civitics/data data:enrich-seed -- --dry-run
  */
 
-import { createAdminClient, agencyFullName, selectAllKeyset, afterKey } from "@civitics/db";
+import { createAdminClient, agencyFullName, selectAllKeyset, afterKey, summaryPromptVersion } from "@civitics/db";
 import {
   financialEntityPopulation,
   parseMaxEnqueue,
@@ -191,6 +191,9 @@ async function summarizedEntityIds(
           .select("id, entity_id")
           .eq("entity_type", entityType)
           .eq("summary_type", summaryType)
+          // FIX-938 — a row from an older prompt version does NOT count as
+          // summarized; it must be re-queued so the current prompt reaches it.
+          .eq("prompt_version", summaryPromptVersion(entityType, summaryType))
           .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
           .limit(limit),
         "id",

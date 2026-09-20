@@ -18,6 +18,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   calculateCostUsd,
   createAdminClient,
+  summaryPromptVersion,
   getMonthlyAnthropicSpend,
   getMonthlyAnthropicLimitUsd,
   isKillSwitchEnabled,
@@ -32,6 +33,10 @@ export const anthropic = new Anthropic({
 // value only kicks in if that query fails (returns null).
 const FALLBACK_MONTHLY_SPEND_LIMIT_USD = 4.0;
 
+// FIX-938 — a GENERATE path, so it filters on prompt_version. A row produced by
+// an older prompt is a MISS and is regenerated, overwriting the row below. Pure
+// display readers deliberately do NOT filter (they would go blank); see
+// 20260920050000_fix938_ai_summary_prompt_version.sql.
 async function getCachedSummary(
   entityType: string,
   entityId: string,
@@ -45,6 +50,7 @@ async function getCachedSummary(
       .eq("entity_type", entityType)
       .eq("entity_id", entityId)
       .eq("summary_type", summaryType)
+      .eq("prompt_version", summaryPromptVersion(entityType, summaryType))
       .single();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data as any)?.summary_text ?? null;
@@ -64,7 +70,9 @@ async function cacheSummary(
   try {
     const db = createAdminClient();
     await db.from("ai_summary_cache").upsert(
-      { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed },
+      { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed,
+        // FIX-938 — stamp the version this text was produced under.
+        prompt_version: summaryPromptVersion(entityType, summaryType) },
       { onConflict: "entity_type,entity_id,summary_type" }
     );
   } catch {

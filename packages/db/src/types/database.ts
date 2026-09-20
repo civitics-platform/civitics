@@ -386,6 +386,7 @@ export type Database = {
           id: string
           metadata: Json
           model: string
+          prompt_version: string
           summary_text: string
           summary_type: string
           tokens_used: number | null
@@ -397,6 +398,7 @@ export type Database = {
           id?: string
           metadata?: Json
           model: string
+          prompt_version?: string
           summary_text: string
           summary_type: string
           tokens_used?: number | null
@@ -408,6 +410,7 @@ export type Database = {
           id?: string
           metadata?: Json
           model?: string
+          prompt_version?: string
           summary_text?: string
           summary_type?: string
           tokens_used?: number | null
@@ -7977,6 +7980,7 @@ export type Database = {
         | "official_vote"
         | "new_proposal"
         | "initiative_status"
+        | "claim_outcome"
       official_response_type:
         | "support"
         | "oppose"
@@ -8288,6 +8292,7 @@ export const Constants = {
         "official_vote",
         "new_proposal",
         "initiative_status",
+        "claim_outcome",
       ],
       official_response_type: [
         "support",
