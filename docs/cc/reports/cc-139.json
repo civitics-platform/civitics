@@ -1,0 +1,38 @@
+{
+  "cc": "139",
+  "prompt": "cc-prompt-139-closure-sweep-997-969-982-1031-1107-1125-1124-1137-remeasured-and-closed-or-appended-fix1188-itc-committee-census.md",
+  "started_at": "2026-09-20T19:20:00Z",
+  "finished_at": "2026-09-20T19:50:00Z",
+  "head_before": "0e862381",
+  "head_after": "30effa91",
+  "commits": [
+    {
+      "sha": "88ea275b",
+      "subject": "docs(audits): FIX-1188 — ITC DROPPED-OUT committee census (FE row / resolves / unminted)"
+    },
+    {
+      "sha": "f8ab8291",
+      "subject": "docs(fixes): closure sweep — FIX-997 / 982 / 1031 / 1107 re-measured and closed; FIX-969 / 1125 / 1124 / 1137 / 1188 appended"
+    },
+    {
+      "sha": "30effa91",
+      "subject": "chore(fixes): sync status after FIX-997 / FIX-982 / FIX-1031 / FIX-1107"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-997",
+    "FIX-982",
+    "FIX-1031",
+    "FIX-1107"
+  ],
+  "fixes_filed": [
+    "FIX-1203"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-969 — the expected close was REFUSED by the measurement. The prompt's gate was 'jobid 26 clean for 30 days'; 26 failed 2 of 4 firings in the window. Appended with 26's numbers and left OPEN, per the prompt's own fallback."
+  ]
+}
