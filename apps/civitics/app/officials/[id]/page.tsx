@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
 import nextDynamic from "next/dynamic";
 import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { Icon } from "@civitics/graph";
@@ -36,6 +37,7 @@ import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { getCachedOfficial } from "../_lib/get-official";
 import { getOfficialContentBearing } from "../_lib/get-official-content";
+import { classifyOfficialPage, getCachedOfficialPage } from "../_lib/get-official-page";
 import {
   SyntheticMark,
   SyntheticBanner,
@@ -69,6 +71,14 @@ export async function generateMetadata(
   ]);
   if (!data) return { title: "Official" };
 
+  // The page RPC, resolved here so a FAILED render can be noindexed — robots
+  // can only be set from generateMetadata, which runs before the page body.
+  // React.cache means the page below gets this same result, not a second call.
+  const outcome = classifyOfficialPage(
+    contentBearing,
+    contentBearing ? await getCachedOfficialPage(params.id) : null,
+  );
+
   const description = [
     data.role_title,
     data.party ? `(${data.party.charAt(0).toUpperCase() + data.party.slice(1)})` : null,
@@ -87,7 +97,11 @@ export async function generateMetadata(
     // empty shell — noindex,nofollow so crawlers stop cold-reading the heavy
     // get_official_page RPC on it. Officials with any record (and any cache
     // hiccup → fail open) stay indexed.
-    ...(contentBearing ? {} : { robots: { index: false, follow: false } }),
+    //
+    // ...and a FAILED render is noindexed too: the page is about to say this
+    // official has no record, and that claim must not be crawled and cached. It
+    // is transient by construction — the next render will index normally.
+    ...(outcome === "ok" ? {} : { robots: { index: false, follow: false } }),
   };
 }
 
@@ -348,13 +362,7 @@ export default async function OfficialProfilePage({
       getCachedOfficial(params.id),
       // FIX-683: empty official → skip the RPC; page.* all default to []/null/0
       // below, so every section renders its empty state.
-      contentBearing
-        ? withDbTimeout(
-            sb.rpc("get_official_page", { p_id: params.id }),
-            5000,
-            "officials:page-rpc",
-          )
-        : Promise.resolve({ data: null }),
+      contentBearing ? getCachedOfficialPage(params.id) : Promise.resolve({ data: null }),
       // FIX-518 — donor + IE aggregations read official_donor_rollup_mv: per
       // (official, relationship_type) the top-1000 donors (rank 1..1000) plus
       // one tail-bucket row (rank 1001, donor_id NULL, tail_donor_count set),
@@ -413,6 +421,17 @@ export default async function OfficialProfilePage({
   // Shim the get_official_page payload back into the per-section result shapes the
   // render code already consumes. recent/all votes arrive with `proposals`
   // pre-attached by the RPC, so the old two-step proposal hydration is removed.
+  // FIX-1180's sibling — tell a FAILED RPC apart from the FIX-683 skip BEFORE
+  // shimming, because `data ?? {}` erases the difference and every section then
+  // renders its empty state as though the record really were empty.
+  const pageOutcome = classifyOfficialPage(contentBearing, pageRes as { data: unknown; error?: unknown });
+  if (pageOutcome === "failed") {
+    // Never let a cancel be cached as an empty official. `revalidate = 300` at
+    // module scope would otherwise hand this render to the next 5 minutes of
+    // visitors; noStore() opts THIS render out and leaves the healthy path's
+    // ISR exactly as it was.
+    noStore();
+  }
   const page = ((pageRes as { data: GetOfficialPage | null }).data ?? {}) as Partial<GetOfficialPage>;
   const voteCountRes = { count: page.vote_count ?? 0 };
   const votesRes = { data: page.recent_votes ?? [] };
@@ -913,6 +932,29 @@ export default async function OfficialProfilePage({
 
         {/* Print-only letterhead — record pages print as filed public documents (FIX-713). */}
         <PrintLetterhead />
+
+        {/* FIX-1180's sibling — get_official_page failed (57014 against anon's
+            3s bound, a client-side timeout, or a schema-cache miss). The
+            sections below are empty because the READ failed, not because this
+            official has no record, and saying so is the whole point: without
+            this banner the page is indistinguishable from a genuinely empty
+            one, which is what 17.9 % of calls rendered (cc-137 §3). The render
+            is also noindexed (generateMetadata) and uncached (noStore above),
+            so neither a crawler nor the next visitor inherits the claim. */}
+        {pageOutcome === "failed" && (
+          <div
+            role="status"
+            className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            <strong className="font-semibold">
+              This official&rsquo;s record could not be loaded right now
+            </strong>
+            <span className="block">
+              Try again in a minute. Their voting record, funding and history are not
+              missing &mdash; this page just could not read them.
+            </span>
+          </div>
+        )}
 
         {/* SF-P2 (FIX-599): inherited demonstration banner when this official is
             scoped under a synthetic jurisdiction (the State of Franklin). */}
