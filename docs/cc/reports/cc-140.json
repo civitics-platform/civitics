@@ -1,0 +1,54 @@
+{
+  "cc": "140",
+  "prompt": "cc-prompt-140-product-smalls-fix560-claim-outcome-notification-fix938-prompt-version-in-summary-cache-key-fix922-overrides-for-null-committee-donors-fix888-ids-groups-are-session-scoped.md",
+  "started_at": "2026-09-20T19:55:00Z",
+  "finished_at": "2026-09-20T20:45:00Z",
+  "head_before": "3c72c6e9",
+  "head_after": "b639f36d",
+  "commits": [
+    {
+      "sha": "35db707b",
+      "subject": "feat(notifications): FIX-560 — claim approve/reject notifies the claimant; claim_outcome event"
+    },
+    {
+      "sha": "bc591f27",
+      "subject": "feat(ai): FIX-938 — prompt_version joins the ai_summary_cache key; a prompt edit misses the cache"
+    },
+    {
+      "sha": "e7f3e1e3",
+      "subject": "feat(tags): FIX-922 — industry overrides can address a financial entity with no committee id"
+    },
+    {
+      "sha": "21fe62a6",
+      "subject": "feat(explorer): FIX-888 — ids-groups are session-scoped and the save dialog says so"
+    },
+    {
+      "sha": "afe30ebf",
+      "subject": "docs(fixes): FIX-1204 / FIX-1205 / FIX-1206 — follow-ups surfaced by cc-140"
+    },
+    {
+      "sha": "b639f36d",
+      "subject": "chore(fixes): sync status after FIX-560 / FIX-938 / FIX-922 / FIX-888"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-560",
+    "FIX-938",
+    "FIX-922",
+    "FIX-888"
+  ],
+  "fixes_filed": [
+    "FIX-1204",
+    "FIX-1205",
+    "FIX-1206"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920040000_fix560_claim_outcome_notification_event.sql",
+    "supabase/migrations/20260920050000_fix938_ai_summary_prompt_version.sql",
+    "supabase/migrations/20260920060000_fix922_industry_override_financial_entity_id.sql"
+  ],
+  "prod_writes": "Three migrations applied to Pro at 2026-09-20 20:21:53–20:21:55 UTC via pnpm db:push:prod (dry-run first confirmed the pending set was exactly these three). DDL only, plus FIX-938's backfill: UPDATE ai_summary_cache SET prompt_version='2026-09-20' on 6,888 rows. No other data written; no VACUUM; no cron.job change. All other prod contact was read-only via scripts/db-query.mjs --prod.",
+  "ci": "green",
+  "stopped_items": []
+}
