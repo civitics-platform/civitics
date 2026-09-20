@@ -42,7 +42,7 @@ export type {
 } from "./types";
 export type { VizApplicability, VizApplicabilityMeta } from "./types";
 export type { IndividualDisplayMode, BracketTier } from "./types";
-export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, isSelectionGroup, BRACKET_TIERS } from "./types";
+export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, isSelectionGroup, isSessionScopedGroup, BRACKET_TIERS } from "./types";
 
 // ── Canonical node-id scheme (FIX-849) ──────────────────────────────────────
 export { makeNodeId, extractUuid, matchesFocus, isFocusNode, NODE_ID_TYPES } from "./nodeId";

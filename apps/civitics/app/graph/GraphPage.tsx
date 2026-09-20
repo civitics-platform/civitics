@@ -992,6 +992,11 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
       onAddGroup={(group) => graphHooks.addGroup(group)}
       activeEntityIds={focusEntityList.map((e) => e.id)}
       activeGroupIds={focusGroupList.map((g) => g.id)}
+      // FIX-888 — the groups themselves, so ★ SAVE VIEW can say what a saved
+      // view will NOT carry. A hand-picked cohort (officialIds from BUNDLE AS
+      // GROUP, or memberIds from a shift-click selection) has no BrowseState
+      // that reproduces it, and the save used to drop it in silence.
+      focusGroups={focusGroupList}
       atMaxFocus={graphHooks.atMaxFocus}
     />
   );

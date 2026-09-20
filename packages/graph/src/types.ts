@@ -566,6 +566,27 @@ export function isSelectionGroup(item: FocusItem): item is FocusGroup {
   return item.type === 'group' && Array.isArray((item as FocusGroup).memberIds)
 }
 
+/**
+ * FIX-888 — true for a group whose membership is HAND-PICKED and therefore
+ * cannot survive a saved view.
+ *
+ * A saved view's payload is a BrowseState — a predicate. Two group shapes are
+ * not predicates: a selection group (memberIds, FIX-826) and an ids-group
+ * (filter.officialIds, FIX-886, from /search BUNDLE AS GROUP). Saving a view
+ * with one in focus stores the FILTERS, and reapplying it resolves something
+ * else entirely — for a bare officials group, every active official.
+ *
+ * Craig's decision (2026-09-19) is to persist nothing and SAY so, so this is
+ * what the focus list and the save confirmation both key off.
+ */
+export function isSessionScopedGroup(item: FocusItem): item is FocusGroup {
+  if (item.type !== 'group') return false
+  const g = item as FocusGroup
+  if (Array.isArray(g.memberIds)) return true
+  const ids = g.filter?.officialIds
+  return Array.isArray(ids) && ids.length > 0
+}
+
 // ── Focus Item ─────────────────────────────────────────────────────────────────
 
 export type FocusItem = FocusEntity | FocusGroup

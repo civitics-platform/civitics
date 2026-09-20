@@ -488,3 +488,90 @@ export const GROUP_FILTER_FIELD_COVERAGE: Record<keyof GroupFilter, string> = {
   agency_type:      "never emitted — the route ignores it, so a narrowed agency filter would lie about its members",
   initiative_stage: "unreachable — initiative scopes refuse to compile (no route mode)",
 };
+
+// ---------------------------------------------------------------------------
+// FIX-888 — session-scoped groups, and saying so.
+//
+// A saved view's payload IS a BrowseState (v2) — a PREDICATE. Two kinds of
+// focus group cannot be expressed as one:
+//
+//   * an ids-group, from /search BUNDLE AS GROUP → /graph?groupIds=… , whose
+//     membership is a hand-picked list (FIX-886);
+//   * a selection group, from a shift-click selection, whose membership is an
+//     explicit set of already-loaded node ids (FIX-826).
+//
+// compileBrowseToGroupFilter never emits officialIds and has no way to emit
+// memberIds, so saving a view while one of those is in focus silently stores
+// the FILTERS instead of the cohort. Reapplied later it resolves a predicate —
+// for a bare officials group, every active official (27,753 on prod), answering
+// about the whole platform under the user's group name.
+//
+// Craig's decision on 2026-09-19 is (b): persist nothing, and make the UI say
+// so. (a) — snapshot the ids into the saved view — was declined because a
+// snapshot drifts: the stored ids silently stop meaning what the user picked as
+// officials leave office or merge. (c) — a real user_custom_groups membership
+// table — was declined as a feature, not a fix.
+//
+// So the drop stops being SILENT. This is the copy, as a pure function, so the
+// branch is testable without React.
+// ---------------------------------------------------------------------------
+
+/** The subset of FocusGroup this needs. Structural, so callers need no cast. */
+export interface SessionScopedGroupLike {
+  name: string;
+  filter?: { officialIds?: string[] } | undefined;
+  memberIds?: string[] | undefined;
+}
+
+/**
+ * True when a group's membership cannot be reconstructed from a saved view —
+ * i.e. it is hand-picked rather than derived from a predicate.
+ */
+export function isSessionScopedGroup(group: SessionScopedGroupLike): boolean {
+  if (Array.isArray(group.memberIds)) return true;
+  const ids = group.filter?.officialIds;
+  return Array.isArray(ids) && ids.length > 0;
+}
+
+/**
+ * The line shown before a save is confirmed, or null when nothing in focus is
+ * session-scoped and the save is lossless.
+ *
+ * Deliberately states WHAT is lost and HOW MUCH, not just that something is:
+ * "this won't be saved" invites the reader to assume the graph is what gets
+ * saved. Naming the group and its size makes the trade legible.
+ */
+export function sessionScopedSaveNotice(
+  groups: readonly SessionScopedGroupLike[],
+): string | null {
+  const scoped = groups.filter(isSessionScopedGroup);
+  if (scoped.length === 0) return null;
+
+  const members = (g: SessionScopedGroupLike) =>
+    g.memberIds?.length ?? g.filter?.officialIds?.length ?? 0;
+
+  if (scoped.length === 1) {
+    const g = scoped[0]!;
+    const n = members(g);
+    return (
+      `This view saves the filters, not the hand-picked group “${g.name}” ` +
+      `(${n} ${n === 1 ? "member" : "members"}). Groups you pick by hand live ` +
+      `only in this session.`
+    );
+  }
+
+  const total = scoped.reduce((sum, g) => sum + members(g), 0);
+  return (
+    `This view saves the filters, not the ${scoped.length} hand-picked groups ` +
+    `in focus (${total} members in total). Groups you pick by hand live only in ` +
+    `this session.`
+  );
+}
+
+/** The short affordance next to a session-scoped group in the focus list. */
+export const SESSION_ONLY_LABEL = "session only";
+
+/** Its tooltip. Same fact as the save notice, from the other direction. */
+export const SESSION_ONLY_TITLE =
+  "Hand-picked membership — this group lives only in this session. " +
+  "Saving a view stores the filters, not these members.";

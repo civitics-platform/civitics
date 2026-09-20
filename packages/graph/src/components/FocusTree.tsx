@@ -25,7 +25,7 @@
 
 import React, { type ReactNode } from 'react';
 import type { FocusEntity, GraphView } from '../types';
-import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
+import { isFocusEntity, isFocusGroup, isSessionScopedGroup, MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { TreeSection } from './TreeNode';
@@ -183,8 +183,21 @@ export function FocusTree({
                       </span>
                     )}
                   </div>
-                  <div className="text-[10px] text-ink-soft/60">
-                    Group{item.count ? ` · ${item.count} members` : ''}
+                  <div className="text-[10px] text-ink-soft/60 flex items-center gap-1">
+                    <span>Group{item.count ? ` · ${item.count} members` : ''}</span>
+                    {/* FIX-888 — a hand-picked cohort (memberIds, or
+                        filter.officialIds from BUNDLE AS GROUP) has no
+                        BrowseState that reproduces it, so it cannot ride a
+                        saved view. Said here rather than discovered when a
+                        reloaded view resolves the whole platform instead. */}
+                    {isSessionScopedGroup(item) && (
+                      <span
+                        className="text-[9px] uppercase tracking-wide bg-ink-soft/15 text-ink-soft px-1 rounded"
+                        title="Hand-picked membership — this group lives only in this session. Saving a view stores the filters, not these members."
+                      >
+                        session only
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

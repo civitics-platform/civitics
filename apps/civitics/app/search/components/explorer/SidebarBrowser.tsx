@@ -24,6 +24,7 @@ import { createCustomGroup } from "@civitics/graph";
 import type { BrowseRow } from "@/lib/browse/types";
 import { serializeBrowseState } from "@/lib/browse/browse-state";
 import {
+  sessionScopedSaveNotice,
   suggestedViewName,
   tryCompileBrowseToGroupFilter,
 } from "@/lib/browse/graph-compiler";
@@ -43,6 +44,13 @@ export interface SidebarBrowserProps {
   /** Focus ids so added rows/groups render as ✓. */
   activeEntityIds: string[];
   activeGroupIds: string[];
+  /**
+   * FIX-888 — the focus GROUPS, not just their ids. A saved view stores a
+   * BrowseState (a predicate), so a hand-picked group in focus cannot be part
+   * of it; ★ SAVE VIEW has to say so before it saves, and it cannot know
+   * without seeing the groups.
+   */
+  focusGroups?: readonly { name: string; filter?: { officialIds?: string[] } | undefined; memberIds?: string[] | undefined }[];
   atMaxFocus: boolean;
 }
 
@@ -51,10 +59,15 @@ export function SidebarBrowser({
   onAddGroup,
   activeEntityIds,
   activeGroupIds,
+  focusGroups = [],
   atMaxFocus,
 }: SidebarBrowserProps) {
   const ex = useBrowseExplorer({ initialState: EMPTY_STATE, pageLimit: SIDEBAR_PAGE_LIMIT });
   const [notice, setNotice] = useState<string | null>(null);
+  // FIX-888 — the save notice awaiting confirmation. Non-null means ★ SAVE VIEW
+  // was pressed while a hand-picked group was in focus and the user has not yet
+  // confirmed; the save does not happen until they do.
+  const [pendingSaveNotice, setPendingSaveNotice] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(true);
   const [refineOpen, setRefineOpen] = useState(false);
 
@@ -133,6 +146,23 @@ export function SidebarBrowser({
     } else {
       flash("Not signed in — views can't be saved");
     }
+  }
+
+  // FIX-888 — the ★ SAVE VIEW entry point. With no hand-picked group in focus
+  // this is the one-click save it always was. With one, the user is told what
+  // the save will NOT carry and confirms; the group is not silently dropped.
+  function handleSaveViewClick() {
+    const pending = sessionScopedSaveNotice(focusGroups);
+    if (pending) {
+      setPendingSaveNotice(pending);
+      return;
+    }
+    void handleSaveView();
+  }
+
+  function confirmPendingSave() {
+    setPendingSaveNotice(null);
+    void handleSaveView();
   }
 
   function handleAddSavedView(item: SavedViewItem) {
@@ -361,11 +391,31 @@ export function SidebarBrowser({
           <p className="font-mono text-[9.5px] leading-snug text-ink-soft/50">{compileResult.reason}</p>
         )}
         <button
-          onClick={() => void handleSaveView()}
+          onClick={handleSaveViewClick}
           className="w-full rounded-[2px] border border-term-line px-2 py-1.5 text-center font-mono text-[10.5px] text-ink-soft transition-colors hover:border-ink-soft/60 hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           ★ SAVE VIEW (usable in /search too)
         </button>
+        {/* FIX-888 — stated before the save, not flashed after it. */}
+        {pendingSaveNotice && (
+          <div className="rounded-[2px] border border-amber/50 bg-amber/10 px-2 py-1.5">
+            <p className="font-mono text-[9.5px] leading-snug text-amber">{pendingSaveNotice}</p>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={confirmPendingSave}
+                className="font-mono text-[10px] text-green-ink hover:text-green-ink/80 focus-visible:outline-none focus-visible:text-accent"
+              >
+                save filters anyway
+              </button>
+              <button
+                onClick={() => setPendingSaveNotice(null)}
+                className="font-mono text-[10px] text-ink-soft/60 hover:text-ink focus-visible:outline-none focus-visible:text-accent"
+              >
+                cancel
+              </button>
+            </div>
+          </div>
+        )}
         {notice && <p className="font-mono text-[9.5px] text-amber">{notice}</p>}
       </div>
 

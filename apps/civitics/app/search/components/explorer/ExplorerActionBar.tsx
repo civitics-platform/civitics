@@ -128,6 +128,14 @@ export function ExplorerActionBar({ selected, onClear }: { selected: BrowseRow[]
                 </>
               )}
             </p>
+            {/* FIX-888 — the group is in-session only, and the graph strips the
+                groupIds params after decoding them, so a refresh or a shared
+                link loses it too. Saying so here is the difference between a
+                user choosing that and discovering it. */}
+            <p className="mb-3 text-[11px] leading-snug text-ink-soft/70">
+              Hand-picked groups live only in this session — a saved view stores
+              the filters, not these members.
+            </p>
             <input
               type="text"
               autoFocus

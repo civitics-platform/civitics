@@ -21,6 +21,11 @@ import {
   InvalidSavedViewError,
   GROUP_FILTER_FIELD_COVERAGE,
   CANONICAL_INDUSTRY_TOKENS,
+  isSessionScopedGroup,
+  sessionScopedSaveNotice,
+  SESSION_ONLY_LABEL,
+  SESSION_ONLY_TITLE,
+  type SessionScopedGroupLike,
 } from "./graph-compiler";
 
 function state(partial: Partial<BrowseState>): BrowseState {
@@ -370,4 +375,92 @@ test("the compiler never emits officialIds (FIX-886 — handoff-only field)", ()
   for (const s of states) {
     assert.equal(compileBrowseToGroupFilter(s).officialIds, undefined);
   }
+});
+
+// ── FIX-888 — session-scoped groups, and the save that must not drop them silently ──
+//
+// Decision (b), taken 2026-09-19: persist nothing, say so. The two declined
+// options are recorded in graph-compiler.ts — (a) snapshotting the ids into the
+// saved view drifts as officials leave office or merge; (c) a real membership
+// table is a feature, not a fix.
+//
+// The test that carries the weight is the NEGATIVE one: a predicate group must
+// NOT trigger the notice, or the warning appears on every save, becomes noise,
+// and stops being read — which is the same outcome as the silent drop.
+
+function group(partial: Partial<SessionScopedGroupLike> = {}): SessionScopedGroupLike {
+  return { name: "Climate advocates", ...partial };
+}
+
+test("FIX-888: an ids-group is session-scoped (BUNDLE AS GROUP → groupIds)", () => {
+  assert.equal(isSessionScopedGroup(group({ filter: { officialIds: ["a", "b"] } })), true);
+});
+
+test("FIX-888: a selection group is session-scoped (FIX-826 memberIds)", () => {
+  assert.equal(isSessionScopedGroup(group({ memberIds: ["a"] })), true);
+  // An EMPTY memberIds array is still a selection group — FIX-826's own
+  // isSelectionGroup keys on the array's presence, and a group that has been
+  // emptied is still one a saved view cannot reproduce.
+  assert.equal(isSessionScopedGroup(group({ memberIds: [] })), true);
+});
+
+test("FIX-888: a predicate group is NOT session-scoped — the notice must stay rare", () => {
+  assert.equal(isSessionScopedGroup(group({ filter: {} })), false);
+  assert.equal(isSessionScopedGroup(group()), false);
+  // officialIds present but empty is what the GraphPage decode leaves when the
+  // handoff carried no ids — it is the bare predicate, not a hand-picked group.
+  assert.equal(isSessionScopedGroup(group({ filter: { officialIds: [] } })), false);
+});
+
+test("FIX-888: no notice when nothing in focus is hand-picked", () => {
+  assert.equal(sessionScopedSaveNotice([]), null);
+  assert.equal(sessionScopedSaveNotice([group(), group({ name: "WA Senate" })]), null);
+});
+
+test("FIX-888: the notice names the group and its size, not just 'something is lost'", () => {
+  const notice = sessionScopedSaveNotice([
+    group({ name: "Climate advocates", filter: { officialIds: ["a", "b", "c"] } }),
+  ]);
+  assert.ok(notice, "a hand-picked group in focus must produce a notice");
+  assert.ok(notice!.includes("Climate advocates"), notice!);
+  assert.ok(notice!.includes("3 members"), notice!);
+  // It must say what IS saved, not only what isn't — "this won't be saved"
+  // invites the reader to assume the graph is what gets saved.
+  assert.ok(/saves the filters/i.test(notice!), notice!);
+  assert.ok(/only in this session/i.test(notice!), notice!);
+});
+
+test("FIX-888: one member is not pluralised", () => {
+  const notice = sessionScopedSaveNotice([group({ filter: { officialIds: ["a"] } })]);
+  assert.ok(notice!.includes("1 member"), notice!);
+  assert.ok(!notice!.includes("1 members"), notice!);
+});
+
+test("FIX-888: several hand-picked groups are summed, and the predicate ones ignored", () => {
+  const notice = sessionScopedSaveNotice([
+    group({ name: "Climate advocates", filter: { officialIds: ["a", "b"] } }),
+    group({ name: "WA Senate" }),                       // predicate — not counted
+    group({ name: "Shift-picked", memberIds: ["c", "d", "e"] }),
+  ]);
+  assert.ok(notice!.includes("2 hand-picked groups"), notice!);
+  assert.ok(notice!.includes("5 members"), notice!);
+  assert.ok(!notice!.includes("WA Senate"), "a predicate group must not be named as lost");
+});
+
+test("FIX-888: the focus-list affordance says the same thing as the save notice", () => {
+  // Two surfaces, one fact. If they drift, one of them is lying.
+  assert.ok(SESSION_ONLY_LABEL.length > 0);
+  assert.ok(/only in this session/i.test(SESSION_ONLY_TITLE), SESSION_ONLY_TITLE);
+  assert.ok(/filters, not these members/i.test(SESSION_ONLY_TITLE), SESSION_ONLY_TITLE);
+});
+
+test("FIX-888: decision (b) means NO schema change — the saved-view payload is unchanged", () => {
+  // If (b) ever grew a persistence side, buildSavedViewPayload would have to
+  // carry the members. It must not: that is option (a), which was declined.
+  const payload = buildSavedViewPayload(
+    state({ scope: "people/officials/federal/congress/senate" }),
+  ) as unknown as Record<string, unknown>;
+  assert.ok(!("officialIds" in payload), "a saved view must not carry hand-picked ids");
+  assert.ok(!("memberIds" in payload), "a saved view must not carry selection members");
+  assert.ok(!JSON.stringify(payload).includes("officialIds"));
 });
