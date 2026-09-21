@@ -362,6 +362,9 @@ function fixture(): ReceiptsData {
       weekly_elapsed_seconds: 1622.6,
     },
     vacuums: [
+      // FIX-1191 — the FR vacuum is DAILY at 03:00, so the series it leads is not
+      // an hour-04 one. Ordered as the query returns them: by start time.
+      { jobname: "fr-vacuum-analyze", start_time: "2026-09-12T03:00:00Z", duration_s: 212.0, status: "succeeded" },
       { jobname: "ec-vacuum-analyze", start_time: "2026-09-12T04:30:00Z", duration_s: 124.3, status: "succeeded" },
     ],
     // FIX-1169 — the pre-vacuum reading, five minutes ahead of the row above.
@@ -419,7 +422,7 @@ test("renderMarkdown: all nine sections are present, in order", () => {
     "## 1. The nightly",
     "## 2. pg_cron jobs vs their bands",
     "## 3. The 06:00 UTC daily (`refresh_derived_mvs`)",
-    "## 4. Hour-04 vacuums (FIX-1169's series)",
+    "## 4. Daily vacuums (FIX-1169's series)",
     "## 5. FEC — drop probe, watermarks, emit set",
     "## 6. Prod-session interlock footprint (FIX-950)",
     "## 7. Canary conditions",

@@ -665,7 +665,7 @@ export function renderMarkdown(d: ReceiptsData): string {
   p(queryBlock(d.queries, ["daily_run", "vm_now", "weekly_run"]));
 
   // 4 -------------------------------------------------------------------
-  p("## 4. Hour-04 vacuums (FIX-1169's series)");
+  p("## 4. Daily vacuums (FIX-1169's series)");
   p("");
   p(
     table(

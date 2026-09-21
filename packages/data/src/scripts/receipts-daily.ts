@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS. Most of the "reads to bank" in every Cowork prompt are the
  * same dozen queries every day — when the nightly started against its slot, the
- * phase durations and peak_rss_mb, the hour-04 vacuum durations, the 06:00
+ * phase durations and peak_rss_mb, the daily vacuum durations, the 06:00
  * daily's units and vm_before, a dozen pg_cron jobs against their bands, the
  * FEC drop probe, the FIX-950 interlock's footprint, the canary's conditions,
  * the SLD residual. None of that needs a model. Once it is a file, "receipt =
@@ -91,8 +91,15 @@ const STATEMENT_TIMEOUT = "15s";
 /** How far back `cron.job_run_details` is scanned for "the last firing". */
 const CRON_LOOKBACK_DAYS = 14;
 
-/** The two hour-04 vacuum jobs, by NAME (jobids are not portable — FIX-946). */
-const VACUUM_JOBS = ["ec-vacuum-analyze", "fe-vacuum-analyze"];
+/**
+ * The daily vacuum jobs, by NAME (jobids are not portable — FIX-946).
+ *
+ * FIX-1191 put `financial_relationships` on its own DAILY 03:00 slot, which is
+ * why this list is no longer "the two hour-04 jobs": the FR vacuum is the one
+ * that does not fire in hour 04, and leaving it out rendered section 4 as a
+ * complete series that was missing its most expensive member.
+ */
+const VACUUM_JOBS = ["fr-vacuum-analyze", "ec-vacuum-analyze", "fe-vacuum-analyze"];
 
 /** The unit whose duration FIX-1152 watches. */
 const SEARCH_UNIT = "rebuild_entity_search_index";
