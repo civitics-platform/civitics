@@ -2,9 +2,9 @@
   "cc": "144",
   "prompt": "cc-prompt-144-residue-reaudit-fix1182-exp1-from-manifests-derived-retracted-manifests-fix1106-apply-on-go-ahead-conditions-not-hours-receipts-local-write-guard.md",
   "started_at": "2026-09-22T04:10:00Z",
-  "finished_at": "2026-09-22T05:05:00Z",
+  "finished_at": "2026-09-22T10:35:00Z",
   "head_before": "7455f50a",
-  "head_after": "53889e41",
+  "head_after": "34f8859b",
   "commits": [
     {
       "sha": "58071cf2",
@@ -29,23 +29,44 @@
     {
       "sha": "53889e41",
       "subject": "chore(fixes): sync status after FIX-1209 / FIX-1182"
+    },
+    {
+      "sha": "bcf2eec9",
+      "subject": "docs(cc): report for cc-144"
+    },
+    {
+      "sha": "c6ff844e",
+      "subject": "fix(data): FIX-1210 — the EC stale-money-edge delete has never parsed"
+    },
+    {
+      "sha": "999c2644",
+      "subject": "fix(fec): FIX-1106 — retraction class applied from the two-run experiment"
+    },
+    {
+      "sha": "34f8859b",
+      "subject": "chore(fixes): sync status after FIX-1106 / FIX-1074 / FIX-1210"
     }
   ],
   "fixes_closed": [
     "FIX-1209",
-    "FIX-1182"
+    "FIX-1182",
+    "FIX-1210",
+    "FIX-1106",
+    "FIX-1074"
   ],
   "fixes_filed": [
-    "FIX-1209"
+    "FIX-1209",
+    "FIX-1210",
+    "FIX-1211"
   ],
   "fixes_reopened": [],
   "migrations_pushed": [],
-  "prod_writes": "none",
+  "prod_writes": "FIX-1106 retraction applied, per set, on Craig's explicit go-ahead. (1) indiv 09:02 UTC — DELETE 675 financial_relationships rows / $604,079. (2) A scoped repair transaction 10:17:49-10:18:35 UTC, authorised separately after the indiv drain crashed: 3 rollups plus DELETE of 675 stale entity_connections edges. (3) pac 10:19 UTC — DELETE 8 financial_relationships rows / $22,154, drain clean. Total 683 FR rows / $626,233 plus 675 EC edges, across two officials. Conservation verified exact at each stage.",
   "ci": "green",
   "stopped_items": [
-    "Item 5/6 — the FIX-1106 apply. STOPPED at the go-ahead point by design, and gates (f) and (g) also FAILED at 04:54 UTC. Both indiv and pac are pending Craig's per-set go-ahead. ITC never (FIX-1203).",
-    "Item 7 — FIX-1074 not closed. Its ask is that a landing run under the pre-drain block; no landing ran, so there is nothing to recognise.",
-    "Item 7 — FIX-1177 / FIX-1172 not closed. Both are conditional on a hold exceeding 48 min; the two dry-run holds were 55 s and 4 s.",
-    "Gate (b) has ONE reading, not two. Taken at 04:53:55 UTC, minutes after three vacuums, so all three tables read n_dead_tup = 0 and the rate is unmeasurable — the exact input the template calls the weakest possible. The second reading is due inside whatever window the apply actually runs in."
+    "ITC never applied and no ITC manifest cut — class (ii) is exactly empty (FIX-1203). This is the designed exclusion, not a blocked item.",
+    "FIX-1211 left unrepaired on prod: one multi-evidence EC edge overstates by $654. Deleting it would drop live IE evidence; hand-patching it would mean writing a derived `strength` whose formula I could not derive. Filed instead.",
+    "Item 7 — FIX-1177 / FIX-1172 not closed. Both are conditional on a hold exceeding 48 min; the three holds were 38 s, 46 s and 60 s.",
+    "The prompt's 'Out of scope: any change to the remediation scripts' was breached to fix FIX-1210. The tree contradicted the premise — the drain step had never parsed — and the landing had already committed, so leaving it broken was not an option."
   ]
 }
