@@ -1,0 +1,22 @@
+# NOT AN AUTHORISATION until Craig's go-ahead for THIS set is typed into the
+# session that applies it. Derived by fix1182-experiment-1.ts, not by the audit.
+#
+# This file is the RETRACTION class (ii) ONLY: recipients that set A's complete
+# emit run held and set B's complete emit run dropped. It deliberately EXCLUDES
+# class (i) (dropped by both runs = never emitted by either = UNPROVEN, the class
+# FIX-1182 was filed to protect) and class (iii) (re-emitted by B = not residue).
+#   set A 84470d3b-d147-5a01-b43a-e4a4d7930890 generated 2026-09-14T00:51:58.216Z — the committed manifest is the ONLY
+#         surviving copy; fec_emit_keys is UNLOGGED by design and its rows are gone.
+#   set B 748aef69-4dd5-5cf9-bd75-570f482bc8dc generated 2026-09-22T04:22:42.006Z
+#   class (i) UNPROVEN 35 / 18722 rows / $30,526,063 — NOT in this file
+#   class (iii) RE-EMITTED 93 / 49211 rows / $76,119,262 — NOT in this file
+#
+# The header below is set B's, verbatim, because the apply re-checks every
+# row-level fact against set B's run and refuses if that run is not complete.
+# cycle=2026 source=fec_bulk_indiv run_id=748aef69-4dd5-5cf9-bd75-570f482bc8dc complete_at=2026-09-21 00:20:29.915408+00
+# emit set 1,015,185 keys; slice 1,059,817 rows / $1,314,241,322
+# DROPPED-OUT 1 recipients / 675 rows / $604,079   [class (ii) only]
+# This file is an AUTHORISATION, not a description. The apply re-checks every
+# row-level fact keyed on these ids and SKIPS anything that grew since.
+class	to_type	to_id	name	rows	cents	last_write	emitted_rows
+DROPPED-OUT	official	01ba2980-7fb2-4479-9a5e-6d024f34d141	Everton Blair	675	60407900	2026-09-01 01:17:41.714183+00	0
