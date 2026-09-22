@@ -649,6 +649,30 @@ test("renderMarkdown: the cron table carries the resolved pipeline, and an em da
   assert.match(md, /job's OWN `data_sync_log` writer/);
 });
 
+test("renderMarkdown: FIX-1178 (a)'s three-key phase_seconds renders verbatim", () => {
+  // The merge stamps {scan, delete, insert} where the rewrite stamped
+  // {delete, insert}. The renderer passes the raw jsonb text through in
+  // backticks, so a new key needs no renderer change — this asserts that,
+  // rather than leaving it as an assumption in a prompt.
+  const d = fixture();
+  d.cron_jobs = verdictsFor(
+    [
+      firing({
+        jobname: "rule-taggers-daily",
+        pipeline: "run_rule_taggers",
+        duration_s: 61.4,
+        phase_seconds: '{"scan": 48.2, "delete": 9.1, "insert": 4.1}',
+      }),
+      // A cadence that timed nothing still reads as an em dash, not a zero.
+      firing({ jobname: "rule-taggers-weekly", pipeline: "run_rule_taggers", phase_seconds: null }),
+    ],
+    {},
+  );
+  const md = renderMarkdown(d);
+  assert.match(md, /\| `\{"scan": 48\.2, "delete": 9\.1, "insert": 4\.1\}` \|/);
+  assert.match(md, /\| rule-taggers-weekly \| yes \| 30 4 \* \* \* \| `run_rule_taggers` \|/);
+});
+
 // ---------------------------------------------------------------------------
 // FIX-1194 §9 — the forker
 // ---------------------------------------------------------------------------

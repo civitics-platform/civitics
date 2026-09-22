@@ -7504,6 +7504,9 @@ export type Database = {
       }
       rebuild_financial_entity_size_tags: { Args: never; Returns: number }
       rebuild_pre_vote_timing_tags: { Args: never; Returns: number }
+      rebuild_pre_vote_timing_tags_delete: { Args: never; Returns: number }
+      rebuild_pre_vote_timing_tags_insert: { Args: never; Returns: number }
+      rebuild_pre_vote_timing_tags_scan: { Args: never; Returns: number }
       recompute_comment_bridge_scores: {
         Args: { p_entity_id?: string; p_entity_type?: string }
         Returns: number
