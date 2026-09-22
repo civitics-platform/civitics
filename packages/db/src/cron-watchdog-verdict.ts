@@ -162,6 +162,11 @@ export function decideCronWatchdogVerdict(raw: unknown): CronWatchdogVerdict {
     "canceled=" + canceled,
     "unit=" + unitAction,
     "via=" + (asText(root["via"]) ?? "?"),
+    // FIX-1208 — the DB's own clock, in the Vercel log line. The payload has
+    // carried `at` since FIX-1194; printing it is what lets the two
+    // instruments be compared without a query, and it is the value Craig reads
+    // off the Vercel log if the pipeline_state stamp is ever missing.
+    "at=" + (asText(root["at"]) ?? "?"),
   ];
   if (cancelledJobs.length > 0) parts.push("jobs=" + cancelledJobs.join(","));
   if (labelled > 0) parts.push("labelled=" + labelled);

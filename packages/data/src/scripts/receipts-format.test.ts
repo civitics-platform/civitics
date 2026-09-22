@@ -32,6 +32,8 @@ import {
   runConclusionCell,
   verdictFor,
   verdictsFor,
+  VERCEL_LIVENESS_STALE_MIN,
+  vercelLivenessVerdict,
 } from "./receipts-format";
 
 const BAND: Band = { lo_s: 0, hi_s: 140, source: "test" };
@@ -437,12 +439,16 @@ function fixture(): ReceiptsData {
           acted_via: "vercel",
         },
       ],
+      // FIX-1208 — 1.5 min before the fixture's generated_at, i.e. healthy.
+      vercel_liveness_at: "2026-09-12T06:28:30.000Z",
     },
     not_capturable: ["**57014 counts.** `postgres_logs` only."],
     queries: [
       { key: "cron_jobs", sql: "SELECT 1", elapsed_ms: 42, error: null },
       { key: "sld_coverage", sql: "SELECT 2", elapsed_ms: 118, error: null },
       { key: "canary", sql: "SELECT 3", elapsed_ms: null, error: "statement timeout" },
+      // FIX-1208 — the reader records this key, so §9's query block prints it.
+      { key: "forker_vercel_liveness", sql: "SELECT 4", elapsed_ms: 3, error: null },
     ],
   };
 }
@@ -469,8 +475,9 @@ test("renderMarkdown: every number carries its instrument", () => {
   const md = renderMarkdown(fixture());
   // One collapsed query block per section that has one.
   assert.ok(md.includes("<details><summary>queries</summary>"));
-  // And the cost of taking the reading is in the file itself.
-  assert.match(md, /\*\*Total DB time: 160 ms\*\* across 3 statements/);
+  // And the cost of taking the reading is in the file itself. 42 + 118 + 3;
+  // `canary` has a null elapsed_ms (it errored) and still counts as a statement.
+  assert.match(md, /\*\*Total DB time: 163 ms\*\* across 4 statements/);
 });
 
 test("renderMarkdown: a failed query is rendered as an error, never as a blank", () => {
@@ -732,4 +739,69 @@ test("renderMarkdown: §9 — a clean forker section says '(no rows)' rather tha
   const section = md.slice(md.indexOf("## 9. The forker"), md.indexOf("## 10."));
   assert.equal((section.match(/_\(no rows\)_/g) ?? []).length, 4);
   assert.match(section, /An empty table is the good answer/);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1208 §9 — the Vercel path's liveness line
+// ---------------------------------------------------------------------------
+
+test("FIX-1208: a fresh stamp reads as an age, with no alarm", () => {
+  const v = vercelLivenessVerdict("2026-09-12T06:28:30.000Z", "2026-09-12T06:30:00.000Z");
+  assert.equal(v.verdict, "in-band");
+  assert.equal(v.age_min, 1.5);
+  assert.match(v.line, /last fired 2026-09-12T06:28:30\.000Z \(1\.5 min before this file\)$/);
+});
+
+test("FIX-1208: the `missing` branch — the one that carries weight", () => {
+  // Five missed */2 firings. This is the reading the whole stamp exists for:
+  // without it, an offline second path looks exactly like a healthy day,
+  // because `acted_via` only appears when a cancel happens.
+  const v = vercelLivenessVerdict("2026-09-12T06:00:00.000Z", "2026-09-12T06:30:00.000Z");
+  assert.equal(v.verdict, "missing");
+  assert.equal(v.age_min, 30);
+  assert.match(v.line, /\*\*missing\*\*/);
+  assert.match(v.line, /at least five missed/);
+  assert.match(v.line, /second path is offline/);
+});
+
+test("FIX-1208: exactly at the threshold is still healthy; a hair over is not", () => {
+  const asOf = "2026-09-12T06:30:00.000Z";
+  assert.equal(vercelLivenessVerdict("2026-09-12T06:20:00.000Z", asOf).verdict, "in-band");
+  assert.equal(vercelLivenessVerdict("2026-09-12T06:19:59.000Z", asOf).verdict, "missing");
+  assert.equal(VERCEL_LIVENESS_STALE_MIN, 10);
+});
+
+test("FIX-1208: an absent key is `missing` and says WHY it might be absent", () => {
+  for (const absent of [null, undefined, ""]) {
+    const v = vercelLivenessVerdict(absent, "2026-09-12T06:30:00.000Z");
+    assert.equal(v.verdict, "missing");
+    assert.equal(v.age_min, null);
+    assert.match(v.line, /last fired \*\*never\*\*/);
+    // A reader must not have to guess between "not deployed" and "not running".
+    assert.match(v.line, /migration is not on this database/);
+  }
+});
+
+test("FIX-1208: an unparseable stamp is `missing`, not a NaN age", () => {
+  const v = vercelLivenessVerdict("not-a-timestamp", "2026-09-12T06:30:00.000Z");
+  assert.equal(v.verdict, "missing");
+  assert.equal(v.age_min, null);
+  assert.match(v.line, /unparseable/);
+});
+
+test("renderMarkdown: §9 carries the liveness line and its provenance note", () => {
+  const md = renderMarkdown(fixture());
+  const section = md.slice(md.indexOf("## 9. The forker"), md.indexOf("## 10."));
+  assert.match(section, /Vercel path last fired 2026-09-12T06:28:30\.000Z \(1\.5 min before this file\)/);
+  // The argument for trusting the row has to travel with the row.
+  assert.match(section, /is a Vercel receipt by construction rather than by trust/);
+  assert.match(section, /forker_vercel_liveness/);
+});
+
+test("renderMarkdown: §9 renders the liveness line even when the key is absent", () => {
+  const d = fixture();
+  d.forker = { by_hour_24h: [], by_day_7d: [], running_in_bursts: [], cancels_7d: [] };
+  const md = renderMarkdown(d);
+  const section = md.slice(md.indexOf("## 9. The forker"), md.indexOf("## 10."));
+  assert.match(section, /Vercel path last fired \*\*never\*\*/);
 });

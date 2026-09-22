@@ -78,7 +78,8 @@ test("cron-watchdog verdict: a cancel is ok, counted, and names the job", () => 
   assert.deepEqual(v.errors, []);
   assert.equal(
     v.line,
-    "[cron/cron-watchdog] budget checked=1 canceled=1 unit=none via=vercel jobs=cc142-sleep labelled=1",
+    "[cron/cron-watchdog] budget checked=1 canceled=1 unit=none via=vercel " +
+      "at=2026-09-22T00:28:14.803699+00:00 jobs=cc142-sleep labelled=1",
   );
 });
 
@@ -89,7 +90,31 @@ test("cron-watchdog verdict: a no-op is ok — 'canceled=0' is the healthy answe
   assert.deepEqual(v.cancelledJobs, []);
   assert.deepEqual(v.errors, []);
   // No `jobs=` and no `labelled=` segment when there is nothing to say.
-  assert.equal(v.line, "[cron/cron-watchdog] budget checked=0 canceled=0 unit=none via=vercel");
+  assert.equal(
+    v.line,
+    "[cron/cron-watchdog] budget checked=0 canceled=0 unit=none via=vercel " +
+      "at=2026-09-22T00:28:31.288653+00:00",
+  );
+});
+
+test("FIX-1208: the log line carries the DB clock, and says so even when it is absent", () => {
+  // `at` has been in the payload since FIX-1194; FIX-1208 prints it, so the
+  // Vercel log itself carries the DB's clock and can be compared against
+  // pipeline_state.cron_watchdog_vercel without a query. A payload from before
+  // that migration has no `at`, and the line must say `?` rather than
+  // `at=undefined` or silently dropping the segment — a missing clock is
+  // exactly the reading that matters when the stamp is also missing.
+  const withAt = decideCronWatchdogVerdict(noopFixture());
+  assert.match(withAt.line, / at=2026-09-22T00:28:31\.288653\+00:00$/);
+
+  const noAt = decideCronWatchdogVerdict({
+    via: "vercel",
+    budget: { checked: 0, canceled: 0, actions: [] },
+    unit: { action: "none" },
+    labelled: 0,
+  });
+  assert.equal(noAt.ok, true, "a missing `at` is not a parse failure — the watchdogs still answered");
+  assert.match(noAt.line, / at=\?$/);
 });
 
 test("cron-watchdog verdict: one arm throwing surfaces WITHOUT hiding the other's real result", () => {

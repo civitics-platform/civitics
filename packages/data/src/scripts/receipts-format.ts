@@ -448,6 +448,69 @@ export interface ForkerSection {
   /** Only for hours at or above BURST_THRESHOLD failures. */
   running_in_bursts: ForkerRunningRow[];
   cancels_7d: ForkerCancelRow[];
+  /**
+   * FIX-1208 — `pipeline_state.cron_watchdog_vercel.at`, the ISO timestamp the
+   * Vercel watchdog path last stamped, or null when the key is absent.
+   *
+   * WHY THIS AND NOT `cancels_7d`. `acted_via` is written only when a cancel
+   * happens, so it is a CHANGE proxy: on a healthy day it is silent, and its
+   * silence cannot be told apart from the route never having run. The stamp is
+   * written on EVERY call, which is what makes "is the second path alive?"
+   * answerable on a quiet day — the question FIX-1208 was filed for.
+   */
+  vercel_liveness_at?: string | null;
+}
+
+/**
+ * FIX-1208 — how stale the Vercel watchdog stamp may be before it is `missing`.
+ *
+ * The route fires every 2 minutes, so ten minutes is five missed firings. Two
+ * or three would flag on ordinary Vercel cron jitter and a redeploy; an hour
+ * would not notice an outage until long after the budget guard had been offline
+ * for it. Five missed firings is the smallest window that is unambiguous.
+ */
+export const VERCEL_LIVENESS_STALE_MIN = 10;
+
+/**
+ * The §9 liveness reading: how old the stamp is, and whether that is a problem.
+ *
+ * `missing` is the existing verdict vocabulary (rule 48) rather than a new
+ * word, so nothing downstream has to learn anything.
+ */
+export function vercelLivenessVerdict(
+  at: string | null | undefined,
+  asOf: string,
+): { verdict: Verdict; age_min: number | null; line: string } {
+  if (at === null || at === undefined || at === "") {
+    return {
+      verdict: "missing",
+      age_min: null,
+      line:
+        "Vercel path last fired **never** — `pipeline_state.cron_watchdog_vercel` is absent. " +
+        "Either the FIX-1208 migration is not on this database, or the route has not run since it was.",
+    };
+  }
+  const t = Date.parse(at);
+  const ref = Date.parse(asOf);
+  if (Number.isNaN(t) || Number.isNaN(ref)) {
+    return {
+      verdict: "missing",
+      age_min: null,
+      line: "Vercel path last fired `" + at + "` — unparseable timestamp.",
+    };
+  }
+  const ageMin = (ref - t) / 60000;
+  const stale = ageMin > VERCEL_LIVENESS_STALE_MIN;
+  return {
+    verdict: stale ? "missing" : "in-band",
+    age_min: ageMin,
+    line:
+      "Vercel path last fired " + at + " (" + ageMin.toFixed(1) + " min before this file)" +
+      (stale
+        ? " — **missing**: more than " + VERCEL_LIVENESS_STALE_MIN +
+          " min, i.e. at least five missed `*/2` firings. The budget guard's second path is offline."
+        : ""),
+  };
 }
 
 /**
@@ -919,7 +982,29 @@ export function renderMarkdown(d: ReceiptsData): string {
       ]),
     ),
   );
-  p(queryBlock(d.queries, ["forker_24h", "forker_7d", "forker_running", "forker_cancels"]));
+  // FIX-1208 — one line, because the table above cannot answer it. `acted_via`
+  // only appears when a cancel happened, so an empty cancels table is the
+  // healthy case AND the total-outage case, and nothing distinguishes them.
+  p("");
+  p(vercelLivenessVerdict(d.forker.vercel_liveness_at, d.generated_at).line);
+  p(
+    "",
+  );
+  p(
+    "_Read from `pipeline_state.cron_watchdog_vercel`, which " +
+      "`run_cron_watchdogs()` rewrites on EVERY call. That wrapper's only caller is " +
+      "the Vercel route — pg_cron calls the two inner watchdogs directly — so the row " +
+      "is a Vercel receipt by construction rather than by trust._",
+  );
+  p(
+    queryBlock(d.queries, [
+      "forker_24h",
+      "forker_7d",
+      "forker_running",
+      "forker_cancels",
+      "forker_vercel_liveness",
+    ]),
+  );
 
   // 10 ------------------------------------------------------------------
   p("## 10. Not capturable here");

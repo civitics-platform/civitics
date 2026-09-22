@@ -597,6 +597,25 @@ WHERE acted_at >= now() - interval '7 days'
 ORDER BY acted_at DESC
 LIMIT 50`;
 
+/**
+ * FIX-1208 — the Vercel watchdog path's LIVENESS stamp.
+ *
+ * `run_cron_watchdogs()` rewrites this one row on every call, cancel or no
+ * cancel, and that wrapper's only caller is the Vercel route (pg_cron calls the
+ * two inner watchdogs directly by name). So the row's presence and age answer
+ * "did the second path run?" — which `cron_job_budget_action.acted_via` cannot,
+ * because it is written only when a cancel actually happens and is therefore
+ * silent on a healthy day.
+ *
+ * Returns no rows on a database where the FIX-1208 migration has not been
+ * applied, or before the route's first call after it was; the renderer reports
+ * that as `missing` rather than guessing.
+ */
+const Q_FORKER_VERCEL_LIVENESS = `
+SELECT value->>'at' AS at
+FROM public.pipeline_state
+WHERE key = 'cron_watchdog_vercel'`;
+
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
 const NOT_CAPTURABLE = [
   "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase " +
@@ -886,6 +905,12 @@ async function main(): Promise<void> {
       acted_via: str(v["acted_via"]) ?? "—",
     }));
 
+    const forkerLivenessRows = await r.run<Record<string, unknown>>(
+      "forker_vercel_liveness",
+      Q_FORKER_VERCEL_LIVENESS,
+    );
+    const forkerLivenessAt = iso(forkerLivenessRows[0]?.["at"]) ?? null;
+
     const total = num(sldRows[0]?.["total"]);
     const linked = num(sldRows[0]?.["linked"]);
 
@@ -997,6 +1022,7 @@ async function main(): Promise<void> {
         by_day_7d: forker7d,
         running_in_bursts: forkerRunning,
         cancels_7d: forkerCancels,
+        vercel_liveness_at: forkerLivenessAt,
       },
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
