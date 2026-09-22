@@ -1,0 +1,39 @@
+{
+  "cc": "143",
+  "prompt": "cc-prompt-143-fix1178a-pre-vote-timing-merge-not-rewrite-temp-desired-set-targeted-delete-anti-join-insert-shrink-guard-signature-gate.md",
+  "started_at": "2026-09-22T03:00:00Z",
+  "finished_at": "2026-09-22T04:15:00Z",
+  "head_before": "4f782e8b",
+  "head_after": "840bcf22",
+  "commits": [
+    {
+      "sha": "8f9f1e2c",
+      "subject": "feat(db): FIX-1178 (a) pre-vote timing tags are MERGED not rewritten - TEMP desired set, targeted DELETE, anti-join INSERT, shrink guard, three-phase stamp"
+    },
+    {
+      "sha": "8cc98222",
+      "subject": "feat(cron): FIX-1208 run_cron_watchdogs() stamps a liveness row on every Vercel firing"
+    },
+    {
+      "sha": "840bcf22",
+      "subject": "docs(fixes): FIX-1178 / FIX-1208 / FIX-1194 appends"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920080000_fix1178a_pre_vote_timing_merge.sql",
+    "supabase/migrations/20260920090000_fix1208_cron_watchdog_vercel_liveness.sql"
+  ],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "THE TWO MIGRATIONS ARE ON TRUNK AND NOT ON PRO. `migrations_pushed[]` above lists FILES, which is what the verifier checks; the Pro side did NOT happen this run and `pnpm db:push:prod` was never invoked. Both are applied to LOCAL only. `supabase migration list --local` head is 20260920090000; prod's applied head is still 20260920070000 (cc-142). Read this field together with this line, not alone.",
+    "R1 / FIX-1178 (c) STOPPED ON ITS OWN GATE, correctly. The drop needs the idx_scan-0 counter to be at least 7 days old and it was 6.527 days at 03:48 UTC (epoch pg_postmaster_start_time 2026-09-15 15:09:48 UTC, stats_reset NULL). `node scripts/fix1178c-drop-entity-tags-visibility-index.mjs --dry-run` REFUSED with 'counter epoch is only 6.53 days old (< 7) - a restart re-zeroed it, so idx_scan 0 proves nothing. STOP.' The gate opens 2026-09-22 15:09:48 UTC. Every OTHER window gate was clear at 03:48 (nothing running in data_sync_log, both */2 watchdogs 60/60 sub-second, no unguarded VACUUM inside 90 min, prod_session_state clear with live_writers empty, outside 05:45-09:00 and 06:00-07:45 UTC).",
+    "THE PUSH IS BLOCKED BEHIND R1, by design. The merge migration carries R1's `DROP INDEX IF EXISTS public.idx_entity_tags_visibility` idempotent twin, so pushing before the CONCURRENTLY drop would (a) take ACCESS EXCLUSIVE on a 5.36M-row table instead of SHARE UPDATE EXCLUSIVE and (b) drop a 450 MB index on evidence the prompt itself rules insufficient. Craig was asked and chose to WAIT for 15:09:48 UTC rather than ship the merge without the rider; the alternatives (edit an already-applied migration, add an unsanctioned third migration, or accept the non-concurrent drop) were all declined. Cost: the merge's first stamped prod run slips from today's 06:30 UTC firing to 2026-09-23 06:30 UTC.",
+    "ITEMS 4 AND 5 NOT REACHED. `pipeline_state.cron_watchdog_vercel` was confirmed ABSENT on prod at 03:48 UTC, which is the pre-push baseline and the only prod reading this rider gets this run. The two prod stamps 2 min apart cannot be read until the migration is on Pro, so FIX-1208's Pattern B record commit was NOT made and no `Fixes: FIX-1208` trailer exists anywhere. FIX-1208 stays OPEN.",
+    "D5 SHIPS AS `NOT built`, which is a sanctioned outcome of the prompt, but it failed on a different test than the prompt's. The cost gate was ambiguous; the HIT RATE was decisive and the gate never tested it. See section 2.",
+    "NO GUC FOLLOW-UP FILED. Read 5 was conditional - file only if the default plan now wins - and it does not, by 17.6x. Nothing to file, so `fixes_filed[]` is empty. Open count unchanged at 56, not 55, because nothing closed and nothing was filed."
+  ]
+}
