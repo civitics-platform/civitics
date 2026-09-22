@@ -1626,6 +1626,7 @@ export type Database = {
       cron_job_budget_action: {
         Row: {
           acted_at: string
+          acted_via: string
           age_seconds: number | null
           budget_seconds: number | null
           job_pid: number | null
@@ -1636,6 +1637,7 @@ export type Database = {
         }
         Insert: {
           acted_at?: string
+          acted_via?: string
           age_seconds?: number | null
           budget_seconds?: number | null
           job_pid?: number | null
@@ -1646,6 +1648,7 @@ export type Database = {
         }
         Update: {
           acted_at?: string
+          acted_via?: string
           age_seconds?: number | null
           budget_seconds?: number | null
           job_pid?: number | null
@@ -7592,6 +7595,7 @@ export type Database = {
         }
         Returns: number
       }
+      run_cron_watchdogs: { Args: never; Returns: Json }
       search_graph_entities: {
         Args: { lim?: number; q: string }
         Returns: {
