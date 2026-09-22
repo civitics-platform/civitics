@@ -1475,3 +1475,6 @@
 2026-09-21 | FIX-1207 | 56783915 | closes-as-no-op | docs(fixes): FIX-1207 closed no-op — the cron IS firing; the pgss proxy was blind (FIX-1208)
 2026-09-21 | FIX-1182 | e990a986 | closes-as-redirected | docs(fixes): FIX-1106 / 1182 / 1074 / 1177 / 1172 / 1184 / 1203 / 1176 appends; FIX-1182 closes as redirected
 2026-09-21 | FIX-1209 | ae01c459 | local-only | fix(receipts): FIX-1209 — a LOCAL run writes under docs/receipts/local/, never over the day's prod receipt
+2026-09-22 | FIX-1074 | 999c2644 | closes-as-recognized | fix(fec): FIX-1106 — retraction class applied from the two-run experiment (indiv 675 rows / $604,079; pac 8 / $22,154); ITC redirected to FIX-1203
+2026-09-22 | FIX-1106 | 999c2644 | prod-only | fix(fec): FIX-1106 — retraction class applied from the two-run experiment (indiv 675 rows / $604,079; pac 8 / $22,154); ITC redirected to FIX-1203
+2026-09-22 | FIX-1210 | c6ff844e | local-only | fix(data): FIX-1210 — the EC stale-money-edge delete has never parsed; cast the enum, use evidence_ids, and PREPARE it in a test
