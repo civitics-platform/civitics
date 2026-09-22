@@ -49,6 +49,36 @@ export const DONOR_CHUNK = 5000;
 /** Money edge types entity_connections derives from donation rows. */
 export const MONEY_EDGE_TYPES = ["donation", "opposition"] as const;
 
+/**
+ * FIX-1210 — the stale-money-edge delete, exported so a test can PARSE it
+ * against the real schema rather than regex the string.
+ *
+ * It was wrong in two independent ways from the day it was written, and every
+ * one of them survived because the only test asserted on the SQL TEXT:
+ *
+ *   1. `e.connection_type = ANY($2::text[])` — `connection_type` is an ENUM, so
+ *      this is `operator does not exist: connection_type = text` (42883).
+ *   2. `e.evidence_id` — the column is `evidence_ids`, `uuid[]`. It does not
+ *      exist and never did.
+ *
+ * Because (1) aborts the statement first, (2) was never even reached. The step
+ * therefore threw on its first real invocation (cc-144, prod, 2026-09-22),
+ * AFTER the landing's DELETE had already committed — leaving 675 stale edges
+ * that no incremental arm can ever reclaim, because the EC donations arm keys
+ * on `financial_relationships.updated_at` and a deleted row has no updated_at.
+ *
+ * `evidence_ids` being an ARRAY also changes the semantics: an edge is safe to
+ * delete only when EVERY id it rests on was deleted (`<@`). An edge that lost
+ * only some of its evidence would be silently dropped by a looser predicate,
+ * taking live evidence with it.
+ */
+export const EC_STALE_MONEY_EDGE_DELETE = `DELETE FROM public.entity_connections e
+  WHERE e.connection_type::text = ANY($2::text[])
+    AND e.evidence_source = 'financial_relationships'
+    AND cardinality(e.evidence_ids) > 0
+    AND e.evidence_ids && $1::uuid[]
+    AND e.evidence_ids <@ $1::uuid[]`;
+
 /** Per-step budget ceilings, seconds. */
 export const STEP_BUDGET_S: Readonly<Record<string, number>> = {
   ec_delete: 20 * 60,
@@ -192,18 +222,38 @@ export async function drainFrRewrite(
     // they came from leaves them false until the next rebuild. Scoped by the
     // deleted row ids, never by a global predicate.
     if (scope.deletedFrRowIds && scope.deletedFrRowIds.length > 0) {
+      // FIX-1210 — a partially-stale edge cannot be repaired by deleting it, so
+      // count them BEFORE the delete and say so. With today's data every money
+      // edge carries exactly one evidence id, so this is normally zero; a
+      // non-zero count means an edge is now overstated and needs a rebuild that
+      // this drain cannot perform.
+      const [partial] = await q<{ n: string }>(
+        client,
+        `SELECT count(*)::text AS n FROM public.entity_connections e
+          WHERE e.connection_type::text = ANY($2::text[])
+            AND e.evidence_source = 'financial_relationships'
+            AND e.evidence_ids && $1::uuid[]
+            AND NOT (e.evidence_ids <@ $1::uuid[])`,
+        [scope.deletedFrRowIds, [...MONEY_EDGE_TYPES]],
+      );
+
       await budgeted(
         client,
         `entity_connections delete stale money edges (${scope.deletedFrRowIds.length.toLocaleString()} rows)`,
-        `DELETE FROM public.entity_connections e
-           USING unnest($1::uuid[]) AS d(fr_id)
-          WHERE e.connection_type = ANY($2::text[])
-            AND e.evidence_source = 'financial_relationships'
-            AND e.evidence_id = d.fr_id`,
+        EC_STALE_MONEY_EDGE_DELETE,
         STEP_BUDGET_S["ec_delete"]!,
         [scope.deletedFrRowIds, [...MONEY_EDGE_TYPES]],
       );
       ran.push("entity_connections delete stale money edges");
+
+      const nPartial = Number(partial?.n ?? 0);
+      if (nPartial > 0) {
+        console.log(
+          `    ! ${nPartial.toLocaleString()} money edge(s) lost SOME but not all of their evidence and were\n` +
+            `      KEPT — they now overstate. Deleting them would drop live evidence too, so they\n` +
+            `      need an entity_connections rebuild this drain cannot do (FIX-1210).`,
+        );
+      }
     }
 
     // -- 2. recipients -------------------------------------------------------

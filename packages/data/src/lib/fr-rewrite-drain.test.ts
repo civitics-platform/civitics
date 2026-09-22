@@ -14,7 +14,12 @@ import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as path from "path";
 
-import { declareDrainTail, drainFrRewrite, isCancellation } from "./fr-rewrite-drain";
+import {
+  EC_STALE_MONEY_EDGE_DELETE,
+  declareDrainTail,
+  drainFrRewrite,
+  isCancellation,
+} from "./fr-rewrite-drain";
 
 const SRC = fs.readFileSync(path.join(__dirname, "fr-rewrite-drain.ts"), "utf8");
 
@@ -185,8 +190,36 @@ test("the EC money-edge delete runs only when the landing deleted rows, and is k
   const del = c.sql.find((s) => s.includes("DELETE FROM public.entity_connections"));
   assert.ok(del, "the EC delete must run when rows were deleted");
   // Keyed on the deleted row ids, never on a global predicate — the 954:693 shape.
-  assert.match(del!, /evidence_id = d\.fr_id/);
+  assert.match(del!, /evidence_ids <@ \$1::uuid\[\]/);
   assert.match(del!, /evidence_source = 'financial_relationships'/);
+  // FIX-1210 — the enum needs an explicit cast; without it the statement is
+  // 42883 and the whole drain dies after the landing has committed.
+  assert.match(del!, /connection_type::text = ANY/);
+  assert.doesNotMatch(del!, /\be\.evidence_id\b(?!s)/, "evidence_id (singular) does not exist");
+});
+
+test("FIX-1210 the EC delete PARSES against the real schema", async (t) => {
+  // This is the test that would have caught it. The assertions above regex a
+  // string, and a string cannot know that `connection_type` is an enum or that
+  // `evidence_id` was never a column. Only the server knows. PREPARE parses and
+  // plans without executing, so this touches no rows.
+  const { Client } = await import("pg");
+  const client = new Client({
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    connectionTimeoutMillis: 3000,
+  });
+  try {
+    await client.connect();
+  } catch {
+    t.skip("local Docker Postgres not reachable");
+    return;
+  }
+  try {
+    await client.query(`PREPARE ec_stale_check (uuid[], text[]) AS ${EC_STALE_MONEY_EDGE_DELETE}`);
+    await client.query("DEALLOCATE ec_stale_check");
+  } finally {
+    await client.end();
+  }
 });
 
 // ---------------------------------------------------------------------------
