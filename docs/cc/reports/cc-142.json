@@ -2,9 +2,9 @@
   "cc": "142",
   "prompt": "cc-prompt-142-fix1194-p2a-vercel-cron-watchdog-route-security-definer-wrapper-acted-via-receipts-forker-section.md",
   "started_at": "2026-09-22T00:20:00Z",
-  "finished_at": "2026-09-22T01:50:00Z",
+  "finished_at": "2026-09-22T02:30:00Z",
   "head_before": "201296fe",
-  "head_after": "f9ac992c",
+  "head_after": "c3975267",
   "commits": [
     {
       "sha": "ed0d401f",
@@ -25,11 +25,26 @@
     {
       "sha": "f9ac992c",
       "subject": "docs(fixes): FIX-1207 - P2-A deployed but its Vercel cron is not observably firing"
+    },
+    {
+      "sha": "254bf4ed",
+      "subject": "docs(cc): report for cc-142"
+    },
+    {
+      "sha": "56783915",
+      "subject": "docs(fixes): FIX-1207 closed no-op - the cron IS firing; the pgss proxy was blind"
+    },
+    {
+      "sha": "c3975267",
+      "subject": "chore(fixes): sync status after FIX-1207"
     }
   ],
-  "fixes_closed": [],
-  "fixes_filed": [
+  "fixes_closed": [
     "FIX-1207"
+  ],
+  "fixes_filed": [
+    "FIX-1207",
+    "FIX-1208"
   ],
   "fixes_reopened": [],
   "migrations_pushed": [
@@ -38,7 +53,8 @@
   "prod_writes": "One migration applied to Pro at 01:16Z (run_cron_watchdogs() wrapper, cron_job_budget_action.acted_via column with its CHECK, grants). One read-only RPC call through prod PostgREST at 01:17Z which cancelled nothing and wrote no row (canceled=0, labelled=0, ledger unchanged at 14 rows). No data rewrite, no VACUUM, no cron.job change, no hand firing of either watchdog.",
   "ci": "green",
   "stopped_items": [
-    "The */2 cadence is NOT demonstrated, and the deploy check is therefore only half made. The route IS deployed - it answers 401 unauthenticated where a nonexistent sibling path 404s. But pg_stat_statements shows the pgrst_source call count at 1 (my manual call) at 01:19:58, 2 at 01:22:20, and still 2 at 01:28:16, 01:29:42, 01:37:35 and 01:40:24 - one route invocation ever, and ~7 missed */2 slots, while front-door-watch fired normally at 01:00:28 / 01:15:28 / 01:30:28. Filed as FIX-1207. The Vercel dashboard needs device OAuth (cc-140), so the cause is not decidable from this shell.",
+    "CORRECTED AFTER FILING - see section 9. I reported the */2 cron as not firing and filed FIX-1207 red. Craig pasted the Vercel function log and it fires exactly on schedule (19:08:18 / 19:10:18 / 19:12:18 / 19:14:18 PDT = 02:08-02:14 UTC, GET 200 each, carrying the route's own verdict line). FIX-1207 is closed as no-op in 56783915. My pg_stat_statements proxy was blind, not the schedule. The residual and genuinely open question - route RPC calls leave no pgss trace while an identical curl does - is FIX-1208.",
+    "FIX-1208 is left OPEN and unresolved: either supabase-js's headers make PostgREST emit SQL under a queryid my whole-database sweep missed (harmless), or the route's call is not reaching prod at all despite NEXT_PUBLIC_SUPABASE_URL greping out of the production bundle as xsazcoxinpgttgquwvuf (serious - P2-A would be inert). Not forced further because cron_job_budget_action.acted_via settles it for free on the first prod cancel.",
     "Drain-and-wait gate (b) taken as ONE reading, not two >=30 min apart. Deliberate: the rule sizes headroom against 2x expected wall, and this op is a metadata-only ADD COLUMN plus a CHECK over 14 rows - an expected wall under a second against 234,733 tuples of headroom on the tightest table. Reasoning stated in section 5 rather than the rule quoted as if satisfied.",
     "No chore(fixes) status commit. fixes:sync was run after the commits reached origin/main, as the contract requires, and produced newLoggedEntries: 0 and an empty diff - correct, because no commit carried a Fixes:/Closes: trailer. Running it is the evidence; an empty commit would not have been."
   ]
