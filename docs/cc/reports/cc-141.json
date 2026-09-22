@@ -1,0 +1,42 @@
+{
+  "cc": "141",
+  "prompt": "cc-prompt-141-monday-drop-night-reads-fix1191-fix1184-records-residue-reaudit-fix1182-exp1-fix1106-rescoped-apply-jobid17-restart-read.md",
+  "started_at": "2026-09-21T23:21:00Z",
+  "finished_at": "2026-09-22T00:05:00Z",
+  "head_before": "9c4e29e2",
+  "head_after": "27134ff1",
+  "commits": [
+    {
+      "sha": "9b1fc92c",
+      "subject": "feat(receipts): FR daily vacuum joins the section-4 series; VACUUM_JOBS by name"
+    },
+    {
+      "sha": "45d136b9",
+      "subject": "docs(fixes): fifteen appends - 1191 1184 1196 1182 1106 1074 1177 1172 1181 1169 1178 969 1203 1194 1125"
+    },
+    {
+      "sha": "de0b4339",
+      "subject": "fix(db): FIX-1191 - fr-vacuum-analyze daily at 03:00 has its receipt"
+    },
+    {
+      "sha": "27134ff1",
+      "subject": "chore(fixes): sync status after FIX-1191"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1191"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Items 3-5 (three prod residue audits / experiment (1) / derived manifests / both dry runs) NOT RUN. Session opened 23:21 UTC, inside the prompt's own 22:30-01:00 blackout, so template gate (g) failed. Craig chose defer over a ~1.6h hold.",
+    "Items 6-7 (the FIX-1106 apply) NOT RUN. Both Monday windows (12:50-17:00 and 18:50-21:30 UTC) had closed before the session opened; the apply also needs a per-set go-ahead inside a valid window.",
+    "Read 11(d) (clone EXPLAIN of jobid 17's heaviest statement) SKIPPED. It existed to characterise a memory blowup; read 11(e) refuted the causal hypothesis and Craig closed the question, so it no longer bears on a decision.",
+    "FIX-1184 record NOT MADE. Read 4's precondition - the supersession visible on prod - is unmeetable, because the rows were destroyed by the 09-15 crash recovery rather than superseded.",
+    "The jobid-17 FIX filing NOT FILED, by Craig's decision. Read 11(e) refutes the premise asserted in the title the prompt pre-wrote; the negative result is recorded on FIX-969 instead.",
+    "FIX-1182 / FIX-1074 / FIX-1177 / FIX-1172 closes NOT MADE. Each was conditional on work that did not run."
+  ]
+}
