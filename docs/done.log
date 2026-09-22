@@ -1473,3 +1473,5 @@
 2026-09-20 | FIX-938 | bc591f27 | local-only | feat(ai): FIX-938 — prompt_version joins the ai_summary_cache key; a prompt edit misses the cache
 2026-09-21 | FIX-1191 | de0b4339 | prod-only | fix(db): FIX-1191 — fr-vacuum-analyze daily at 03:00 has its receipt: 100% after the first firing, 100% after the second
 2026-09-21 | FIX-1207 | 56783915 | closes-as-no-op | docs(fixes): FIX-1207 closed no-op — the cron IS firing; the pgss proxy was blind (FIX-1208)
+2026-09-21 | FIX-1182 | e990a986 | closes-as-redirected | docs(fixes): FIX-1106 / 1182 / 1074 / 1177 / 1172 / 1184 / 1203 / 1176 appends; FIX-1182 closes as redirected
+2026-09-21 | FIX-1209 | ae01c459 | local-only | fix(receipts): FIX-1209 — a LOCAL run writes under docs/receipts/local/, never over the day's prod receipt
