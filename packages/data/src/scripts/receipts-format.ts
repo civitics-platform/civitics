@@ -410,6 +410,57 @@ export interface VacuumRow {
   status: string;
 }
 
+/** FIX-1194 — one bucket of `job startup timeout` failures (an hour, or a day). */
+export interface ForkerBucketRow {
+  /** The bucket label, already formatted UTC ("2026-09-07 06:00" / "2026-09-07"). */
+  bucket: string;
+  failures: number;
+  /** Distinct jobids that failed to start in this bucket. */
+  jobs_affected: number;
+}
+
+/**
+ * FIX-1194 — for one burst hour, the longest job that OVERLAPPED it and was
+ * NOT itself a startup timeout. The forker hypothesis says a big in-flight job
+ * is what starved pg_cron of workers; this is the row that either names a
+ * candidate or fails to, and the failure to name one is itself the finding.
+ */
+export interface ForkerRunningRow {
+  bucket: string;
+  jobname: string | null;
+  start_time: string | null;
+  wall_s: number | null;
+  status: string | null;
+}
+
+/** FIX-1194 — a budget cancel, with the firing path that acted. */
+export interface ForkerCancelRow {
+  acted_at: string;
+  jobname: string;
+  age_seconds: number | null;
+  budget_seconds: number | null;
+  acted_via: string;
+}
+
+export interface ForkerSection {
+  by_hour_24h: ForkerBucketRow[];
+  by_day_7d: ForkerBucketRow[];
+  /** Only for hours at or above BURST_THRESHOLD failures. */
+  running_in_bursts: ForkerRunningRow[];
+  cancels_7d: ForkerCancelRow[];
+}
+
+/**
+ * The failure count at which an hour is a BURST worth naming a suspect for.
+ *
+ * Three, not one. A single startup timeout in an hour is ordinary scheduler
+ * noise — FIX-1073's tiers exist because the rate is never zero — and pairing
+ * each one with "the longest job running at the time" would manufacture a
+ * suspect for every hour of every day. The whole value of the third table is
+ * that it is SPARSE: when it names something, something was there to name.
+ */
+export const BURST_THRESHOLD = 3;
+
 export interface ReceiptsData {
   nominal_date: string;
   generated_at: string;
@@ -425,6 +476,8 @@ export interface ReceiptsData {
   interlock: InterlockSection;
   canary: { run_started_at: string | null; conditions: CanaryCondition[] };
   sld: SldSection;
+  /** FIX-1194 — §9, the forker. */
+  forker: ForkerSection;
   not_capturable: string[];
   queries: QueryRecord[];
 }
@@ -782,7 +835,94 @@ export function renderMarkdown(d: ReceiptsData): string {
   p(queryBlock(d.queries, ["sld_coverage", "sld_residual"]));
 
   // 9 -------------------------------------------------------------------
-  p("## 9. Not capturable here");
+  p("## 9. The forker (FIX-1194) — job startup timeouts and who was running");
+  p("");
+  p(
+    "A pg_cron job that cannot fork a background worker fails `job startup timeout` and " +
+      "does no work at all. That matters most for the two `" +
+      "*" +
+      "/2` watchdogs, because the condition that starves the forker — a large landing " +
+      "draining its derived work — is the same condition their budgets exist to bound. " +
+      "On 2026-08-31 06:06–12:05 UTC every watchdog firing failed this way and nothing " +
+      "was bounded for six hours (FIX-1123).",
+  );
+  p("");
+  p("### Startup timeouts by UTC hour, last 24 h");
+  p("");
+  p("Only hours with at least one failure. An empty table is the good answer.");
+  p("");
+  p(
+    table(
+      ["hour (UTC)", "failures", "jobs affected"],
+      d.forker.by_hour_24h.map((r) => [r.bucket, r.failures, r.jobs_affected]),
+    ),
+  );
+  p("### Startup timeouts by day, last 7 days");
+  p("");
+  p(
+    "The same predicate at day resolution, so the episodic-vs-chronic reading is in the " +
+      "file rather than in someone's memory of last week (the cc-139 §1d shape). A single " +
+      "spike day next to six clean ones is an incident; seven similar days is a baseline, " +
+      "and they call for different work.",
+  );
+  p("");
+  p(
+    table(
+      ["day (UTC)", "failures", "jobs affected"],
+      d.forker.by_day_7d.map((r) => [r.bucket, r.failures, r.jobs_affected]),
+    ),
+  );
+  p("### Who was running during each burst hour (≥ " + BURST_THRESHOLD + " failures)");
+  p("");
+  p(
+    "For every hour above with at least " +
+      BURST_THRESHOLD +
+      " failures, the longest job OVERLAPPING that hour that was not itself a startup " +
+      "timeout. This is a SUSPECT, not a verdict — overlap is not causation, and the row " +
+      "is here to be argued with. An hour that reaches the threshold and names nothing is " +
+      "the more interesting outcome: it says the starvation had no big in-flight job " +
+      "behind it, which is what cc-139 found for 2026-09-07 (12/30 and 10/30 with no DB " +
+      "trace at all).",
+  );
+  p("");
+  p(
+    table(
+      ["burst hour (UTC)", "longest overlapping job", "started", "wall", "status"],
+      d.forker.running_in_bursts.map((r) => [
+        r.bucket,
+        r.jobname,
+        r.start_time,
+        fmtSeconds(r.wall_s),
+        r.status,
+      ]),
+    ),
+  );
+  p("### Budget cancels, last 7 days — and which path acted");
+  p("");
+  p(
+    "`acted_via` is `pg_cron` (the `" +
+      "*" +
+      "/2` job) or `vercel` (the FIX-1194 route, which needs no pg_cron worker). A " +
+      "`vercel` row inside a window where the hour table above shows failures is the " +
+      "receipt P2-A was built for: the second path did the work the first could not.",
+  );
+  p("");
+  p(
+    table(
+      ["acted at (UTC)", "job", "age", "budget", "via"],
+      d.forker.cancels_7d.map((r) => [
+        r.acted_at,
+        r.jobname,
+        fmtSeconds(r.age_seconds),
+        r.budget_seconds === null ? "—" : r.budget_seconds + " s",
+        r.acted_via,
+      ]),
+    ),
+  );
+  p(queryBlock(d.queries, ["forker_24h", "forker_7d", "forker_running", "forker_cancels"]));
+
+  // 10 ------------------------------------------------------------------
+  p("## 10. Not capturable here");
   p("");
   p("Named reads that have **no SQL surface**, listed so nobody reads their absence as a clean check.");
   p("");

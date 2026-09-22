@@ -57,6 +57,10 @@ import {
   type VacuumRow,
   type VmRow,
   type VmProbeRow,
+  type ForkerBucketRow,
+  type ForkerCancelRow,
+  type ForkerRunningRow,
+  BURST_THRESHOLD,
   compareToBand,
   nominalDate,
   renderJson,
@@ -517,6 +521,82 @@ WHERE gb.type IN ('legislature_lower','legislature_upper')
 GROUP BY p.name, gb.type
 ORDER BY count(*) DESC, p.name`;
 
+// ── FIX-1194 §9, the forker ───────────────────────────────────────────────────
+//
+// The predicate is FIX-1073's: a run that FAILED with `startup timeout` in its
+// return_message. pg_cron writes that message when it cannot fork a background
+// worker, so the row records a firing that did no work at all — which for a
+// watchdog means its budget went unenforced for that tick.
+//
+// These read `cron.job_run_details` directly, which this session can do: it
+// connects as `postgres` over raw `pg`, not through PostgREST (service_role has
+// no USAGE on schema `cron` — measured on prod 2026-09-21, and the reason
+// FIX-1194's wrapper is SECURITY DEFINER).
+
+const Q_FORKER_24H = `
+SELECT to_char(date_trunc('hour', d.start_time), 'YYYY-MM-DD HH24:00') AS bucket,
+       count(*)                  AS failures,
+       count(DISTINCT d.jobid)   AS jobs_affected
+FROM cron.job_run_details d
+WHERE d.start_time >= now() - interval '24 hours'
+  AND d.status = 'failed'
+  AND d.return_message ILIKE '%startup timeout%'
+GROUP BY 1
+ORDER BY 1 DESC`;
+
+const Q_FORKER_7D = `
+SELECT to_char(date_trunc('day', d.start_time), 'YYYY-MM-DD') AS bucket,
+       count(*)                  AS failures,
+       count(DISTINCT d.jobid)   AS jobs_affected
+FROM cron.job_run_details d
+WHERE d.start_time >= now() - interval '7 days'
+  AND d.status = 'failed'
+  AND d.return_message ILIKE '%startup timeout%'
+GROUP BY 1
+ORDER BY 1 DESC`;
+
+// The LEFT JOIN to cron.job is deliberate and not cosmetic: pg_cron DELETES the
+// cron.job row on unschedule while job_run_details survives, so an inner join
+// would silently drop exactly the historical runs this section is for. A run
+// whose job is gone still names its jobid.
+const Q_FORKER_RUNNING = `
+WITH bursts AS (
+  SELECT date_trunc('hour', d.start_time) AS bucket, count(*) AS failures
+  FROM cron.job_run_details d
+  WHERE d.start_time >= now() - interval '24 hours'
+    AND d.status = 'failed'
+    AND d.return_message ILIKE '%startup timeout%'
+  GROUP BY 1
+  HAVING count(*) >= $1::int
+)
+SELECT to_char(b.bucket, 'YYYY-MM-DD HH24:00') AS bucket,
+       x.jobname,
+       x.start_time,
+       x.wall_s,
+       x.status
+FROM bursts b
+LEFT JOIN LATERAL (
+  SELECT COALESCE(j.jobname, '(unscheduled jobid ' || d.jobid || ')') AS jobname,
+         d.start_time,
+         EXTRACT(epoch FROM (COALESCE(d.end_time, now()) - d.start_time))::numeric AS wall_s,
+         d.status
+  FROM cron.job_run_details d
+  LEFT JOIN cron.job j ON j.jobid = d.jobid
+  WHERE d.start_time <= b.bucket + interval '1 hour'
+    AND COALESCE(d.end_time, now()) >= b.bucket
+    AND NOT (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%')
+  ORDER BY (COALESCE(d.end_time, now()) - d.start_time) DESC
+  LIMIT 1
+) x ON true
+ORDER BY b.bucket DESC`;
+
+const Q_FORKER_CANCELS = `
+SELECT acted_at, jobname, age_seconds, budget_seconds, acted_via
+FROM public.cron_job_budget_action
+WHERE acted_at >= now() - interval '7 days'
+ORDER BY acted_at DESC
+LIMIT 50`;
+
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
 const NOT_CAPTURABLE = [
   "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase " +
@@ -768,6 +848,44 @@ async function main(): Promise<void> {
     const sldRows = await r.run<Record<string, unknown>>("sld_coverage", Q_SLD_COVERAGE);
     const residualRows = await r.run<Record<string, unknown>>("sld_residual", Q_SLD_RESIDUAL);
 
+    // FIX-1194 §9 — the forker.
+    const bucketRows = (rows: Record<string, unknown>[]): ForkerBucketRow[] =>
+      rows.map((v) => ({
+        bucket: str(v["bucket"]) ?? "—",
+        failures: num(v["failures"]) ?? 0,
+        jobs_affected: num(v["jobs_affected"]) ?? 0,
+      }));
+
+    const forker24h = bucketRows(
+      await r.run<Record<string, unknown>>("forker_24h", Q_FORKER_24H),
+    );
+    const forker7d = bucketRows(await r.run<Record<string, unknown>>("forker_7d", Q_FORKER_7D));
+
+    const forkerRunningRows = await r.run<Record<string, unknown>>(
+      "forker_running",
+      Q_FORKER_RUNNING,
+      [BURST_THRESHOLD],
+    );
+    const forkerRunning: ForkerRunningRow[] = forkerRunningRows.map((v) => ({
+      bucket: str(v["bucket"]) ?? "—",
+      jobname: str(v["jobname"]),
+      start_time: iso(v["start_time"]),
+      wall_s: num(v["wall_s"]),
+      status: str(v["status"]),
+    }));
+
+    const forkerCancelRows = await r.run<Record<string, unknown>>(
+      "forker_cancels",
+      Q_FORKER_CANCELS,
+    );
+    const forkerCancels: ForkerCancelRow[] = forkerCancelRows.map((v) => ({
+      acted_at: iso(v["acted_at"]) ?? "—",
+      jobname: str(v["jobname"]) ?? "(unnamed)",
+      age_seconds: num(v["age_seconds"]),
+      budget_seconds: num(v["budget_seconds"]),
+      acted_via: str(v["acted_via"]) ?? "—",
+    }));
+
     const total = num(sldRows[0]?.["total"]);
     const linked = num(sldRows[0]?.["linked"]);
 
@@ -873,6 +991,12 @@ async function main(): Promise<void> {
           chamber: str(row["chamber"]) ?? "—",
           unlinked: num(row["unlinked"]) ?? 0,
         })),
+      },
+      forker: {
+        by_hour_24h: forker24h,
+        by_day_7d: forker7d,
+        running_in_bursts: forkerRunning,
+        cancels_7d: forkerCancels,
       },
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,

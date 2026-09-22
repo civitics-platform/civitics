@@ -22,6 +22,7 @@ import {
   type Bands,
   type JobFiring,
   type ReceiptsData,
+  BURST_THRESHOLD,
   compareToBand,
   fmtSeconds,
   nominalDate,
@@ -406,6 +407,37 @@ function fixture(): ReceiptsData {
       residual: 2,
       by_state: [{ state: "Maine", chamber: "legislature_lower", unlinked: 2 }],
     },
+    // FIX-1194 §9. The 2026-09-07 hour is cc-139's real burst (12/30 and 10/30
+    // in the two watchdog jobs); the quiet hour beside it carries 2 failures on
+    // purpose, because the threshold test needs a near-miss to be near.
+    forker: {
+      by_hour_24h: [
+        { bucket: "2026-09-07 06:00", failures: 22, jobs_affected: 2 },
+        { bucket: "2026-09-07 04:00", failures: 2, jobs_affected: 1 },
+      ],
+      by_day_7d: [
+        { bucket: "2026-09-07", failures: 22, jobs_affected: 2 },
+        { bucket: "2026-09-06", failures: 1, jobs_affected: 1 },
+      ],
+      running_in_bursts: [
+        {
+          bucket: "2026-09-07 06:00",
+          jobname: "contract-flow-rollups-refresh",
+          start_time: "2026-09-07T05:48:11Z",
+          wall_s: 2431.6,
+          status: "running",
+        },
+      ],
+      cancels_7d: [
+        {
+          acted_at: "2026-09-07T06:14:02Z",
+          jobname: "ec-crawl",
+          age_seconds: 16.1,
+          budget_seconds: 10,
+          acted_via: "vercel",
+        },
+      ],
+    },
     not_capturable: ["**57014 counts.** `postgres_logs` only."],
     queries: [
       { key: "cron_jobs", sql: "SELECT 1", elapsed_ms: 42, error: null },
@@ -415,7 +447,7 @@ function fixture(): ReceiptsData {
   };
 }
 
-test("renderMarkdown: all nine sections are present, in order", () => {
+test("renderMarkdown: all ten sections are present, in order", () => {
   const md = renderMarkdown(fixture());
   const headings = md.split("\n").filter((l) => l.startsWith("## "));
   assert.deepEqual(headings, [
@@ -427,7 +459,8 @@ test("renderMarkdown: all nine sections are present, in order", () => {
     "## 6. Prod-session interlock footprint (FIX-950)",
     "## 7. Canary conditions",
     "## 8. SLD district linkage",
-    "## 9. Not capturable here",
+    "## 9. The forker (FIX-1194) — job startup timeouts and who was running",
+    "## 10. Not capturable here",
     "## Instrument cost",
   ]);
 });
@@ -614,4 +647,65 @@ test("renderMarkdown: the cron table carries the resolved pipeline, and an em da
   assert.match(md, /\| vote-stats-refresh \| yes \| 30 4 \* \* \* \| `official_vote_stats_rebuild` \|/);
   // The header gained a column; a reader must be told what it means.
   assert.match(md, /job's OWN `data_sync_log` writer/);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1194 §9 — the forker
+// ---------------------------------------------------------------------------
+
+test("renderMarkdown: §9 renders the hourly startup-timeout buckets", () => {
+  const md = renderMarkdown(fixture());
+  assert.match(md, /\| hour \(UTC\) \| failures \| jobs affected \|/);
+  assert.match(md, /\| 2026-09-07 06:00 \| 22 \| 2 \|/);
+  assert.match(md, /\| 2026-09-07 04:00 \| 2 \| 1 \|/);
+});
+
+test("renderMarkdown: §9 renders the 7-day buckets so episodic vs chronic is readable", () => {
+  const md = renderMarkdown(fixture());
+  assert.match(md, /\| day \(UTC\) \| failures \| jobs affected \|/);
+  assert.match(md, /\| 2026-09-07 \| 22 \| 2 \|/);
+  assert.match(md, /episodic-vs-chronic/);
+});
+
+test("renderMarkdown: §9 names the longest overlapping job for a burst hour", () => {
+  const md = renderMarkdown(fixture());
+  assert.match(
+    md,
+    /\| 2026-09-07 06:00 \| contract-flow-rollups-refresh \| 2026-09-07T05:48:11Z \| 2431\.6 s \(40m 32s\) \| running \|/,
+  );
+  // It is a suspect, and the file has to say so rather than let a reader
+  // mistake an overlap for a cause.
+  assert.match(md, /SUSPECT, not a verdict/);
+});
+
+test("renderMarkdown: §9 — an hour BELOW the burst threshold gets no 'who was running' row", () => {
+  const d = fixture();
+  // The 04:00 hour carries 2 failures and is in the hourly table. The third
+  // table is built from a HAVING >= BURST_THRESHOLD query, so it must not
+  // appear there — this is the test that keeps the section sparse, which is
+  // the only reason naming a suspect means anything.
+  assert.equal(BURST_THRESHOLD, 3);
+  assert.ok(d.forker.by_hour_24h.some((r) => r.bucket === "2026-09-07 04:00" && r.failures === 2));
+  assert.ok(!d.forker.running_in_bursts.some((r) => r.bucket === "2026-09-07 04:00"));
+
+  const md = renderMarkdown(d);
+  const bursts = md.slice(md.indexOf("### Who was running"), md.indexOf("### Budget cancels"));
+  assert.ok(bursts.includes("2026-09-07 06:00"), "the 22-failure hour IS named");
+  assert.ok(!bursts.includes("2026-09-07 04:00"), "the 2-failure hour is NOT named");
+  assert.match(md, /≥ 3 failures/);
+});
+
+test("renderMarkdown: §9 renders budget cancels with the path that acted", () => {
+  const md = renderMarkdown(fixture());
+  assert.match(md, /\| acted at \(UTC\) \| job \| age \| budget \| via \|/);
+  assert.match(md, /\| 2026-09-07T06:14:02Z \| ec-crawl \| 16\.1 s \| 10 s \| vercel \|/);
+});
+
+test("renderMarkdown: §9 — a clean forker section says '(no rows)' rather than a headless table", () => {
+  const d = fixture();
+  d.forker = { by_hour_24h: [], by_day_7d: [], running_in_bursts: [], cancels_7d: [] };
+  const md = renderMarkdown(d);
+  const section = md.slice(md.indexOf("## 9. The forker"), md.indexOf("## 10."));
+  assert.equal((section.match(/_\(no rows\)_/g) ?? []).length, 4);
+  assert.match(section, /An empty table is the good answer/);
 });
