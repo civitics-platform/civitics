@@ -83,6 +83,10 @@ packages/data/.usaspending-bulk-state.json
 # Session scratch scripts / cookie jars / header dumps — never commit.
 /scratchpad/
 
+# FIX-1209 — a LOCAL receipts:daily run writes here instead of over the day's
+# committed PROD receipt. Local-Docker numbers, so never committed.
+/docs/receipts/local/
+
 
 .vercel
 .env*

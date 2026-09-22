@@ -39,6 +39,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveUnderRepoRoot } from "../lib/repo-root";
+import { isLocalDsn, receiptsOutDir } from "../lib/receipts-out-dir";
 import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
@@ -119,11 +120,20 @@ interface Args {
   target: "local" | "prod" | "auto";
   dryRun: boolean;
   outDir: string;
+  /** FIX-1209 — whether `--out` was GIVEN, not merely what it resolved to. */
+  outGiven: boolean;
   slotOffsetHours: number | null;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { date: null, target: "auto", dryRun: false, outDir: "docs/receipts", slotOffsetHours: null };
+  const a: Args = {
+    date: null,
+    target: "auto",
+    dryRun: false,
+    outDir: "docs/receipts",
+    outGiven: false,
+    slotOffsetHours: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--date") {
@@ -132,6 +142,7 @@ function parseArgs(argv: string[]): Args {
     } else if (arg === "--out") {
       i += 1;
       a.outDir = argv[i] ?? a.outDir;
+      a.outGiven = argv[i] !== undefined;
     } else if (arg === "--slot-offset") {
       i += 1;
       a.slotOffsetHours = Number(argv[i]);
@@ -201,6 +212,22 @@ function resolveSlotOffset(args: Args): number {
  */
 function resolveOutDir(outDir: string): string {
   return resolveUnderRepoRoot(outDir, "receipts");
+}
+
+/**
+ * FIX-1209 — the canonical directory (where `bands.json` lives, and where the
+ * nightly `--prod` run writes) and the directory THIS run may write its
+ * receipt to. They differ only for a LOCAL run that was not given `--out`,
+ * which is the one case that used to overwrite the day's prod receipt.
+ *
+ * Keyed on the resolved DSN, not on the flag: `auto` reaches whichever
+ * database `.env.local` names, and `.env.local` pointing at prod is a
+ * documented normal state.
+ */
+function resolveReceiptPaths(args: Args, isLocal: boolean): { bandsDir: string; outDir: string; redirected: boolean } {
+  const bandsDir = resolveOutDir(args.outDir);
+  const outDir = receiptsOutDir(bandsDir, { local: isLocal, outGiven: args.outGiven });
+  return { bandsDir, outDir, redirected: outDir !== bandsDir };
 }
 
 function resolveDbUrl(target: Args["target"]): string {
@@ -729,7 +756,10 @@ async function main(): Promise<void> {
 
   const dsn = resolveDbUrl(args.target);
   const host = hostOf(dsn);
-  const isLocal = host.startsWith("127.0.0.1") || host.startsWith("localhost");
+  // FIX-1209 — one definition of "is this the local Docker box", shared with
+  // the output-path resolver so the label and the write destination cannot
+  // disagree about which database this run reached.
+  const isLocal = isLocalDsn(dsn);
   const targetLabel = isLocal ? "LOCAL (Docker)" : "PROD (Supabase Pro)";
   console.log("[receipts] target " + targetLabel + " — " + host);
   console.log("[receipts] nominal day " + date + " (slot offset " + slotOffsetHours + "h)");
@@ -795,7 +825,10 @@ async function main(): Promise<void> {
       phase_seconds: str(row["phase_seconds"]),
     }));
 
-    const bands = loadBands(resolveOutDir(args.outDir));
+    // bands.json stays in the CANONICAL dir even when the receipt is
+    // redirected — it is hand-edited and shared by both targets, and following
+    // the receipt into local/ would make every job read `no-band` (FIX-1209).
+    const bands = loadBands(resolveReceiptPaths(args, isLocal).bandsDir);
     const cronJobs = verdictsFor(firings, bands);
 
     const dailyRows = await r.run<Record<string, unknown>>("daily_run", Q_DAILY_RUN);
@@ -1045,7 +1078,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const outDir = resolveOutDir(args.outDir);
+  const { outDir, redirected } = resolveReceiptPaths(args, isLocal);
+  if (redirected) {
+    console.log(
+      "[receipts] LOCAL target and no --out — writing under " +
+        outDir +
+        " so this run cannot overwrite the day's PROD receipt (FIX-1209). Pass --out to override.",
+    );
+  }
   mkdirSync(outDir, { recursive: true });
   const mdPath = join(outDir, date + ".md");
   const jsonPath = join(outDir, date + ".json");
