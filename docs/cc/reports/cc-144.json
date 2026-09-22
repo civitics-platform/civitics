@@ -1,0 +1,51 @@
+{
+  "cc": "144",
+  "prompt": "cc-prompt-144-residue-reaudit-fix1182-exp1-from-manifests-derived-retracted-manifests-fix1106-apply-on-go-ahead-conditions-not-hours-receipts-local-write-guard.md",
+  "started_at": "2026-09-22T04:10:00Z",
+  "finished_at": "2026-09-22T05:05:00Z",
+  "head_before": "7455f50a",
+  "head_after": "53889e41",
+  "commits": [
+    {
+      "sha": "58071cf2",
+      "subject": "docs(cc): PROMPT_TEMPLATE gate (g) as conditions"
+    },
+    {
+      "sha": "ae01c459",
+      "subject": "fix(receipts): FIX-1209 — a LOCAL run writes under docs/receipts/local/"
+    },
+    {
+      "sha": "73ceac65",
+      "subject": "docs(audits): FIX-1106 — emit residue re-cut against the 2026-09-21 emit set"
+    },
+    {
+      "sha": "8e030ea7",
+      "subject": "docs(audits): FIX-1182 experiment (1) — retraction vs unproven"
+    },
+    {
+      "sha": "e990a986",
+      "subject": "docs(fixes): eight appends; FIX-1182 closes as redirected"
+    },
+    {
+      "sha": "53889e41",
+      "subject": "chore(fixes): sync status after FIX-1209 / FIX-1182"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1209",
+    "FIX-1182"
+  ],
+  "fixes_filed": [
+    "FIX-1209"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 5/6 — the FIX-1106 apply. STOPPED at the go-ahead point by design, and gates (f) and (g) also FAILED at 04:54 UTC. Both indiv and pac are pending Craig's per-set go-ahead. ITC never (FIX-1203).",
+    "Item 7 — FIX-1074 not closed. Its ask is that a landing run under the pre-drain block; no landing ran, so there is nothing to recognise.",
+    "Item 7 — FIX-1177 / FIX-1172 not closed. Both are conditional on a hold exceeding 48 min; the two dry-run holds were 55 s and 4 s.",
+    "Gate (b) has ONE reading, not two. Taken at 04:53:55 UTC, minutes after three vacuums, so all three tables read n_dead_tup = 0 and the rate is unmeasurable — the exact input the template calls the weakest possible. The second reading is due inside whatever window the apply actually runs in."
+  ]
+}
