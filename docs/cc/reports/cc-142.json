@@ -1,0 +1,45 @@
+{
+  "cc": "142",
+  "prompt": "cc-prompt-142-fix1194-p2a-vercel-cron-watchdog-route-security-definer-wrapper-acted-via-receipts-forker-section.md",
+  "started_at": "2026-09-22T00:20:00Z",
+  "finished_at": "2026-09-22T01:50:00Z",
+  "head_before": "201296fe",
+  "head_after": "f9ac992c",
+  "commits": [
+    {
+      "sha": "ed0d401f",
+      "subject": "feat(db): FIX-1194 P2-A run_cron_watchdogs() wrapper plus cron_job_budget_action.acted_via"
+    },
+    {
+      "sha": "21457bdf",
+      "subject": "feat(cron): FIX-1194 P2-A /api/cron/cron-watchdog fires both watchdogs from Vercel every 2 min"
+    },
+    {
+      "sha": "b929c0ef",
+      "subject": "feat(receipts): FIX-1194 section 9 The forker - startup timeouts, overlapping job, cancels by path"
+    },
+    {
+      "sha": "c42eac39",
+      "subject": "docs(fixes): FIX-1194 / 1125 / 1137 appends"
+    },
+    {
+      "sha": "f9ac992c",
+      "subject": "docs(fixes): FIX-1207 - P2-A deployed but its Vercel cron is not observably firing"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1207"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920070000_fix1194_cron_watchdogs_via_api.sql"
+  ],
+  "prod_writes": "One migration applied to Pro at 01:16Z (run_cron_watchdogs() wrapper, cron_job_budget_action.acted_via column with its CHECK, grants). One read-only RPC call through prod PostgREST at 01:17Z which cancelled nothing and wrote no row (canceled=0, labelled=0, ledger unchanged at 14 rows). No data rewrite, no VACUUM, no cron.job change, no hand firing of either watchdog.",
+  "ci": "green",
+  "stopped_items": [
+    "The */2 cadence is NOT demonstrated, and the deploy check is therefore only half made. The route IS deployed - it answers 401 unauthenticated where a nonexistent sibling path 404s. But pg_stat_statements shows the pgrst_source call count at 1 (my manual call) at 01:19:58, 2 at 01:22:20, and still 2 at 01:28:16, 01:29:42, 01:37:35 and 01:40:24 - one route invocation ever, and ~7 missed */2 slots, while front-door-watch fired normally at 01:00:28 / 01:15:28 / 01:30:28. Filed as FIX-1207. The Vercel dashboard needs device OAuth (cc-140), so the cause is not decidable from this shell.",
+    "Drain-and-wait gate (b) taken as ONE reading, not two >=30 min apart. Deliberate: the rule sizes headroom against 2x expected wall, and this op is a metadata-only ADD COLUMN plus a CHECK over 14 rows - an expected wall under a second against 234,733 tuples of headroom on the tightest table. Reasoning stated in section 5 rather than the rule quoted as if satisfied.",
+    "No chore(fixes) status commit. fixes:sync was run after the commits reached origin/main, as the contract requires, and produced newLoggedEntries: 0 and an empty diff - correct, because no commit carried a Fixes:/Closes: trailer. Running it is the evidence; an empty commit would not have been."
+  ]
+}
