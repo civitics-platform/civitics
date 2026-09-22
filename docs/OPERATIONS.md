@@ -18,7 +18,7 @@ Last updated: 2026-04-22.
 | Studio | `http://127.0.0.1:54323` | `supabase.com/dashboard/project/xsazcoxinpgttgquwvuf` |
 | DB URL | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | From Supabase dashboard → Project Settings → Database |
 | API | `http://127.0.0.1:54321` | `https://xsazcoxinpgttgquwvuf.supabase.co` |
-| Vercel plan | n/a | Hobby — crons limited to once/day |
+| Vercel plan | n/a | **Pro** since the April cutover — sub-daily crons allowed (five live, down to `*/2`) |
 
 ### Required Tools
 
@@ -459,7 +459,7 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 | Service | Plan | Cost | Notes |
 |---------|------|------|-------|
 | Supabase | **Pro** | $25/mo | Cutover 2026-04-22; 250 GB egress, 8 GB DB |
-| Vercel | Hobby | $0 | `[skip vercel]` still useful; crons limited to once/day |
+| Vercel | **Pro** | see note | `[skip vercel]` still useful. Plan corrected FIX-1194 (was recorded as Hobby); the **cost cell is unverified** — read it from the billing API, `reference_vercel_billing_charges_window` |
 | Anthropic | Pay-as-you-go | ~$0.60/mo | Self-imposed $3.50 budget cap |
 | Cloudflare R2 | Free | $0 | 10GB free tier |
 | Mapbox | Free | $0 | 50k map loads/mo free |
@@ -473,11 +473,47 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 - Storage: 100 GB
 - PITR retention: 7 days
 
-**Vercel Hobby:**
-- Fluid Active CPU: 4 hours/month (14,400 seconds)
-- Function invocations: 1M/month
-- Fast Origin Transfer: 10 GB/month
-- **Cron jobs: once per day maximum** (upgrade to Pro for sub-daily crons — currently `notify-followers` is at 03:00 UTC)
+**Vercel Pro:**
+- Fluid Active CPU / invocations / Fast Origin Transfer: Pro allowances, metered
+- **Cron jobs: sub-daily allowed.** The "once per day maximum" recorded here
+  until FIX-1194 was a Hobby limit that stopped applying at the April cutover —
+  `platform-snapshot/route.ts:10-11` says so, and four sub-daily entries have
+  been live in `vercel.json` since FIX-1127/FIX-1130 (Hobby rejects those
+  expressions outright, so their existence is the proof).
+
+### Vercel crons (`apps/civitics/vercel.json`)
+
+| Path | Schedule (UTC) | What it does | `CRON_DISABLED` |
+|---|---|---|---|
+| `/api/cron/nightly-sync` | `0 2 * * *` | Canary marker + grant-expiry sweep; the real nightly is GHA | yes |
+| `/api/cron/notify-followers` | `0 3 * * *` | Follower notification fan-out | yes |
+| `/api/cron/platform-snapshot` | `*/30 * * * *` | Platform counts snapshot (FIX-1127, off GHA) | no |
+| `/api/cron/front-door-watch` | `*/15 * * * *` | Front-door wedge detector (FIX-1130) | no |
+| `/api/cron/cron-watchdog` | `*/2 * * * *` | Fires **both** budget watchdogs (FIX-1194) | yes |
+
+**The two firing paths, and how to tell them apart.** `cron-watchdog` does not
+replace pg_cron's `cron-job-budget-watchdog` and `derived-mvs-unit-watchdog` —
+both still run every two minutes and are unchanged. It is a second, independent
+path that needs no pg_cron background worker, because the failure the watchdogs
+exist to catch (fork starvation under a large landing) is the same one that
+stops pg_cron firing them: on 2026-08-31 06:06–12:05 UTC every watchdog firing
+failed `job startup timeout` and nothing was bounded for six hours (FIX-1123).
+
+Both paths are idempotent by construction — the ledger is keyed on `runid`
+(PRIMARY KEY) and the unit watchdog guards on `metadata ? 'watchdog_canceled_at'`
+— so racing them cancels a target at most once. **`cron_job_budget_action.acted_via`
+records which path acted**: `pg_cron` (the default the inner INSERT stamps) or
+`vercel` (re-stamped by `run_cron_watchdogs()` for the runids of its own call).
+A `vercel` row inside a window where pg_cron's own firings show `job startup
+timeout` is the receipt that the second path did the work the first could not.
+Read it with:
+
+```sql
+SELECT acted_at, jobname, age_seconds, budget_seconds, acted_via
+FROM public.cron_job_budget_action ORDER BY acted_at DESC LIMIT 20;
+```
+
+It also renders in the daily receipts, §9 "The forker".
 
 ### Conserving Resources
 
@@ -497,7 +533,7 @@ Set these in Vercel Dashboard → Settings → Environment Variables (no code de
 
 | Variable | Value | Effect |
 |----------|-------|--------|
-| `CRON_DISABLED` | `true` | Stops the two **Vercel** cron routes only (`/api/cron/nightly-sync`, `/api/cron/notify-followers`). It does **not** stop the GitHub-Actions nightly and does **not** stop any of the 38 pg_cron jobs — see `docs/ops/prod-holds.md` for what does (FIX-1173) |
+| `CRON_DISABLED` | `true` | Stops the three **Vercel** cron routes that honour it (`/api/cron/nightly-sync`, `/api/cron/notify-followers`, `/api/cron/cron-watchdog`). It does **not** stop `platform-snapshot` or `front-door-watch` (neither reads the flag — both are watchdogs, on purpose), **not** the GitHub-Actions nightly, and **not** any of the 38 pg_cron jobs — see `docs/ops/prod-holds.md` for what does (FIX-1173). Note it DOES silence the Vercel half of budget enforcement while leaving pg_cron's half running (FIX-1194) |
 | `SUPABASE_AVAILABLE` | `false` | Prevents 10-second timeout burns when Supabase is paused |
 | `CONNECTIONS_PIPELINE_ENABLED` | `false` | Disables connections pipeline |
 | `AI_SUMMARIES_ENABLED` | `false` | Disables AI summary generation (officials/proposals summaries, ai-tagger pipeline, ai-summaries pipeline, and `/api/graph/narrative` — the graph header ✨ Explain button hides) |

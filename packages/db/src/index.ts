@@ -541,3 +541,8 @@ export type {
   FrontDoorProbe,
   FrontDoorVerdict,
 } from "./front-door-verdict";
+
+// FIX-1194 P2-A — the cron-watchdog route's decision logic, pure for the same
+// reason front-door-verdict.ts is.
+export { decideCronWatchdogVerdict } from "./cron-watchdog-verdict";
+export type { CronWatchdogVerdict, UnitAction } from "./cron-watchdog-verdict";
