@@ -1472,3 +1472,4 @@
 2026-09-20 | FIX-922 | e7f3e1e3 | local-only | feat(tags): FIX-922 — industry overrides can address a financial entity with no committee id
 2026-09-20 | FIX-938 | bc591f27 | local-only | feat(ai): FIX-938 — prompt_version joins the ai_summary_cache key; a prompt edit misses the cache
 2026-09-21 | FIX-1191 | de0b4339 | prod-only | fix(db): FIX-1191 — fr-vacuum-analyze daily at 03:00 has its receipt: 100% after the first firing, 100% after the second
+2026-09-21 | FIX-1207 | 56783915 | closes-as-no-op | docs(fixes): FIX-1207 closed no-op — the cron IS firing; the pgss proxy was blind (FIX-1208)
