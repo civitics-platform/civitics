@@ -129,8 +129,30 @@ and its database.
   baseline, and front-door 5xx **≤ 1 %** over the last closed 15-min bucket.
   Read both with `pnpm --filter @civitics/data data:census:cancellations:prod`
   (Logs API; opens no Postgres connection) and quote the baseline it printed.
-- **(g) Clock.** Outside 22:30–01:00 and 05:45–09:00 UTC, **≥ 60 min** before
-  the next of those, and ≥ 60 min before any weekend-only job.
+- **(g) Conditions, not a fixed band.** The nightly is the thing a fixed
+  22:30–01:00 band was standing in for, and it is READABLE, so read it: no
+  `nightly_cron` phase `running` (`data_sync_log`, last phase `complete`), and
+  the nightly's next START — cron `0 21 * * *` plus the 1.6–1.8 h GitHub
+  offset, so ≈ 22:35–22:50 UTC — **≥ `2 × expected wall + 15 min`** away. Still
+  outside 05:45–09:00 UTC, and ≥ 60 min before any weekend-only job. Vacuum
+  spacing is PROPORTIONAL to the job, not one number: ≥ 90 min after the END of
+  any unguarded VACUUM job whose wall exceeded 60 s (`fr-vacuum-analyze` 03:00
+  = 161–212 s; `ec`/`fe` 04:30/04:50 = 10–130 s), ≥ 10 min after any other (the
+  11:0x / 17:0x series is 0.2–1.5 s), and none of the > 60 s ones scheduled
+  inside `[start, start + 2 × expected wall]`. Say which window you are in,
+  with the clock reading.
+  >
+  > Why: a fixed band is wrong in both directions. cc-141 opened at 23:21 UTC
+  > and lost its whole run to a band whose night had already finished — that
+  > weekday nightly ran 22:49–23:01. The wall is what varies: a weekday nightly
+  > is ~15 min, a Sunday drop night ~100 min. A condition reads the difference;
+  > an hour cannot.
+
+> Gate (b)'s two-reading rule is scoped to ops whose wall is MINUTES. A
+> metadata-only DDL — an `ALTER … SET`, a `DROP INDEX` on a small index, a
+> `COMMENT` — completes inside the noise of a single reading, so demanding two
+> readings ≥ 30 min apart to bound it costs an hour to bound a millisecond
+> (cc-142 §5). State the op's expected wall; the gate follows from it.
 
 > A gate must describe a state prod actually visits — `partial` is a terminal
 > status; "≤ 5,000 dead" is twelve minutes after a vacuum you are forbidden to
