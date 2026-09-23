@@ -1479,3 +1479,5 @@
 2026-09-22 | FIX-1106 | 999c2644 | prod-only | fix(fec): FIX-1106 — retraction class applied from the two-run experiment (indiv 675 rows / $604,079; pac 8 / $22,154); ITC redirected to FIX-1203
 2026-09-22 | FIX-1210 | c6ff844e | local-only | fix(data): FIX-1210 — the EC stale-money-edge delete has never parsed; cast the enum, use evidence_ids, and PREPARE it in a test
 2026-09-22 | FIX-1208 | fa701d86 | prod-only | fix(cron): FIX-1208 — the Vercel watchdog path has its liveness receipt: stamps at 02:20:19, 02:22:18, 02:24:18 UTC
+2026-09-23 | FIX-1213 | 82f69001 | prod-only | fix(db): FIX-1213 — a guarded procedure ran under the claimant's session on prod: data_sync_log 0e7c8e74 (the runner's probe CALL, partial, windows 1-2), defer=false at 09:02:46Z
+2026-09-23 | FIX-1215 | 6a826bf9 | prod-only | fix(data): FIX-1215 — the runner waited on prod_op_gate() from 04:52 to 09:02 UTC (51 polls, blocked_by fe-vacuum then the blackout) and launched itself
