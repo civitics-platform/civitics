@@ -1,0 +1,1448 @@
+{
+  "nominal_date": "2026-09-24",
+  "generated_at": "2026-09-23T23:34:16.091Z",
+  "target": "PROD (Supabase Pro)",
+  "target_host": "aws-0-us-west-2.pooler.supabase.com:5432",
+  "nightly": {
+    "created_at": "2026-09-23T23:21:55Z",
+    "run_id": 35933221923,
+    "conclusion": "",
+    "jobs": [
+      {
+        "name": "fec-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-23T23:22:22Z",
+        "completed_at": "2026-09-23T23:27:09Z"
+      },
+      {
+        "name": "enrichment-heavy-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-23T23:27:12Z",
+        "completed_at": "2026-09-23T23:27:49Z"
+      },
+      {
+        "name": "enrichment-light-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-23T23:27:52Z",
+        "completed_at": "2026-09-23T23:28:31Z"
+      },
+      {
+        "name": "enrichment-tail-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-23T23:28:33Z",
+        "completed_at": "2026-09-23T23:33:52Z"
+      },
+      {
+        "name": "receipts",
+        "conclusion": null,
+        "started_at": "2026-09-23T23:33:55Z",
+        "completed_at": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "slot_utc": "21:00",
+    "offset_hours": 2.3652777777777776,
+    "nominal_date": "2026-09-24",
+    "slot_offset_hours": 3,
+    "is_weekly": false,
+    "phases": [
+      {
+        "phase": "fec",
+        "status": "complete",
+        "started_at": "2026-09-23T23:22:41.461Z",
+        "duration_s": 263.446,
+        "peak_rss_mb": 182,
+        "skip_reason": null,
+        "is_weekly": false
+      },
+      {
+        "phase": "enrichment-heavy",
+        "status": "complete",
+        "started_at": "2026-09-23T23:27:36.800Z",
+        "duration_s": 7.792,
+        "peak_rss_mb": 141,
+        "skip_reason": null,
+        "is_weekly": false
+      },
+      {
+        "phase": "enrichment-light",
+        "status": "complete",
+        "started_at": "2026-09-23T23:28:12.505Z",
+        "duration_s": 14.375,
+        "peak_rss_mb": 159,
+        "skip_reason": null,
+        "is_weekly": false
+      },
+      {
+        "phase": "enrichment-tail",
+        "status": "complete",
+        "started_at": "2026-09-23T23:28:55.106Z",
+        "duration_s": 292.282,
+        "peak_rss_mb": 186,
+        "skip_reason": null,
+        "is_weekly": false
+      }
+    ],
+    "gha_note": null
+  },
+  "cron_jobs": [
+    {
+      "jobname": "abuse-events-retention",
+      "jobid": 29,
+      "schedule": "15 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T04:15:00.022Z",
+      "last_end": "2026-09-23T04:15:00.044Z",
+      "duration_s": 0.022625,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "agency-staffing-rollup-refresh",
+      "jobid": 25,
+      "schedule": "5 0 * * 2",
+      "active": true,
+      "pipeline": "agency_staffing_rollup_refresh",
+      "last_start": "2026-09-22T00:05:00.115Z",
+      "last_end": "2026-09-22T00:05:42.093Z",
+      "duration_s": 41.978295,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "contract-flow-rollups-refresh",
+      "jobid": 28,
+      "schedule": "0 14 * * 4",
+      "active": true,
+      "pipeline": "contract_flow_rollups_rebuild",
+      "last_start": "2026-09-17T14:00:00.126Z",
+      "last_end": "2026-09-17T15:38:12.330Z",
+      "duration_s": 5892.204009,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "cron-job-budget-watchdog",
+      "jobid": 44,
+      "schedule": "*/2 * * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T23:34:00.164Z",
+      "last_end": "2026-09-23T23:34:01.406Z",
+      "duration_s": 1.242334,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "derived-mvs-unit-watchdog",
+      "jobid": 40,
+      "schedule": "*/2 * * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T23:34:00.166Z",
+      "last_end": "2026-09-23T23:34:00.199Z",
+      "duration_s": 0.032768,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "donation-edge-orphan-sweep",
+      "jobid": 23,
+      "schedule": "30 11 1 * *",
+      "active": true,
+      "pipeline": "donation_edge_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "donor-party-rollup-orphan-sweep",
+      "jobid": 18,
+      "schedule": "0 13 1 * *",
+      "active": true,
+      "pipeline": "donor_party_rollup_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "donor-party-rollup-refresh",
+      "jobid": 17,
+      "schedule": "0 15 * * 2",
+      "active": true,
+      "pipeline": "donor_party_rollup_refresh",
+      "last_start": "2026-09-22T15:00:00.164Z",
+      "last_end": "2026-09-22T18:08:55.262Z",
+      "duration_s": 11335.097972,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "partial",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "donor-rollup-orphan-sweep",
+      "jobid": 15,
+      "schedule": "30 12 1 * *",
+      "active": true,
+      "pipeline": "donor_rollup_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "donor-rollup-refresh",
+      "jobid": 24,
+      "schedule": "0 9,12 * * *",
+      "active": true,
+      "pipeline": "donor_rollup_refresh",
+      "last_start": "2026-09-23T12:00:00.064Z",
+      "last_end": "2026-09-23T12:00:00.101Z",
+      "duration_s": 0.036431,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": "caught up at the FIX-983 horizon — 2026-09-21 00:18:25.831727+00 is at or before the watermark 2026-09-21 00:18:25.831727+00",
+      "phase_seconds": null,
+      "band": {
+        "lo_s": 0,
+        "hi_s": 400,
+        "source": "cc-prompt-123 D3 (09:00 firing <= 400 / 12:00 firing ~ 0). THE SCHEMA CANNOT EXPRESS THE SECOND HALF: bands are keyed by job name only, and this job's two daily firings have different expected costs, so the looser ceiling is used and the 12:00 firing is trivially in-band. See docs/receipts/README.md."
+      },
+      "verdict": "in-band",
+      "detail": null
+    },
+    {
+      "jobname": "dpr-vacuum-analyze",
+      "jobid": 31,
+      "schedule": "0 2 * * 0,3",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T02:00:00.050Z",
+      "last_end": "2026-09-23T02:00:02.418Z",
+      "duration_s": 2.367309,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "ec-crawl",
+      "jobid": 45,
+      "schedule": "*/15 * * * *",
+      "active": true,
+      "pipeline": "entity_connections_rebuild",
+      "last_start": "2026-09-23T23:30:00.931Z",
+      "last_end": "2026-09-23T23:30:01.959Z",
+      "duration_s": 1.028047,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "jobid": 6,
+      "schedule": "30 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T04:30:00.056Z",
+      "last_end": "2026-09-23T04:30:09.442Z",
+      "duration_s": 9.385799,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": {
+        "lo_s": 0,
+        "hi_s": 140,
+        "source": "cc-prompt-123 D3 (<= 140 quiet-day). Consistent with cc-prompt-117 Phase 0 read 4, which made a quiet-day EC run > 120 s the trigger for the pg_class-keyed gate, and with FIX-1169's series (124 s / 133 s over its first points, cc-prompt-118 Item 5)."
+      },
+      "verdict": "in-band",
+      "detail": null
+    },
+    {
+      "jobname": "ecs-vacuum-analyze",
+      "jobid": 47,
+      "schedule": "20 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:20:00.028Z",
+      "last_end": "2026-09-23T17:20:02.040Z",
+      "duration_s": 2.011935,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "entity-connection-stats-orphan-sweep",
+      "jobid": 19,
+      "schedule": "30 13 1 * *",
+      "active": true,
+      "pipeline": "entity_connection_stats_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "entity-connection-stats-rebuild",
+      "jobid": 16,
+      "schedule": "0 16 * * 1,3",
+      "active": false,
+      "pipeline": "entity_connection_stats_rebuild",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 16 * * 1,3"
+    },
+    {
+      "jobname": "fe-crawl",
+      "jobid": 46,
+      "schedule": "*/30 * * * *",
+      "active": true,
+      "pipeline": "financial_entity_totals_refresh",
+      "last_start": "2026-09-23T23:30:00.855Z",
+      "last_end": "2026-09-23T23:30:02.084Z",
+      "duration_s": 1.228353,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "jobid": 30,
+      "schedule": "50 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T04:50:00.024Z",
+      "last_end": "2026-09-23T04:50:19.908Z",
+      "duration_s": 19.88402,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": {
+        "lo_s": 0,
+        "hi_s": 140,
+        "source": "BORROWED, not independently derived: FIX-1169's series reports ec- and fe-vacuum-analyze together (124 s / 133 s, cc-prompt-118 Item 5) and cc-prompt-123 D3 names only the EC ceiling. Re-derive from this job's own series once the receipts file has collected one."
+      },
+      "verdict": "in-band",
+      "detail": null
+    },
+    {
+      "jobname": "financial-entity-totals-incremental",
+      "jobid": 13,
+      "schedule": "0 10 * * 2",
+      "active": false,
+      "pipeline": "financial_entity_totals_refresh",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 10 * * 2"
+    },
+    {
+      "jobname": "financial-entity-totals-reconcile",
+      "jobid": 14,
+      "schedule": "0 12 1 * *",
+      "active": true,
+      "pipeline": "financial_entity_totals_reconcile",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "jobid": 38,
+      "schedule": "0 3 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T03:00:00.037Z",
+      "last_end": "2026-09-23T03:00:09.926Z",
+      "duration_s": 9.88857,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "group-donor-rollup-refresh",
+      "jobid": 49,
+      "schedule": "10 3 * * 3",
+      "active": true,
+      "pipeline": "group_donor_rollup_refresh",
+      "last_start": "2026-09-23T03:10:00.030Z",
+      "last_end": "2026-09-23T03:11:41.433Z",
+      "duration_s": 101.403039,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "odbt-vacuum-analyze",
+      "jobid": 37,
+      "schedule": "18 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:18:00.031Z",
+      "last_end": "2026-09-23T17:18:00.265Z",
+      "duration_s": 0.234129,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "odr-mv-vacuum-analyze",
+      "jobid": 32,
+      "schedule": "5 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:05:00.017Z",
+      "last_end": "2026-09-23T17:05:01.436Z",
+      "duration_s": 1.418772,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "odt-vacuum-analyze",
+      "jobid": 34,
+      "schedule": "12 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:12:00.031Z",
+      "last_end": "2026-09-23T17:12:00.145Z",
+      "duration_s": 0.113927,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "officials-vacuum-analyze",
+      "jobid": 39,
+      "schedule": "30 1 * * 1",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-21T01:30:00.334Z",
+      "last_end": "2026-09-21T01:30:02.629Z",
+      "duration_s": 2.294318,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "osar-vacuum-analyze",
+      "jobid": 36,
+      "schedule": "16 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:16:00.023Z",
+      "last_end": "2026-09-23T17:16:00.259Z",
+      "duration_s": 0.236046,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "osdr-vacuum-analyze",
+      "jobid": 35,
+      "schedule": "14 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:14:00.056Z",
+      "last_end": "2026-09-23T17:14:00.158Z",
+      "duration_s": 0.101847,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "platform-counts-daily",
+      "jobid": 48,
+      "schedule": "53 3 * * *",
+      "active": true,
+      "pipeline": "platform_counts_daily",
+      "last_start": "2026-09-23T03:53:00.015Z",
+      "last_end": "2026-09-23T03:53:21.897Z",
+      "duration_s": 21.882113,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "rebuild-ec-incremental",
+      "jobid": 2,
+      "schedule": "0 8 * * 3",
+      "active": false,
+      "pipeline": "entity_connections_rebuild",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 8 * * 3"
+    },
+    {
+      "jobname": "rebuild-ec-incremental-mon",
+      "jobid": 22,
+      "schedule": "0 8 * * 1",
+      "active": false,
+      "pipeline": "entity_connections_rebuild",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 8 * * 1"
+    },
+    {
+      "jobname": "refresh-derived-mvs-daily",
+      "jobid": 9,
+      "schedule": "0 6 * * *",
+      "active": true,
+      "pipeline": "refresh_derived_mvs",
+      "last_start": "2026-09-23T06:00:00.052Z",
+      "last_end": "2026-09-23T06:05:51.071Z",
+      "duration_s": 351.018512,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "refresh-derived-mvs-weekly",
+      "jobid": 10,
+      "schedule": "47 0 * * 2",
+      "active": true,
+      "pipeline": "refresh_derived_mvs",
+      "last_start": "2026-09-22T00:47:00.041Z",
+      "last_end": "2026-09-22T01:09:21.446Z",
+      "duration_s": 1341.40571,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "rule-taggers-daily",
+      "jobid": 11,
+      "schedule": "30 6 * * *",
+      "active": true,
+      "pipeline": "run_rule_taggers",
+      "last_start": "2026-09-23T06:30:00.047Z",
+      "last_end": "2026-09-23T06:33:24.759Z",
+      "duration_s": 204.711895,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": "{\"scan\": 166.1, \"delete\": 28.9, \"insert\": 9.6}",
+      "band": {
+        "lo_s": 713,
+        "hi_s": 858,
+        "source": "cc-prompt-117 Phase 0 read 6 and cc-prompt-118 Item 5, both stating the band as 713-858 s. Wed 2026-09-09 read 899.5 s (above); cc-118 made a second consecutive above-band run a filing trigger."
+      },
+      "verdict": "below",
+      "detail": "204.7 s (3m 25s) < 713 s"
+    },
+    {
+      "jobname": "rule-taggers-weekly",
+      "jobid": 12,
+      "schedule": "0 16 * * 2",
+      "active": true,
+      "pipeline": "run_rule_taggers",
+      "last_start": "2026-09-22T16:00:16.690Z",
+      "last_end": "2026-09-22T16:01:04.889Z",
+      "duration_s": 48.199279,
+      "cron_status": "failed",
+      "return_message": "job startup timeout",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "failed",
+      "detail": "job startup timeout"
+    },
+    {
+      "jobname": "treemap-individuals-global-refresh",
+      "jobid": 26,
+      "schedule": "0 14 * * 2",
+      "active": true,
+      "pipeline": "treemap_individuals_global_refresh",
+      "last_start": "2026-09-22T14:00:00.151Z",
+      "last_end": "2026-09-22T14:15:16.559Z",
+      "duration_s": 916.407751,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "treemap-individuals-vacuum-analyze",
+      "jobid": 33,
+      "schedule": "10 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T17:10:00.029Z",
+      "last_end": "2026-09-23T17:10:00.582Z",
+      "duration_s": 0.553096,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vm-probe-pre-ec",
+      "jobid": 51,
+      "schedule": "25 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T04:25:00.014Z",
+      "last_end": "2026-09-23T04:25:00.037Z",
+      "duration_s": 0.022667,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vm-probe-pre-fe",
+      "jobid": 52,
+      "schedule": "45 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T04:45:00.021Z",
+      "last_end": "2026-09-23T04:45:00.064Z",
+      "duration_s": 0.043138,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vm-probe-pre-fr",
+      "jobid": 50,
+      "schedule": "55 2 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-23T02:55:00.016Z",
+      "last_end": "2026-09-23T02:55:00.048Z",
+      "duration_s": 0.032217,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vote-stats-refresh",
+      "jobid": 27,
+      "schedule": "30 3 * * *",
+      "active": true,
+      "pipeline": "official_vote_stats_rebuild",
+      "last_start": "2026-09-23T03:30:00.041Z",
+      "last_end": "2026-09-23T03:30:25.301Z",
+      "duration_s": 25.260011,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    }
+  ],
+  "daily": {
+    "run_started_at": "2026-09-23T06:00:00.052Z",
+    "run_status": "complete",
+    "run_skip_reason": null,
+    "measured_at": "2026-09-23T06:00:00.052Z",
+    "units": 13,
+    "units_ok": 13,
+    "elapsed_seconds": 350.9,
+    "search_unit_seconds": 247.3,
+    "search_unit_band": {
+      "lo_s": 0,
+      "hi_s": 300,
+      "source": "cc-prompt-123 D3 and cc-prompt-117 Phase 0 read 5 (FIX-1152's receipt: < 300 s expected; Mon 2026-09-07 was 236.0 s at 88.8% EC all-visible; the failure mode was 1,017 s at 79%). A UNIT band, not a job band — section 3 reports it from the run row's unit_seconds."
+    },
+    "search_unit_verdict": "in-band",
+    "search_unit_detail": null,
+    "unit_seconds": [
+      {
+        "unit": "rebuild_entity_search_index",
+        "seconds": 247.3
+      },
+      {
+        "unit": "official_homepage_stats_mv",
+        "seconds": 52.2
+      },
+      {
+        "unit": "rebuild_all_primary_sources",
+        "seconds": 32.3
+      },
+      {
+        "unit": "homepage_stats_mv",
+        "seconds": 12.9
+      },
+      {
+        "unit": "proposal_trending_24h",
+        "seconds": 4.7
+      },
+      {
+        "unit": "homepage_agency_counts_mv",
+        "seconds": 0.6
+      },
+      {
+        "unit": "prune_status_snapshot",
+        "seconds": 0.1
+      },
+      {
+        "unit": "commons_active_threads",
+        "seconds": 0.1
+      },
+      {
+        "unit": "pipeline_runtime_stats_mv",
+        "seconds": 0.1
+      },
+      {
+        "unit": "entity_engagement_rollup_mv",
+        "seconds": 0.1
+      },
+      {
+        "unit": "prune_platform_usage_snapshot",
+        "seconds": 0.1
+      },
+      {
+        "unit": "proposal_popularity_24h",
+        "seconds": 0
+      },
+      {
+        "unit": "prune_kill_switch_events",
+        "seconds": 0
+      }
+    ],
+    "vm_before": [
+      {
+        "relation": "entity_connections",
+        "pct_all_visible": 99.8,
+        "n_dead_tup": 722,
+        "relpages": 373641
+      },
+      {
+        "relation": "financial_entities",
+        "pct_all_visible": 99.7,
+        "n_dead_tup": 606,
+        "relpages": 245569
+      }
+    ],
+    "vm_now": [
+      {
+        "relation": "entity_connections",
+        "pct_all_visible": 99.8,
+        "n_dead_tup": 722,
+        "relpages": 373641
+      },
+      {
+        "relation": "financial_entities",
+        "pct_all_visible": 99.7,
+        "n_dead_tup": 606,
+        "relpages": 245569
+      },
+      {
+        "relation": "financial_relationships",
+        "pct_all_visible": 99.9,
+        "n_dead_tup": 715,
+        "relpages": 631265
+      }
+    ],
+    "weekly_started_at": "2026-09-22T00:47:00.041Z",
+    "weekly_status": "succeeded",
+    "weekly_elapsed_seconds": 1341.40571
+  },
+  "vacuums": [
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-23T04:50:00.024Z",
+      "duration_s": 19.88402,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-23T04:30:00.056Z",
+      "duration_s": 9.385799,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-23T03:00:00.037Z",
+      "duration_s": 9.88857,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-22T04:50:00.104Z",
+      "duration_s": 12.705658,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-22T04:30:00.377Z",
+      "duration_s": 143.492203,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-22T03:00:00.154Z",
+      "duration_s": 9.653673,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-21T04:50:00.103Z",
+      "duration_s": 96.240303,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-21T04:30:00.266Z",
+      "duration_s": 87.517651,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-21T03:00:00.135Z",
+      "duration_s": 161.144151,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-20T04:50:00.102Z",
+      "duration_s": 14.071119,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-20T04:30:00.214Z",
+      "duration_s": 9.70687,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-20T03:00:00.155Z",
+      "duration_s": 211.985219,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-19T04:50:00.137Z",
+      "duration_s": 10.443516,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-19T04:30:00.149Z",
+      "duration_s": 107.390429,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-18T04:50:00.124Z",
+      "duration_s": 96.869248,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-18T04:30:00.358Z",
+      "duration_s": 133.417925,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-17T04:50:00Z",
+      "duration_s": 10.340175,
+      "status": "failed"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-17T04:30:01Z",
+      "duration_s": 3147.943476,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-16T04:50:00.082Z",
+      "duration_s": 10.867494,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-16T04:30:00.249Z",
+      "duration_s": 99.661527,
+      "status": "succeeded"
+    }
+  ],
+  "vm_probes": [
+    {
+      "label": "pre-ec",
+      "at": "2026-09-23T04:25:00.036088+00:00",
+      "relation": "entity_connections",
+      "pct_all_visible": 100,
+      "n_dead_tup": 682,
+      "relpages": 373641
+    },
+    {
+      "label": "pre-ec",
+      "at": "2026-09-23T04:25:00.036088+00:00",
+      "relation": "votes",
+      "pct_all_visible": 82.6,
+      "n_dead_tup": 27795,
+      "relpages": 73085
+    },
+    {
+      "label": "pre-fe",
+      "at": "2026-09-23T04:45:00.062559+00:00",
+      "relation": "financial_entities",
+      "pct_all_visible": 100,
+      "n_dead_tup": 663,
+      "relpages": 245569
+    },
+    {
+      "label": "pre-fr",
+      "at": "2026-09-23T02:55:00.047095+00:00",
+      "relation": "financial_relationships",
+      "pct_all_visible": 100,
+      "n_dead_tup": 683,
+      "relpages": 631265
+    }
+  ],
+  "fec": {
+    "drop_probe": [
+      {
+        "key": "cycle",
+        "value": "2026"
+      },
+      {
+        "key": "phase",
+        "value": "enrichment-light"
+      },
+      {
+        "key": "recent",
+        "value": "[{\"probed_at\":\"2026-09-23T23:28:25.342Z\",\"remote_last_modified\":\"Sun, 20 Sep 2026 15:56:56 GMT\"},{\"probed_at\":\"2026-09-22T23:35:29.013Z\",\"remote_last_modified\":\"Sun, 20 Sep 2026 15:56:56 GMT\"},{\"probed_at\":\"2026-09-21T23:51:32.073Z\",\"remote_last_modified\":\"Sun, 20 Sep 2026 15:56:56 GMT\"}]"
+      },
+      {
+        "key": "pending",
+        "value": "false"
+      },
+      {
+        "key": "probed_at",
+        "value": "2026-09-23T23:28:25.342Z"
+      },
+      {
+        "key": "remote_last_modified",
+        "value": "Sun, 20 Sep 2026 15:56:56 GMT"
+      },
+      {
+        "key": "watermark_last_modified",
+        "value": "Sun, 20 Sep 2026 15:56:56 GMT"
+      }
+    ],
+    "indiv_watermark": [
+      {
+        "key": "2020",
+        "value": "Sun, 29 Dec 2024 22:08:04 GMT"
+      },
+      {
+        "key": "2022",
+        "value": "Sun, 02 Aug 2026 15:59:09 GMT"
+      },
+      {
+        "key": "2024",
+        "value": "Sun, 08 Mar 2026 21:45:42 GMT"
+      },
+      {
+        "key": "2026",
+        "value": "Sun, 20 Sep 2026 15:56:56 GMT"
+      }
+    ],
+    "bulk_run_state": null,
+    "emit_runs": [
+      {
+        "key": "2026 / fec_bulk_indiv",
+        "value": "keys=1015185, started 2026-09-20T23:14:42.411Z, complete 2026-09-21T00:20:29.915Z"
+      },
+      {
+        "key": "2026 / fec_bulk_indiv_to_committee",
+        "value": "keys=1051502, started 2026-09-20T23:38:34.520Z, complete 2026-09-21T00:20:40.691Z"
+      },
+      {
+        "key": "2026 / fec_bulk_pac",
+        "value": "keys=112592, started 2026-09-20T22:54:07.559Z, complete 2026-09-20T22:54:52.472Z"
+      },
+      {
+        "key": "2024 / fec_bulk_pac",
+        "value": "keys=135358, started 2026-09-20T22:52:52.886Z, complete 2026-09-20T22:53:26.280Z"
+      }
+    ],
+    "emit_keys_note": "`fec_emit_keys` population (planner estimate, `pg_class.reltuples`): **2518699**. An exact `count(*)` is a full scan of that table and is deliberately not taken — the per-run key counts above come from `fec_emit_runs.keys`, stamped at completion."
+  },
+  "interlock": {
+    "prod_session": [
+      {
+        "key": "pid",
+        "value": "—"
+      },
+      {
+        "key": "held",
+        "value": "false"
+      },
+      {
+        "key": "defer",
+        "value": "false"
+      },
+      {
+        "key": "reason",
+        "value": "—"
+      },
+      {
+        "key": "claimant",
+        "value": "—"
+      },
+      {
+        "key": "claimed_at",
+        "value": "—"
+      },
+      {
+        "key": "claimed_by",
+        "value": "—"
+      },
+      {
+        "key": "age_seconds",
+        "value": "—"
+      },
+      {
+        "key": "label_stale",
+        "value": "false"
+      },
+      {
+        "key": "reason_text",
+        "value": "clear"
+      },
+      {
+        "key": "live_writers",
+        "value": "[]"
+      },
+      {
+        "key": "label_present",
+        "value": "false"
+      },
+      {
+        "key": "claimant_bypass",
+        "value": "false"
+      },
+      {
+        "key": "expected_minutes",
+        "value": "—"
+      },
+      {
+        "key": "live_writer_detail",
+        "value": "[]"
+      }
+    ],
+    "skips_24h": [
+      {
+        "pipeline": "edgar_daily",
+        "started_at": "2026-09-23T23:27:02.501Z",
+        "skip_reason": "no_filings",
+        "source": null
+      }
+    ]
+  },
+  "canary": {
+    "run_started_at": "2026-09-23T09:36:30.856Z",
+    "conditions": [
+      {
+        "key": "cron_startup_burst",
+        "tier": "escalate",
+        "severity": 52,
+        "unchangedRuns": 0,
+        "detail": "pg_cron startup-timeout burst — 6 bucket(s) at or above 10, worst 52: 2026-09-22T21:00:00+00:00: 20 startup timeouts across 2 job(s) — cron-job-budget-watchdog, derived-mvs-unit-watchdog; 2026-09-22T20:00:00+00:00: 16 startup timeouts across 2 job(s) — cron-job-budget-watchdog, derived-mvs-unit-watchdog; 2026-09-22T19:00:00+00:00: 24 startup timeouts across 2 job(s) — cron-job-budget-watchdog, derived-mvs-unit-watchdog; 2026-09-22T18:00:00+00:00: 22 startup timeouts across 3 job(s) — cron-job-budget-watchdog, derived-mvs-unit-watchdog, ec-crawl; 2026-09-22T16:00:00+00:00: 19 startup timeouts across 5 job(s) — cron-job-budget-watchdog, derived-mvs-unit-watchdog, ec-crawl, fe-crawl, rule-taggers-weekly; 2026-09-22T15:00:00+00:00: 52 startup timeouts across 4 job(s) — cron-job-budget-watchdog, derived-mvs-unit-watchdog, ec-crawl, fe-crawl"
+      },
+      {
+        "key": "cron_startup_streak:40",
+        "tier": "escalate",
+        "severity": 38,
+        "unchangedRuns": 0,
+        "detail": "pg_cron startup-timeout streak — derived-mvs-unit-watchdog (*/2 * * * *): 38 consecutive startup timeouts over 186 min, last 2026-09-22T18:16:00.004736+00:00"
+      },
+      {
+        "key": "cron_startup_streak:44",
+        "tier": "escalate",
+        "severity": 38,
+        "unchangedRuns": 0,
+        "detail": "pg_cron startup-timeout streak — cron-job-budget-watchdog (*/2 * * * *): 38 consecutive startup timeouts over 186 min, last 2026-09-22T18:16:00.004736+00:00"
+      }
+    ]
+  },
+  "sld": {
+    "total": 7389,
+    "linked": 7387,
+    "residual": 2,
+    "by_state": [
+      {
+        "state": "Maine",
+        "chamber": "legislature_lower",
+        "unlinked": 2
+      }
+    ]
+  },
+  "forker": {
+    "by_hour_24h": [],
+    "by_day_7d": [
+      {
+        "bucket": "2026-09-22",
+        "failures": 172,
+        "jobs_affected": 12
+      },
+      {
+        "bucket": "2026-09-17",
+        "failures": 158,
+        "jobs_affected": 6
+      }
+    ],
+    "running_in_bursts": [],
+    "cancels_7d": [
+      {
+        "acted_at": "2026-09-17T15:14:20.390Z",
+        "jobname": "ec-crawl",
+        "age_seconds": 1874.9,
+        "budget_seconds": 1800,
+        "acted_via": "pg_cron"
+      },
+      {
+        "acted_at": "2026-09-17T08:30:00.412Z",
+        "jobname": "rule-taggers-daily",
+        "age_seconds": 7200.9,
+        "budget_seconds": 7200,
+        "acted_via": "pg_cron"
+      }
+    ],
+    "vercel_liveness_at": "2026-09-23T23:34:18.327712+00:00"
+  },
+  "not_capturable": [
+    "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase Analytics (Logflare) API serves and SQL does not reach at all — so they are not capturable from HERE, which is a Postgres session. They ARE capturable: `pnpm --filter @civitics/data data:census:cancellations:prod` reads them (and the front-door 5xx rate) through the Logs API and prints both against the cc-131 read 7 (f) gates, exiting non-zero when either fails.",
+    "**GHA step logs and per-step timings.** `gh run view --log` only, and they age out. This file carries the run's `createdAt`/`conclusion` from the API, not its logs.",
+    "**Vercel edge / CDN volume.** Cloudflare analytics only — see `scripts/cf-analytics.mjs`.",
+    "**`peak_rss_mb` for a phase that was KILLED.** The value is stamped by the phase's own completion path, so a job the runner OOM-killed leaves no reading; the `nightly_killed` row records the gap, not the heap."
+  ],
+  "queries": [
+    {
+      "key": "nightly_phases",
+      "sql": "\nSELECT started_at, status,\n       metadata->>'phase'                        AS phase,\n       (metadata->>'duration_ms')::numeric/1000  AS duration_s,\n       (metadata->>'peak_rss_mb')::numeric       AS peak_rss_mb,\n       metadata->>'skip_reason'                  AS skip_reason,\n       (metadata->>'is_weekly')::boolean         AS is_weekly\nFROM public.data_sync_log\nWHERE pipeline IN ('nightly_cron','nightly_killed')\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at",
+      "elapsed_ms": 46,
+      "error": null
+    },
+    {
+      "key": "cron_jobs",
+      "sql": "\nWITH jp AS (\n\nWITH job AS (\n  SELECT j.jobid, j.jobname, j.active, j.schedule,\n         (regexp_match(j.command, '(?:CALL|SELECT)\\s+(?:public\\.)?([a-z_0-9]+)\\s*\\(', 'i'))[1] AS proc\n  FROM cron.job j\n), src AS (\n  SELECT job.*,\n         -- Comment-only lines removed; inline trailing comments left alone,\n         -- since a live literal can sit on a line that ends in one.\n         regexp_replace(pr.prosrc, '(?n)^[ \\t]*--[^\\n]*$', '', 'g') AS body,\n         pr.prosrc AS raw\n  FROM job\n  LEFT JOIN pg_proc pr\n         ON pr.proname = job.proc\n        AND pr.pronamespace = 'public'::regnamespace\n)\nSELECT jobid, jobname, active, schedule, proc,\n       COALESCE(\n         (regexp_match(body, 'data_sync_log\\s*\\([^)]*\\)\\s*VALUES\\s*\\(\\s*''([a-z_0-9]+)''', 'i'))[1],\n         (regexp_match(body, 'c_pipeline\\s+text\\s*:=\\s*''([a-z_0-9]+)''', 'i'))[1]\n       )                                                                AS pipeline,\n       COALESCE(raw ILIKE '%INSERT INTO public.data_sync_log%', false)  AS writes_dsl,\n       COALESCE(raw ILIKE '%prod_session_state%', false)                AS guarded\nFROM src\nORDER BY jobname\n), last_run AS (\n  SELECT DISTINCT ON (d.jobid)\n         d.jobid, d.status, d.return_message, d.start_time, d.end_time\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - make_interval(days => $1::int)\n  ORDER BY d.jobid, d.start_time DESC\n)\nSELECT j.jobid, j.jobname, j.schedule, j.active,\n       jp.pipeline,\n       r.start_time, r.end_time,\n       r.status                                                   AS cron_status,\n       r.return_message,\n       EXTRACT(epoch FROM (r.end_time - r.start_time))::numeric   AS duration_s,\n       s.status                                                   AS sync_status,\n       s.metadata->>'skip_reason'                                 AS skip_reason,\n       -- FIX-1178 (d) — the daily rule-tagger's delete/insert split, when the\n       -- run stamped one. Absent for every other job and for a cadence that\n       -- timed nothing, which renders as an em dash rather than a zero.\n       s.metadata->>'phase_seconds'                               AS phase_seconds\nFROM cron.job j\nJOIN jp ON jp.jobid = j.jobid\nLEFT JOIN last_run r ON r.jobid = j.jobid\nLEFT JOIN LATERAL (\n  SELECT l.status, l.metadata\n  FROM public.data_sync_log l\n  WHERE r.start_time IS NOT NULL\n    AND jp.pipeline IS NOT NULL\n    AND l.pipeline = jp.pipeline\n    AND l.metadata->>'source' LIKE 'pg_cron%'\n    AND l.started_at BETWEEN r.start_time - interval '90 seconds'\n                         AND COALESCE(r.end_time, r.start_time) + interval '90 seconds'\n  ORDER BY abs(EXTRACT(epoch FROM (l.started_at - r.start_time))) ASC\n  LIMIT 1\n) s ON true\nORDER BY j.jobname",
+      "elapsed_ms": 286,
+      "error": null
+    },
+    {
+      "key": "daily_run",
+      "sql": "\n(SELECT 'latest' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)",
+      "elapsed_ms": 40,
+      "error": null
+    },
+    {
+      "key": "vm_now",
+      "sql": "\nSELECT c.relname                                                       AS relation,\n       CASE WHEN c.relpages = 0 THEN NULL\n            ELSE ROUND(100.0 * c.relallvisible / c.relpages, 1) END    AS pct_all_visible,\n       s.n_dead_tup,\n       c.relpages\nFROM pg_class c\nLEFT JOIN pg_stat_user_tables s ON s.relid = c.oid\nWHERE c.oid IN ('public.entity_connections'::regclass,\n                'public.financial_entities'::regclass,\n                'public.financial_relationships'::regclass)\nORDER BY c.relname",
+      "elapsed_ms": 97,
+      "error": null
+    },
+    {
+      "key": "weekly_run",
+      "sql": "\nSELECT d.start_time AS started_at, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS elapsed_seconds\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = 'refresh-derived-mvs-weekly'\nORDER BY d.start_time DESC\nLIMIT 1",
+      "elapsed_ms": 46,
+      "error": null
+    },
+    {
+      "key": "vacuums",
+      "sql": "\nSELECT j.jobname, d.start_time, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS duration_s\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = ANY($1::text[])\n  AND d.start_time >= now() - make_interval(days => $2::int)\nORDER BY d.start_time DESC\nLIMIT 20",
+      "elapsed_ms": 58,
+      "error": null
+    },
+    {
+      "key": "vm_probes",
+      "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key LIKE 'vm_probe:%'\nORDER BY key",
+      "elapsed_ms": 48,
+      "error": null
+    },
+    {
+      "key": "fec_state",
+      "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('fec_drop_probe','fec_indiv_watermark','fec_bulk_run_state')",
+      "elapsed_ms": 37,
+      "error": null
+    },
+    {
+      "key": "fec_emit",
+      "sql": "\nSELECT DISTINCT ON (cycle_year, source)\n       cycle_year, source, run_id, started_at, complete_at, keys\nFROM public.fec_emit_runs\nORDER BY cycle_year DESC, source, started_at DESC",
+      "elapsed_ms": 44,
+      "error": null
+    },
+    {
+      "key": "fec_emit_keys_est",
+      "sql": "\nSELECT reltuples::bigint AS est FROM pg_class WHERE oid = 'public.fec_emit_keys'::regclass",
+      "elapsed_ms": 38,
+      "error": null
+    },
+    {
+      "key": "prod_session",
+      "sql": "SELECT public.prod_session_state() AS state",
+      "elapsed_ms": 64,
+      "error": null
+    },
+    {
+      "key": "skips_24h",
+      "sql": "\nSELECT pipeline, started_at,\n       metadata->>'skip_reason' AS skip_reason,\n       metadata->>'source'      AS source\nFROM public.data_sync_log\nWHERE status = 'skipped'\n  AND started_at >= now() - interval '24 hours'\nORDER BY started_at DESC\nLIMIT 100",
+      "elapsed_ms": 37,
+      "error": null
+    },
+    {
+      "key": "canary",
+      "sql": "\nSELECT started_at, metadata->'conditions' AS conditions\nFROM public.data_sync_log\nWHERE pipeline = 'canary_check'\nORDER BY started_at DESC\nLIMIT 1",
+      "elapsed_ms": 49,
+      "error": null
+    },
+    {
+      "key": "sld_coverage",
+      "sql": "\nSELECT count(*) AS total,\n       count(*) FILTER (WHERE o.metadata->>'district_jurisdiction_id' IS NOT NULL) AS linked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)",
+      "elapsed_ms": 1706,
+      "error": null
+    },
+    {
+      "key": "sld_residual",
+      "sql": "\nSELECT p.name AS state, gb.type AS chamber, count(*) AS unlinked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)\n  AND o.metadata->>'district_jurisdiction_id' IS NULL\nGROUP BY p.name, gb.type\nORDER BY count(*) DESC, p.name",
+      "elapsed_ms": 46,
+      "error": null
+    },
+    {
+      "key": "forker_24h",
+      "sql": "\nSELECT to_char(date_trunc('hour', d.start_time), 'YYYY-MM-DD HH24:00') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '24 hours'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
+      "elapsed_ms": 117,
+      "error": null
+    },
+    {
+      "key": "forker_7d",
+      "sql": "\nSELECT to_char(date_trunc('day', d.start_time), 'YYYY-MM-DD') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '7 days'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
+      "elapsed_ms": 113,
+      "error": null
+    },
+    {
+      "key": "forker_running",
+      "sql": "\nWITH bursts AS (\n  SELECT date_trunc('hour', d.start_time) AS bucket, count(*) AS failures\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - interval '24 hours'\n    AND d.status = 'failed'\n    AND d.return_message ILIKE '%startup timeout%'\n  GROUP BY 1\n  HAVING count(*) >= $1::int\n)\nSELECT to_char(b.bucket, 'YYYY-MM-DD HH24:00') AS bucket,\n       x.jobname,\n       x.start_time,\n       x.wall_s,\n       x.status\nFROM bursts b\nLEFT JOIN LATERAL (\n  SELECT COALESCE(j.jobname, '(unscheduled jobid ' || d.jobid || ')') AS jobname,\n         d.start_time,\n         EXTRACT(epoch FROM (COALESCE(d.end_time, now()) - d.start_time))::numeric AS wall_s,\n         d.status\n  FROM cron.job_run_details d\n  LEFT JOIN cron.job j ON j.jobid = d.jobid\n  WHERE d.start_time <= b.bucket + interval '1 hour'\n    AND COALESCE(d.end_time, now()) >= b.bucket\n    AND NOT (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%')\n  ORDER BY (COALESCE(d.end_time, now()) - d.start_time) DESC\n  LIMIT 1\n) x ON true\nORDER BY b.bucket DESC",
+      "elapsed_ms": 115,
+      "error": null
+    },
+    {
+      "key": "forker_cancels",
+      "sql": "\nSELECT acted_at, jobname, age_seconds, budget_seconds, acted_via\nFROM public.cron_job_budget_action\nWHERE acted_at >= now() - interval '7 days'\nORDER BY acted_at DESC\nLIMIT 50",
+      "elapsed_ms": 49,
+      "error": null
+    },
+    {
+      "key": "forker_vercel_liveness",
+      "sql": "\nSELECT value->>'at' AS at\nFROM public.pipeline_state\nWHERE key = 'cron_watchdog_vercel'",
+      "elapsed_ms": 37,
+      "error": null
+    }
+  ]
+}
