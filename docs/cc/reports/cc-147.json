@@ -1,0 +1,67 @@
+{
+  "cc": "147",
+  "prompt": "cc-prompt-147-fix1213-claimant-opt-in-prod-op-gate-as-code-wait-for-gate-runner-unattended-fix1212-bootstrap-tonight.md",
+  "started_at": "2026-09-23T04:11:14Z",
+  "finished_at": "2026-09-23T09:25:00Z",
+  "head_before": "ddd12469",
+  "head_after": "27916426",
+  "commits": [
+    {
+      "sha": "34261583",
+      "subject": "fix(db): FIX-1213 — prod_session_state() honours a claimant GUC; a guarded procedure CALLed under the claimant's own session runs instead of deferring"
+    },
+    {
+      "sha": "acb70bff",
+      "subject": "feat(db): FIX-1215 — prod_op_gate(): the prod-op window as a function of the instruments; wait-for-gate polls it"
+    },
+    {
+      "sha": "7da1413e",
+      "subject": "feat(data): FIX-1212 — an unattended bootstrap runner: wait for the gate, claim, CALL under the claimant GUC until caught_up, stop rule in code, receipt"
+    },
+    {
+      "sha": "b7314b65",
+      "subject": "fix(data): FIX-1215 — the bootstrap runner tolerates the bare -- that pnpm 9 forwards"
+    },
+    {
+      "sha": "3a8eff87",
+      "subject": "fix(data): FIX-1215 — the runner's stop rule counts one watchdog run once, and rule 66 reads a pooled idle backend as finished"
+    },
+    {
+      "sha": "82f69001",
+      "subject": "fix(db): FIX-1213 — a guarded procedure ran under the claimant's session on prod: data_sync_log 0e7c8e74 (the runner's probe CALL, partial, windows 1-2), defer=false at 09:02:46Z"
+    },
+    {
+      "sha": "6a826bf9",
+      "subject": "fix(data): FIX-1215 — the runner waited on prod_op_gate() from 04:52 to 09:02 UTC (51 polls, blocked_by fe-vacuum then the blackout) and launched itself"
+    },
+    {
+      "sha": "ece9f7e9",
+      "subject": "docs(fixes): FIX-1213 / 1215 / 1212 / 1194 / 1125 / 1178 / 1124 appends"
+    },
+    {
+      "sha": "27916426",
+      "subject": "chore(fixes): sync status after FIX-1213 / FIX-1215"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1213",
+    "FIX-1215"
+  ],
+  "fixes_filed": [
+    "FIX-1215"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920110000_fix1213_prod_session_claimant_opt_in.sql",
+    "supabase/migrations/20260920120000_fix1215_prod_op_gate.sql"
+  ],
+  "prod_writes": "pnpm db:push:prod at 04:50:46-04:50:48 UTC applying 20260920110000 and 20260920120000 (pending 2 -> 0; two CREATE OR REPLACE FUNCTION plus grants). Pushes to main at 04:48 (7da1413e) and 09:16 (ece9f7e9, 27916426), which Vercel deploys; no app-route code changed. The bootstrap runner, launched once from the primary checkout at 04:52:39 UTC (pid 2612): session claim 09:02:46-09:07:36 (label row written and deleted; 16 guarded holds set and cleared); pipeline_state.donor_party_crawl = {max_units: 2} upserted at 09:02:48 and DELETED at 09:07:05 (absent before and after); ONE CALL public.refresh_donor_party_rollup_incremental() 09:02:48-09:07:05, which wrote data_sync_log 0e7c8e74, replaced donor_party_rollup_mv windows 1-2 (1,551,121 -> 1,728,538 rows) and wrote the cursor pipeline_state.donor_party_full_rebuild (windows_done [1,2]). No cron.alter_job, no VACUUM, no --force, no second runner, no hand CALL.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1212's bootstrap did NOT reach caught_up. The runner's stop rule (2) fired before CALL 2 (cron-job-budget-watchdog 1.341 s 'on two consecutive readings'); per the prompt there was no retry. 2 of 16 windows are banked in the cursor; the watermark is unmoved at 2026-07-28 05:54:28; FIX-1212 stays open and got no trailer. The two readings were ONE watchdog run read twice (a runner defect, fixed in 3a8eff87 for the next launch), but the walls were real (0.014 -> 0.874 -> 1.341 s across the probe's two windows).",
+    "No relaunch. Whether to relaunch (Wed after the nightly) or pause jobid 17 before Tue 14:00 UTC is Craig's call — see section 5.",
+    "FIX-969 was not appended: its condition was jobid 17's first caught_up since 07-28, which did not happen.",
+    "The prod gate fixture was read at 04:51:33Z, not ~05:00, and named fe-vacuum-analyze (the 10-min rule) rather than the prompt's predicted ec-vacuum-analyze: today's ec run was 9.4 s, under the 60 s line. The runner's own 05:02:41 poll is the ~05:00 reading: c:blackout only.",
+    "The trip rehearsal was not re-proven end to end under the one-run-one-vote rule: the third clone rehearsal's CALL 2 finished caught_up in 66 s before a second local watchdog run existed. The new SQL and the dedupe ran; the cancel path is unchanged since rehearsal 2."
+  ]
+}
