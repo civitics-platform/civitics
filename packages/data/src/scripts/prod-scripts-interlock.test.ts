@@ -10,7 +10,9 @@
  *
  * THE RULE. Every key in `packages/data/package.json` ending `:prod` either
  *
- *   (a) names a script file whose source contains `runUnderProdSession(`, or
+ *   (a) names a script file whose source contains `runUnderProdSession(` —
+ *       or `withProdSession(`, the same claim scoped to the writing part of a
+ *       main() that waits on prod_op_gate() first (FIX-1215) — or
  *   (b) appears in READ_ONLY below with a one-line reason.
  *
  * A new `:prod` writer added without the wrapper fails here. A new `:prod`
@@ -98,7 +100,12 @@ export function interlockVerdict(
 ): { ok: boolean; reason: string } {
   if (key in readOnly) return { ok: true, reason: `read-only: ${readOnly[key]}` };
   if (file === null) return { ok: false, reason: "no src/scripts/*.ts in the command" };
-  if (src.includes("runUnderProdSession(")) return { ok: true, reason: "wrapped" };
+  // FIX-1215: withProdSession( is the same claim, scoped to the part of main()
+  // that writes. A runner that WAITS for prod_op_gate() first must claim AFTER
+  // the wait, not around it (rule 102), so it cannot wrap its whole main().
+  if (src.includes("runUnderProdSession(") || src.includes("withProdSession(")) {
+    return { ok: true, reason: "wrapped" };
+  }
   return {
     ok: false,
     reason:
@@ -151,6 +158,12 @@ test("an unwrapped, unlisted :prod entry FAILS, and the message names both optio
   assert.match(v.reason, /runUnderProdSession/);
   assert.match(v.reason, /READ_ONLY/);
   assert.match(v.reason, /--allow-prod/);
+});
+
+test("withProdSession( counts as the claim (FIX-1215: claim after the gate wait, not around it)", () => {
+  const v = interlockVerdict("data:made-up:prod", "src/scripts/made-up.ts",
+    "await waitForProdOpGate(o);\nawait withProdSession({ reason }, loop);");
+  assert.equal(v.ok, true);
 });
 
 test("an allowlisted entry passes even with no wrapper in its source", () => {

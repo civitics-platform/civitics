@@ -7294,6 +7294,10 @@ export type Database = {
       normalize_pv_path: { Args: { p: string }; Returns: string }
       official_donor_totals_backfill: { Args: never; Returns: number }
       official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
+      prod_op_gate: {
+        Args: { p_expected_seconds?: number; p_now?: string }
+        Returns: Json
+      }
       prod_session_state: { Args: never; Returns: Json }
       promote_candidate_to_elected: {
         Args: { p_candidate_id: string; p_elected_id: string }

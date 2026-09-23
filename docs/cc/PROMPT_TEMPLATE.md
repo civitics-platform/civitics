@@ -140,7 +140,10 @@ and its database.
   = 161–212 s; `ec`/`fe` 04:30/04:50 = 10–130 s), ≥ 10 min after any other (the
   11:0x / 17:0x series is 0.2–1.5 s), and none of the > 60 s ones scheduled
   inside `[start, start + 2 × expected wall]`. Say which window you are in,
-  with the clock reading.
+  with the clock reading. These conditions — (g), (d), (e), rule 155's vacuum
+  spacing and the blackout — are readable as
+  `SELECT public.prod_op_gate(<expected seconds>)`, and a runner waits on them
+  with `session:wait-for-gate` (FIX-1215); (f) stays the census.
   >
   > Why: a fixed band is wrong in both directions. cc-141 opened at 23:21 UTC
   > and lost its whole run to a band whose night had already finished — that
