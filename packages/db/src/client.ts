@@ -132,7 +132,38 @@ function runPipelineGuard(url: string): void {
   }
 }
 
-export function createAdminClient() {
+export type AdminClientOptions = {
+  /**
+   * The fetch supabase-js sends every request through. Omit it and supabase-js
+   * uses the global `fetch` — which inside Next.js is the PATCHED fetch, so
+   * the request is subject to the Data Cache. Pass `noStoreFetch` from a route
+   * whose calls must reach the database every time (FIX-1208).
+   */
+  fetch?: typeof fetch;
+};
+
+/**
+ * `fetch` with `cache: "no-store"` forced on — the `front-door-watch` shape,
+ * for a supabase-js client.
+ *
+ * Why it is needed (FIX-1208, measured against next@14.2.35's own source): a
+ * GET Route Handler with `export const dynamic = "force-dynamic"` sets only
+ * `forceDynamic`; its `revalidate` defaults to `false`, and patch-fetch's
+ * "auto no cache" for an authed or POST fetch fires only when `revalidate === 0`.
+ * So a supabase-js `.rpc()` POST with an identical body is "auto cache" with
+ * `revalidate: false` — cached for a year. The cron-watchdog route called its
+ * RPC for real exactly once (2026-09-22 01:20:18) and was answered from that
+ * entry every two minutes after.
+ *
+ * Resolves the global `fetch` at CALL time, not import time, so inside Next it
+ * is the patched fetch that honours `cache`.
+ */
+export const noStoreFetch: typeof fetch = (input, init) =>
+  // The assertion is for this package's lib set: @types/node's RequestInit
+  // (undici) has no `cache`, the DOM one Next type-checks against does.
+  fetch(input, { ...init, cache: "no-store" } as RequestInit);
+
+export function createAdminClient(options: AdminClientOptions = {}) {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"];
   const key = process.env["SUPABASE_SECRET_KEY"];
 
@@ -144,6 +175,8 @@ export function createAdminClient() {
 
   return createClient<Database>(url, key, {
     auth: { persistSession: false },
+    // Only when asked: every existing caller keeps supabase-js's default fetch.
+    ...(options.fetch ? { global: { fetch: options.fetch } } : {}),
   });
 }
 

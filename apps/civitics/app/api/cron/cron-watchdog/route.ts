@@ -96,17 +96,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     // Lazy, inside the try, for the FIX-1130 reason: module-scope client
     // construction makes the route fail before it can report anything.
-    const { createAdminClient } = await import("@civitics/db");
-    const db = createAdminClient();
+    const { createAdminClient, noStoreFetch } = await import("@civitics/db");
+    // FIX-1208 — `no-store`, or this RPC is never sent. `dynamic =
+    // "force-dynamic"` does NOT stop Next 14.2 caching a fetch inside a GET
+    // Route Handler: it leaves the route's revalidate at `false`, so the
+    // identical-body POST is "auto cache" for a year. That is what happened —
+    // one real call at 2026-09-22 01:20:18, then every firing for 17 h
+    // answered from the Data Cache with the same `at=`. See `noStoreFetch`.
+    const db = createAdminClient({ fetch: noStoreFetch });
 
+    const rpcStartedAt = Date.now();
     const { data, error } = await withDbTimeout(
       db.rpc("run_cron_watchdogs"),
       RPC_TIMEOUT_MS,
       "cron-watchdog",
     );
+    const rpcMs = Date.now() - rpcStartedAt;
 
     if (error) {
-      console.error(`[cron/cron-watchdog] RPC failed: ${error.message}`);
+      console.error(`[cron/cron-watchdog] RPC failed: ${error.message} elapsed_ms=${rpcMs}`);
       return NextResponse.json({
         ok: false,
         reason: error.message,
@@ -114,7 +122,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const verdict = decideCronWatchdogVerdict(data);
+    const verdict = decideCronWatchdogVerdict(data, { elapsedMs: rpcMs });
     if (verdict.ok) {
       console.log(verdict.line);
     } else {

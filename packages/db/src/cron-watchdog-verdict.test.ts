@@ -117,6 +117,25 @@ test("FIX-1208: the log line carries the DB clock, and says so even when it is a
   assert.match(noAt.line, / at=\?$/);
 });
 
+test("FIX-1208: elapsed_ms rides the line right after at=, and only when the route measured it", () => {
+  // The 2026-09-22 Data Cache hit printed a perfectly healthy line with a
+  // frozen `at=` for 17 h. The wall is the second half of spotting that.
+  const timed = decideCronWatchdogVerdict(noopFixture(), { elapsedMs: 412.6 });
+  assert.match(timed.line, / at=2026-09-22T00:28:31\.288653\+00:00 elapsed_ms=413$/);
+
+  const withJobs = decideCronWatchdogVerdict(cancelFixture(), { elapsedMs: 15 });
+  assert.match(withJobs.line, / at=\S+ elapsed_ms=15 jobs=cc142-sleep labelled=1$/);
+
+  const untimed = decideCronWatchdogVerdict(noopFixture());
+  assert.doesNotMatch(untimed.line, /elapsed_ms/);
+
+  const bad = decideCronWatchdogVerdict(null, { elapsedMs: 9 });
+  assert.equal(bad.line, "[cron/cron-watchdog] UNPARSEABLE payload elapsed_ms=9");
+
+  const nan = decideCronWatchdogVerdict(noopFixture(), { elapsedMs: Number.NaN });
+  assert.doesNotMatch(nan.line, /elapsed_ms/);
+});
+
 test("cron-watchdog verdict: one arm throwing surfaces WITHOUT hiding the other's real result", () => {
   const v = decideCronWatchdogVerdict(innerErrorFixture());
   assert.equal(v.ok, false);

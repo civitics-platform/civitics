@@ -1,5 +1,6 @@
 // Clients
-export { createServerClient, createBrowserClient, createPublicClient, createAdminClient, createAdminClientWith } from "./client";
+export { createServerClient, createBrowserClient, createPublicClient, createAdminClient, createAdminClientWith, noStoreFetch } from "./client";
+export type { AdminClientOptions } from "./client";
 export type { CookieStore } from "./client";
 
 // Types

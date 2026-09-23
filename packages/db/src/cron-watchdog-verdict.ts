@@ -85,9 +85,19 @@ const UNIT_ACTIONS: readonly string[] = ["none", "canceled", "closed_dead_backen
  * `ok: false` with the reason in `errors` — because a route that threw while
  * parsing its watchdog's answer would be the FIX-1130 failure in a new costume.
  */
-export function decideCronWatchdogVerdict(raw: unknown): CronWatchdogVerdict {
+export function decideCronWatchdogVerdict(
+  raw: unknown,
+  opts: { elapsedMs?: number } = {},
+): CronWatchdogVerdict {
   const errors: string[] = [];
   const root = asRecord(raw);
+  // FIX-1208 — the RPC's wall, on the line beside `at=`. A Data Cache hit is a
+  // well-formed payload with a frozen `at=` (2026-09-22: 01:20:18 on every line
+  // for 17 h); the wall is the other half of telling it from a real round trip.
+  const elapsed =
+    typeof opts.elapsedMs === "number" && Number.isFinite(opts.elapsedMs)
+      ? "elapsed_ms=" + Math.round(opts.elapsedMs)
+      : null;
 
   if (root === null) {
     return {
@@ -98,7 +108,7 @@ export function decideCronWatchdogVerdict(raw: unknown): CronWatchdogVerdict {
       labelled: 0,
       cancelledJobs: [],
       errors: ["payload: not an object (" + (raw === null ? "null" : typeof raw) + ")"],
-      line: "[cron/cron-watchdog] UNPARSEABLE payload",
+      line: "[cron/cron-watchdog] UNPARSEABLE payload" + (elapsed === null ? "" : " " + elapsed),
     };
   }
 
@@ -168,6 +178,7 @@ export function decideCronWatchdogVerdict(raw: unknown): CronWatchdogVerdict {
     // off the Vercel log if the pipeline_state stamp is ever missing.
     "at=" + (asText(root["at"]) ?? "?"),
   ];
+  if (elapsed !== null) parts.push(elapsed);
   if (cancelledJobs.length > 0) parts.push("jobs=" + cancelledJobs.join(","));
   if (labelled > 0) parts.push("labelled=" + labelled);
   if (!ok) parts.push("ERRORS: " + errors.join("; "));
