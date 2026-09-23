@@ -1,0 +1,45 @@
+{
+  "cc": "145",
+  "prompt": "cc-prompt-145-tuesday-crash-read-third-in-a-row-post-crash-cleanup-then-cc143-prod-leg-r1-drop-two-migrations-fix1208-stamps.md",
+  "started_at": "2026-09-22T22:58:00Z",
+  "finished_at": "2026-09-23T00:25:00Z",
+  "head_before": "887685ac",
+  "head_after": "6113532b",
+  "commits": [
+    {
+      "sha": "f4fee791",
+      "subject": "docs(audits): the Tuesday crash series — 09-08 / 09-15 / 09-22 timelines, what was in flight, what the logs show, what the crash left running"
+    },
+    {
+      "sha": "5f163096",
+      "subject": "docs(fixes): FIX-969 / 1194 / 1125 / 1137 appends; file FIX-1212 (jobid 17's full-mode stage build)"
+    },
+    {
+      "sha": "f20a581d",
+      "subject": "feat(db): FIX-1178 (c) — idx_entity_tags_visibility dropped on prod (CONCURRENTLY, 450 MB); the drop script takes --accept-banked-evidence"
+    },
+    {
+      "sha": "6113532b",
+      "subject": "docs(fixes): FIX-1178 / FIX-1208 / FIX-1194 / FIX-1169 appends"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1212"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920080000_fix1178a_pre_vote_timing_merge.sql",
+    "supabase/migrations/20260920090000_fix1208_cron_watchdog_vercel_liveness.sql"
+  ],
+  "prod_writes": "DROP INDEX CONCURRENTLY public.idx_entity_tags_visibility at 2026-09-23 00:02:42 UTC (scripts/fix1178c-drop-entity-tags-visibility-index.mjs --accept-banked-evidence, 0.9 s, 8 -> 7 indexes); pnpm db:push:prod at 00:03:00 UTC applying both migrations above (pending 2 -> 0). No reap (the reap list was empty), no cron.alter_job, no other write.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1208 NOT CLOSED, and the Pattern B commit was NOT made. The stop condition fired: pipeline_state.cron_watchdog_vercel had no row at 00:03:19, 00:08:07 or 00:14:03 UTC, i.e. within 11 min of the push. edge_logs show the route's RPC is not reaching this database (section 3c). Craig reads the route's at= values in the Vercel function log to decide the mechanism.",
+    "Read 2(c), the unfiltered 09-15 14:30-15:30 log, was IMPOSSIBLE. Logs API retention is a rolling 7 x 24 h, so the 09-15 15:09 crash rolled off at about 09-22 15:10 UTC, before this prompt was written. The query returned 0 rows. cc-141 section 3's excerpt is the only record.",
+    "The dashboard memory / CPU / disk-IO screenshots and the platform activity log were NOT pasted this session. The memory dimension of the crash read is UNREAD, and the audit says so.",
+    "jobid 17 was NOT paused. The verdict names it, and Craig decided (about 23:10 UTC) to leave it ACTIVE and fix it before Tue 2026-09-29 15:00 UTC (FIX-1212). The pause is his fallback if no fix is on Pro by 14:00 UTC that day.",
+    "`chore(fixes): sync status after FIX-1208` was NOT made: nothing closed, and pnpm fixes:sync appended 0 rows.",
+    "Read 6 is partial. The nightly and the receipts after the restart were read (clean). The first post-restart vm-probe-pre-* and fr/ec/fe vacuums (09-23 02:55-04:50 UTC) were not yet due when the session closed."
+  ]
+}
