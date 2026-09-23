@@ -116,6 +116,9 @@ test("args: defaults, overrides, and refusals", () => {
   assert.equal(a.tripOnWallMs, 0);
   assert.equal(a.receiptTag, "trip");
   assert.ok("error" in parseRunnerArgs(["--force"]), "no --force, ever");
+  const dd = parseRunnerArgs(["--", "--probe-units", "2", "--max-calls", "8"]);
+  assert.ok(!("error" in dd), "pnpm 9 forwards a bare -- ; the prompt-shaped command must launch");
+  assert.equal(dd.maxCalls, 8);
   assert.ok("error" in parseRunnerArgs(["--max-calls", "0"]));
   assert.ok("error" in parseRunnerArgs(["--receipt-tag", "../x"]));
 });

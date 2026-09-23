@@ -119,7 +119,11 @@ function argValue(argv: readonly string[], flag: string): string | null {
   return inline ? inline.slice(flag.length + 1) : null;
 }
 
-export function parseRunnerArgs(argv: readonly string[]): RunnerArgs | { error: string } {
+export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { error: string } {
+  // `pnpm run <key> -- --flag` forwards the `--` itself on pnpm 9 (measured
+  // cc-147: cancellation-census.ts died on it). The prompt-shaped launch
+  // command carries one, so tolerate it rather than refuse the launch.
+  const argv = rawArgv.filter((a) => a !== "--");
   const known = new Set([
     "--probe-units", "--max-wait-minutes", "--poll-seconds", "--max-calls", "--expected-minutes",
     "--tick-seconds", "--trip-on-wall-ms", "--trip-from-call", "--receipt-tag",
