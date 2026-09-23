@@ -1,0 +1,587 @@
+{
+  "runner": "donor-party-bootstrap-runner",
+  "target": "local",
+  "reason": "FIX-1212 bootstrap (cc-147 runner)",
+  "args": {
+    "probeUnits": 2,
+    "maxWaitMinutes": 480,
+    "pollSeconds": 5,
+    "maxCalls": 8,
+    "expectedMinutes": 90,
+    "tickSeconds": 120,
+    "tripOnWallMs": null,
+    "tripFromCall": 1,
+    "receiptTag": null
+  },
+  "pid": 13108,
+  "launched_at": "2026-09-23T04:35:44.997Z",
+  "finished_at": "2026-09-23T04:41:01.955Z",
+  "outcome": "caught_up",
+  "exit_code": 0,
+  "detail": "caught_up (complete) after 2 CALL(s)",
+  "gate": {
+    "polls": [
+      {
+        "at": "2026-09-23T04:35:45.028Z",
+        "ok": true,
+        "blocked": []
+      }
+    ],
+    "opened_at": "2026-09-23T04:35:45.067107+00:00",
+    "opening_reading": {
+      "ok": true,
+      "readings": {
+        "vacuum": {
+          "jobs": [
+            {
+              "active": true,
+              "jobname": "dpr-vacuum-analyze",
+              "last_end": "2026-09-23T02:00:01.133061+00:00",
+              "runs_14d": 2,
+              "schedule": "0 2 * * 0,3",
+              "next_slot": null,
+              "mean_14d_s": 1,
+              "last_wall_s": 1.1,
+              "running_since": null
+            },
+            {
+              "active": false,
+              "jobname": "ec-vacuum-analyze",
+              "last_end": null,
+              "runs_14d": 0,
+              "schedule": "30 4 * * *",
+              "next_slot": "2026-09-24T04:30:00+00:00",
+              "mean_14d_s": null,
+              "last_wall_s": null,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "ecs-vacuum-analyze",
+              "last_end": "2026-09-20T17:20:00.536406+00:00",
+              "runs_14d": 2,
+              "schedule": "20 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.5,
+              "last_wall_s": 0.5,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "fe-vacuum-analyze",
+              "last_end": "2026-09-22T04:50:04.806088+00:00",
+              "runs_14d": 12,
+              "schedule": "50 4 * * *",
+              "next_slot": "2026-09-23T04:50:00+00:00",
+              "mean_14d_s": 3.4,
+              "last_wall_s": 4.8,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "fr-vacuum-analyze",
+              "last_end": "2026-09-23T03:00:01.895614+00:00",
+              "runs_14d": 4,
+              "schedule": "0 3 * * *",
+              "next_slot": "2026-09-24T03:00:00+00:00",
+              "mean_14d_s": 16.6,
+              "last_wall_s": 1.8,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odbt-vacuum-analyze",
+              "last_end": "2026-09-20T17:18:00.0588+00:00",
+              "runs_14d": 2,
+              "schedule": "18 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odr-mv-vacuum-analyze",
+              "last_end": "2026-09-20T17:05:00.453839+00:00",
+              "runs_14d": 2,
+              "schedule": "5 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.5,
+              "last_wall_s": 0.4,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odt-vacuum-analyze",
+              "last_end": "2026-09-20T17:12:00.054945+00:00",
+              "runs_14d": 2,
+              "schedule": "12 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "officials-vacuum-analyze",
+              "last_end": "2026-09-21T01:30:01.483257+00:00",
+              "runs_14d": 2,
+              "schedule": "30 1 * * 1",
+              "next_slot": null,
+              "mean_14d_s": 1.5,
+              "last_wall_s": 1.4,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "osar-vacuum-analyze",
+              "last_end": "2026-09-20T17:16:00.059018+00:00",
+              "runs_14d": 2,
+              "schedule": "16 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.1,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "osdr-vacuum-analyze",
+              "last_end": "2026-09-20T17:14:00.050637+00:00",
+              "runs_14d": 2,
+              "schedule": "14 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "treemap-individuals-vacuum-analyze",
+              "last_end": "2026-09-20T17:10:00.340252+00:00",
+              "runs_14d": 2,
+              "schedule": "10 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.3,
+              "last_wall_s": 0.3,
+              "running_since": null
+            }
+          ],
+          "unparsed": [
+            {
+              "active": true,
+              "jobname": "dpr-vacuum-analyze",
+              "schedule": "0 2 * * 0,3",
+              "mean_14d_s": 1
+            },
+            {
+              "active": true,
+              "jobname": "ecs-vacuum-analyze",
+              "schedule": "20 11,17 * * *",
+              "mean_14d_s": 0.5
+            },
+            {
+              "active": true,
+              "jobname": "odbt-vacuum-analyze",
+              "schedule": "18 11,17 * * *",
+              "mean_14d_s": 0
+            },
+            {
+              "active": true,
+              "jobname": "odr-mv-vacuum-analyze",
+              "schedule": "5 11,17 * * *",
+              "mean_14d_s": 0.5
+            },
+            {
+              "active": true,
+              "jobname": "odt-vacuum-analyze",
+              "schedule": "12 11,17 * * *",
+              "mean_14d_s": 0
+            },
+            {
+              "active": true,
+              "jobname": "officials-vacuum-analyze",
+              "schedule": "30 1 * * 1",
+              "mean_14d_s": 1.5
+            },
+            {
+              "active": true,
+              "jobname": "osar-vacuum-analyze",
+              "schedule": "16 11,17 * * *",
+              "mean_14d_s": 0.1
+            },
+            {
+              "active": true,
+              "jobname": "osdr-vacuum-analyze",
+              "schedule": "14 11,17 * * *",
+              "mean_14d_s": 0
+            },
+            {
+              "active": true,
+              "jobname": "treemap-individuals-vacuum-analyze",
+              "schedule": "10 11,17 * * *",
+              "mean_14d_s": 0.3
+            }
+          ]
+        },
+        "nightly": {
+          "running": [],
+          "last_phase": {
+            "phase": "enrichment-light",
+            "status": "complete",
+            "started_at": "2026-09-12T03:11:10.69+00:00",
+            "completed_at": "2026-09-12T03:11:11.948+00:00"
+          },
+          "next_start": "2026-09-23T22:35:00+00:00",
+          "required_minutes": 195,
+          "minutes_to_next_start": 1079
+        },
+        "blackout": {
+          "source": "pipeline_state.ec_crawl",
+          "now_utc": "04:35:45",
+          "windows": [
+            {
+              "to": "00:01",
+              "from": "00:00"
+            }
+          ]
+        },
+        "interlock": {
+          "held": false,
+          "reason_text": "clear",
+          "live_writers": [],
+          "live_writer_detail": []
+        },
+        "watchdogs": {
+          "jobs": [
+            {
+              "jobname": "cron-job-budget-watchdog",
+              "runs_60m": 30,
+              "max_wall_10m_s": 0.017,
+              "median_wall_60m_s": 0.012
+            },
+            {
+              "jobname": "derived-mvs-unit-watchdog",
+              "runs_60m": 30,
+              "max_wall_10m_s": 0.017,
+              "median_wall_60m_s": 0.009
+            }
+          ],
+          "budget_overruns": [],
+          "startup_timeouts_60m": 0
+        },
+        "stuck_units": {
+          "stuck": [],
+          "guarded_pipelines": [
+            "agency_staffing_rollup_refresh",
+            "contract_flow_rollups_rebuild",
+            "donation_edge_orphan_sweep",
+            "donor_party_rollup_orphan_sweep",
+            "donor_party_rollup_refresh",
+            "donor_rollup_orphan_sweep",
+            "donor_rollup_refresh",
+            "entity_connection_stats_orphan_sweep",
+            "entity_connection_stats_rebuild",
+            "entity_connections_rebuild",
+            "financial_entity_totals_reconcile",
+            "financial_entity_totals_refresh",
+            "group_donor_rollup_refresh",
+            "official_vote_stats_rebuild",
+            "refresh_derived_mvs",
+            "run_rule_taggers",
+            "treemap_individuals_global_refresh"
+          ]
+        }
+      },
+      "span_end": "2026-09-23T07:35:45.067107+00:00",
+      "blocked_by": [],
+      "checked_at": "2026-09-23T04:35:45.067107+00:00",
+      "expected_seconds": 5400
+    },
+    "waited_seconds": 0.213
+  },
+  "census": [],
+  "claim": {
+    "claimed_at": "2026-09-23T04:35:45.345Z",
+    "released_at": "2026-09-23T04:41:01.378Z",
+    "state_after_arm": {
+      "pid": 13108,
+      "held": true,
+      "defer": false,
+      "reason": "FIX-1212 bootstrap (cc-147 runner)",
+      "claimant": "FIX-1212 bootstrap (cc-147 runner)",
+      "claimed_at": "2026-09-23T04:35:45.266+00:00",
+      "claimed_by": "Craig@DESKTOP-05GHPC2",
+      "age_seconds": 0,
+      "label_stale": false,
+      "reason_text": "prod session held by this claimant: FIX-1212 bootstrap (cc-147 runner)",
+      "live_writers": [],
+      "label_present": true,
+      "claimant_bypass": true,
+      "expected_minutes": 90,
+      "live_writer_detail": []
+    }
+  },
+  "probe": {
+    "units": 2,
+    "prior_value": null,
+    "restored": true
+  },
+  "calls": [
+    {
+      "n": 1,
+      "probe": true,
+      "pid": 16715,
+      "started_at": "2026-09-23 04:35:46.023699+00",
+      "returned_at": "2026-09-23T04:38:09.972Z",
+      "wall_s": 143.903,
+      "row": {
+        "id": "99035e7e-29da-4286-b3d6-b96339b77e75",
+        "status": "partial",
+        "started_at": "2026-09-23 04:35:46.071922+00",
+        "completed_at": "2026-09-23 04:38:09.926209+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "39 days 20:59:00.482231",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": false,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 232827,
+          "unit_capped": true,
+          "windows_run": [
+            1,
+            2
+          ],
+          "cycle_target": "2026-09-03T01:34:43.542642+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2
+          ],
+          "apply_seconds": [
+            3.43,
+            4.46
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            108.86,
+            26.87
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 144,
+          "next_slice_from": "2026-07-25 04:35:43.060411+00",
+          "cycle_started_at": "2026-09-23T04:35:46.071922+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-25T04:35:43.060411+00:00",
+          "windows_done_before": []
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 2,
+          "min": 0.007155,
+          "median": 0.0257315,
+          "max": 0.044308
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 2,
+          "min": 0.007471,
+          "median": 0.040053500000000006,
+          "max": 0.072636
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "probe": false,
+      "pid": 16715,
+      "started_at": "2026-09-23 04:38:09.984586+00",
+      "returned_at": "2026-09-23T04:41:00.006Z",
+      "wall_s": 169.998,
+      "row": {
+        "id": "40a3cc11-9372-47b3-9545-13a40f0c35fe",
+        "status": "complete",
+        "started_at": "2026-09-23 04:38:10.011495+00",
+        "completed_at": "2026-09-23 04:41:00.017818+00",
+        "error_message": null,
+        "metadata": {
+          "lag": "39 days 20:59:00.482231",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": true,
+          "max_units": 40,
+          "units_run": 14,
+          "rollup_rows": 1627149,
+          "unit_capped": false,
+          "windows_run": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "cycle_target": "2026-09-03T01:34:43.542642+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "apply_seconds": [
+            1.41,
+            1.61,
+            1.72,
+            1.58,
+            1.64,
+            1.85,
+            1.26,
+            1.38,
+            1.2,
+            18.89,
+            4.29,
+            4.6,
+            4.78,
+            6.39
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            17.1,
+            10.64,
+            6.71,
+            8.48,
+            5.77,
+            4.54,
+            4.26,
+            4.44,
+            4.33,
+            5.2,
+            19.47,
+            8.87,
+            8.18,
+            7.94
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 170,
+          "next_slice_from": "2026-09-03 01:34:43.542642+00",
+          "cycle_started_at": "2026-09-23T04:35:46.071922+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-25T04:35:43.060411+00:00",
+          "windows_done_before": [
+            1,
+            2
+          ]
+        }
+      },
+      "verdict": "caught_up: caught_up (complete)",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 2,
+          "min": 0.050963,
+          "median": 0.0617615,
+          "max": 0.07256
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 2,
+          "min": 0.018052,
+          "median": 0.0429405,
+          "max": 0.067829
+        }
+      ]
+    }
+  ],
+  "watchdog_series": [
+    {
+      "at": "2026-09-23T04:35:46.023Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.007155,
+        "derived-mvs-unit-watchdog": 0.007471
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-23T04:37:46.083Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.044308,
+        "derived-mvs-unit-watchdog": 0.072636
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T04:38:09.984Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.07256,
+        "derived-mvs-unit-watchdog": 0.067829
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-23T04:40:10.019Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.050963,
+        "derived-mvs-unit-watchdog": 0.018052
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFilePrefetch \"CALL public.refresh_donor_party_rollup_incremental()\""
+    }
+  ],
+  "trip": null,
+  "before": {
+    "at": "2026-09-23T04:35:45.386Z",
+    "watermark": "2026-07-25 04:35:43.060411+00",
+    "cursor": null,
+    "crawl_config": null,
+    "mv_rows": 1859976,
+    "mv_sum_cents": "693098760800"
+  },
+  "after": {
+    "at": "2026-09-23T04:41:01.392Z",
+    "watermark": "2026-09-03 01:34:43.542642+00",
+    "cursor": null,
+    "crawl_config": null,
+    "mv_rows": 1859976,
+    "mv_sum_cents": "693098760800"
+  },
+  "sum_ratio_after_over_before": 1,
+  "cursor_last": null
+}

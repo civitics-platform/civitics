@@ -147,6 +147,8 @@
     "data:treemap:status": "tsx --env-file=../../.env.local src/scripts/treemap-global-sweep.ts --status",
     "data:treemap:status:prod": "tsx --env-file=../../.env.local.prod src/scripts/treemap-global-sweep.ts --status --allow-prod",
     "data:treemap:sweep:prod": "tsx --env-file=../../.env.local.prod src/scripts/treemap-global-sweep.ts --allow-prod --confirm",
+    "data:donor-party:bootstrap:prod": "tsx --env-file=../../.env.local.prod src/scripts/donor-party-bootstrap-runner.ts",
+    "data:donor-party:bootstrap:local": "tsx --env-file=../../.env.local src/scripts/donor-party-bootstrap-runner.ts",
     "data:merge:official-dupes": "tsx --env-file=../../.env.local src/scripts/merge-same-person-official-dupes.ts",
     "data:merge:official-dupes:repair": "tsx --env-file=../../.env.local src/scripts/merge-same-person-official-dupes.ts --repair-resplit",
     "data:merge:official-dupes:repair:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --repair-resplit --allow-prod",
