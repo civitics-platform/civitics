@@ -59,10 +59,24 @@
 // rule-taggers-daily fires 06:30 UTC), no nightly_cron phase running, and the
 // epoch at least 7 days old (which it becomes at 2026-09-22 15:09:48 UTC).
 //
+// --accept-banked-evidence "<reason>" (cc-145, Craig 2026-09-22). The epoch
+// gate reads pg_postmaster_start_time(), and that is only the counter epoch
+// after an UNCLEAN restart: crash recovery discards the cumulative stats, a
+// clean shutdown writes them out and reloads them. The 2026-09-22 22:28 UTC
+// restart was a `fast shutdown` after the box hung, so the counters SURVIVED it
+// (the UNIQUE key read 9,579,952 on 09-21 and 10,519,860 after the restart;
+// last_idx_scan values predate the restart) — yet the gate saw a 0-day epoch and
+// would refuse until 09-29 on evidence that had not changed. The flag replaces
+// ONLY the epoch refusal with a printed notice; everything else still aborts,
+// idx_scan > 0 above all. It requires a reason, prints the banked readings and
+// whether the counters predate the last restart, and the default path is
+// unchanged: without the flag the 7-day gate refuses exactly as before.
+//
 // USAGE — run from the PRIMARY checkout, or pass --env-file, because a
 // worktree's .env.local.prod is a stub with no SUPABASE_DB_PASSWORD:
 //   node scripts/fix1178c-drop-entity-tags-visibility-index.mjs --dry-run
 //   node scripts/fix1178c-drop-entity-tags-visibility-index.mjs
+//   node scripts/fix1178c-drop-entity-tags-visibility-index.mjs --dry-run --accept-banked-evidence "<why>"
 
 import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -78,6 +92,12 @@ const TARGET = "idx_entity_tags_visibility";
 /** The counter epoch must be at least this old for `idx_scan 0` to mean anything. */
 const MIN_EPOCH_DAYS = 7;
 
+/** The two zero readings the flag rests on, against the 2026-09-15 15:09:48 UTC epoch. */
+const BANKED_READINGS = [
+  "cc-141  2026-09-21 23:37 UTC  idx_scan 0  450 MB",
+  "cc-143  2026-09-22 03:15 UTC  idx_scan 0  471,678,976 bytes",
+];
+
 const DRY_RUN = process.argv.includes("--dry-run");
 
 function argValue(flag, fallback) {
@@ -85,6 +105,13 @@ function argValue(flag, fallback) {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 const ENV_FILE = argValue("--env-file", join(ROOT, ".env.local.prod"));
+
+const ACCEPT_BANKED = process.argv.includes("--accept-banked-evidence");
+const BANKED_REASON = argValue("--accept-banked-evidence", "").trim();
+if (ACCEPT_BANKED && (!BANKED_REASON || BANKED_REASON.startsWith("--"))) {
+  console.error(`[fix1178c] --accept-banked-evidence needs a reason: --accept-banked-evidence "<why>"`);
+  process.exit(2);
+}
 
 function readEnvVar(file, key) {
   if (!existsSync(file)) return null;
@@ -123,6 +150,13 @@ SELECT s.indexrelname, s.idx_scan,
        round(EXTRACT(epoch FROM (now() - pg_postmaster_start_time()))/86400.0, 2) AS epoch_age_days
 FROM pg_stat_user_indexes s
 WHERE s.relname = 'entity_tags' AND s.indexrelname = '${TARGET}';
+
+SELECT '--- pre: did the counters survive the last restart? (true = the epoch is OLDER than pg_postmaster_start_time) ---' AS step;
+SELECT pg_postmaster_start_time() AS postmaster_start,
+       min(last_idx_scan) AS oldest_last_idx_scan,
+       min(last_idx_scan) < pg_postmaster_start_time() AS counters_predate_restart,
+       sum(idx_scan) AS entity_tags_idx_scan_total
+FROM pg_stat_user_indexes WHERE relname = 'entity_tags';
 
 SELECT '--- pre: every entity_tags index, for the before/after picture ---' AS step;
 SELECT indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid)) AS size
@@ -170,7 +204,11 @@ BEGIN
 
   SELECT round(EXTRACT(epoch FROM (now() - pg_postmaster_start_time()))/86400.0, 2) INTO v_days;
   IF v_days < ${MIN_EPOCH_DAYS} THEN
-    RAISE EXCEPTION 'counter epoch is only % days old (< ${MIN_EPOCH_DAYS}) — a restart re-zeroed it, so idx_scan 0 proves nothing. STOP.', v_days;
+    ${
+      ACCEPT_BANKED
+        ? `RAISE NOTICE '[fix1178c] postmaster epoch is only % days old (< ${MIN_EPOCH_DAYS}) — NOT refusing: --accept-banked-evidence was given (reason and banked readings printed by the wrapper).', v_days;`
+        : `RAISE EXCEPTION 'counter epoch is only % days old (< ${MIN_EPOCH_DAYS}) — a restart re-zeroed it, so idx_scan 0 proves nothing. STOP.', v_days;`
+    }
   END IF;
 
   SELECT string_agg(k.conname, ', ') INTO v_con
@@ -220,6 +258,11 @@ const sql = DRY_RUN
 console.error(
   `[fix1178c] PROD (Supabase Pro) — ${DRY_RUN ? "DRY RUN" : `WRITE: DROP INDEX CONCURRENTLY public.${TARGET}`}`,
 );
+if (ACCEPT_BANKED) {
+  console.error(`[fix1178c] --accept-banked-evidence: the ${MIN_EPOCH_DAYS}-day epoch refusal becomes a notice; idx_scan > 0 still aborts.`);
+  console.error(`[fix1178c]   reason: ${BANKED_REASON}`);
+  for (const r of BANKED_READINGS) console.error(`[fix1178c]   banked: ${r}`);
+}
 if (!DRY_RUN) {
   console.error(`[fix1178c] recreate DDL is printed by the pre-flight BEFORE the drop — keep the scrollback.`);
   console.error(`[fix1178c] it is also in supabase/migrations/0012_entity_tags.sql:90-91.`);
