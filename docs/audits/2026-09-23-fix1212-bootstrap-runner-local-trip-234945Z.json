@@ -1,0 +1,1292 @@
+{
+  "runner": "donor-party-bootstrap-runner",
+  "target": "local",
+  "reason": "FIX-1212 bootstrap (cc-147 runner)",
+  "args": {
+    "unitsPerCall": 2,
+    "wallTripS": 3,
+    "breatherUntilWallS": 0.5,
+    "breatherMaxS": 20,
+    "maxWaitMinutes": 10,
+    "pollSeconds": 5,
+    "maxCalls": 12,
+    "expectedMinutes": 60,
+    "tickSeconds": 2,
+    "tripOnWallMs": 0,
+    "tripFromCall": 2,
+    "receiptTag": "trip"
+  },
+  "pid": 16936,
+  "launched_at": "2026-09-23T23:49:45.795Z",
+  "finished_at": "2026-09-23T23:51:16.989Z",
+  "outcome": "stopped",
+  "exit_code": 4,
+  "detail": "stop rule during CALL 2: (2) cron-job-budget-watchdog wall 0.008 s >= 0 ms (test trip) on two distinct runs (19045#2026-09-23T23:51:14.585Z, 19045#2026-09-23T23:51:16.613Z); the CALL closed partial (window 5: canceling statement due to user request)",
+  "gate": {
+    "polls": [
+      {
+        "at": "2026-09-23T23:49:45.822Z",
+        "ok": true,
+        "blocked": []
+      }
+    ],
+    "opened_at": "2026-09-23T23:49:45.861769+00:00",
+    "opening_reading": {
+      "ok": true,
+      "readings": {
+        "vacuum": {
+          "jobs": [
+            {
+              "active": true,
+              "jobname": "dpr-vacuum-analyze",
+              "last_end": "2026-09-23T02:00:01.133061+00:00",
+              "runs_14d": 2,
+              "schedule": "0 2 * * 0,3",
+              "next_slot": null,
+              "mean_14d_s": 1,
+              "last_wall_s": 1.1,
+              "running_since": null
+            },
+            {
+              "active": false,
+              "jobname": "ec-vacuum-analyze",
+              "last_end": null,
+              "runs_14d": 0,
+              "schedule": "30 4 * * *",
+              "next_slot": "2026-09-24T04:30:00+00:00",
+              "mean_14d_s": null,
+              "last_wall_s": null,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "ecs-vacuum-analyze",
+              "last_end": "2026-09-23T11:20:00.546065+00:00",
+              "runs_14d": 3,
+              "schedule": "20 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.5,
+              "last_wall_s": 0.5,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "fe-vacuum-analyze",
+              "last_end": "2026-09-23T04:50:18.097177+00:00",
+              "runs_14d": 13,
+              "schedule": "50 4 * * *",
+              "next_slot": "2026-09-24T04:50:00+00:00",
+              "mean_14d_s": 4.5,
+              "last_wall_s": 17.9,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "fr-vacuum-analyze",
+              "last_end": "2026-09-23T03:00:01.895614+00:00",
+              "runs_14d": 4,
+              "schedule": "0 3 * * *",
+              "next_slot": "2026-09-24T03:00:00+00:00",
+              "mean_14d_s": 16.6,
+              "last_wall_s": 1.8,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odbt-vacuum-analyze",
+              "last_end": "2026-09-23T11:18:00.085398+00:00",
+              "runs_14d": 3,
+              "schedule": "18 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odr-mv-vacuum-analyze",
+              "last_end": "2026-09-23T11:05:00.470077+00:00",
+              "runs_14d": 3,
+              "schedule": "5 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.5,
+              "last_wall_s": 0.5,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odt-vacuum-analyze",
+              "last_end": "2026-09-23T11:12:00.064617+00:00",
+              "runs_14d": 3,
+              "schedule": "12 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "officials-vacuum-analyze",
+              "last_end": "2026-09-21T01:30:01.483257+00:00",
+              "runs_14d": 2,
+              "schedule": "30 1 * * 1",
+              "next_slot": null,
+              "mean_14d_s": 1.5,
+              "last_wall_s": 1.4,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "osar-vacuum-analyze",
+              "last_end": "2026-09-23T11:16:00.101401+00:00",
+              "runs_14d": 3,
+              "schedule": "16 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.1,
+              "last_wall_s": 0.1,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "osdr-vacuum-analyze",
+              "last_end": "2026-09-23T11:14:00.059816+00:00",
+              "runs_14d": 3,
+              "schedule": "14 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0,
+              "last_wall_s": 0,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "treemap-individuals-vacuum-analyze",
+              "last_end": "2026-09-23T11:10:00.354643+00:00",
+              "runs_14d": 3,
+              "schedule": "10 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 0.3,
+              "last_wall_s": 0.3,
+              "running_since": null
+            }
+          ],
+          "unparsed": [
+            {
+              "active": true,
+              "jobname": "dpr-vacuum-analyze",
+              "schedule": "0 2 * * 0,3",
+              "mean_14d_s": 1
+            },
+            {
+              "active": true,
+              "jobname": "ecs-vacuum-analyze",
+              "schedule": "20 11,17 * * *",
+              "mean_14d_s": 0.5
+            },
+            {
+              "active": true,
+              "jobname": "odbt-vacuum-analyze",
+              "schedule": "18 11,17 * * *",
+              "mean_14d_s": 0
+            },
+            {
+              "active": true,
+              "jobname": "odr-mv-vacuum-analyze",
+              "schedule": "5 11,17 * * *",
+              "mean_14d_s": 0.5
+            },
+            {
+              "active": true,
+              "jobname": "odt-vacuum-analyze",
+              "schedule": "12 11,17 * * *",
+              "mean_14d_s": 0
+            },
+            {
+              "active": true,
+              "jobname": "officials-vacuum-analyze",
+              "schedule": "30 1 * * 1",
+              "mean_14d_s": 1.5
+            },
+            {
+              "active": true,
+              "jobname": "osar-vacuum-analyze",
+              "schedule": "16 11,17 * * *",
+              "mean_14d_s": 0.1
+            },
+            {
+              "active": true,
+              "jobname": "osdr-vacuum-analyze",
+              "schedule": "14 11,17 * * *",
+              "mean_14d_s": 0
+            },
+            {
+              "active": true,
+              "jobname": "treemap-individuals-vacuum-analyze",
+              "schedule": "10 11,17 * * *",
+              "mean_14d_s": 0.3
+            }
+          ]
+        },
+        "nightly": {
+          "running": [],
+          "last_phase": {
+            "phase": "cc148-rehearsal-scratch",
+            "status": "complete",
+            "started_at": "2026-09-23T22:40:00+00:00",
+            "completed_at": "2026-09-23T22:50:00+00:00"
+          },
+          "next_start": "2026-09-24T22:35:00+00:00",
+          "required_minutes": 135,
+          "minutes_to_next_start": 1365
+        },
+        "blackout": {
+          "source": "constant 05:45-09:00 (FIX-1124 fallback: pipeline_state.ec_crawl has no blackout)",
+          "now_utc": "23:49:45",
+          "windows": [
+            {
+              "to": "09:00:00",
+              "from": "05:45:00"
+            }
+          ]
+        },
+        "interlock": {
+          "held": false,
+          "reason_text": "clear",
+          "live_writers": [],
+          "live_writer_detail": []
+        },
+        "watchdogs": {
+          "jobs": [
+            {
+              "jobname": "cron-job-budget-watchdog",
+              "runs_60m": 30,
+              "max_wall_10m_s": 0.026,
+              "median_wall_60m_s": 0.006
+            },
+            {
+              "jobname": "derived-mvs-unit-watchdog",
+              "runs_60m": 30,
+              "max_wall_10m_s": 0.038,
+              "median_wall_60m_s": 0.006
+            }
+          ],
+          "budget_overruns": [],
+          "startup_timeouts_60m": 0
+        },
+        "stuck_units": {
+          "stuck": [],
+          "guarded_pipelines": [
+            "agency_staffing_rollup_refresh",
+            "contract_flow_rollups_rebuild",
+            "donation_edge_orphan_sweep",
+            "donor_party_rollup_orphan_sweep",
+            "donor_party_rollup_refresh",
+            "donor_rollup_orphan_sweep",
+            "donor_rollup_refresh",
+            "entity_connection_stats_orphan_sweep",
+            "entity_connection_stats_rebuild",
+            "entity_connections_rebuild",
+            "financial_entity_totals_reconcile",
+            "financial_entity_totals_refresh",
+            "group_donor_rollup_refresh",
+            "official_vote_stats_rebuild",
+            "refresh_derived_mvs",
+            "run_rule_taggers",
+            "treemap_individuals_global_refresh"
+          ]
+        }
+      },
+      "span_end": "2026-09-24T01:49:45.861769+00:00",
+      "blocked_by": [],
+      "checked_at": "2026-09-23T23:49:45.861769+00:00",
+      "expected_seconds": 3600
+    },
+    "waited_seconds": 1.56
+  },
+  "census": [],
+  "claim": {
+    "claimed_at": "2026-09-23T23:49:48.418Z",
+    "released_at": "2026-09-23T23:51:16.869Z",
+    "state_after_arm": {
+      "pid": 16936,
+      "held": true,
+      "defer": false,
+      "reason": "FIX-1212 bootstrap (cc-147 runner)",
+      "claimant": "FIX-1212 bootstrap (cc-147 runner)",
+      "claimed_at": "2026-09-23T23:49:47.398+00:00",
+      "claimed_by": "Craig@DESKTOP-05GHPC2",
+      "age_seconds": 1,
+      "label_stale": false,
+      "reason_text": "prod session held by this claimant: FIX-1212 bootstrap (cc-147 runner)",
+      "live_writers": [],
+      "label_present": true,
+      "claimant_bypass": true,
+      "expected_minutes": 60,
+      "live_writer_detail": []
+    }
+  },
+  "pacing": {
+    "units_per_call": 2,
+    "prior_value": null,
+    "upserts": 2,
+    "restores": 2,
+    "restored": true
+  },
+  "resume": {
+    "windows_done_before": [
+      1,
+      2
+    ],
+    "resuming_at": 3,
+    "target_before": "2026-09-03T01:34:43.542642+00:00"
+  },
+  "calls": [
+    {
+      "n": 1,
+      "units": 2,
+      "pid": 3343,
+      "started_at": "2026-09-23 23:49:48.505684+00",
+      "returned_at": "2026-09-23T23:50:54.540Z",
+      "wall_s": 66.015,
+      "row": {
+        "id": "d3e21580-45ea-4b53-a26d-bec6caf963ab",
+        "status": "partial",
+        "started_at": "2026-09-23 23:49:48.527321+00",
+        "completed_at": "2026-09-23 23:50:54.535189+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "74 days 01:21:06.334299",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 232271,
+          "unit_capped": true,
+          "windows_run": [
+            3,
+            4
+          ],
+          "cycle_target": "2026-09-03T01:34:43.542642+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "apply_seconds": [
+            1.52,
+            1.9
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            43.41,
+            17.85
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 66,
+          "next_slice_from": "2026-06-21 00:13:37.208343+00",
+          "cycle_started_at": "2026-09-23T23:49:43.724643+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-06-21T00:13:37.208343+00:00",
+          "windows_done_before": [
+            1,
+            2
+          ]
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 33,
+          "min": 0.00534,
+          "median": 0.00756,
+          "max": 0.00756,
+          "elevated": 0
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 33,
+          "min": 0.006491,
+          "median": 0.008243,
+          "max": 0.008243,
+          "elevated": 0
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "n": 2,
+      "units": 2,
+      "pid": 3343,
+      "started_at": "2026-09-23 23:51:14.58603+00",
+      "returned_at": "2026-09-23T23:51:16.693Z",
+      "wall_s": 2.085,
+      "row": {
+        "id": "65fb8c92-8ee3-4860-82f1-8528917df0b8",
+        "status": "partial",
+        "started_at": "2026-09-23 23:51:14.610467+00",
+        "completed_at": "2026-09-23 23:51:16.691042+00",
+        "error_message": "canceled — window 5: canceling statement due to user request; every COMMITTED window kept its progress, the next firing resumes from it",
+        "metadata": {
+          "lag": "74 days 01:21:06.334299",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": true,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 0,
+          "rollup_rows": 0,
+          "unit_capped": false,
+          "windows_run": [],
+          "cycle_target": "2026-09-03T01:34:43.542642+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "apply_seconds": [],
+          "cancel_detail": "window 5: canceling statement due to user request",
+          "stage_seconds": [],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 2,
+          "next_slice_from": "2026-06-21 00:13:37.208343+00",
+          "cycle_started_at": "2026-09-23T23:49:43.724643+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-06-21T00:13:37.208343+00:00",
+          "windows_done_before": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      },
+      "verdict": "stopped: partial: window 5: canceling statement due to user request",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 2,
+          "min": 0.00756,
+          "median": 0.00756,
+          "max": 0.00756,
+          "elevated": 0
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 2,
+          "min": 0.008243,
+          "median": 0.008243,
+          "max": 0.008243,
+          "elevated": 0
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  ],
+  "breathers": [
+    {
+      "before_call": 2,
+      "started_at": "2026-09-23T23:50:54.548Z",
+      "released_at": "2026-09-23T23:51:14.584Z",
+      "waited_s": 20.036,
+      "released_by": "breather_timeout",
+      "readings": 2,
+      "walls_at_release": {
+        "cron-job-budget-watchdog": {
+          "wall_s": 0.00756,
+          "runid": "19045"
+        },
+        "derived-mvs-unit-watchdog": {
+          "wall_s": 0.008243,
+          "runid": "19044"
+        }
+      },
+      "pending_at_release": [
+        "cron-job-budget-watchdog: no run since the CALL returned",
+        "derived-mvs-unit-watchdog: no run since the CALL returned"
+      ]
+    }
+  ],
+  "watchdog_series": [
+    {
+      "at": "2026-09-23T23:49:48.504Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00534,
+        "derived-mvs-unit-watchdog": 0.006491
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19043",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19042",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-23T23:49:50.534Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00534,
+        "derived-mvs-unit-watchdog": 0.006491
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19043",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19042",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:49:52.562Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00534,
+        "derived-mvs-unit-watchdog": 0.006491
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19043",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19042",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:49:54.625Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00534,
+        "derived-mvs-unit-watchdog": 0.006491
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19043",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19042",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:49:56.645Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00534,
+        "derived-mvs-unit-watchdog": 0.006491
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19043",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19042",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:49:58.675Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00534,
+        "derived-mvs-unit-watchdog": 0.006491
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19043",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19042",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:00.702Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:02.726Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:04.751Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:06.772Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:08.800Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:10.843Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:12.864Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:14.892Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:16.912Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:18.933Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:20.962Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:22.981Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:24.999Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:27.024Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:29.042Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:31.058Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:33.082Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:WalWrite \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:35.112Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:37.163Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:39.191Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:41.210Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:43.234Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:45.255Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:47.283Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:49.308Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:51.359Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:50:53.388Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-23T23:51:14.585Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-23T23:51:16.613Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.00756,
+        "derived-mvs-unit-watchdog": 0.008243
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "19045",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "19044",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFileRead \"CALL public.refresh_donor_party_rollup_incremental()\""
+    }
+  ],
+  "elevated_ticks": 0,
+  "trip": {
+    "at": "2026-09-23T23:51:16.630Z",
+    "rule": 2,
+    "reason": "(2) cron-job-budget-watchdog wall 0.008 s >= 0 ms (test trip) on two distinct runs (19045#2026-09-23T23:51:14.585Z, 19045#2026-09-23T23:51:16.613Z)",
+    "call": 2,
+    "job": "cron-job-budget-watchdog",
+    "run_ids": [
+      "19045#2026-09-23T23:51:14.585Z",
+      "19045#2026-09-23T23:51:16.613Z"
+    ],
+    "cancel_sent": true,
+    "backend_gone_verified": true
+  },
+  "caught_up_check": null,
+  "before": {
+    "at": "2026-09-23T23:49:48.437Z",
+    "watermark": "2026-06-21 00:13:37.208343+00",
+    "cursor": {
+      "mode": "full",
+      "target": "2026-09-03T01:34:43.542642+00:00",
+      "started_at": "2026-09-23T23:49:43.724643+00:00",
+      "windows_done": [
+        1,
+        2
+      ]
+    },
+    "crawl_config": null,
+    "mv_rows": 1859976,
+    "mv_sum_cents": "693098760800"
+  },
+  "after": {
+    "at": "2026-09-23T23:51:16.890Z",
+    "watermark": "2026-06-21 00:13:37.208343+00",
+    "cursor": {
+      "mode": "full",
+      "target": "2026-09-03T01:34:43.542642+00:00",
+      "started_at": "2026-09-23T23:49:43.724643+00:00",
+      "windows_done": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "crawl_config": null,
+    "mv_rows": 1859976,
+    "mv_sum_cents": "693098760800"
+  },
+  "sum_ratio_after_over_before": 1,
+  "cursor_last": {
+    "mode": "full",
+    "target": "2026-09-03T01:34:43.542642+00:00",
+    "started_at": "2026-09-23T23:49:43.724643+00:00",
+    "windows_done": [
+      1,
+      2,
+      3,
+      4
+    ]
+  }
+}

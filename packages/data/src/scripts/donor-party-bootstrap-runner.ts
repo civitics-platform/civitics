@@ -2,16 +2,17 @@
  * FIX-1212 / FIX-1215 — the unattended donor-party bootstrap runner.
  *
  *   pnpm --filter @civitics/data data:donor-party:bootstrap:prod \
- *     --probe-units 2 --max-wait-minutes 480 --max-calls 8
+ *     --units-per-call 2 --wall-trip-s 3.0 --breather-until-wall-s 0.5 \
+ *     --breather-max-s 600 --max-calls 12 --expected-minutes 60 --max-wait-minutes 180
  *
  * Launched once, from the PRIMARY checkout (its .env.local.prod is the real
  * one; a worktree's is a stub), as a background process. It needs nobody:
  *
- *   1. WAIT   waitForProdOpGate(5400 s) — the prod-op window as a CONDITION
- *             read every --poll-seconds from public.prod_op_gate() (FIX-1215),
- *             not a clock anybody computed. The wait is BEFORE the claim: a
- *             claim held through a four-hour wait would hold every guarded
- *             pipeline for nothing (rule 102).
+ *   1. WAIT   waitForProdOpGate(--expected-minutes) — the prod-op window as a
+ *             CONDITION read every --poll-seconds from public.prod_op_gate()
+ *             (FIX-1215), not a clock anybody computed. The wait is BEFORE the
+ *             claim: a claim held through a four-hour wait would hold every
+ *             guarded pipeline for nothing (rule 102).
  *   2. CENSUS cancellation-census.ts --minutes 60 --json must PASS, else exit 3
  *             without claiming. (Logs API; prod only — skipped on the clone,
  *             which has no Logs API.)
@@ -26,34 +27,60 @@
  *             40 min: above the procedure's 1,500 s unit budget plus its
  *             longest window with slack, and under the role's 3 h ceiling —
  *             1,500 < 2,400 < 10,800 (rule 126).
- *   5. PROBE  pipeline_state.donor_party_crawl = {"max_units": --probe-units}
- *             for the FIRST CALL only, then DELETED — restoring "absent", never
- *             writing "defaults" (prod has no row). Its windows' stage/apply
- *             seconds are the first prod measurement of a window's wall — the
- *             projection nobody had (rule 132).
- *   6. LOOP   CALL public.refresh_donor_party_rollup_incremental(); read its
- *             terminal data_sync_log row: caught_up → done; partial with "unit
- *             cap reached" / "wall-clock budget reached" → again; skipped →
- *             exit 5; failed / canceled → exit 4; --max-calls → exit 6.
+ *   5. RESUME The cursor (pipeline_state.donor_party_full_rebuild) is read
+ *             before the first CALL and logged as "resuming at window N". The
+ *             runner never edits or deletes it — the procedure owns it (cc-148
+ *             D3).
+ *   6. LOOP   PACED (cc-148 D2; project_background_crawl_design — bounded units
+ *             with breathers, never one long writer):
+ *             a. BREATHER (from CALL 2): wait until BOTH every-2-min watchdogs have a
+ *                completed run that STARTED after the previous CALL returned
+ *                with a wall under --breather-until-wall-s — read every 30 s —
+ *                or --breather-max-s elapses (then proceed, `breather_timeout`).
+ *                cc-147 measured the recovery: 1.341 → 0.612 / 0.061 s within
+ *                one minute of the probe CALL ending.
+ *             b. CENSUS (prod) --minutes 15 before EVERY CALL, after the
+ *                breather so it reads the recovered box.
+ *             c. pipeline_state.donor_party_crawl = {"max_units":
+ *                --units-per-call} upserted before the CALL and restored to the
+ *                prior value (prod: ABSENT → DELETE, never "defaults") after it
+ *                — and again in `finally`.
+ *             d. CALL public.refresh_donor_party_rollup_incremental(); read its
+ *                terminal data_sync_log row: caught_up → done; partial with
+ *                "unit cap reached" / "wall-clock budget reached" → again;
+ *                skipped → exit 5; failed / canceled → exit 4; --max-calls →
+ *                exit 6.
+ *             caught_up is ASSERTED, not read off the row: the cursor is gone
+ *             AND the watermark equals the cycle's target; a mismatch is
+ *             `error` (exit 1).
  *   7. RELEASE, then the after-reads and the receipt (written in `finally`,
  *             whatever the outcome — rule 48).
  *
  * ── THE STOP RULE, IN CODE (rule 65/66) ─────────────────────────────────────
- * Read on connection T once before each CALL and every --tick-seconds (120)
- * while one is in flight:
- *   (1) any `job startup timeout` failure on ANY job since the CALL began;
- *   (2) either every-2-min watchdog's latest wall > 1.0 s on two consecutive readings
- *       (0.003–0.13 s healthy; 1–4 s the pre-failure signature, cc-145 §1);
- *   (3) every 15 min the census (child process) with pass=false; exit 2 (the
- *       Logs API dark) is logged, and TWO consecutive exit-2s trip — the Logs
- *       API going dark was itself a symptom on 09-22 (rule 164);
+ * Read on connection T before each CALL, every --tick-seconds (120) while one
+ * is in flight, and every 30 s during a breather:
+ *   (1) any `job startup timeout` failure on ANY job — the forker; the Tuesday
+ *       signature's actual failure (cc-145 §1);
+ *   (2) either every-2-min watchdog's wall >= --wall-trip-s (3.0) on two DISTINCT
+ *       consecutive runs (one completed run is one vote, 3a8eff87). Walls in
+ *       [1.0, wall-trip-s) are this op's LOAD, not a precursor: cc-147's probe
+ *       drove the budget watchdog 0.014 → 1.341 s with 0 startup timeouts and
+ *       a census pass, and the healthy 06:30 stack puts both over 1 s daily.
+ *       They are logged `elevated` and counted (`elevated_ticks`), never a
+ *       trip. >= 3 s is above anything the healthy stacks produce and inside
+ *       the Tuesday 1–4 s band — a stop worth losing one window for;
+ *   (3) the census (child process) before every CALL and every 15 min during
+ *       one: pass=false trips (the front door — rule 65, the load-bearing
+ *       stop); exit 2 (Logs API dark) is logged, and TWO consecutive exit-2s
+ *       trip — the Logs API going dark was itself a symptom on 09-22 (rule 164);
  *   (4) the CALL's backend gone from pg_stat_activity (the box, not the
  *       procedure).
  * On trip: pg_cancel_backend(<CALL pid>) from T; wait for the CALL to return
  * (the procedure's query_canceled handler records `partial` + cancel_detail and
  * stops — rule 114; the window in flight rolls back whole; committed windows
- * and the cursor stay); close C and verify the backend is GONE (rule 66);
- * release; receipt `outcome: stopped`; exit 4. No retry without Craig.
+ * and the cursor stay); close C and verify the CALL is no longer running
+ * (rule 66); release; receipt `outcome: stopped` with the rule number and the
+ * run ids it counted; exit 4. No retry without Craig.
  *
  * EXIT CODES
  *   0 caught_up · 1 error · 3 census_fail (pre-launch) · 4 stopped ·
@@ -62,12 +89,16 @@
  * <key>` collapses every non-zero code to 1 (pnpm 9, Windows — measured cc-147).
  * The receipt's `exit_code` is authoritative either way.
  *
- * TEST-ONLY FLAGS (the clone rehearsals, rule 118): --trip-on-wall-ms N makes a
- * watchdog reading of >= N ms count as over (0: every reading), and
- * --trip-from-call K arms it from the K-th CALL, so the rehearsal's cancel
- * lands after windows have committed. --tick-seconds shortens the ticker.
- * --receipt-tag names a second local receipt. A local target always writes a
- * `-local` receipt — never over a prod one (the FIX-1209 shape).
+ * TEST-ONLY FLAGS (the clone rehearsals, rule 118): --trip-on-wall-ms N makes
+ * EVERY watchdog reading of >= N ms a vote (0: every reading; the distinct-run
+ * dedupe is off, so a cancel can land inside a short clone CALL), and
+ * --trip-from-call K arms it from the K-th CALL's pre-CALL reading, so the
+ * rehearsal's cancel lands after windows have committed. It never fires during
+ * a breather. --tick-seconds shortens the ticker. --receipt-tag names a second
+ * receipt. A local target always writes a `-local` receipt — never over a prod
+ * one (the FIX-1209 shape) — and no receipt ever overwrites an existing file:
+ * a second launch on the same UTC day gets a `-HHMMSSZ` suffix (cc-148: the
+ * relaunch would otherwise have clobbered cc-147's).
  *
  * KNOWN MISLABEL (out of scope): the procedure stamps `source: 'pg_cron'` on
  * its data_sync_log row even when a supervised CALL ran it.
@@ -89,6 +120,11 @@ const CALL_SQL = "CALL public.refresh_donor_party_rollup_incremental()";
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const DATA_DIR = path.resolve(__dirname, "..", "..");
 
+/** The floor of `elevated`: a wall at or above this and under --wall-trip-s is load, logged, never a trip. */
+export const ELEVATED_FROM_S = 1.0;
+/** Breather read cadence (D2): one every-2-min watchdog run lands per 120 s; 30 s sees each within a quarter-cycle. */
+const BREATHER_READ_S = 30;
+
 export type Outcome =
   | "caught_up" | "stopped" | "skipped" | "gate_timeout" | "census_fail" | "max_calls" | "error";
 
@@ -101,7 +137,10 @@ export const EXIT: Record<Outcome, number> = {
 // ---------------------------------------------------------------------------
 
 export interface RunnerArgs {
-  probeUnits: number;
+  unitsPerCall: number;
+  wallTripS: number;
+  breatherUntilWallS: number;
+  breatherMaxS: number;
   maxWaitMinutes: number;
   pollSeconds: number;
   maxCalls: number;
@@ -124,8 +163,11 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
   // cc-147: cancellation-census.ts died on it). The prompt-shaped launch
   // command carries one, so tolerate it rather than refuse the launch.
   const argv = rawArgv.filter((a) => a !== "--");
+  // --probe-units is gone (cc-148 D2): --units-per-call applies to EVERY CALL.
+  // Passing the old flag is refused as unknown rather than silently re-read.
   const known = new Set([
-    "--probe-units", "--max-wait-minutes", "--poll-seconds", "--max-calls", "--expected-minutes",
+    "--units-per-call", "--wall-trip-s", "--breather-until-wall-s", "--breather-max-s",
+    "--max-wait-minutes", "--poll-seconds", "--max-calls", "--expected-minutes",
     "--tick-seconds", "--trip-on-wall-ms", "--trip-from-call", "--receipt-tag",
   ]);
   for (let i = 0; i < argv.length; i++) {
@@ -142,11 +184,14 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
   };
   const out: Record<string, number> = {};
   for (const [k, flag, d, min] of [
-    ["probeUnits", "--probe-units", 2, 1],
+    ["unitsPerCall", "--units-per-call", 2, 1],
+    ["wallTripS", "--wall-trip-s", 3.0, 0.001],
+    ["breatherUntilWallS", "--breather-until-wall-s", 0.5, 0.001],
+    ["breatherMaxS", "--breather-max-s", 600, 0],
     ["maxWaitMinutes", "--max-wait-minutes", 480, 1],
     ["pollSeconds", "--poll-seconds", 300, 1],
-    ["maxCalls", "--max-calls", 8, 1],
-    ["expectedMinutes", "--expected-minutes", 90, 1],
+    ["maxCalls", "--max-calls", 12, 1],
+    ["expectedMinutes", "--expected-minutes", 60, 1],
     ["tickSeconds", "--tick-seconds", 120, 1],
     ["tripFromCall", "--trip-from-call", 1, 1],
   ] as const) {
@@ -164,7 +209,10 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
   const tag = argValue(argv, "--receipt-tag");
   if (tag != null && !/^[a-z0-9-]+$/.test(tag)) return { error: "--receipt-tag must be [a-z0-9-]+" };
   return {
-    probeUnits: Math.floor(out["probeUnits"]!),
+    unitsPerCall: Math.floor(out["unitsPerCall"]!),
+    wallTripS: out["wallTripS"]!,
+    breatherUntilWallS: out["breatherUntilWallS"]!,
+    breatherMaxS: out["breatherMaxS"]!,
     maxWaitMinutes: out["maxWaitMinutes"]!,
     pollSeconds: out["pollSeconds"]!,
     maxCalls: Math.floor(out["maxCalls"]!),
@@ -223,6 +271,28 @@ export function classifyCallRow(row: CallRow | null, callNo: number, maxCalls: n
   return { action: "continue", detail: `${row.status}: ${row.error_message ?? "not caught up"}` };
 }
 
+/** D3 — the first window the procedure will run: the lowest of 1..16 not in windows_done. */
+export function resumeWindow(cursor: Record<string, unknown> | null): number | null {
+  if (!cursor) return null;
+  const done = new Set(
+    (Array.isArray(cursor["windows_done"]) ? (cursor["windows_done"] as unknown[]) : []).map((x) => Number(x)));
+  for (let i = 1; i <= 16; i++) if (!done.has(i)) return i;
+  return null;
+}
+
+/**
+ * D3 — caught_up is ASSERTED: the cursor is gone and the watermark equals the
+ * cycle's target. `equal` comes from Postgres (timestamptz =), so microseconds
+ * survive; JS Date would round both to the millisecond.
+ */
+export function caughtUpMismatch(c: { cursor_gone: boolean; target: string | null; equal: boolean | null }): string | null {
+  const bad: string[] = [];
+  if (!c.cursor_gone) bad.push("the cursor is still present");
+  if (c.target === null) bad.push("no cycle target known to compare the watermark against");
+  else if (c.equal !== true) bad.push(`the watermark does not equal the cycle target ${c.target}`);
+  return bad.length ? bad.join("; ") : null;
+}
+
 // ---------------------------------------------------------------------------
 // The stop rule — pure over readings
 // ---------------------------------------------------------------------------
@@ -244,47 +314,112 @@ export interface WatchdogReading {
   callBackendPresent: boolean | null;
 }
 
+export interface Trip {
+  /** Which stop rule fired: (1) forker, (2) watchdog wall, (3) front door, (4) backend gone. */
+  rule: 1 | 2 | 3 | 4;
+  reason: string;
+  job?: string;
+  /** Rule (2): the two votes it counted — cron runids (a running run is `<runid>@<reading time>`). */
+  run_ids?: string[];
+}
+
 export interface StopState {
   consecutiveOver: Record<string, number>;
+  /** The votes counted over, per job, since the last reading under — rule (2)'s evidence. */
+  overVotes: Record<string, string[]>;
   /** The vote key last counted per job — see WatchdogReading.runs. */
   lastVote: Record<string, string>;
   consecutiveCensusDark: number;
 }
 
-export const newStopState = (): StopState => ({ consecutiveOver: {}, lastVote: {}, consecutiveCensusDark: 0 });
+export const newStopState = (): StopState => ({ consecutiveOver: {}, overVotes: {}, lastVote: {}, consecutiveCensusDark: 0 });
+
+/** D1 — jobs whose wall is this op's load: in [ELEVATED_FROM_S, wallTripS). */
+export function elevatedJobs(walls: Record<string, number>, wallTripS: number): string[] {
+  return Object.entries(walls).filter(([, w]) => w >= ELEVATED_FROM_S && w < wallTripS).map(([j]) => j);
+}
 
 export function evaluateWatchdogs(
   state: StopState,
   r: WatchdogReading,
-  opts: { thresholdS: number; tripOnWallMs: number | null; armed: boolean },
-): string | null {
-  if (r.startupTimeouts > 0) return `(1) ${r.startupTimeouts} job startup timeout failure(s) since the CALL began`;
-  if (r.callBackendPresent === false) return "(4) the CALL's backend is gone from pg_stat_activity";
+  opts: { wallTripS: number; tripOnWallMs: number | null; armed: boolean },
+): Trip | null {
+  if (r.startupTimeouts > 0) {
+    return { rule: 1, reason: `(1) ${r.startupTimeouts} job startup timeout failure(s) since the CALL began` };
+  }
+  if (r.callBackendPresent === false) return { rule: 4, reason: "(4) the CALL's backend is gone from pg_stat_activity" };
+  const testTrip = opts.armed && opts.tripOnWallMs !== null;
   for (const [job, wall] of Object.entries(r.walls)) {
     const run = r.runs?.[job];
+    let vote = `?@${r.at}`;
     if (run) {
-      const vote = run.running ? `${run.runid}@${r.at}` : run.runid;
-      if (state.lastVote[job] === vote) continue;   // the same completed run, read again
-      state.lastVote[job] = vote;
+      vote = run.running ? `${run.runid}@${r.at}` : run.runid;
+      // The test trip counts every reading (its documented meaning); the real
+      // rule counts one completed run once.
+      if (!testTrip) {
+        if (state.lastVote[job] === vote) continue;   // the same completed run, read again
+        state.lastVote[job] = vote;
+      } else {
+        vote = `${vote}#${r.at}`;
+      }
     }
-    const over = opts.armed && opts.tripOnWallMs !== null
-      ? wall * 1000 >= opts.tripOnWallMs
-      : wall > opts.thresholdS;
-    state.consecutiveOver[job] = over ? (state.consecutiveOver[job] ?? 0) + 1 : 0;
+    const over = testTrip ? wall * 1000 >= opts.tripOnWallMs! : wall >= opts.wallTripS;
+    if (over) {
+      state.consecutiveOver[job] = (state.consecutiveOver[job] ?? 0) + 1;
+      (state.overVotes[job] ??= []).push(vote);
+    } else {
+      state.consecutiveOver[job] = 0;
+      state.overVotes[job] = [];
+    }
     if (state.consecutiveOver[job]! >= 2) {
-      return `(2) ${job} latest wall ${wall.toFixed(3)} s over ${opts.armed && opts.tripOnWallMs !== null
-        ? `${opts.tripOnWallMs} ms (test trip)` : `${opts.thresholdS} s`} on two consecutive readings`;
+      const ids = state.overVotes[job]!.slice(-2);
+      return {
+        rule: 2, job, run_ids: ids,
+        reason: `(2) ${job} wall ${wall.toFixed(3)} s >= ${testTrip
+          ? `${opts.tripOnWallMs} ms (test trip)` : `${opts.wallTripS} s`} on two ${testTrip ? "consecutive readings" : "distinct runs"} (${ids.join(", ")})`,
+      };
     }
   }
   return null;
 }
 
-/** Census exit code → trip reason or null. 0 pass · 1 fail · 2 Logs API dark. */
-export function evaluateCensus(state: StopState, exitCode: number): string | null {
+/** Census exit code → trip or null. 0 pass · 1 fail · 2 Logs API dark. */
+export function evaluateCensus(state: StopState, exitCode: number): Trip | null {
   if (exitCode === 0) { state.consecutiveCensusDark = 0; return null; }
-  if (exitCode === 1) { state.consecutiveCensusDark = 0; return "(3) census pass=false (57014 rate or front-door 5xx)"; }
+  if (exitCode === 1) { state.consecutiveCensusDark = 0; return { rule: 3, reason: "(3) census pass=false (57014 rate or front-door 5xx)" }; }
   state.consecutiveCensusDark += 1;
-  return state.consecutiveCensusDark >= 2 ? "(3) the Logs API was dark on two consecutive census readings" : null;
+  return state.consecutiveCensusDark >= 2 ? { rule: 3, reason: "(3) the Logs API was dark on two consecutive census readings" } : null;
+}
+
+// ---------------------------------------------------------------------------
+// The breather — pure over the watchdogs' latest completed runs (D2)
+// ---------------------------------------------------------------------------
+
+export interface CompletedRun {
+  jobname: string;
+  runid: string;
+  /** start_time as epoch ms, DB clock. */
+  start_ms: number;
+  wall_s: number;
+}
+
+/**
+ * Released when EVERY watchdog's latest completed run STARTED at or after the
+ * previous CALL returned (a run under the recovered box — never one that
+ * straddled the CALL, never one already counted during it) and its wall is
+ * under the threshold. `pending` names what is still being waited on.
+ */
+export function breatherRelease(
+  runs: readonly CompletedRun[],
+  returnedAtMs: number,
+  thresholdS: number,
+): { released: boolean; pending: string[] } {
+  const pending: string[] = [];
+  for (const r of runs) {
+    if (r.start_ms < returnedAtMs) pending.push(`${r.jobname}: no run since the CALL returned`);
+    else if (r.wall_s >= thresholdS) pending.push(`${r.jobname}: ${r.wall_s.toFixed(3)} s >= ${thresholdS} s`);
+  }
+  return { released: pending.length === 0, pending };
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +444,21 @@ SELECT j.jobname, x.runid::text AS runid, x.running, x.wall_s::float8 AS wall_s
         ORDER BY d.start_time DESC LIMIT 1)
     ) u
     ORDER BY u.wall_s DESC LIMIT 1
+  ) x
+ WHERE j.schedule = '*/2 * * * *' AND j.active
+ ORDER BY j.jobname`;
+
+/** The breather's reading: each every-2-min watchdog's latest COMPLETED run, with its start on the DB clock. */
+const Q_WATCHDOGS_COMPLETED = `
+SELECT j.jobname, x.runid::text AS runid,
+       (EXTRACT(epoch FROM x.start_time) * 1000)::float8 AS start_ms,
+       EXTRACT(epoch FROM (x.end_time - x.start_time))::float8 AS wall_s
+  FROM cron.job j
+  CROSS JOIN LATERAL (
+    SELECT d.runid, d.start_time, d.end_time
+      FROM cron.job_run_details d
+     WHERE d.jobid = j.jobid AND d.end_time IS NOT NULL
+     ORDER BY d.start_time DESC LIMIT 1
   ) x
  WHERE j.schedule = '*/2 * * * *' AND j.active
  ORDER BY j.jobname`;
@@ -428,15 +578,27 @@ function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: n
 
 interface CallRecord {
   n: number;
-  probe: boolean;
+  units: number;
   pid: number;
   started_at: string;
   returned_at: string | null;
   wall_s: number | null;
   row: CallRow | null;
   verdict: string;
-  watchdog_walls: { job: string; min: number; median: number; max: number; n: number }[];
+  watchdog_walls: { job: string; min: number; median: number; max: number; n: number; elevated: number }[];
+  windows_done_after: number[] | null;
   error?: string;
+}
+
+interface BreatherRecord {
+  before_call: number;
+  started_at: string;
+  released_at: string;
+  waited_s: number;
+  released_by: "walls" | "breather_timeout" | "stop";
+  readings: number;
+  walls_at_release: Record<string, { wall_s: number; runid: string }>;
+  pending_at_release: string[];
 }
 
 interface Receipt {
@@ -451,12 +613,19 @@ interface Receipt {
   exit_code: number | null;
   detail: string | null;
   gate: { polls: GatePoll[]; opened_at: string | null; opening_reading: ProdOpGate | null; waited_seconds: number | null };
-  census: { at: string; minutes: number; code: number; summary: string }[];
+  census: { at: string; minutes: number; code: number; summary: string; before_call: number | null }[];
   claim: { claimed_at: string | null; released_at: string | null; state_after_arm: Partial<ProdSessionState> | null };
-  probe: { units: number; prior_value: Record<string, unknown> | null; restored: boolean | null };
+  pacing: { units_per_call: number; prior_value: Record<string, unknown> | null; upserts: number; restores: number; restored: boolean | null };
+  resume: { windows_done_before: number[] | null; resuming_at: number | null; target_before: string | null } | null;
   calls: CallRecord[];
+  breathers: BreatherRecord[];
   watchdog_series: WatchdogReading[];
-  trip: { at: string; reason: string; call: number; cancel_sent: boolean; backend_gone_verified: boolean | null } | null;
+  elevated_ticks: number;
+  trip: {
+    at: string; rule: Trip["rule"]; reason: string; call: number; job: string | null; run_ids: string[];
+    cancel_sent: boolean; backend_gone_verified: boolean | null;
+  } | null;
+  caught_up_check: { cursor_gone: boolean; watermark: string | null; target: string | null; equal: boolean | null } | null;
   before: Snapshot | null;
   after: Snapshot | null;
   sum_ratio_after_over_before: number | null;
@@ -469,19 +638,32 @@ function median(xs: number[]): number {
   return s.length === 0 ? NaN : s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 }
 
-function summarizeWalls(series: WatchdogReading[]) {
+function summarizeWalls(series: WatchdogReading[], wallTripS: number) {
   const by: Record<string, number[]> = {};
   for (const r of series) for (const [j, w] of Object.entries(r.walls)) (by[j] ??= []).push(w);
   return Object.entries(by).map(([job, ws]) => ({
     job, n: ws.length, min: Math.min(...ws), median: median(ws), max: Math.max(...ws),
+    elevated: ws.filter((w) => w >= ELEVATED_FROM_S && w < wallTripS).length,
   }));
 }
 
-function receiptPaths(target: "prod" | "local", launchedAt: string, tag: string | null): { md: string; json: string } {
+/**
+ * A receipt never overwrites an existing file. cc-148: tonight's relaunch is
+ * the same UTC day as cc-147's probe, and `${day}-fix1212-bootstrap-runner.md`
+ * would have replaced its receipt — the record the relaunch's premise rests on.
+ */
+export function receiptPaths(
+  target: "prod" | "local", launchedAt: string, tag: string | null,
+  exists: (p: string) => boolean = fs.existsSync,
+): { md: string; json: string } {
   const day = launchedAt.slice(0, 10);
   const base = `${day}-fix1212-bootstrap-runner${target === "local" ? "-local" : ""}${tag ? `-${tag}` : ""}`;
   const dir = path.join(REPO_ROOT, "docs", "audits");
-  return { md: path.join(dir, `${base}.md`), json: path.join(dir, `${base}.json`) };
+  const at = (b: string) => ({ md: path.join(dir, `${b}.md`), json: path.join(dir, `${b}.json`) });
+  const first = at(base);
+  if (!exists(first.md) && !exists(first.json)) return first;
+  const hms = launchedAt.slice(11, 19).replace(/:/g, "");
+  return at(`${base}-${hms}Z`);
 }
 
 function renderReceipt(r: Receipt): string {
@@ -500,11 +682,14 @@ function renderReceipt(r: Receipt): string {
   L.push(`| args | \`${JSON.stringify(r.args)}\` |`);
   L.push(`| gate | ${r.gate.polls.length} poll(s); opened ${r.gate.opened_at ?? "never"} after ${f(r.gate.waited_seconds != null ? r.gate.waited_seconds / 60 : null)} min |`);
   L.push(`| claim | ${r.claim.claimed_at ?? "—"} → released ${r.claim.released_at ?? "—"} |`);
-  L.push(`| probe | max_units ${r.probe.units}; prior value ${JSON.stringify(r.probe.prior_value)}; restored to prior: ${r.probe.restored ?? "—"} |`);
+  L.push(`| pacing | max_units ${r.pacing.units_per_call} per CALL; prior value ${JSON.stringify(r.pacing.prior_value)}; ${r.pacing.upserts} upsert(s), ${r.pacing.restores} restore(s); restored to prior: ${r.pacing.restored ?? "—"} |`);
+  L.push(`| resume | ${r.resume ? `windows_done before ${JSON.stringify(r.resume.windows_done_before)} · resuming at window ${r.resume.resuming_at ?? "—"} · target ${r.resume.target_before ?? "—"}` : "no cursor (a fresh cycle, or crawl)"} |`);
   L.push(`| before | watermark ${r.before?.watermark ?? "—"} · cursor ${r.before?.cursor ? "present" : "absent"} · MV ${r.before?.mv_rows ?? "—"} rows / SUM ${r.before?.mv_sum_cents ?? "—"} |`);
-  L.push(`| after | watermark ${r.after?.watermark ?? "—"} · cursor ${r.after?.cursor ? JSON.stringify(r.after.cursor) : "absent"} · MV ${r.after?.mv_rows ?? "—"} rows / SUM ${r.after?.mv_sum_cents ?? "—"} |`);
+  L.push(`| after | watermark ${r.after?.watermark ?? "—"} · cursor ${r.after?.cursor ? JSON.stringify(r.after.cursor) : "absent"} · crawl row ${r.after?.crawl_config ? JSON.stringify(r.after.crawl_config) : "absent"} · MV ${r.after?.mv_rows ?? "—"} rows / SUM ${r.after?.mv_sum_cents ?? "—"} |`);
   L.push(`| SUM after / before | ${r.sum_ratio_after_over_before == null ? "—" : r.sum_ratio_after_over_before.toFixed(6)} |`);
-  L.push(`| trip | ${r.trip ? `${r.trip.at} call ${r.trip.call}: ${r.trip.reason}; cancel sent ${r.trip.cancel_sent}; backend gone verified ${r.trip.backend_gone_verified}` : "none"} |`);
+  L.push(`| caught_up check | ${r.caught_up_check ? `cursor gone ${r.caught_up_check.cursor_gone} · watermark ${r.caught_up_check.watermark} = target ${r.caught_up_check.target}: ${r.caught_up_check.equal}` : "—"} |`);
+  L.push(`| elevated ticks | ${r.elevated_ticks} reading(s) with a watchdog wall in [${ELEVATED_FROM_S}, ${r.args.wallTripS}) s |`);
+  L.push(`| trip | ${r.trip ? `${r.trip.at} call ${r.trip.call}: rule (${r.trip.rule}) ${r.trip.reason}${r.trip.run_ids.length ? `; runs ${r.trip.run_ids.join(", ")}` : ""}; cancel sent ${r.trip.cancel_sent}; backend gone verified ${r.trip.backend_gone_verified}` : "none"} |`);
   L.push("");
   L.push("## Gate polls");
   L.push("");
@@ -512,24 +697,34 @@ function renderReceipt(r: Receipt): string {
   L.push("");
   L.push("## CALLs");
   L.push("");
-  L.push("| # | probe | pid | started | wall s | status | mode | windows_run | stage_seconds | apply_seconds | error / cancel | data_sync_log id |");
-  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|");
+  L.push("| # | max_units | pid | started | wall s | status | mode | windows_run | windows_done after | stage_seconds | apply_seconds | error / cancel | data_sync_log id |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const c of r.calls) {
     const md = c.row?.metadata ?? {};
-    L.push(`| ${c.n} | ${c.probe ? "yes" : ""} | ${c.pid} | ${c.started_at} | ${f(c.wall_s)} | ${c.row?.status ?? "—"} | ${String(md["mode"] ?? "—")} | ` +
-      `${JSON.stringify(md["windows_run"] ?? null)} | ${JSON.stringify(md["stage_seconds"] ?? null)} | ${JSON.stringify(md["apply_seconds"] ?? null)} | ` +
+    L.push(`| ${c.n} | ${c.units} | ${c.pid} | ${c.started_at} | ${f(c.wall_s)} | ${c.row?.status ?? "—"} | ${String(md["mode"] ?? "—")} | ` +
+      `${JSON.stringify(md["windows_run"] ?? null)} | ${JSON.stringify(c.windows_done_after)} | ${JSON.stringify(md["stage_seconds"] ?? null)} | ${JSON.stringify(md["apply_seconds"] ?? null)} | ` +
       `${String(md["cancel_detail"] ?? c.row?.error_message ?? c.error ?? "")} | ${c.row?.id ?? "—"} |`);
   }
   L.push("");
   L.push("## Watchdog walls per CALL (s)");
   L.push("");
   for (const c of r.calls) {
-    L.push(`- CALL ${c.n}: ${c.watchdog_walls.map((w) => `${w.job} n=${w.n} min ${w.min.toFixed(3)} / median ${w.median.toFixed(3)} / max ${w.max.toFixed(3)}`).join("; ") || "(no readings)"}`);
+    L.push(`- CALL ${c.n}: ${c.watchdog_walls.map((w) => `${w.job} n=${w.n} min ${w.min.toFixed(3)} / median ${w.median.toFixed(3)} / max ${w.max.toFixed(3)} (elevated ${w.elevated})`).join("; ") || "(no readings)"}`);
   }
+  L.push("");
+  L.push("## Breathers");
+  L.push("");
+  L.push("| before CALL | started | released | waited s | released by | readings | walls at release | pending at release |");
+  L.push("|---|---|---|---|---|---|---|---|");
+  for (const b of r.breathers) {
+    L.push(`| ${b.before_call} | ${b.started_at} | ${b.released_at} | ${f(b.waited_s)} | ${b.released_by} | ${b.readings} | ` +
+      `${Object.entries(b.walls_at_release).map(([j, w]) => `${j} ${w.wall_s.toFixed(3)} (run ${w.runid})`).join("; ")} | ${b.pending_at_release.join("; ")} |`);
+  }
+  if (r.breathers.length === 0) L.push("| — | | | | | | | |");
   L.push("");
   L.push("## Census");
   L.push("");
-  for (const c of r.census) L.push(`- ${c.at} (${c.minutes} min) exit ${c.code}: ${c.summary}`);
+  for (const c of r.census) L.push(`- ${c.at} (${c.minutes} min${c.before_call != null ? `, before CALL ${c.before_call}` : ""}) exit ${c.code}: ${c.summary}`);
   if (r.census.length === 0) L.push("- (none)");
   L.push("");
   L.push("## Cursor at the end");
@@ -540,6 +735,8 @@ function renderReceipt(r: Receipt): string {
   L.push("");
   return L.join("\n");
 }
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
@@ -562,9 +759,9 @@ async function main(): Promise<number> {
     launched_at: launchedAt, finished_at: null, outcome: null, exit_code: null, detail: null,
     gate: { polls: [], opened_at: null, opening_reading: null, waited_seconds: null },
     census: [], claim: { claimed_at: null, released_at: null, state_after_arm: null },
-    probe: { units: args.probeUnits, prior_value: null, restored: null },
-    calls: [], watchdog_series: [], trip: null, before: null, after: null,
-    sum_ratio_after_over_before: null, cursor_last: null,
+    pacing: { units_per_call: args.unitsPerCall, prior_value: null, upserts: 0, restores: 0, restored: null },
+    resume: null, calls: [], breathers: [], watchdog_series: [], elevated_ticks: 0, trip: null,
+    caught_up_check: null, before: null, after: null, sum_ratio_after_over_before: null, cursor_last: null,
   };
   const finish = (o: Outcome, detail: string): void => {
     if (R.outcome !== null) return;   // the first verdict stands
@@ -580,6 +777,17 @@ async function main(): Promise<number> {
       log(`[runner] RECEIPT WRITE FAILED: ${errText(e)}\n${JSON.stringify(R)}`);
     }
   };
+  const recordTrip = (t: Trip, call: number): void => {
+    R.trip ??= {
+      at: new Date().toISOString(), rule: t.rule, reason: t.reason, call, job: t.job ?? null,
+      run_ids: t.run_ids ?? [], cancel_sent: false, backend_gone_verified: null,
+    };
+  };
+  const wallsLine = (w: Record<string, number>): string =>
+    Object.entries(w).map(([j, s]) => `${j}=${s.toFixed(3)}s${s >= ELEVATED_FROM_S && s < args.wallTripS ? "(elevated)" : ""}`).join(" ");
+  const noteReading = (r: WatchdogReading): void => {
+    if (elevatedJobs(r.walls, args.wallTripS).length > 0) R.elevated_ticks += 1;
+  };
 
   log(`[runner] target ${target} (${dbUrl.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@")}) · pid ${process.pid}`);
   log(`[runner] receipt → ${paths.md}`);
@@ -589,7 +797,7 @@ async function main(): Promise<number> {
   let callClient: Client | null = null;
   let callPid: number | null = null;
   let inCall = false;
-  let stopping: string | null = null;
+  let stopping: Trip | null = null;
   const tClient = new Client({ connectionString: dbUrl, application_name: `${APP}_ticker` });
   const stopState = newStopState();
 
@@ -605,11 +813,35 @@ async function main(): Promise<number> {
     }
   };
 
+  // D2 — the crawl row is restored to exactly its prior value after EVERY
+  // CALL and again in `finally`; idempotent. On the ticker connection: C may
+  // be the thing that just died.
+  let crawlDirty = false;
+  const restoreCrawl = async (): Promise<void> => {
+    if (!crawlDirty) return;
+    try {
+      if (R.pacing.prior_value === null) {
+        await tClient.query("DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'");
+      } else {
+        await tClient.query(
+          `UPDATE public.pipeline_state SET value = $1::jsonb, updated_at = clock_timestamp() WHERE key = 'donor_party_crawl'`,
+          [JSON.stringify(R.pacing.prior_value)]);
+      }
+      crawlDirty = false;
+      R.pacing.restores += 1;
+      R.pacing.restored = true;
+      log(`[pacing] donor_party_crawl restored to ${JSON.stringify(R.pacing.prior_value)}`);
+    } catch (e) {
+      R.pacing.restored = false;
+      log(`[pacing] RESTORE FAILED: ${errText(e)}`);
+    }
+  };
+
   let signalled = false;
   const onSignal = (sig: string) => {
     if (signalled) return;
     signalled = true;
-    stopping = `${sig} received`;
+    stopping = { rule: 4, reason: `${sig} received` };
     if (R.claim.claimed_at === null) {
       // Nothing held and nothing running: the gate wait cannot be interrupted
       // from here, so record and leave. The session lock, if the claim were
@@ -625,6 +857,49 @@ async function main(): Promise<number> {
   };
   process.on("SIGINT", () => onSignal("SIGINT"));
   process.on("SIGTERM", () => onSignal("SIGTERM"));
+
+  // ── the breather (D2) — between CALLs, never a trip on its own ────────────
+  const breathe = async (beforeCall: number, returnedAtMs: number, stSince: string): Promise<void> => {
+    const t0 = Date.now();
+    const startedAt = new Date().toISOString();
+    let readings = 0;
+    let last: CompletedRun[] = [];
+    let verdict = { released: false, pending: ["(no reading yet)"] };
+    let by: BreatherRecord["released_by"] = "breather_timeout";
+    for (;;) {
+      try {
+        const q = await tClient.query<CompletedRun>(Q_WATCHDOGS_COMPLETED);
+        last = q.rows.map((x) => ({ ...x, start_ms: Number(x.start_ms), wall_s: Number(x.wall_s) }));
+        verdict = breatherRelease(last, returnedAtMs, args.breatherUntilWallS);
+        // The stop rule still reads during a breather — a startup timeout or a
+        // >= wall-trip-s wall on two distinct runs stops before the next CALL.
+        // The test-only trip never fires here (armed: false): it exists to land
+        // a cancel INSIDE a CALL.
+        const r = await readWatchdogs(tClient, stSince, null);
+        noteReading(r);
+        readings += 1;
+        const trip = evaluateWatchdogs(stopState, r, { wallTripS: args.wallTripS, tripOnWallMs: args.tripOnWallMs, armed: false });
+        log(`[breather] before CALL ${beforeCall} +${Math.round((Date.now() - t0) / 1000)}s: ${wallsLine(r.walls)} ` +
+          `startup_timeouts=${r.startupTimeouts} ${verdict.released ? "RELEASED" : `waiting: ${verdict.pending.join("; ")}`}`);
+        if (trip && !stopping) { stopping = trip; recordTrip(trip, beforeCall); }
+      } catch (e) {
+        log(`[breather] reading failed: ${errText(e)}`);
+      }
+      if (stopping) { by = "stop"; break; }
+      if (verdict.released) { by = "walls"; break; }
+      const left = args.breatherMaxS * 1000 - (Date.now() - t0);
+      if (left <= 0) { by = "breather_timeout"; break; }
+      await sleep(Math.min(BREATHER_READ_S * 1000, left));
+    }
+    const rec: BreatherRecord = {
+      before_call: beforeCall, started_at: startedAt, released_at: new Date().toISOString(),
+      waited_s: (Date.now() - t0) / 1000, released_by: by, readings,
+      walls_at_release: Object.fromEntries(last.map((x) => [x.jobname, { wall_s: x.wall_s, runid: x.runid }])),
+      pending_at_release: verdict.released ? [] : verdict.pending,
+    };
+    R.breathers.push(rec);
+    log(`[breather] before CALL ${beforeCall}: ${by} after ${rec.waited_s.toFixed(1)} s`);
+  };
 
   // ── everything that runs under the claim (steps 4-6) ───────────────────────
   const underClaim = async (): Promise<void> => {
@@ -647,9 +922,21 @@ async function main(): Promise<number> {
 
     R.before = await snapshot(c, true);
     log(`[before] watermark ${R.before.watermark} · cursor ${R.before.cursor ? JSON.stringify(R.before.cursor) : "absent"} · crawl_config ${JSON.stringify(R.before.crawl_config)} · MV ${R.before.mv_rows} / SUM ${R.before.mv_sum_cents}`);
-    R.probe.prior_value = R.before.crawl_config;
+    R.pacing.prior_value = R.before.crawl_config;
+    // D3 — resume is the normal case. Read, log, never touch.
+    if (R.before.cursor) {
+      const wd = Array.isArray(R.before.cursor["windows_done"]) ? (R.before.cursor["windows_done"] as unknown[]).map(Number) : [];
+      R.resume = {
+        windows_done_before: wd,
+        resuming_at: resumeWindow(R.before.cursor),
+        target_before: (R.before.cursor["target"] as string | undefined) ?? null,
+      };
+      log(`[resume] resuming at window ${R.resume.resuming_at} (windows_done ${JSON.stringify(wd)}, target ${R.resume.target_before}, cycle started ${String(R.before.cursor["started_at"])})`);
+    } else {
+      log("[resume] no cursor — the procedure decides the mode afresh");
+    }
 
-    let lastCensusAt = Date.now();   // the pre-launch census counts as the first
+    let lastCensusAt = Date.now();
     let censusBusy = false;
     const maybeCensus = () => {
       if (target !== "prod" || censusBusy || Date.now() - lastCensusAt < 15 * 60_000) return;
@@ -657,52 +944,83 @@ async function main(): Promise<number> {
       lastCensusAt = Date.now();
       void runCensus(15, log).then((cen) => {
         censusBusy = false;
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary });
+        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, before_call: null });
         log(`[census] 15 min: ${cen.summary}`);
         const trip = evaluateCensus(stopState, cen.code);
         if (trip && !stopping) {
           stopping = trip;
           if (inCall) {
-            R.trip = { at: new Date().toISOString(), reason: trip, call: R.calls.length, cancel_sent: false, backend_gone_verified: null };
-            void signalBackend("pg_cancel_backend", trip).then((ok) => { if (R.trip) R.trip.cancel_sent = ok; });
+            recordTrip(trip, R.calls.length);
+            void signalBackend("pg_cancel_backend", trip.reason).then((ok) => { if (R.trip) R.trip.cancel_sent = ok; });
           }
         }
       });
     };
 
+    let prevSince: string | null = null;
+    let returnedAtMs: number | null = null;
+    let cycleTarget: string | null = R.resume?.target_before ?? null;
     for (let n = 1; n <= args.maxCalls; n++) {
-      const probe = n === 1;
       const armed = n >= args.tripFromCall;
-      const since = (await c.query<{ t: string }>("SELECT clock_timestamp()::text AS t")).rows[0]!.t;
 
-      // The stop rule once BEFORE each CALL.
-      const pre = await readWatchdogs(tClient, since, null);
-      R.watchdog_series.push(pre);
-      const preTrip = evaluateWatchdogs(stopState, pre, { thresholdS: 1.0, tripOnWallMs: args.tripOnWallMs, armed });
-      log(`[tick] pre-CALL ${n}: ${Object.entries(pre.walls).map(([j, w]) => `${j}=${w.toFixed(3)}s`).join(" ")} startup_timeouts=${pre.startupTimeouts}`);
-      maybeCensus();
-      if (preTrip || stopping) {
-        const why = preTrip ?? stopping ?? "";
-        R.trip ??= { at: new Date().toISOString(), reason: why, call: n, cancel_sent: false, backend_gone_verified: null };
-        finish("stopped", `stop rule before CALL ${n}: ${why}`);
+      // a. The breather, from CALL 2.
+      if (n > 1 && returnedAtMs !== null && prevSince !== null) {
+        await breathe(n, returnedAtMs, prevSince);
+      }
+      if (stopping) {
+        const t = stopping as Trip;
+        recordTrip(t, n);
+        finish("stopped", `stop rule before CALL ${n}: ${t.reason}`);
         return;
       }
 
-      if (probe) {
-        await c.query(
-          `INSERT INTO public.pipeline_state (key, value) VALUES ('donor_party_crawl', $1::jsonb)
-           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = clock_timestamp()`,
-          [JSON.stringify({ max_units: args.probeUnits })]);
-        log(`[probe] donor_party_crawl = {"max_units": ${args.probeUnits}} (prior: ${JSON.stringify(R.probe.prior_value)})`);
+      // b. The census before EVERY CALL (prod), after the breather.
+      if (target === "prod") {
+        while (censusBusy) await sleep(1000);   // a cadence census still in flight
+        const cen = await runCensus(15, log);
+        lastCensusAt = Date.now();
+        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, before_call: n });
+        log(`[census] pre-CALL ${n} 15 min: ${cen.summary}`);
+        const trip = evaluateCensus(stopState, cen.code);
+        if (trip) {
+          recordTrip(trip, n);
+          finish("stopped", `stop rule before CALL ${n}: ${trip.reason}`);
+          return;
+        }
       }
 
+      const since = (await c.query<{ t: string }>("SELECT clock_timestamp()::text AS t")).rows[0]!.t;
+
+      // The stop rule once BEFORE each CALL. Startup timeouts are counted from
+      // the previous CALL's start, so one during a breather is not missed.
+      const pre = await readWatchdogs(tClient, prevSince ?? since, null);
+      R.watchdog_series.push(pre);
+      noteReading(pre);
+      const preTrip = evaluateWatchdogs(stopState, pre, { wallTripS: args.wallTripS, tripOnWallMs: args.tripOnWallMs, armed });
+      log(`[tick] pre-CALL ${n}: ${wallsLine(pre.walls)} startup_timeouts=${pre.startupTimeouts}`);
+      if (preTrip || stopping) {
+        const t = (preTrip ?? stopping)!;
+        recordTrip(t, n);
+        finish("stopped", `stop rule before CALL ${n}: ${t.reason}`);
+        return;
+      }
+
+      // c. The pacing row, before every CALL.
+      await c.query(
+        `INSERT INTO public.pipeline_state (key, value) VALUES ('donor_party_crawl', $1::jsonb)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = clock_timestamp()`,
+        [JSON.stringify({ max_units: args.unitsPerCall })]);
+      crawlDirty = true;
+      R.pacing.upserts += 1;
+      log(`[pacing] donor_party_crawl = {"max_units": ${args.unitsPerCall}} (prior: ${JSON.stringify(R.pacing.prior_value)})`);
+
       const rec: CallRecord = {
-        n, probe, pid, started_at: since, returned_at: null, wall_s: null, row: null,
-        verdict: "", watchdog_walls: [],
+        n, units: args.unitsPerCall, pid, started_at: since, returned_at: null, wall_s: null, row: null,
+        verdict: "", watchdog_walls: [], windows_done_after: null,
       };
       R.calls.push(rec);
       const callSeries: WatchdogReading[] = [pre];
-      log(`[call ${n}] ${CALL_SQL}${probe ? ` (probe, max_units ${args.probeUnits})` : ""} on pid ${pid}`);
+      log(`[call ${n}] ${CALL_SQL} (max_units ${args.unitsPerCall}) on pid ${pid}`);
       const t0 = Date.now();
       inCall = true;
       let callErr: unknown = null;
@@ -712,7 +1030,7 @@ async function main(): Promise<number> {
         (e: unknown) => { callErr = e; done = true; },
       );
 
-      // The ticker, while the CALL is in flight.
+      // d. The ticker, while the CALL is in flight.
       let cancelAt: number | null = null;
       let recancelled = false;
       let terminated = false;
@@ -726,14 +1044,16 @@ async function main(): Promise<number> {
           const r = await readWatchdogs(tClient, since, pid);
           R.watchdog_series.push(r);
           callSeries.push(r);
-          const trip = evaluateWatchdogs(stopState, r, { thresholdS: 1.0, tripOnWallMs: args.tripOnWallMs, armed });
-          log(`[tick] CALL ${n} +${Math.round((Date.now() - t0) / 1000)}s: ${Object.entries(r.walls).map(([j, w]) => `${j}=${w.toFixed(3)}s`).join(" ")} startup_timeouts=${r.startupTimeouts} backend=${r.backend ?? "GONE"}`);
+          noteReading(r);
+          const trip = evaluateWatchdogs(stopState, r, { wallTripS: args.wallTripS, tripOnWallMs: args.tripOnWallMs, armed });
+          log(`[tick] CALL ${n} +${Math.round((Date.now() - t0) / 1000)}s: ${wallsLine(r.walls)} startup_timeouts=${r.startupTimeouts} backend=${r.backend ?? "GONE"}`);
           maybeCensus();
-          const why = trip ?? stopping;
+          const why: Trip | null = trip ?? stopping;
           if (why && cancelAt === null) {
             stopping = why;
-            R.trip = { at: new Date().toISOString(), reason: why, call: n, cancel_sent: false, backend_gone_verified: null };
-            R.trip.cancel_sent = await signalBackend("pg_cancel_backend", why);
+            recordTrip(why, n);
+            const ok = await signalBackend("pg_cancel_backend", why.reason);
+            if (R.trip) R.trip.cancel_sent = ok;
             cancelAt = Date.now();
           } else if (cancelAt !== null && !recancelled && Date.now() - cancelAt > 5 * 60_000) {
             recancelled = true;
@@ -750,49 +1070,51 @@ async function main(): Promise<number> {
       inCall = false;
       rec.returned_at = new Date().toISOString();
       rec.wall_s = (Date.now() - t0) / 1000;
-      rec.watchdog_walls = summarizeWalls(callSeries);
+      rec.watchdog_walls = summarizeWalls(callSeries, args.wallTripS);
       if (callErr) rec.error = errText(callErr);
+      prevSince = since;
+      returnedAtMs = await tClient.query<{ ms: number }>("SELECT (EXTRACT(epoch FROM clock_timestamp()) * 1000)::float8 AS ms")
+        .then((q) => Number(q.rows[0]!.ms), () => Date.now());
 
-      if (probe) {
-        // Restore "absent" (or exactly the prior value) — never "defaults".
-        // On the ticker connection: C may be the thing that just died.
-        try {
-          if (R.probe.prior_value === null) {
-            await tClient.query("DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'");
-          } else {
-            await tClient.query(
-              `UPDATE public.pipeline_state SET value = $1::jsonb, updated_at = clock_timestamp() WHERE key = 'donor_party_crawl'`,
-              [JSON.stringify(R.probe.prior_value)]);
-          }
-          R.probe.restored = true;
-          log(`[probe] donor_party_crawl restored to ${JSON.stringify(R.probe.prior_value)}`);
-        } catch (e) {
-          R.probe.restored = false;
-          log(`[probe] RESTORE FAILED: ${errText(e)}`);
-        }
-      }
+      await restoreCrawl();
 
       if (callErr) {
         log(`[call ${n}] ERROR after ${rec.wall_s.toFixed(1)} s: ${rec.error}`);
         rec.row = await readCallRow(tClient, since).catch(() => null);
         rec.verdict = `error: ${rec.error}`;
-        finish("stopped", `CALL ${n} raised: ${rec.error}${stopping ? ` (after trip: ${stopping})` : ""}`);
+        finish("stopped", `CALL ${n} raised: ${rec.error}${stopping ? ` (after trip: ${(stopping as Trip).reason})` : ""}`);
         return;
       }
 
       const row = await readCallRow(c, since);
       rec.row = row;
       const md = row?.metadata ?? {};
+      if (Array.isArray(md["windows_done"])) rec.windows_done_after = (md["windows_done"] as unknown[]).map(Number);
+      if (typeof md["cycle_target"] === "string") cycleTarget ??= md["cycle_target"] as string;
       log(`[call ${n}] returned in ${rec.wall_s.toFixed(1)} s: status=${row?.status} mode=${md["mode"]} windows_run=${JSON.stringify(md["windows_run"])} ` +
         `windows_done=${JSON.stringify(md["windows_done"])} stage_s=${JSON.stringify(md["stage_seconds"])} apply_s=${JSON.stringify(md["apply_seconds"])} ` +
         `caught_up=${md["caught_up"]} err="${row?.error_message ?? ""}" id=${row?.id}`);
       const v = classifyCallRow(row, n, args.maxCalls);
       rec.verdict = v.action === "continue" ? `continue: ${v.detail}` : `${v.outcome}: ${v.detail}`;
       if (stopping && v.action !== "done") {
-        finish("stopped", `stop rule during CALL ${n}: ${stopping}; the CALL closed ${row?.status} (${String(md["cancel_detail"] ?? row?.error_message ?? "")})`);
+        finish("stopped", `stop rule during CALL ${n}: ${(stopping as Trip).reason}; the CALL closed ${row?.status} (${String(md["cancel_detail"] ?? row?.error_message ?? "")})`);
         return;
       }
-      if (v.action === "done") { finish("caught_up", `${v.detail} after ${n} CALL(s)`); return; }
+      if (v.action === "done") {
+        // D3 — assert, don't trust: the cursor is gone and the watermark IS the target.
+        const q = await c.query<{ cursor_gone: boolean; watermark: string | null; equal: boolean | null }>(
+          `SELECT NOT EXISTS (SELECT 1 FROM public.pipeline_state WHERE key = 'donor_party_full_rebuild') AS cursor_gone,
+                  (SELECT value->>'last_indexed_at' FROM public.pipeline_state WHERE key = 'donor_party_rollup_watermark') AS watermark,
+                  (SELECT (value->>'last_indexed_at')::timestamptz = $1::timestamptz
+                     FROM public.pipeline_state WHERE key = 'donor_party_rollup_watermark') AS equal`, [cycleTarget]);
+        const chk = { ...q.rows[0]!, target: cycleTarget };
+        R.caught_up_check = chk;
+        const bad = caughtUpMismatch(chk);
+        log(`[caught_up] cursor_gone=${chk.cursor_gone} watermark ${chk.watermark} target ${chk.target} equal=${chk.equal}${bad ? ` — MISMATCH: ${bad}` : ""}`);
+        if (bad) { finish("error", `the CALL reported caught_up but ${bad}`); return; }
+        finish("caught_up", `${v.detail} after ${n} CALL(s)`);
+        return;
+      }
       if (v.action === "stop") { finish(v.outcome, v.detail); return; }
     }
     finish("max_calls", `--max-calls ${args.maxCalls} exhausted`);
@@ -826,7 +1148,7 @@ async function main(): Promise<number> {
       // ── 2. pre-launch census ─────────────────────────────────────────────
       if (target === "prod") {
         const cen = await runCensus(60, log);
-        R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary });
+        R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary, before_call: null });
         log(`[census] pre-launch 60 min: ${cen.summary}`);
         if (cen.code !== 0) {
           finish("census_fail", `pre-launch census exit ${cen.code}: ${cen.summary} — not claiming`);
@@ -844,8 +1166,9 @@ async function main(): Promise<number> {
           try {
             await underClaim();
           } finally {
-            // Close C and verify the CALL's backend is GONE (rule 66) BEFORE
-            // the release, so the session never ends with our CALL still live.
+            await restoreCrawl();
+            // Close C and verify the CALL is no longer running (rule 66)
+            // BEFORE the release, so the session never ends with our CALL live.
             const cc = callClient;
             if (cc) await cc.end().catch(() => { /* best effort */ });
             if (callPid !== null) {
@@ -857,7 +1180,7 @@ async function main(): Promise<number> {
                 const row = r?.rows[0];
                 seen = row ? `${row.application_name}/${row.state} "${(row.query ?? "").slice(0, 40)}"` : "absent";
                 gone = r !== null && callNoLongerRunning(row);
-                if (!gone) await new Promise((res) => setTimeout(res, 1000));
+                if (!gone) await sleep(1000);
               }
               log(`[runner] CALL backend ${callPid}: ${gone ? "no longer running the CALL" : "STILL RUNNING it after 30 s"} (${seen})`);
               if (R.trip) R.trip.backend_gone_verified = gone;
@@ -892,6 +1215,19 @@ async function main(): Promise<number> {
       const snapC = new Client({ connectionString: dbUrl, application_name: `${APP}_after` });
       await snapC.connect();
       await snapC.query("SET statement_timeout = '5min'");
+      if (crawlDirty) {
+        // The last resort: tClient may be the thing that died.
+        if (R.pacing.prior_value === null) {
+          await snapC.query("DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'");
+        } else {
+          await snapC.query(`UPDATE public.pipeline_state SET value = $1::jsonb, updated_at = clock_timestamp() WHERE key = 'donor_party_crawl'`,
+            [JSON.stringify(R.pacing.prior_value)]);
+        }
+        crawlDirty = false;
+        R.pacing.restores += 1;
+        R.pacing.restored = true;
+        log(`[pacing] donor_party_crawl restored in finally to ${JSON.stringify(R.pacing.prior_value)}`);
+      }
       R.after = await snapshot(snapC, R.calls.length > 0);
       const pss = (await snapC.query<{ s: ProdSessionState }>("SELECT public.prod_session_state() AS s")).rows[0]!.s;
       const lingering = await snapC.query<{ n: number }>(
