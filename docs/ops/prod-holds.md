@@ -70,6 +70,51 @@ the canary, and is overwritten by the next claim.
 This is rule 43's first clause ("no concurrent heavy reads during a supervised
 run") moved out of prompt prose and into code.
 
+### Running a guarded procedure UNDER the claim (FIX-1213)
+
+Until FIX-1213, claiming and then CALLing a guarded procedure deferred **your
+own** CALL: `defer` was `held`, and `held` is "does ANY backend hold the lock",
+so the procedure's guard logged `skipped` with `prod session held: …` at the
+operator who had claimed precisely in order to run it (cc-146 §4). The lock
+lives on a private connection inside the claim, so a pid match cannot fix it;
+what the CALL's own backend can carry is a session GUC.
+
+```sql
+-- On the connection that will CALL, AFTER the claim is held.
+-- Each line its OWN statement — never one multi-statement string.
+SET civitics.prod_session_claimant = '<the claim reason>';
+SELECT public.prod_session_state();   -- expect defer=false, claimant_bypass=true
+CALL public.<guarded procedure>();
+```
+
+```bash
+# The same, through db-query (the claim is held in another terminal):
+node scripts/db-query.mjs --prod --call --yes-i-mean-prod \
+  --claimant "FIX-NNN landing" "CALL public.refresh_donor_party_rollup_incremental();"
+```
+
+- `prod_session_state()` returns `defer = held AND the GUC is unset`, plus
+  `claimant` (the value) and `claimant_bypass` (`held AND set`). `reason_text`
+  reads `prod session held by this claimant: <value>` — the string a guard would
+  have written, so a bypassed defer is visible.
+- **`held` is unchanged.** The claim preflight reads it, so a second claim is
+  still refused from a backend with the GUC set. The GUC bypasses the DEFER,
+  never the claim.
+- **Everyone else still defers.** A pg_cron firing is a fresh bgworker session;
+  the nightly reads `defer` on its own connection; neither sets the GUC.
+- **Separate statements, SET in front.** A multi-statement string is an
+  implicit transaction block, and a procedure that COMMITs dies at its first
+  COMMIT (FIX-1128). The guard reads the GUC when the procedure starts, so the
+  SET must precede the CALL on the same connection (rule 109).
+- **An operator affordance, not a security boundary.** Any role can set a
+  `civitics.*` placeholder, but EXECUTE on every guarded procedure is
+  `{postgres, service_role}` and only `postgres` opens direct-pg sessions. That
+  role could already run an unclaimed CALL — strictly worse, because nothing
+  else would stand down.
+- `session:wait-for-gate --then "<cmd>"` (FIX-1215) claims, then runs the
+  command with `CIVITICS_PROD_SESSION_CLAIMANT` set; `db-query.mjs --call` reads
+  that variable when `--claimant` is not given.
+
 ### What it does NOT stop
 
 - **The Phase 1 daily ingest** (Regulations.gov, Congress.gov, the OpenStates

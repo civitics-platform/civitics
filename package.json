@@ -40,6 +40,7 @@
     "check:workflow-parity": "node scripts/check-workflow-parity.mjs",
     "check:proconfig": "node scripts/check-proconfig-timeouts.mjs",
     "check:proconfig:test": "node scripts/test-check-proconfig.mjs",
+    "db-query:test": "node scripts/test-db-query.mjs",
     "hook:test": "node scripts/test-pre-push-hook.mjs",
     "check:hit-test": "node scripts/hit-test-probe.mjs",
     "db:push:prod": "node scripts/db-push-prod.mjs",

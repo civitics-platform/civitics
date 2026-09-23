@@ -46,11 +46,20 @@
 // Reads SUPABASE_DB_PASSWORD directly from .env.local.prod (the file-read path
 // that sidesteps the `source` non-export trap; mirrors scripts/db-push-prod.mjs)
 // and injects it into the CLI-cached session-pooler URL. Redacts on print.
+//
+// FIX-1213 — --claimant "<reason>" (only with --call): prepends
+//     SET civitics.prod_session_claimant = '<reason>';
+// as its own statement after the timeout, so a guarded procedure CALLed from
+// here while THIS operator holds the supervised session runs instead of
+// deferring to it. Claim first (session:claim-prod); pass the claim's reason.
+// The prelude lives in scripts/lib/db-query-prelude.mjs (tested by
+// scripts/test-db-query.mjs).
 
 import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildPrelude, claimantProblem } from "./lib/db-query-prelude.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_FILE = join(ROOT, ".env.local.prod");
@@ -72,6 +81,10 @@ function usage(msg) {
     "                    PROCEDURE can run. Local by default; --prod --call also\n" +
     "                    requires --yes-i-mean-prod and is a WRITE path.\n" +
     "  --timeout <ival>  statement_timeout for --call (default 60min).\n" +
+    "  --claimant <why>  with --call only: SET civitics.prod_session_claimant\n" +
+    "                    first, so a guarded procedure runs under YOUR claim\n" +
+    "                    instead of deferring to it (FIX-1213). Pass the claim's\n" +
+    "                    reason. Falls back to $CIVITICS_PROD_SESSION_CLAIMANT.\n" +
     "Tip: for SQL containing single quotes or a $ / backtick, use --file so the\n" +
     "shell never sees it (write the .sql with the Write tool first).",
   );
@@ -96,6 +109,7 @@ let csv = false;
 let call = false;           // FIX-791: autocommit mode for COMMITting procedures
 let timeout = "60min";      // statement_timeout used by --call
 let yesIMeanProd = false;   // the --prod --call gate
+let claimant = null;        // FIX-1213: the supervised session's reason, for the guard
 const sqlParts = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -107,6 +121,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--call" || a === "--no-txn") call = true;
   else if (a === "--timeout") timeout = argv[++i];
   else if (a === "--yes-i-mean-prod") yesIMeanProd = true;
+  else if (a === "--claimant") claimant = argv[++i] ?? "";
   else if (a === "--help" || a === "-h") usage();
   else sqlParts.push(a);
 }
@@ -119,6 +134,18 @@ if (file && sqlParts.length > 0) usage("pass EITHER a SQL string OR --file, not 
 // A bad interval would otherwise be swallowed by psql at SET time.
 if (call && !/^[0-9]+\s*(ms|s|min|h|d|second|seconds|minute|minutes|hour|hours)?$/i.test(String(timeout ?? ""))) {
   usage(`--timeout must be a postgres interval like 60min / 90s / 2h, got: ${timeout}`);
+}
+
+// FIX-1213: the env fallback is what session:wait-for-gate --then hands its
+// child, so a command it runs needs no flag spelling of its own. Only under
+// --call: an inherited env var must not make a plain read refuse.
+if (claimant === null && call && process.env.CIVITICS_PROD_SESSION_CLAIMANT) {
+  claimant = process.env.CIVITICS_PROD_SESSION_CLAIMANT;
+}
+if (claimant !== null) {
+  if (!call) usage("--claimant is only meaningful with --call");
+  const problem = claimantProblem(claimant);
+  if (problem) usage(problem);
 }
 
 // FIX-791 — the gate. --prod --call is the ONLY write path in this script, so
@@ -180,14 +207,10 @@ if (file) {
 // prepends instead is a statement_timeout, so a CALL that livelocks has a
 // backstop rather than running until something else notices.
 const readOnly = target === "prod" && !call;
-const prelude = call
-  ? `SET statement_timeout = '${timeout}';\n`
-  : readOnly
-    ? "SET TRANSACTION READ ONLY;\n"
-    : "";
+const prelude = buildPrelude({ call, readOnly, timeout, claimant });
 const stdin = prelude + sqlText + "\n";
 
-console.error(`[db-query] ${label}${call ? ` — CALL MODE (autocommit, statement_timeout=${timeout})` : ""}`);
+console.error(`[db-query] ${label}${call ? ` — CALL MODE (autocommit, statement_timeout=${timeout}${claimant !== null ? `, claimant=${claimant}` : ""})` : ""}`);
 
 // FIX-791: a prod CALL is a supervised action. Say what is about to happen, to
 // which host, and leave a beat to Ctrl-C out of it.
