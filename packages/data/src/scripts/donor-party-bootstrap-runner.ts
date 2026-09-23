@@ -58,9 +58,9 @@
  * EXIT CODES
  *   0 caught_up · 1 error · 3 census_fail (pre-launch) · 4 stopped ·
  *   5 skipped · 6 max_calls · 7 gate_timeout
- * Through `pnpm run` on this machine (pnpm 9, Windows) every non-zero code
- * arrives as 1 — measured cc-147. The receipt's `exit_code` is authoritative;
- * `tsx` directly preserves the code.
+ * `pnpm --filter … <key>` and plain `pnpm <key>` pass the code through; `pnpm -s
+ * <key>` collapses every non-zero code to 1 (pnpm 9, Windows — measured cc-147).
+ * The receipt's `exit_code` is authoritative either way.
  *
  * TEST-ONLY FLAGS (the clone rehearsals, rule 118): --trip-on-wall-ms N makes a
  * watchdog reading of >= N ms count as over (0: every reading), and
@@ -231,6 +231,13 @@ export interface WatchdogReading {
   at: string;
   /** jobname → latest wall, seconds (a running run counts its elapsed). */
   walls: Record<string, number>;
+  /**
+   * jobname → the cron run that wall belongs to. cc-147: without it, a tick and
+   * the pre-CALL reading 16 s later read ONE run (09:06, 1.341 s) twice and
+   * tripped "two consecutive". One completed run is one vote; a run still
+   * RUNNING votes at every reading (a hung watchdog must still trip).
+   */
+  runs?: Record<string, { runid: string; running: boolean }>;
   /** `job startup timeout` failures on any job since the CALL began. */
   startupTimeouts: number;
   /** false when the CALL's backend is not in pg_stat_activity. null = no CALL in flight. */
@@ -239,10 +246,12 @@ export interface WatchdogReading {
 
 export interface StopState {
   consecutiveOver: Record<string, number>;
+  /** The vote key last counted per job — see WatchdogReading.runs. */
+  lastVote: Record<string, string>;
   consecutiveCensusDark: number;
 }
 
-export const newStopState = (): StopState => ({ consecutiveOver: {}, consecutiveCensusDark: 0 });
+export const newStopState = (): StopState => ({ consecutiveOver: {}, lastVote: {}, consecutiveCensusDark: 0 });
 
 export function evaluateWatchdogs(
   state: StopState,
@@ -252,6 +261,12 @@ export function evaluateWatchdogs(
   if (r.startupTimeouts > 0) return `(1) ${r.startupTimeouts} job startup timeout failure(s) since the CALL began`;
   if (r.callBackendPresent === false) return "(4) the CALL's backend is gone from pg_stat_activity";
   for (const [job, wall] of Object.entries(r.walls)) {
+    const run = r.runs?.[job];
+    if (run) {
+      const vote = run.running ? `${run.runid}@${r.at}` : run.runid;
+      if (state.lastVote[job] === vote) continue;   // the same completed run, read again
+      state.lastVote[job] = vote;
+    }
     const over = opts.armed && opts.tripOnWallMs !== null
       ? wall * 1000 >= opts.tripOnWallMs
       : wall > opts.thresholdS;
@@ -277,20 +292,24 @@ export function evaluateCensus(state: StopState, exitCode: number): string | nul
 // ---------------------------------------------------------------------------
 
 const Q_WATCHDOGS = `
-SELECT j.jobname,
-       GREATEST(
-         COALESCE((SELECT EXTRACT(epoch FROM (d.end_time - d.start_time))
-                     FROM cron.job_run_details d
-                    WHERE d.jobid = j.jobid AND d.end_time IS NOT NULL
-                    ORDER BY d.start_time DESC LIMIT 1), 0),
-         COALESCE((SELECT EXTRACT(epoch FROM (clock_timestamp() - d.start_time))
-                     FROM cron.job_run_details d
-                    WHERE d.jobid = j.jobid AND d.end_time IS NULL
-                      AND d.status IN ('starting', 'running', 'sending', 'connecting')
-                      AND d.start_time > clock_timestamp() - interval '1 hour'
-                    ORDER BY d.start_time DESC LIMIT 1), 0)
-       )::float8 AS wall_s
+SELECT j.jobname, x.runid::text AS runid, x.running, x.wall_s::float8 AS wall_s
   FROM cron.job j
+  CROSS JOIN LATERAL (
+    SELECT u.runid, u.running, u.wall_s FROM (
+      (SELECT d.runid, false AS running, EXTRACT(epoch FROM (d.end_time - d.start_time)) AS wall_s
+         FROM cron.job_run_details d
+        WHERE d.jobid = j.jobid AND d.end_time IS NOT NULL
+        ORDER BY d.start_time DESC LIMIT 1)
+      UNION ALL
+      (SELECT d.runid, true, EXTRACT(epoch FROM (clock_timestamp() - d.start_time))
+         FROM cron.job_run_details d
+        WHERE d.jobid = j.jobid AND d.end_time IS NULL
+          AND d.status IN ('starting', 'running', 'sending', 'connecting')
+          AND d.start_time > clock_timestamp() - interval '1 hour'
+        ORDER BY d.start_time DESC LIMIT 1)
+    ) u
+    ORDER BY u.wall_s DESC LIMIT 1
+  ) x
  WHERE j.schedule = '*/2 * * * *' AND j.active
  ORDER BY j.jobname`;
 
@@ -303,7 +322,7 @@ SELECT count(*)::int AS n
 
 async function readWatchdogs(t: Client, since: string, callPid: number | null): Promise<WatchdogReading & { backend?: string }> {
   const at = new Date().toISOString();
-  const wd = await t.query<{ jobname: string; wall_s: number }>(Q_WATCHDOGS);
+  const wd = await t.query<{ jobname: string; runid: string; running: boolean; wall_s: number }>(Q_WATCHDOGS);
   const st = await t.query<{ n: number }>(Q_STARTUP_TIMEOUTS, [since]);
   let callBackendPresent: boolean | null = null;
   let backend: string | undefined;
@@ -317,10 +336,24 @@ async function readWatchdogs(t: Client, since: string, callPid: number | null): 
   return {
     at,
     walls: Object.fromEntries(wd.rows.map((r) => [r.jobname, Number(r.wall_s)])),
+    runs: Object.fromEntries(wd.rows.map((r) => [r.jobname, { runid: r.runid, running: r.running }])),
     startupTimeouts: st.rows[0]?.n ?? 0,
     callBackendPresent,
     backend,
   };
+}
+
+/**
+ * Rule 66, under the SESSION POOLER. cc-147: after C closed, Supavisor kept
+ * the server backend (application_name Supavisor, state idle, last query
+ * DISCARD ALL) — so "absent from pg_stat_activity" read STILL PRESENT for a
+ * backend that was running nothing. What rule 66 asks is whether the CALL is
+ * still running there. DISCARD ALL also resets the claimant GUC, so the pooled
+ * backend cannot carry it to the next client.
+ */
+export function callNoLongerRunning(row: { state: string | null; query: string | null } | undefined): boolean {
+  if (!row) return true;
+  return row.state !== "active" && !/refresh_donor_party_rollup_incremental/i.test(row.query ?? "");
 }
 
 interface Snapshot {
@@ -817,12 +850,16 @@ async function main(): Promise<number> {
             if (cc) await cc.end().catch(() => { /* best effort */ });
             if (callPid !== null) {
               let gone = false;
+              let seen = "absent";
               for (let i = 0; i < 30 && !gone; i++) {
-                const r = await tClient.query("SELECT 1 FROM pg_stat_activity WHERE pid = $1", [callPid]).catch(() => null);
-                gone = r !== null && r.rowCount === 0;
+                const r = await tClient.query<{ state: string | null; query: string | null; application_name: string | null }>(
+                  "SELECT state, query, application_name FROM pg_stat_activity WHERE pid = $1", [callPid]).catch(() => null);
+                const row = r?.rows[0];
+                seen = row ? `${row.application_name}/${row.state} "${(row.query ?? "").slice(0, 40)}"` : "absent";
+                gone = r !== null && callNoLongerRunning(row);
                 if (!gone) await new Promise((res) => setTimeout(res, 1000));
               }
-              log(`[runner] CALL backend ${callPid} ${gone ? "gone from pg_stat_activity" : "STILL PRESENT after 30 s"}`);
+              log(`[runner] CALL backend ${callPid}: ${gone ? "no longer running the CALL" : "STILL RUNNING it after 30 s"} (${seen})`);
               if (R.trip) R.trip.backend_gone_verified = gone;
             }
           }

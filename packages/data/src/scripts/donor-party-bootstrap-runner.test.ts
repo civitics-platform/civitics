@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   EXIT,
+  callNoLongerRunning,
   classifyCallRow,
   evaluateCensus,
   evaluateWatchdogs,
@@ -74,6 +75,30 @@ test("stop rule (2): one slow watchdog reading is noise; two consecutive trip", 
   assert.equal(evaluateWatchdogs(s, r(0.02), opts), null, "a healthy reading resets the count");
   assert.equal(evaluateWatchdogs(s, r(1.3), opts), null);
   assert.match(evaluateWatchdogs(s, r(2.1), opts) ?? "", /^\(2\) cron-job-budget-watchdog/);
+});
+
+test("stop rule (2), cc-147: ONE completed run read twice is one vote, not two", () => {
+  // Prod 09:06:49 tick and 09:07:05 pre-CALL both read the 09:06 run (1.341 s).
+  const s = newStopState();
+  const opts = { thresholdS: 1.0, tripOnWallMs: null, armed: true };
+  const r = (at: string, runid: string, wall: number, running = false) => ({
+    at, walls: { w: wall }, runs: { w: { runid, running } }, startupTimeouts: 0, callBackendPresent: true,
+  });
+  assert.equal(evaluateWatchdogs(s, r("09:06:49", "R906", 1.341), opts), null);
+  assert.equal(evaluateWatchdogs(s, r("09:07:05", "R906", 1.341), opts), null, "same run: no second vote");
+  assert.match(evaluateWatchdogs(s, r("09:08:49", "R908", 1.2), opts) ?? "", /two consecutive/, "the next run over trips");
+  // a hung watchdog run votes at every reading
+  const h = newStopState();
+  assert.equal(evaluateWatchdogs(h, r("a", "R1", 5, true), opts), null);
+  assert.match(evaluateWatchdogs(h, r("b", "R1", 125, true), opts) ?? "", /two consecutive/);
+});
+
+test("rule 66 under the session pooler: an idle DISCARD ALL backend is not running the CALL", () => {
+  assert.equal(callNoLongerRunning(undefined), true);
+  assert.equal(callNoLongerRunning({ state: "idle", query: "DISCARD ALL" }), true, "the cc-147 prod reading");
+  assert.equal(callNoLongerRunning({ state: "active", query: "CALL public.refresh_donor_party_rollup_incremental()" }), false);
+  assert.equal(callNoLongerRunning({ state: "idle", query: "CALL public.refresh_donor_party_rollup_incremental()" }), false,
+    "idle with the CALL as its last query: not proven finished — keep waiting");
 });
 
 test("stop rule (1) and (4) trip on a single reading", () => {
