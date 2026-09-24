@@ -1,0 +1,59 @@
+{
+  "cc": "150",
+  "prompt": "cc-prompt-150-gha-dispatcher-vercel-cron-fires-workflow-dispatch-at-the-slot-nightly-idempotent-by-nominal-day-schedule-stays-as-fallback.md",
+  "started_at": "2026-09-24T01:36:50Z",
+  "finished_at": "2026-09-24T03:05:14Z",
+  "head_before": "87cdd6cc",
+  "head_after": "414b0c43",
+  "commits": [
+    {
+      "sha": "769f8dd4",
+      "subject": "docs(fixes): file FIX-1218 (GHA scheduled runs start 1.6-2.7 h after the slot; a Vercel-cron dispatcher fires workflow_dispatch at the slot)"
+    },
+    {
+      "sha": "c6ec2e8d",
+      "subject": "feat(data): FIX-1218 — the nightly is idempotent by nominal day: nominal_day + dispatched_by in nightly_cron metadata; data:nightly:preflight; slot_offset_hours as a dispatch input"
+    },
+    {
+      "sha": "30e3b5c2",
+      "subject": "ci(nightly): FIX-1218 — workflow_dispatch inputs slot_offset_hours/dispatched_by; the offset env honours them; fec-phase preflight gates every downstream job"
+    },
+    {
+      "sha": "68523359",
+      "subject": "feat(app): FIX-1218 — /api/cron/gha-dispatch fires workflow_dispatch at the slot with a per-call stamp; three vercel.json crons"
+    },
+    {
+      "sha": "dcc3bf7a",
+      "subject": "test(data): FIX-1218 — prod_op_gate's source anchors read the LATEST defining migration; branch (a) cases at the 21:00 start"
+    },
+    {
+      "sha": "cde8e947",
+      "subject": "feat(data): FIX-1218 — receipts §1 reads dispatched runs and the dispatcher's stamp; canary report-only keys"
+    },
+    {
+      "sha": "a478880e",
+      "subject": "[skip vercel] test(app): FIX-1218 — the hung-GitHub case holds a ref'd handle, as a real socket does"
+    },
+    {
+      "sha": "414b0c43",
+      "subject": "docs(fixes): FIX-1218 / 1163 / 1215 / 1176 / 1011 appends; PROMPT_TEMPLATE gate (g) reads the 21:00 dispatch time, rule 71 rewritten"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1218"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920140000_fix1218_gha_dispatch_stamp_and_gate_nightly_start.sql"
+  ],
+  "prod_writes": "One migration, 20260920140000, applied to Pro 02:49:52.6-02:49:54.2 UTC with db:push:prod after wait-for-gate read OK at 02:49:48Z. It created record_gha_dispatch(jsonb) and redefined prod_op_gate() with c_nightly_start 22:35 -> 21:00. Both bodies have 0 lines of diff against the file. Pushes to main: 769f8dd4 at 01:44:33 (docs, the filing), cde8e947 at 02:49:22 (the code, Vercel deploy success ~02:51), a478880e (skip vercel), 414b0c43 at 03:03:30 (docs). Three Vercel crons are live: gha-dispatch/nightly at 0 21, gha-dispatch/sync-canary-check at 0 5, gha-dispatch/platform-snapshot every 10 min. Every call upserts pipeline_state.gha_dispatch_<stem>, and the first automatic one was platform-snapshot at 03:00:10. One hand call at 02:55:05.951Z to /api/cron/gha-dispatch/sync-canary-check: GitHub 204, stamp at 02:55:07.669, run 35949260302. That dispatched run executed the canary on prod: one canary_check data_sync_log row, and one RECOVERED alert email to ADMIN_EMAIL (transitions new:gha_dispatch_stale plus three recoveries). No CALL, no VACUUM, no cron.alter_job. Every other prod contact was a read: db-query --prod, pg_get_functiondef, wait-for-gate.",
+  "ci": "green",
+  "stopped_items": [
+    "The token's expiry DATE is not recorded. Craig confirmed GITHUB_DISPATCH_TOKEN is in Vercel Production, minted to the scope given (civitics-platform, this repo, Actions: Read and write, 1-year expiry requested), but gave no date. The canary's gha_dispatch_refused reports the expiry day whenever it comes.",
+    "FIX-1011's append rides on FIX-1176's bullet with a [[FIX-1011]] cross-link, because FIX-1011's own bullet is archived. This follows cc-149's precedent for FIX-1073.",
+    "The pre-push interlock read for a478880e ran, but its value was cut off by a tail -2 before I looked. A read at 02:52:33, seconds after the push, shows held=false with empty live_writers. The runner does not claim until ~09:00. The commit was [skip vercel], so no deploy happened. Every other push had its held=false read observed first (02:48:59, 03:03:14).",
+    "Pattern B is not recorded here: the Fixes: FIX-1218 record is the next session's (see §7). The prompt's planned Closes: FIX-1163 must NOT ride on it. FIX-1163 has been closed since 2026-09-13 (bd60f873).",
+    "Commits carry Co-Authored-By only, with no Claude-Session trailer. This VS Code session has no claude.ai session URL, and I did not invent one."
+  ]
+}
