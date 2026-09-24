@@ -30,9 +30,20 @@ import {
   RE_PROC_FROM_COMMAND,
 } from "../lib/cron-job-pipelines";
 
+const MIGRATIONS_DIR = path.join(__dirname, "..", "..", "..", "..", "supabase", "migrations");
+// FIX-1218: the LATEST migration that (re)defines prod_op_gate, derived rather
+// than named — the anchors must read the body prod actually runs. Pinned to
+// 20260920120000 they kept passing on a body 20260920140000 had replaced.
 const MIGRATION = path.join(
-  __dirname, "..", "..", "..", "..",
-  "supabase", "migrations", "20260920120000_fix1215_prod_op_gate.sql",
+  MIGRATIONS_DIR,
+  fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .filter((f) =>
+      fs.readFileSync(path.join(MIGRATIONS_DIR, f), "utf8").includes("CREATE OR REPLACE FUNCTION public.prod_op_gate("),
+    )
+    .pop()!,
 );
 const LOCAL_DSN =
   process.env["SUPABASE_DB_URL"] ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -257,16 +268,19 @@ test("FIX-1215: prod_op_gate() branches on the clone (p_now injected, rolled bac
       const g = await gate(c, NOON);
       assert.ok(has(g, "a", "nightly_running"), JSON.stringify(g.blocked_by));
     });
+    // FIX-1218: the nightly starts at the dispatch time, 21:00 UTC (was 22:35,
+    // the slot plus GitHub's offset).
     tx("(a) the next nightly start closer than 2 x expected + 15 min blocks", async () => {
-      const now = "2030-03-12 20:00:00+00";
+      const now = "2030-03-12 19:30:00+00";
       await watchdogs(now);
-      const g = await gate(c, now);   // 155 min to 22:35 < 195
+      const g = await gate(c, now);   // 90 min to 21:00 < 195
       assert.ok(has(g, "a", "nightly_next_start"), JSON.stringify(g.blocked_by));
+      assert.equal(new Date(g.readings["nightly"].next_start).toISOString(), "2030-03-12T21:00:00.000Z");
       const g2 = await gate(c, now, 1800);  // needs 75 min
       assert.ok(!has(g2, "a"), JSON.stringify(g2.blocked_by));
     });
-    tx("(a) past 22:35 with no nightly row yet reads as due", async () => {
-      const now = "2030-03-12 22:40:00+00";
+    tx("(a) past 21:00 with no nightly row yet reads as due", async () => {
+      const now = "2030-03-12 21:05:00+00";
       await watchdogs(now);
       const g = await gate(c, now, 600);
       assert.ok(has(g, "a", "nightly_due"), JSON.stringify(g.blocked_by));
