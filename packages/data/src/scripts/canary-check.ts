@@ -31,6 +31,14 @@ import {
   withUnchangedRuns,
 } from "./canary-transitions";
 import {
+  KEY_DISPATCH_REFUSED,
+  KEY_DISPATCH_STALE,
+  DISPATCH_STALE_HOURS,
+  type GhaDispatchCanary,
+  classifyGhaDispatch,
+  dispatchStampKey,
+} from "./canary-gha-dispatch";
+import {
   KEY_BLIND,
   KEY_MISSING,
   KEY_UNCOLLECTED,
@@ -728,6 +736,26 @@ async function fetchProdSessionStatus(): Promise<ProdSessionStatus | null> {
     );
     return null;
   }
+}
+
+// FIX-1218 — the GHA dispatcher's per-call stamps, one PostgREST read of three
+// pipeline_state rows. The classifier lives in ./canary-gha-dispatch.ts; both
+// keys are report-only because every dispatched workflow keeps its schedule:
+// fallback — a dead dispatcher costs lateness, never a night.
+async function fetchGhaDispatch(now: Date): Promise<GhaDispatchCanary | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { data, error } = await db
+    .from("pipeline_state")
+    .select("key, value")
+    .in("key", Object.keys(DISPATCH_STALE_HOURS).map(dispatchStampKey));
+  if (error) {
+    console.warn(`[canary-check] gha_dispatch read failed (non-fatal): ${error.message}`);
+    return null;
+  }
+  const rows: Record<string, Record<string, unknown>> = {};
+  for (const r of (data ?? []) as Array<{ key: string; value: Record<string, unknown> }>) rows[r.key] = r.value;
+  return classifyGhaDispatch(rows, now);
 }
 
 /**
@@ -1655,6 +1683,13 @@ async function main(): Promise<number> {
       prodSession ? `${prodSession.state} — ${prodSession.detail}` : "unknown (read failed)"
     }`,
   );
+  // FIX-1218 — the dispatcher's stamps, refused or stale.
+  const ghaDispatch = await fetchGhaDispatch(now);
+  console.log(
+    `[canary-check] gha dispatch: ${
+      ghaDispatch ? `${ghaDispatch.refused.detail}; ${ghaDispatch.stale.detail}` : "unknown (read failed)"
+    }`,
+  );
   const holdStale = await fetchHoldStale();
   console.log(
     `[canary-check] session holds: ${holdStale ? holdStale.detail : "unknown (read failed)"}`,
@@ -1779,6 +1814,14 @@ async function main(): Promise<number> {
         `live=${sectorAffinity.liveSig ?? "-"} stored=${sectorAffinity.storedSig ?? "-"})`,
     );
   }
+  // FIX-1218 — one key per failure mode: a refusing token and a cron that stopped
+  // calling have different fixes, and one clearing must not read as the other.
+  if (ghaDispatch?.refused.tier) {
+    push(KEY_DISPATCH_REFUSED, ghaDispatch.refused.tier, ghaDispatch.refused.severity, ghaDispatch.refused.detail);
+  }
+  if (ghaDispatch?.stale.tier) {
+    push(KEY_DISPATCH_STALE, ghaDispatch.stale.tier, ghaDispatch.stale.severity, ghaDispatch.stale.detail);
+  }
   // FIX-950 — one key per state, for the FIX-1036 transition classifier's sake:
   // an overrun clearing and a dead label clearing are different recoveries and
   // collapsing them would make one read as the other.
@@ -1837,6 +1880,9 @@ async function main(): Promise<number> {
     nightlyCheckUnavailable, conditions, failures, reportOnly, fecDrop, prodSession,
     holdStale, boxHealth,
   );
+  // FIX-1218 — the three dispatcher stamps on EVERY run, fresh or not, so the
+  // dispatcher's own uptime is greppable after the fact.
+  metadata["gha_dispatch"] = ghaDispatch?.stamps ?? null;
   const meta = await writeMetaRow(metadata, now);
   if (!meta.ok) {
     // FIX-980 — the row IS the evidence this process ran. A run that leaves

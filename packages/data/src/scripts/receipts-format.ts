@@ -214,6 +214,117 @@ export function runConclusionCell(n: Pick<NightlySection, "conclusion" | "jobs">
   return n.jobs.length > 0 ? RUN_IN_PROGRESS : null;
 }
 
+// ---------------------------------------------------------------------------
+// FIX-1218 — the nightly has TWO automated firing paths now
+// ---------------------------------------------------------------------------
+
+/**
+ * One GHA run that names this nominal day. From FIX-1218 on a healthy day has
+ * two: the `workflow_dispatch` the Vercel dispatcher fires at 21:00 (it does
+ * the work), and the late `schedule` fallback, whose preflight finds the first
+ * run's rows and skips every phase. A manual dispatch can make a third.
+ */
+export interface NightlyRunRow {
+  run_id: number;
+  /** `schedule` | `workflow_dispatch` — gh's own `event` field. */
+  event: string | null;
+  /** From the run's nightly_cron rows (`metadata.dispatched_by`); null when it wrote none. */
+  dispatched_by: string | null;
+  created_at: string;
+  /** createdAt − the most recent 21:00 UTC slot, in hours. ~0.0x for a dispatched run. */
+  offset_hours: number | null;
+  conclusion: string | null;
+  /** true when this run's preflight stood it down (see {@link isAlreadyRanRun}). */
+  already_ran: boolean | null;
+}
+
+/** pipeline_state.gha_dispatch_nightly, as read. */
+export interface DispatchStamp {
+  at: string | null;
+  status: string | null;
+  http_status: number | null;
+  run_id: number | null;
+  detail: string | null;
+  last_dispatched_at: string | null;
+}
+
+/** The fec-phase step the preflight skips in a duplicate run (nightly.yml). */
+export const FEC_RUN_STEP = "Run FEC phase";
+
+/**
+ * Did this run's preflight stand it down? Read from its JOBS, not its run
+ * conclusion (a stood-down run concludes `success`): fec-phase's "Run FEC
+ * phase" step concluded `skipped`. That step is skipped for exactly one reason
+ * — `already_ran == 'true'` — so the signature cannot be mistaken for a
+ * cancellation (a cancelled step concludes `cancelled`). null when the steps
+ * were not readable.
+ */
+export function isAlreadyRanRun(
+  jobs: Array<{ name: string; steps?: Array<{ name: string; conclusion: string | null }> }>,
+): boolean | null {
+  const fec = jobs.find((j) => j.name === "fec-phase");
+  const step = fec?.steps?.find((s) => s.name === FEC_RUN_STEP);
+  if (step === undefined) return null;
+  return step.conclusion === "skipped";
+}
+
+/**
+ * How stale the nightly dispatcher's stamp may be: the cron fires daily, so a
+ * day plus an hour. Older means the dispatcher MISSED a day, and the night ran
+ * (if at all) on the late schedule fallback.
+ */
+export const DISPATCHER_STALE_HOURS = 25;
+
+/**
+ * The §1 dispatcher line — the FIX-1208 `vercelLivenessVerdict` shape, one
+ * level up: `missing` when the stamp is absent or older than a day, `failed`
+ * when the last call was refused or errored (the token, almost always), and
+ * `in-band` otherwise.
+ */
+export function dispatcherLivenessVerdict(
+  stamp: DispatchStamp | null | undefined,
+  asOf: string,
+): { verdict: Verdict; age_hours: number | null; line: string } {
+  if (stamp === null || stamp === undefined || stamp.at === null) {
+    return {
+      verdict: "missing",
+      age_hours: null,
+      line:
+        "Dispatcher last fired **never** — `pipeline_state.gha_dispatch_nightly` is absent. Either the " +
+        "FIX-1218 migration is not on this database, or `/api/cron/gha-dispatch/nightly` has not run since it was.",
+    };
+  }
+  const t = Date.parse(stamp.at);
+  const ref = Date.parse(asOf);
+  const age = Number.isNaN(t) || Number.isNaN(ref) ? null : (ref - t) / 3_600_000;
+  const stale = age === null || age > DISPATCHER_STALE_HOURS;
+  const refused = stamp.status !== "dispatched";
+  const head =
+    "Dispatcher last fired " + stamp.at +
+    (age === null ? "" : " (" + age.toFixed(1) + " h before this file)") +
+    " — status **" + (stamp.status ?? "?") + "**, http " + (stamp.http_status ?? "none") +
+    (stamp.run_id === null ? "" : ", run " + stamp.run_id);
+  if (refused) {
+    return {
+      verdict: "failed",
+      age_hours: age,
+      line:
+        head + " — **refused**: " + JSON.stringify(stamp.detail ?? "") +
+        ". Last GOOD dispatch " + (stamp.last_dispatched_at ?? "never") +
+        ". The schedule: fallback ran the night late; re-mint GITHUB_DISPATCH_TOKEN if this is a 401.",
+    };
+  }
+  return {
+    verdict: stale ? "missing" : "in-band",
+    age_hours: age,
+    line:
+      head +
+      (stale
+        ? " — **missing**: more than " + DISPATCHER_STALE_HOURS + " h, i.e. the dispatcher skipped a day."
+        : ""),
+  };
+}
+
 /**
  * The nominal day a run names, as a UTC `YYYY-MM-DD` string.
  *
@@ -299,6 +410,14 @@ export interface NightlySection {
   phases: PhaseRow[];
   /** Why the GHA half is absent, when it is. */
   gha_note: string | null;
+  /**
+   * FIX-1218 — EVERY run naming this day, any event. The single-run fields
+   * above describe the one that did the work (the first not stood down).
+   * Optional so files written before FIX-1218 still type-check.
+   */
+  runs?: NightlyRunRow[];
+  /** FIX-1218 — pipeline_state.gha_dispatch_nightly; null when absent. */
+  dispatcher?: DispatchStamp | null;
 }
 
 export interface UnitTiming {
@@ -802,6 +921,37 @@ export function renderMarkdown(d: ReceiptsData): string {
     p("> " + d.nightly.gha_note);
     p("");
   }
+  // FIX-1218 — every run for the day and the dispatcher's own stamp. Absent on
+  // files written before the dispatcher existed, so older data renders as it did.
+  if (d.nightly.runs !== undefined) {
+    p("### Runs for this nominal day");
+    p("");
+    p(
+      "The dispatcher (`/api/cron/gha-dispatch/nightly`, a Vercel cron at the 21:00 slot) fires " +
+        "`workflow_dispatch`; the `schedule:` trigger still fires hours later as the fallback, and its " +
+        "preflight stands it down when the dispatched run already did the day (FIX-1218). " +
+        "`already_ran` is read from the run's fec-phase `" + FEC_RUN_STEP + "` step concluding `skipped`.",
+    );
+    p("");
+    p(
+      table(
+        ["run", "event", "dispatched_by", "createdAt (UTC)", "offset", "conclusion", "role"],
+        d.nightly.runs.map((r) => [
+          r.run_id,
+          r.event,
+          r.dispatched_by,
+          r.created_at,
+          r.offset_hours === null ? null : r.offset_hours.toFixed(2) + " h",
+          r.conclusion === null || r.conclusion === "" ? "in progress" : r.conclusion,
+          r.already_ran === true ? "already_ran (stood down)" : r.already_ran === false ? "did the work" : "unknown",
+        ]),
+      ),
+    );
+  }
+  if (d.nightly.dispatcher !== undefined) {
+    p(dispatcherLivenessVerdict(d.nightly.dispatcher, d.generated_at).line);
+    p("");
+  }
   if (d.nightly.jobs.length > 0) {
     p("### Jobs");
     p("");
@@ -833,7 +983,7 @@ export function renderMarkdown(d: ReceiptsData): string {
       ]),
     ),
   );
-  p(queryBlock(d.queries, ["nightly_phases"]));
+  p(queryBlock(d.queries, ["nightly_phases", "gha_dispatch_nightly"]));
 
   // 2 -------------------------------------------------------------------
   p("## 2. pg_cron jobs vs their bands");

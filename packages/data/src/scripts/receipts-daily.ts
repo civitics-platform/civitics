@@ -45,6 +45,7 @@ import { buildDbUrl } from "../lib/heavy-rebuild";
 import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
 import { readBoxHealthRing, upstashCredsFromEnv } from "@civitics/db";
 import { seriesRows, seriesStats } from "../lib/box-health-series";
+import { type DispatchStamp, type NightlyRunRow, isAlreadyRanRun } from "./receipts-format";
 import {
   type Bands,
   type CanaryCondition,
@@ -324,12 +325,25 @@ SELECT started_at, status,
        (metadata->>'duration_ms')::numeric/1000  AS duration_s,
        (metadata->>'peak_rss_mb')::numeric       AS peak_rss_mb,
        metadata->>'skip_reason'                  AS skip_reason,
-       (metadata->>'is_weekly')::boolean         AS is_weekly
+       (metadata->>'is_weekly')::boolean         AS is_weekly,
+       metadata->>'github_run_id'                AS github_run_id,
+       metadata->>'dispatched_by'                AS dispatched_by
 FROM public.data_sync_log
 WHERE pipeline IN ('nightly_cron','nightly_killed')
   AND started_at >= $1::timestamptz
   AND started_at <  $2::timestamptz
 ORDER BY started_at`;
+
+/**
+ * FIX-1218 — the nightly dispatcher's per-call stamp. One row by primary key,
+ * rewritten on every call of /api/cron/gha-dispatch/nightly (dispatched,
+ * refused or error). Absent before the FIX-1218 migration, or before the
+ * route's first call after it; the renderer says which.
+ */
+const Q_GHA_DISPATCH_NIGHTLY = `
+SELECT value
+FROM public.pipeline_state
+WHERE key = 'gha_dispatch_nightly'`;
 
 /**
  * Every job in cron.job with its last firing, correlated to the data_sync_log
@@ -702,14 +716,22 @@ interface GhRun {
   createdAt: string;
   conclusion: string;
   databaseId: number;
+  /** FIX-1218 — `schedule` | `workflow_dispatch`. */
+  event?: string;
 }
 
 /**
- * The nightly's scheduled start. GHA run metadata is NOT in the database, and
+ * The nightly's runs. GHA run metadata is NOT in the database, and
  * `gh` is only available where it is installed and authenticated — in the
  * workflow (with the job token) and on a developer machine. Everywhere else
  * this degrades to a stated "unchecked" rather than a guess, which is the same
  * pattern `cc:verify` uses for the same reason.
+ *
+ * FIX-1218 — ALL EVENTS. This read used to filter `--event schedule`, which
+ * would have rendered every dispatched night as `missing` the day the Vercel
+ * dispatcher landed: the run that does the work is now a `workflow_dispatch`,
+ * and the `schedule` run is the fallback. 20, not 10, because a healthy day now
+ * has two runs.
  */
 function readGhRuns(): { runs: GhRun[]; note: string | null } {
   const res = spawnSync(
@@ -717,9 +739,8 @@ function readGhRuns(): { runs: GhRun[]; note: string | null } {
     [
       "run", "list",
       "--workflow", "nightly.yml",
-      "--event", "schedule",
-      "--json", "createdAt,conclusion,databaseId",
-      "-L", "10",
+      "--json", "createdAt,conclusion,databaseId,event",
+      "-L", "20",
     ],
     { encoding: "utf8", shell: process.platform === "win32" },
   );
@@ -746,6 +767,8 @@ interface GhJobRaw {
   conclusion?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  /** FIX-1218 — read only to tell a stood-down fallback from a working run. */
+  steps?: Array<{ name?: string; conclusion?: string | null }>;
 }
 
 /**
@@ -757,26 +780,45 @@ interface GhJobRaw {
  * empty list on any failure, exactly like {@link readGhRuns} — a missing `gh`
  * must never fail the receipts job, which runs with `if: always()`.
  */
-function readGhJobs(runId: number): JobConclusion[] {
+function readGhJobs(runId: number): { jobs: JobConclusion[]; already_ran: boolean | null } {
   const res = spawnSync(
     "gh",
     ["run", "view", String(runId), "--json", "jobs"],
     { encoding: "utf8", shell: process.platform === "win32" },
   );
-  if (res.error !== undefined || res.status !== 0) return [];
+  if (res.error !== undefined || res.status !== 0) return { jobs: [], already_ran: null };
   try {
     const parsed = JSON.parse(res.stdout) as { jobs?: GhJobRaw[] };
-    return (parsed.jobs ?? []).map((j) => ({
-      name: j.name ?? "(unnamed)",
-      // An in-flight job reports "" — render it as unknown rather than as a
-      // conclusion, the same distinction the run-level cell now makes.
-      conclusion: j.conclusion === undefined || j.conclusion === null || j.conclusion === "" ? null : j.conclusion,
-      started_at: j.startedAt ?? null,
-      completed_at: j.completedAt ?? null,
-    }));
+    const raw = parsed.jobs ?? [];
+    return {
+      jobs: raw.map((j) => ({
+        name: j.name ?? "(unnamed)",
+        // An in-flight job reports "" — render it as unknown rather than as a
+        // conclusion, the same distinction the run-level cell now makes.
+        conclusion: j.conclusion === undefined || j.conclusion === null || j.conclusion === "" ? null : j.conclusion,
+        started_at: j.startedAt ?? null,
+        completed_at: j.completedAt ?? null,
+      })),
+      // FIX-1218 — the preflight's signature, from the steps.
+      already_ran: isAlreadyRanRun(
+        raw.map((j) => ({
+          name: j.name ?? "",
+          steps: (j.steps ?? []).map((s) => ({ name: s.name ?? "", conclusion: s.conclusion ?? null })),
+        })),
+      ),
+    };
   } catch {
-    return [];
+    return { jobs: [], already_ran: null };
   }
+}
+
+/** createdAt − the most recent SLOT_HOUR_UTC at or before it, in hours. */
+function offsetFromSlot(createdAt: string): number {
+  const created = new Date(createdAt);
+  const slot = new Date(created);
+  slot.setUTCHours(SLOT_HOUR_UTC, 0, 0, 0);
+  if (slot > created) slot.setUTCDate(slot.getUTCDate() - 1);
+  return (created.getTime() - slot.getTime()) / 3_600_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -831,17 +873,47 @@ async function main(): Promise<void> {
     }));
 
     const gh = readGhRuns();
-    // The run that NAMES this day, by the same rule the file name uses.
-    const ghRun = gh.runs.find((run) => nominalDate(new Date(run.createdAt), slotOffsetHours) === date) ?? null;
-    let offsetHours: number | null = null;
-    if (ghRun !== null) {
-      const created = new Date(ghRun.createdAt);
-      const slot = new Date(created);
-      slot.setUTCHours(SLOT_HOUR_UTC, 0, 0, 0);
-      // The slot is the most recent SLOT_HOUR_UTC at or before createdAt.
-      if (slot > created) slot.setUTCDate(slot.getUTCDate() - 1);
-      offsetHours = (created.getTime() - slot.getTime()) / 3_600_000;
+    // Every run that NAMES this day, by the same rule the file name uses, oldest
+    // first. FIX-1218: a healthy day has two — the dispatched run and the late
+    // schedule fallback — so this is a list, and the single-run fields below
+    // describe the one that did the work.
+    const dayRuns = gh.runs
+      .filter((run) => nominalDate(new Date(run.createdAt), slotOffsetHours) === date)
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    const jobsByRun = new Map(dayRuns.map((run) => [run.databaseId, readGhJobs(run.databaseId)]));
+    // Which trigger fired a run, from the rows it wrote. A stood-down fallback
+    // wrote none, so its event is the only witness.
+    const byRunId = new Map<string, string>();
+    for (const row of phaseRows) {
+      const id = str(row["github_run_id"]);
+      const by = str(row["dispatched_by"]);
+      if (id !== null && by !== null) byRunId.set(id, by);
     }
+    const runs: NightlyRunRow[] = dayRuns.map((run) => ({
+      run_id: run.databaseId,
+      event: run.event ?? null,
+      dispatched_by: byRunId.get(String(run.databaseId)) ?? (run.event === "schedule" ? "schedule" : null),
+      created_at: run.createdAt,
+      offset_hours: offsetFromSlot(run.createdAt),
+      conclusion: run.conclusion === "" ? null : run.conclusion,
+      already_ran: jobsByRun.get(run.databaseId)?.already_ran ?? null,
+    }));
+    const ghRun = dayRuns.find((run) => jobsByRun.get(run.databaseId)?.already_ran !== true) ?? dayRuns[0] ?? null;
+    const offsetHours: number | null = ghRun === null ? null : offsetFromSlot(ghRun.createdAt);
+
+    const dispatchRows = await r.run<Record<string, unknown>>("gha_dispatch_nightly", Q_GHA_DISPATCH_NIGHTLY);
+    const dv = (dispatchRows[0]?.["value"] ?? null) as Record<string, unknown> | null;
+    const dispatcher: DispatchStamp | null =
+      dv === null
+        ? null
+        : {
+            at: str(dv["at"]),
+            status: str(dv["status"]),
+            http_status: num(dv["http_status"]),
+            run_id: num(dv["run_id"]),
+            detail: str(dv["detail"]),
+            last_dispatched_at: str(dv["last_dispatched_at"]),
+          };
 
     const cronRows = await r.run<Record<string, unknown>>("cron_jobs", Q_CRON_JOBS, [CRON_LOOKBACK_DAYS]);
     const firings: JobFiring[] = cronRows.map((row) => ({
@@ -998,7 +1070,7 @@ async function main(): Promise<void> {
         created_at: ghRun?.createdAt ?? null,
         run_id: ghRun?.databaseId ?? null,
         conclusion: ghRun?.conclusion ?? null,
-        jobs: ghRun === null ? [] : readGhJobs(ghRun.databaseId),
+        jobs: ghRun === null ? [] : (jobsByRun.get(ghRun.databaseId)?.jobs ?? []),
         slot_utc: SLOT_UTC,
         offset_hours: offsetHours,
         nominal_date: date,
@@ -1007,7 +1079,9 @@ async function main(): Promise<void> {
         phases,
         gha_note:
           gh.note ??
-          (ghRun === null ? "No scheduled nightly run maps to nominal day " + date + " in the last 10 scheduled runs." : null),
+          (ghRun === null ? "No nightly run (any event) maps to nominal day " + date + " in the last 20 runs." : null),
+        runs,
+        dispatcher,
       },
       cron_jobs: cronJobs,
       daily: {
