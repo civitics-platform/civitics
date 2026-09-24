@@ -44,6 +44,7 @@ import {
   ATTRIBUTABLE_FIELDS,
   LOGS_RETENTION_DAYS,
   MAX_ATTRIBUTION_MINUTES,
+  RATIO_GATE,
   type AttributableField,
   type AttributionRow,
   type CancellationBucket,
@@ -328,7 +329,11 @@ async function main(): Promise<void> {
       JSON.stringify(
         {
           window: { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes },
-          cancellations: { ...v, user_requests: userTotal, gate: "ratio <= 2" },
+          cancellations: {
+            ...v,
+            user_requests: userTotal,
+            gate: `fails iff ratio > ${RATIO_GATE} AND total > P99 floor (poissonP99(baseline x minutes))`,
+          },
           edge: {
             window: { start: iso(edgeStart), end: iso(edgeEnd) },
             buckets: edge,
@@ -355,8 +360,10 @@ async function main(): Promise<void> {
     console.log(`  ${zeroMinutes} minute(s) with zero statement-timeout cancellations`);
     console.log(
       `\n  total ${v.total}  rate ${v.rate.toFixed(4)}/min  baseline ${v.baseline}/min  ` +
-        `ratio ${v.ratio.toFixed(2)}x  (gate <= ${2}x)  → ${v.pass ? "PASS" : "FAIL"}`,
+        `ratio ${v.ratio.toFixed(2)}x  λ ${v.lambda.toFixed(2)}  P99 floor ${v.floor}  ` +
+        `(fails iff ratio > ${RATIO_GATE}x AND total > floor)  → ${v.pass ? "PASS" : "FAIL"}`,
     );
+    console.log(`  ${v.note}`);
     console.log(`  cancelled by hand (user request, NOT gated): ${userTotal}`);
 
     console.log(`\n── front door ── ${iso(edgeStart)} → ${iso(edgeEnd)} (15-min buckets)`);

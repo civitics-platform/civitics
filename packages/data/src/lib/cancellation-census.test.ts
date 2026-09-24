@@ -16,9 +16,11 @@ import {
   edgeVerdictFor,
   formatAttribution,
   isAttributableField,
+  poissonP99,
   sanitizeLike,
   verdictFor,
   ATTRIBUTABLE_FIELDS,
+  FLOOR_QUANTILE,
   LOGS_RETENTION_DAYS,
   MAX_ATTRIBUTION_MINUTES,
   PCT_5XX_GATE,
@@ -62,9 +64,90 @@ test("exactly 2x passes — the gate is <=, not <", () => {
   assert.equal(v.pass, true);
 });
 
-test("just past 2x fails", () => {
-  const v = verdictFor({ cancellations: [min(0, 5)], minutes: 60, baseline: 4 / 60 / RATIO_GATE });
+test("just past 2x fails once the count is above the floor", () => {
+  // At 1/min over 60 min, λ = 60 and the P99 floor (79) sits well under 2x
+  // (120), so the ratio is what binds: 121 is just past 2x and fails.
+  const v = verdictFor({ cancellations: [min(0, 121)], minutes: 60, baseline: 1 });
   assert.ok(v.ratio > RATIO_GATE);
+  assert.ok(v.total > v.floor);
+  assert.equal(v.pass, false);
+  // cc-151: the same "just past 2x" at a small count is under the floor and
+  // passes — this is the shape that failed before the floor.
+  const small = verdictFor({ cancellations: [min(0, 5)], minutes: 60, baseline: 4 / 60 / RATIO_GATE });
+  assert.ok(small.ratio > RATIO_GATE);
+  assert.equal(small.floor, 6);
+  assert.equal(small.pass, true);
+});
+
+// ───────────────────────────── the floor (cc-151 D1) ─────────────────────────
+
+test("poissonP99 pins: λ=2.0 → 6, λ=0.5 → 3, λ=0 → 0", () => {
+  assert.equal(poissonP99(2.0), 6);
+  assert.equal(poissonP99(0.5), 3);
+  assert.equal(poissonP99(0), 0);
+  // the λ this census actually runs at: 0.033 x 60 and 0.033 x 15
+  assert.equal(poissonP99(0.033 * 60), 6);
+  assert.equal(poissonP99(0.033 * 15), 3);
+  // not finite or negative is "no expected events"
+  assert.equal(poissonP99(-1), 0);
+  assert.equal(poissonP99(Number.NaN), 0);
+});
+
+test("poissonP99 is the SMALLEST k at the 99th percentile — checked against the CDF", () => {
+  const cdf = (l: number, k: number) => {
+    let p = Math.exp(-l);
+    let c = p;
+    for (let i = 1; i <= k; i++) { p *= l / i; c += p; }
+    return c;
+  };
+  for (const l of [0.1, 0.5, 1, 1.98, 2, 5, 10, 30]) {
+    const k = poissonP99(l);
+    assert.ok(cdf(l, k) >= FLOOR_QUANTILE, `λ=${l}: P(X<=${k}) >= 0.99`);
+    if (k > 0) assert.ok(cdf(l, k - 1) < FLOOR_QUANTILE, `λ=${l}: P(X<=${k - 1}) < 0.99`);
+  }
+});
+
+test("poissonP99 does not underflow at a large λ", () => {
+  // e^-1000 is 0 in a double; a naive sum would never reach 0.99.
+  const k = poissonP99(1000);
+  assert.ok(k > 1000 && k < 1100, `got ${k}`);
+});
+
+test("cc-148's three prod readings plus the edges — old verdict → new verdict", () => {
+  // [total, minutes, old pass (ratio <= 2), new pass]
+  const FIXTURES: Array<[number, number, boolean, boolean]> = [
+    [6, 60, false, true], //   cc-148 23:55 — ratio 3.03, under the floor 6
+    [12, 60, false, false], // cc-148 00:23
+    [6, 15, false, false], //  cc-148 00:23, the 15-min reading — the 00:08–00:23 burst
+    [4, 60, false, true], //   failed before the floor (ratio 2.02)
+    [7, 60, false, false], //  first count over the 60-min floor
+    [3, 15, false, true], //   the 15-min floor is 3
+    [4, 15, false, false], //  a burst of 4 in 15 min still trips
+    [40, 60, false, false], // the ratio dominates at a large count
+    [2, 60, true, true], //    the baseline hour
+    [0, 15, true, true],
+  ];
+  for (const [n, minutes, oldPass, newPass] of FIXTURES) {
+    const v = verdictFor({ cancellations: n > 0 ? [min(0, n)] : [], minutes, baseline: 0.033 });
+    assert.equal(v.ratio <= RATIO_GATE, oldPass, `{${n}, ${minutes} min} old verdict`);
+    assert.equal(v.pass, newPass, `{${n}, ${minutes} min} new verdict — ${v.note}`);
+  }
+});
+
+test("the note names the ratio AND the floor", () => {
+  const under = verdictFor({ cancellations: [min(0, 6)], minutes: 60, baseline: 0.033 });
+  assert.equal(under.note, "6 over 60 min — ratio 3.03 > 2 but <= P99 floor 6 at λ=2.0");
+  const over = verdictFor({ cancellations: [min(0, 12)], minutes: 60, baseline: 0.033 });
+  assert.equal(over.note, "12 over 60 min — ratio 6.06 > 2 and > P99 floor 6 at λ=2.0");
+  const fine = verdictFor({ cancellations: [min(0, 1)], minutes: 60, baseline: 0.033 });
+  assert.equal(fine.note, "1 over 60 min — ratio 0.51 <= 2");
+  assert.equal(under.lambda.toFixed(2), "1.98");
+  assert.equal(under.floor, 6);
+});
+
+test("the 15-min floor does not blind the burst: 6 in 15 min fails, as cc-148's 00:08–00:23 did", () => {
+  const v = verdictFor({ cancellations: [min(0, 2), min(60_000, 4)], minutes: 15, baseline: 0.033 });
+  assert.equal(v.floor, 3);
   assert.equal(v.pass, false);
 });
 
@@ -105,6 +188,8 @@ test("a zero baseline is called out rather than dividing to Infinity", () => {
   const dirty = verdictFor({ cancellations: [min(0, 1)], minutes: 60, baseline: 0 });
   assert.equal(dirty.pass, false);
   assert.equal(dirty.ratio, Number.POSITIVE_INFINITY);
+  // unchanged by the floor (cc-151): λ = 0, floor 0, one event still fails
+  assert.equal(dirty.floor, 0);
 });
 
 test("the edge gate reads the last bucket WITH traffic, not the last bucket", () => {

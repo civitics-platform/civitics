@@ -10,6 +10,19 @@
  * absolute, for the reason cc-130 earned: a gate must describe a state prod
  * actually visits. "Zero cancellations in an hour" is not that state — the
  * measured baseline is 0.033/min, i.e. about two an hour, on a healthy box.
+ *
+ * ── THE POISSON FLOOR (cc-151 D1) ───────────────────────────────────────────
+ * A ratio test on a count under ~10 is noise. At 0.033/min the expected count
+ * is λ = 2.0 in 60 min and λ = 0.5 in 15 min, so with no burst at all a 60-min
+ * reading failed `ratio > 2` at >= 4 events (P = 14.3 % per reading) and a
+ * 15-min reading failed at >= 1 (P = 39.4 %) — seven pre-CALL readings over a
+ * one-hour run tripped with P ≈ 97 % on an ordinary night (cc-148 §5.3). So a
+ * reading now FAILS only when BOTH hold:
+ *   ratio > RATIO_GATE   AND   total > poissonP99(baseline × minutes)
+ * i.e. the count is also above what the baseline itself produces 99 % of the
+ * time. At λ = 2.0 the floor is 6 (a 60-min reading fails at >= 7, tail
+ * 0.45 %); at λ = 0.5 it is 3 (a 15-min reading fails at >= 4, tail 0.18 %).
+ * Above ~10 events the ratio dominates again and the floor stops binding.
  */
 
 /** One minute of `postgres_logs`, as the census aggregates it. */
@@ -37,6 +50,10 @@ export interface CancellationVerdict {
   baseline: number;
   /** rate / baseline. Infinity when the baseline is 0 and the rate is not. */
   ratio: number;
+  /** baseline × minutes — the count the baseline itself expects in the window. */
+  lambda: number;
+  /** poissonP99(lambda): a count at or below this never fails, whatever the ratio. */
+  floor: number;
   pass: boolean;
   note: string;
 }
@@ -55,6 +72,28 @@ export const RATIO_GATE = 2;
 /** The gate: at most 1 % 5xx in the last closed bucket. */
 export const PCT_5XX_GATE = 1;
 
+/** The floor's quantile: a count the baseline alone exceeds 1 % of the time. */
+export const FLOOR_QUANTILE = 0.99;
+
+/**
+ * The smallest k with P(X <= k) >= 0.99 for X ~ Poisson(λ). Summed in log
+ * space so a large λ does not underflow e^-λ to zero. λ <= 0 (or not finite)
+ * is 0: no expected events, so no tolerance above none.
+ */
+export function poissonP99(lambda: number): number {
+  if (!Number.isFinite(lambda) || lambda <= 0) return 0;
+  const logL = Math.log(lambda);
+  const kMax = Math.ceil(lambda + 12 * Math.sqrt(lambda) + 25);
+  let logP = -lambda; // log P(X = 0)
+  let cum = 0;
+  for (let k = 0; k <= kMax; k++) {
+    cum += Math.exp(logP);
+    if (cum >= FLOOR_QUANTILE) return k;
+    logP += logL - Math.log(k + 1);
+  }
+  return kMax;
+}
+
 export function verdictFor(input: {
   cancellations: readonly CancellationBucket[];
   minutes: number;
@@ -66,20 +105,32 @@ export function verdictFor(input: {
   // A zero baseline makes the ratio meaningless rather than infinite-and-failing,
   // so it is called out as such instead of silently gating on division.
   const ratio = baseline > 0 ? rate / baseline : total === 0 ? 0 : Number.POSITIVE_INFINITY;
-  const pass = baseline > 0 ? ratio <= RATIO_GATE : total === 0;
+  const lambda = baseline > 0 ? baseline * minutes : 0;
+  const floor = poissonP99(lambda);
+  const overRatio = ratio > RATIO_GATE;
+  const overFloor = total > floor;
+  const pass = baseline > 0 ? !(overRatio && overFloor) : total === 0;
+  const head = `${total} over ${minutes} min — ratio ${ratio.toFixed(2)}`;
+  const at = `P99 floor ${floor} at λ=${lambda.toFixed(1)}`;
   return {
     total,
     minutes,
     rate,
     baseline,
     ratio,
+    lambda,
+    floor,
     pass,
     note:
       baseline <= 0
         ? "baseline is 0 — the ratio is not meaningful; gating on 'no cancellations at all'"
         : total === 0
-          ? "no cancellations in the window"
-          : `${total} cancellation(s) over ${minutes} min`,
+          ? `no cancellations in the window (${at})`
+          : !overRatio
+            ? `${head} <= ${RATIO_GATE}`
+            : overFloor
+              ? `${head} > ${RATIO_GATE} and > ${at}`
+              : `${head} > ${RATIO_GATE} but <= ${at}`,
   };
 }
 
