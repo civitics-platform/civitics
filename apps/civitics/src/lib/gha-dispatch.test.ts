@@ -150,9 +150,18 @@ describe("dispatchWorkflow — every outcome the route will stamp", () => {
   });
 
   it("a hung GitHub → error at the timeout", async () => {
+    // A real hung fetch holds a socket open, and that handle is what keeps the
+    // event loop alive until the abort fires. AbortSignal.timeout's own timer is
+    // UNREF'D, so a fake with no handle lets Node exit the loop first: on Linux
+    // Node 20 (CI run 35948861696) that failed this case and every test after it
+    // as "Promise resolution is still pending". The interval stands in for the socket.
     const hang = ((_u: string, init?: RequestInit) =>
       new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        const socket = setInterval(() => {}, 1_000);
+        init?.signal?.addEventListener("abort", () => {
+          clearInterval(socket);
+          reject(init.signal!.reason);
+        });
       })) as unknown as typeof fetch;
     const o = await dispatchWorkflow(nightly, "tok", hang, 50);
     assert.equal(o.status, "error");
