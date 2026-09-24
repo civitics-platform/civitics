@@ -51,6 +51,7 @@ import {
   type SessionHoldRow,
 } from "./canary-prod-session";
 import { SESSION_HOLD_PREFIX, readProdSessionState, withClient } from "../lib/prod-session";
+import { KEY_MEM_STALE, KEY_PROBE_STALE, type BoxHealthCanary, classifyBoxHealth } from "./canary-box-health";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 
 const PIPELINE_NAME      = "nightly_cron";
@@ -765,6 +766,26 @@ async function fetchHoldStale(): Promise<HoldStaleStatus | null> {
   }
 }
 
+// FIX-1194 P1-B / FIX-1125 — are the two box-health instruments alive? One
+// PostgREST read of two pipeline_state rows. The classifier lives in
+// ./canary-box-health.ts; both keys are report-only (an instrument going dark
+// wants a look, not a page — the saturation itself escalates via FIX-1073).
+async function fetchBoxHealth(now: Date): Promise<BoxHealthCanary | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { data, error } = await db
+    .from("pipeline_state")
+    .select("key, value")
+    .in("key", ["box_health", "box_health_mem"]);
+  if (error) {
+    console.warn(`[canary-check] box_health read failed (non-fatal): ${error.message}`);
+    return null;
+  }
+  const rows: Record<string, Record<string, unknown>> = {};
+  for (const r of (data ?? []) as Array<{ key: string; value: Record<string, unknown> }>) rows[r.key] = r.value;
+  return classifyBoxHealth(rows, now);
+}
+
 // FIX-968 — pg_cron FIRING health. Every other detector here watches a
 // CONSEQUENCE (a rollup is stale, a visibility map collapsed). This is the only
 // one that watches whether the scheduled work started at all.
@@ -1001,6 +1022,7 @@ function buildMetadata(
   fecDrop: FecDropStatus | null,
   prodSession: ProdSessionStatus | null,
   holdStale: HoldStaleStatus | null,
+  boxHealth: BoxHealthCanary | null,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return {
@@ -1083,6 +1105,9 @@ function buildMetadata(
     // prod_session above: when the holds are correct they carry no tier, so
     // this row is the only record of which pipelines were unwatched and when.
     session_holds:    holdStale,
+    // FIX-1194 P1-B / FIX-1125 — both stamps on EVERY run, fresh or not, so the
+    // instruments' own uptime is greppable after the fact.
+    box_health:       boxHealth,
     peak_rss_mb:      captureRssMb(),
   };
 }
@@ -1634,6 +1659,11 @@ async function main(): Promise<number> {
   console.log(
     `[canary-check] session holds: ${holdStale ? holdStale.detail : "unknown (read failed)"}`,
   );
+  // FIX-1194 P1-B / FIX-1125 — the probe and the memory mirror, alive or not.
+  const boxHealth = await fetchBoxHealth(now);
+  console.log(
+    `[canary-check] box health: ${boxHealth ? `${boxHealth.probe.detail}; ${boxHealth.mem.detail}` : "unknown (read failed)"}`,
+  );
   // FIX-968 — did every scheduled pg_cron job actually START? The only detector
   // here that watches the cause rather than a consequence.
   const cronHealth = await fetchCronJobHealth();
@@ -1767,6 +1797,15 @@ async function main(): Promise<number> {
   if (holdStale?.tier) {
     push(KEY_HOLD_STALE, holdStale.tier, holdStale.severity, holdStale.detail);
   }
+  // FIX-1194 P1-B / FIX-1125 — one key per stamp: the probe (pg_cron) and the
+  // memory mirror (Vercel) go dark for different reasons, and one recovering
+  // must not read as the other recovering.
+  if (boxHealth?.probe.tier) {
+    push(KEY_PROBE_STALE, boxHealth.probe.tier, boxHealth.probe.severity, boxHealth.probe.detail);
+  }
+  if (boxHealth?.mem.tier) {
+    push(KEY_MEM_STALE, boxHealth.mem.tier, boxHealth.mem.severity, boxHealth.mem.detail);
+  }
   if (fecDrop && fecDrop.tier) {
     // One key per state rather than one shared key: `uncollected` (money at FEC)
     // and `probe blind/missing` (we cannot see FEC) are different problems with
@@ -1796,7 +1835,7 @@ async function main(): Promise<number> {
   const metadata = buildMetadata(
     missing, killed, autovacuum, rollups, orphans, sectorAffinity, cronHealth,
     nightlyCheckUnavailable, conditions, failures, reportOnly, fecDrop, prodSession,
-    holdStale,
+    holdStale, boxHealth,
   );
   const meta = await writeMetaRow(metadata, now);
   if (!meta.ok) {

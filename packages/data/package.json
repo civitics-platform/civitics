@@ -163,6 +163,7 @@
     "data:backfill-crs-summaries:ci": "tsx src/scripts/backfill-crs-summaries.ts --apply --allow-prod",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
     "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",
+    "data:box-health:series": "tsx --env-file=../../.env.local src/scripts/box-health-series.ts",
     "data:receipts:daily": "tsx --env-file=../../.env.local src/scripts/receipts-daily.ts",
     "data:receipts:daily:prod": "tsx --env-file=../../.env.local.prod src/scripts/receipts-daily.ts --prod",
     "data:census:cancellations:prod": "tsx --env-file=../../.env.local.prod src/scripts/cancellation-census.ts",

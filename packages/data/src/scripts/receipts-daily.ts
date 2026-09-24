@@ -43,6 +43,8 @@ import { isLocalDsn, receiptsOutDir } from "../lib/receipts-out-dir";
 import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
+import { readBoxHealthRing, upstashCredsFromEnv } from "@civitics/db";
+import { seriesRows, seriesStats } from "../lib/box-health-series";
 import {
   type Bands,
   type CanaryCondition,
@@ -61,6 +63,7 @@ import {
   type ForkerBucketRow,
   type ForkerCancelRow,
   type ForkerRunningRow,
+  type MemDay,
   BURST_THRESHOLD,
   compareToBand,
   nominalDate,
@@ -643,6 +646,38 @@ SELECT value->>'at' AS at
 FROM public.pipeline_state
 WHERE key = 'cron_watchdog_vercel'`;
 
+/**
+ * FIX-1194 P1-B / FIX-1125 — the two box-health stamps, in one read. Both are
+ * single pipeline_state rows rewritten in place, so this is a two-row lookup by
+ * primary key. A database without the migration returns no rows, and the
+ * renderer reports each as `missing`.
+ */
+const Q_BOX_HEALTH = `
+SELECT key, value
+FROM public.pipeline_state
+WHERE key IN ('box_health', 'box_health_mem')`;
+
+/**
+ * FIX-1125 — the day's memory series, from the OFF-box ring. Not SQL: one
+ * Upstash LRANGE (one command). Absent credentials are a stated reason, not a
+ * failure. The nightly receipts job has no Upstash secret today (the repo's
+ * Actions secrets were read 2026-09-24), so on the runner this reads
+ * `available: false` and the line points at data:box-health:series.
+ */
+async function readMemDay(now: Date): Promise<MemDay> {
+  const creds = upstashCredsFromEnv(process.env);
+  if (!creds) {
+    return {
+      available: false,
+      reason: "UPSTASH_REDIS_REST_URL / _TOKEN are not in this runner's environment (the nightly receipts job has no Upstash secret)",
+    };
+  }
+  const ring = await readBoxHealthRing(creds, fetch);
+  if (!ring.ok) return { available: false, reason: "ring read failed: " + ring.error };
+  const st = seriesStats(seriesRows(ring.samples, { hours: 24, now }), ring.samples);
+  return { available: true, ...st };
+}
+
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
 const NOT_CAPTURABLE = [
   "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase " +
@@ -944,6 +979,13 @@ async function main(): Promise<void> {
     );
     const forkerLivenessAt = iso(forkerLivenessRows[0]?.["at"]) ?? null;
 
+    // FIX-1194 P1-B / FIX-1125 — the probe, the memory mirror, and the ring's day.
+    const boxRows = await r.run<{ key: string; value: Record<string, unknown> }>("box_health", Q_BOX_HEALTH);
+    const boxBy = new Map(boxRows.map((row) => [row.key, row.value]));
+    const memDay = await readMemDay(now).catch(
+      (err: unknown): MemDay => ({ available: false, reason: err instanceof Error ? err.message : String(err) }),
+    );
+
     const total = num(sldRows[0]?.["total"]);
     const linked = num(sldRows[0]?.["linked"]);
 
@@ -1056,6 +1098,9 @@ async function main(): Promise<void> {
         running_in_bursts: forkerRunning,
         cancels_7d: forkerCancels,
         vercel_liveness_at: forkerLivenessAt,
+        box_health: boxBy.get("box_health") ?? null,
+        box_health_mem: boxBy.get("box_health_mem") ?? null,
+        mem_day: memDay,
       },
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,

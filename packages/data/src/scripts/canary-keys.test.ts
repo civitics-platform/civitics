@@ -30,6 +30,7 @@ import {
 } from "./canary-keys";
 import { KEY_BLIND, KEY_MISSING, KEY_UNCOLLECTED } from "./canary-fec-drop";
 import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN } from "./canary-prod-session";
+import { KEY_MEM_STALE, KEY_PROBE_STALE } from "./canary-box-health";
 
 const SRC = readFileSync(fileURLToPath(new URL("./canary-check.ts", import.meta.url)), "utf8");
 
@@ -48,6 +49,8 @@ const CONSTANTS: Record<string, string> = {
   KEY_UNCOLLECTED,
   KEY_BLIND,
   KEY_MISSING,
+  KEY_PROBE_STALE,
+  KEY_MEM_STALE,
 };
 
 /** The scan, resolved to keys and prefixes. Throws on anything it cannot place. */

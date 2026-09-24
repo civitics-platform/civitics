@@ -28,6 +28,7 @@
 
 import { KEY_BLIND, KEY_MISSING, KEY_UNCOLLECTED } from "./canary-fec-drop";
 import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN } from "./canary-prod-session";
+import { KEY_MEM_STALE, KEY_PROBE_STALE } from "./canary-box-health";
 
 /**
  * Every condition key with a FIXED spelling, as `canary-check.ts` pushes it.
@@ -50,6 +51,8 @@ export const CONDITION_KEYS: readonly string[] = [
   KEY_MISSING, //          fec_drop_probe_missing    /  probe outage cannot read
   //                                                    as a recovery from an
   //                                                    uncollected drop
+  KEY_PROBE_STALE, //      box_health_probe_stale    (FIX-1194 P1-B, report-only)
+  KEY_MEM_STALE, //        box_health_mem_stale      (FIX-1125, report-only)
 ];
 
 /**

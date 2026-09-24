@@ -459,6 +459,163 @@ export interface ForkerSection {
    * answerable on a quiet day — the question FIX-1208 was filed for.
    */
   vercel_liveness_at?: string | null;
+  /**
+   * FIX-1194 P1-B — `pipeline_state.box_health`, the every-minute probe's latest
+   * stamp, or null when the key is absent. The probe keeps only its latest
+   * reading; the day's startup-timeout series is the tables above.
+   */
+  box_health?: Record<string, unknown> | null;
+  /** FIX-1125 — `pipeline_state.box_health_mem`, the 2-minute route's ON-box mirror. */
+  box_health_mem?: Record<string, unknown> | null;
+  /** FIX-1125 — the day's memory series from the OFF-box ring, or why this runner cannot read it. */
+  mem_day?: MemDay;
+}
+
+/** FIX-1125 — the off-box ring's day, as the receipt carries it. */
+export type MemDay =
+  | {
+      available: true;
+      n: number;
+      first_at: string | null;
+      last_at: string | null;
+      min_mb: number | null;
+      min_at: string | null;
+      median_mb: number | null;
+      max_mb: number | null;
+      mem_total_mb: number | null;
+    }
+  | { available: false; reason: string };
+
+/**
+ * FIX-1194 P1-B — the probe is stale past THREE missed every-minute firings.
+ * That is the design's signal ("stale > 3 min") and box_is_saturated()'s
+ * default (180 s), so the receipt and the helper say the same thing.
+ */
+export const BOX_HEALTH_PROBE_STALE_MIN = 3;
+/** FIX-1125 — the 2-minute route: five missed firings, VERCEL_LIVENESS_STALE_MIN's reasoning. */
+export const BOX_HEALTH_MEM_STALE_MIN = 10;
+
+/**
+ * A stamp's liveness, in vercelLivenessVerdict's shape and vocabulary
+ * (`missing` / `in-band`, rule 48). A stamp NEWER than the file's clock (the
+ * file's clock is taken before its queries run) reads as 0.0 min rather than a
+ * negative age.
+ */
+export function stampLivenessVerdict(
+  label: string,
+  source: string,
+  at: unknown,
+  asOf: string,
+  staleMin: number,
+  staleMeans: string,
+): { verdict: Verdict; age_min: number | null; line: string } {
+  if (typeof at !== "string" || at === "") {
+    return {
+      verdict: "missing",
+      age_min: null,
+      line: label + " last stamped **never** — `" + source + "` is absent.",
+    };
+  }
+  const t = Date.parse(at);
+  const ref = Date.parse(asOf);
+  if (Number.isNaN(t) || Number.isNaN(ref)) {
+    return { verdict: "missing", age_min: null, line: label + " last stamped `" + at + "` — unparseable timestamp." };
+  }
+  const ageMin = Math.max(0, (ref - t) / 60000);
+  const stale = ageMin > staleMin;
+  return {
+    verdict: stale ? "missing" : "in-band",
+    age_min: ageMin,
+    line:
+      label + " last stamped " + at + " (" + ageMin.toFixed(1) + " min before this file)" +
+      (stale ? " — **missing**: more than " + staleMin + " min. " + staleMeans : ""),
+  };
+}
+
+const n0 = (v: unknown): string => (v === null || v === undefined ? "—" : String(v));
+
+/**
+ * FIX-1194 P1-B / FIX-1125 — the §9 "Box health" lines. Pure, so the section is
+ * testable without a database or Upstash.
+ */
+export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
+  const out: string[] = [];
+  const bh = f.box_health ?? null;
+  const mem = f.box_health_mem ?? null;
+
+  out.push(
+    stampLivenessVerdict(
+      "Probe (`box-health-probe`, every minute)",
+      "pipeline_state.box_health",
+      bh?.["at"],
+      asOf,
+      BOX_HEALTH_PROBE_STALE_MIN,
+      "The probe is a pg_cron firing, so a stale stamp IS the saturation signal — the forker could not start it, or the job is off.",
+    ).line,
+  );
+  if (bh !== null) {
+    const wall = (bh["watchdog_max_wall_10m"] ?? {}) as Record<string, unknown>;
+    const b = (bh["backends"] ?? {}) as Record<string, unknown>;
+    out.push("");
+    out.push(
+      "Latest probe reading: startup timeouts " + n0(bh["startup_timeouts_10m"]) + " (10 min) / " +
+        n0(bh["startup_timeouts_60m"]) + " (60 min); watchdog max wall over 10 min " +
+        n0(wall["budget"]) + " s (budget) / " + n0(wall["unit"]) + " s (unit); running budgeted jobs " +
+        n0(bh["running_budgeted_jobs"]) + ", over budget " + n0(bh["running_over_budget"]) +
+        "; client backends " + n0(b["client"]) + " of " + n0(b["max_connections"]) + " (" +
+        n0(b["active"]) + " active, " + n0(b["idle_in_txn"]) + " idle in txn, " +
+        n0(b["lock_waiting"]) + " lock-waiting); probe " + n0(bh["probe_ms"]) + " ms.",
+    );
+  }
+  out.push("");
+  out.push(
+    stampLivenessVerdict(
+      "Memory mirror (`/api/cron/box-health`, every 2 min)",
+      "pipeline_state.box_health_mem",
+      mem?.["at"],
+      asOf,
+      BOX_HEALTH_MEM_STALE_MIN,
+      "The route's ON-box stamp has stopped landing; the off-box ring may still be fine (below).",
+    ).line,
+  );
+  if (mem !== null) {
+    const MB = 1024 * 1024;
+    const num = (k: string) => (typeof mem[k] === "number" ? (mem[k] as number) : null);
+    const avail = num("mem_available_bytes");
+    const total = num("mem_total_bytes");
+    const swapT = num("swap_total_bytes");
+    const swapF = num("swap_free_bytes");
+    out.push("");
+    out.push(
+      "Latest memory reading: " +
+        (avail === null ? "—" : Math.round(avail / MB) + " MB") + " available of " +
+        (total === null ? "—" : Math.round(total / MB) + " MB") +
+        (avail !== null && total ? " (" + ((100 * avail) / total).toFixed(1) + " %)" : "") +
+        ", swap in use " + (swapT !== null && swapF !== null ? Math.round((swapT - swapF) / MB) + " MB" : "—") +
+        ", load1 " + n0(mem["load1"]) + ".",
+    );
+  }
+  out.push("");
+  const day = f.mem_day;
+  if (day === undefined) {
+    out.push("Day's memory series (off-box ring): not read.");
+  } else if (!day.available) {
+    out.push(
+      "Day's memory series (off-box ring): **not available from this runner** — " + day.reason +
+        ". `pnpm --filter @civitics/data data:box-health:series` reads the ring from anywhere with the " +
+        "Upstash credentials and opens no Postgres connection; it is the instrument for this series.",
+    );
+  } else if (day.n === 0) {
+    out.push("Day's memory series (off-box ring): the ring holds no samples from the last 24 h.");
+  } else {
+    out.push(
+      "Day's memory series (off-box ring, last 24 h): " + day.n + " samples " + n0(day.first_at) + " → " +
+        n0(day.last_at) + "; MemAvailable min **" + n0(day.min_mb) + " MB** (at " + n0(day.min_at) +
+        ") / median " + n0(day.median_mb) + " MB / max " + n0(day.max_mb) + " MB" +
+        (day.mem_total_mb !== null ? " of " + day.mem_total_mb + " MB" : "") + ".",
+    );
+  }
+  return out;
 }
 
 /**
@@ -996,6 +1153,19 @@ export function renderMarkdown(d: ReceiptsData): string {
       "the Vercel route — pg_cron calls the two inner watchdogs directly — so the row " +
       "is a Vercel receipt by construction rather than by trust._",
   );
+  // FIX-1194 P1-B / FIX-1125 — the probe and the memory series.
+  p("");
+  p("### Box health — the probe and the memory series (FIX-1194 P1-B / FIX-1125)");
+  p("");
+  p(
+    "The every-minute `box-health-probe` stamps `pipeline_state.box_health` on EVERY firing. It " +
+      "is itself a pg_cron firing, so it goes dark exactly when the forker is starved, and its AGE " +
+      "is the signal `box_is_saturated()` reads first. The 2-minute Vercel route scrapes the " +
+      "box's memory, writes it OFF the box (an Upstash ring that survives a database outage) and " +
+      "then mirrors it on the box. Memory is report-only: no threshold until a week of data sizes one.",
+  );
+  p("");
+  for (const line of boxHealthLines(d.forker, d.generated_at)) p(line);
   p(
     queryBlock(d.queries, [
       "forker_24h",
@@ -1003,6 +1173,7 @@ export function renderMarkdown(d: ReceiptsData): string {
       "forker_running",
       "forker_cancels",
       "forker_vercel_liveness",
+      "box_health",
     ]),
   );
 

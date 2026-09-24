@@ -34,6 +34,10 @@ import {
   verdictsFor,
   VERCEL_LIVENESS_STALE_MIN,
   vercelLivenessVerdict,
+  BOX_HEALTH_MEM_STALE_MIN,
+  BOX_HEALTH_PROBE_STALE_MIN,
+  boxHealthLines,
+  stampLivenessVerdict,
 } from "./receipts-format";
 
 const BAND: Band = { lo_s: 0, hi_s: 140, source: "test" };
@@ -804,4 +808,90 @@ test("renderMarkdown: §9 renders the liveness line even when the key is absent"
   const md = renderMarkdown(d);
   const section = md.slice(md.indexOf("## 9. The forker"), md.indexOf("## 10."));
   assert.match(section, /Vercel path last fired \*\*never\*\*/);
+});
+
+// ── FIX-1194 P1-B / FIX-1125 — §9 "Box health" ──────────────────────────────
+
+/** The probe stamp as the migration writes it; the numbers are prod's at 01:35 UTC 09-24. */
+const PROBE = {
+  at: "2026-09-12T06:29:10.000Z",
+  startup_timeouts_10m: 0,
+  startup_timeouts_60m: 0,
+  watchdog_max_wall_10m: { budget: 0.016, unit: 0.004 },
+  watchdog_runs_10m: { budget: 5, unit: 5 },
+  running_budgeted_jobs: 0,
+  running_over_budget: 0,
+  oldest_running_s: null,
+  backends: { client: 17, active: 1, idle_in_txn: 0, lock_waiting: 0, longest_active_s: null, max_connections: 60 },
+  probe_ms: 22.1,
+};
+/** cc-149 read 2's real reading. */
+const MEM = {
+  at: "2026-09-12T06:28:00.000Z",
+  route_at: "2026-09-12T06:27:59.500Z",
+  mem_available_bytes: 418258944,
+  mem_total_bytes: 948195328,
+  swap_total_bytes: 1073737728,
+  swap_free_bytes: 502247424,
+  load1: 0.14,
+};
+const AS_OF = "2026-09-12T06:30:00.000Z";
+const quiet = { by_hour_24h: [], by_day_7d: [], running_in_bursts: [], cancels_7d: [] };
+
+test("FIX-1194: the probe is stale past 3 min (box_is_saturated's 180 s); the mirror past 10 (five 2-min firings)", () => {
+  assert.equal(BOX_HEALTH_PROBE_STALE_MIN, 3);
+  assert.equal(BOX_HEALTH_MEM_STALE_MIN, VERCEL_LIVENESS_STALE_MIN);
+  const v = (at: string, min: number) => stampLivenessVerdict("x", "k", at, AS_OF, min, "why").verdict;
+  assert.equal(v("2026-09-12T06:27:00.000Z", 3), "in-band");
+  assert.equal(v("2026-09-12T06:26:59.000Z", 3), "missing");
+  // A stamp newer than the file's clock is 0.0 min, not "-0.0" (the 09-24 receipt's §9 line).
+  const fresh = stampLivenessVerdict("x", "k", "2026-09-12T06:30:00.300Z", AS_OF, 3, "why");
+  assert.equal(fresh.age_min, 0);
+  assert.match(fresh.line, /\(0\.0 min before this file\)$/);
+  assert.match(stampLivenessVerdict("x", "pipeline_state.box_health", undefined, AS_OF, 3, "why").line,
+    /x last stamped \*\*never\*\* — `pipeline_state\.box_health` is absent\./);
+});
+
+test("FIX-1194: §9 Box health — both stamps and their readings, the ring unavailable on this runner", () => {
+  const lines = boxHealthLines(
+    { ...quiet, box_health: PROBE, box_health_mem: MEM, mem_day: { available: false, reason: "no Upstash secret" } },
+    AS_OF,
+  );
+  const text = lines.join("\n");
+  assert.match(text, /Probe \(`box-health-probe`, every minute\) last stamped 2026-09-12T06:29:10\.000Z \(0\.8 min before this file\)\n/);
+  assert.match(text, /startup timeouts 0 \(10 min\) \/ 0 \(60 min\); watchdog max wall over 10 min 0\.016 s \(budget\) \/ 0\.004 s \(unit\)/);
+  assert.match(text, /client backends 17 of 60 \(1 active, 0 idle in txn, 0 lock-waiting\); probe 22\.1 ms\./);
+  assert.match(text, /Memory mirror \(`\/api\/cron\/box-health`, every 2 min\) last stamped 2026-09-12T06:28:00\.000Z \(2\.0 min before this file\)\n/);
+  assert.match(text, /Latest memory reading: 399 MB available of 904 MB \(44\.1 %\), swap in use 545 MB, load1 0\.14\./);
+  assert.match(text, /\*\*not available from this runner\*\* — no Upstash secret\. `pnpm --filter @civitics\/data data:box-health:series`/);
+});
+
+test("FIX-1194: §9 Box health — stale and absent stamps say so; the ring's day renders min/median/max", () => {
+  const stale = boxHealthLines(
+    {
+      ...quiet,
+      box_health: { ...PROBE, at: "2026-09-12T06:20:00.000Z" },
+      mem_day: {
+        available: true, n: 720, first_at: "2026-09-11T06:30:00Z", last_at: "2026-09-12T06:28:00Z",
+        min_mb: 212, min_at: "2026-09-11T15:58:00Z", median_mb: 401, max_mb: 455, mem_total_mb: 904,
+      },
+    },
+    AS_OF,
+  ).join("\n");
+  assert.match(stale, /\(10\.0 min before this file\) — \*\*missing\*\*: more than 3 min\. The probe is a pg_cron firing, so a stale stamp IS the saturation signal/);
+  assert.match(stale, /Memory mirror .* last stamped \*\*never\*\* — `pipeline_state\.box_health_mem` is absent\./);
+  assert.match(stale, /720 samples 2026-09-11T06:30:00Z → 2026-09-12T06:28:00Z; MemAvailable min \*\*212 MB\*\* \(at 2026-09-11T15:58:00Z\) \/ median 401 MB \/ max 455 MB of 904 MB\./);
+});
+
+test("renderMarkdown: §9 carries the Box health subsection and its query", () => {
+  const d = fixture();
+  d.forker = { ...d.forker, box_health: PROBE, box_health_mem: MEM, mem_day: { available: false, reason: "r" } };
+  const md = renderMarkdown(d);
+  const section = md.slice(md.indexOf("## 9. The forker"), md.indexOf("## 10."));
+  assert.match(section, /### Box health — the probe and the memory series \(FIX-1194 P1-B \/ FIX-1125\)/);
+  assert.match(section, /Probe \(`box-health-probe`, every minute\) last stamped/);
+  // An older fixture with no box-health keys still renders — both stamps read as never.
+  const old = renderMarkdown(fixture());
+  assert.match(old.slice(old.indexOf("## 9."), old.indexOf("## 10.")), /Probe .* last stamped \*\*never\*\*/);
+  assert.match(old, /Day's memory series \(off-box ring\): not read\./);
 });
