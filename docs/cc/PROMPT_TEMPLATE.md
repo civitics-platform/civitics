@@ -132,8 +132,11 @@ and its database.
 - **(g) Conditions, not a fixed band.** The nightly is the thing a fixed
   22:30–01:00 band was standing in for, and it is READABLE, so read it: no
   `nightly_cron` phase `running` (`data_sync_log`, last phase `complete`), and
-  the nightly's next START — cron `0 21 * * *` plus the 1.6–1.8 h GitHub
-  offset, so ≈ 22:35–22:50 UTC — **≥ `2 × expected wall + 15 min`** away. Still
+  the nightly's next START — the DISPATCH time, **21:00 UTC**, where
+  `/api/cron/gha-dispatch/nightly` fires it (FIX-1218; `prod_op_gate()`'s
+  `c_nightly_start`), not the 22:35–22:50 the GitHub offset used to put it at;
+  the `schedule:` fallback still arrives ~1.6–2.7 h later and stands down on
+  `already_ran` — **≥ `2 × expected wall + 15 min`** away. Still
   outside 05:45–09:00 UTC, and ≥ 60 min before any weekend-only job. Vacuum
   spacing is PROPORTIONAL to the job, not one number: ≥ 90 min after the END of
   any unguarded VACUUM job whose wall exceeded 60 s (`fr-vacuum-analyze` 03:00
@@ -179,6 +182,14 @@ passing, and both failures the clock rather than the data.
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `session:worktree:test`,
   `drain:test`, `check:proconfig:test`).
 - `pnpm fixes:check` after each commit.
+- **A GHA-workflow FIX's receipt is the next run AT ITS SLOT — dispatched or
+  scheduled** (rule 71, rewritten by FIX-1218). `nightly.yml`,
+  `sync-canary-check.yml` and `platform-snapshot.yml` are fired by
+  `/api/cron/gha-dispatch/<stem>` (Vercel cron) as `workflow_dispatch`; their
+  `schedule:` runs are fallbacks. Read runs with `gh run list --workflow <file>`
+  WITHOUT `--event schedule`, which now hides the run that did the work, and
+  read the dispatcher's own stamp, `pipeline_state.gha_dispatch_<stem>`. Never
+  hand-dispatch a nightly to make a receipt: the slot is the receipt.
 - Report what actually happened. A skipped step is reported as skipped.
 
 ### Reporting
