@@ -1,0 +1,2158 @@
+{
+  "runner": "donor-party-bootstrap-runner",
+  "target": "prod",
+  "reason": "FIX-1212 bootstrap (cc-147 runner)",
+  "args": {
+    "unitsPerCall": 2,
+    "wallTripS": 3,
+    "breatherUntilWallS": 0.5,
+    "breatherMaxS": 600,
+    "maxWaitMinutes": 600,
+    "pollSeconds": 300,
+    "maxCalls": 12,
+    "expectedMinutes": 60,
+    "tickSeconds": 120,
+    "tripOnWallMs": null,
+    "tripFromCall": 1,
+    "receiptTag": null
+  },
+  "pid": 17080,
+  "launched_at": "2026-09-24T01:04:47.500Z",
+  "finished_at": "2026-09-24T09:34:13.975Z",
+  "outcome": "stopped",
+  "exit_code": 4,
+  "detail": "stop rule before CALL 6: (3) census pass=false (57014 rate or front-door 5xx)",
+  "gate": {
+    "polls": [
+      {
+        "at": "2026-09-24T01:04:47.752Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:09:47.753Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:14:47.755Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:19:47.756Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:24:47.761Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:29:47.763Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:34:47.766Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:39:47.768Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:44:47.770Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:49:47.772Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:54:47.775Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T01:59:47.777Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:04:47.780Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:09:47.782Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:14:47.785Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:19:47.787Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:24:47.789Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:29:47.792Z",
+        "ok": false,
+        "blocked": [
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:34:47.793Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:39:47.796Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:44:47.799Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:49:47.802Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:54:47.803Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T02:59:47.806Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:04:47.808Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:09:47.811Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "b:fr-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:14:47.813Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:19:47.816Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:24:47.818Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:29:47.821Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:34:47.824Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:39:47.827Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:44:47.828Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:49:47.831Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:54:47.833Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T03:59:47.837Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:04:47.838Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:09:47.838Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:14:47.840Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:19:47.845Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:24:47.847Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:29:47.850Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:34:47.851Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:39:47.855Z",
+        "ok": false,
+        "blocked": [
+          "b:ec-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:44:47.858Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:49:47.858Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:54:47.860Z",
+        "ok": false,
+        "blocked": [
+          "b:fe-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T04:59:47.863Z",
+        "ok": false,
+        "blocked": [
+          "b:fe-vacuum-analyze",
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:04:47.865Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:09:47.868Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:14:47.868Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:19:47.872Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:24:47.876Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:29:47.878Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:34:47.881Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:39:47.883Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:44:47.887Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:49:47.889Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:54:47.892Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T05:59:47.894Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:04:47.896Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout",
+          "d:cron-job-budget-watchdog",
+          "e:live_writers"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:09:47.899Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout",
+          "d:cron-job-budget-watchdog"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:14:47.902Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:19:47.904Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:24:47.907Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:29:47.910Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:34:47.912Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:39:47.915Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:44:47.917Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:49:47.920Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:54:47.922Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T06:59:47.925Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:04:47.926Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:09:47.929Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:14:47.933Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:19:47.935Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:24:47.950Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:29:47.956Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:34:47.963Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:39:47.975Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:44:47.978Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:49:47.981Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:54:47.995Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T07:59:47.998Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:04:48.000Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:09:48.003Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:14:48.011Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:19:48.013Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:24:48.016Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:29:48.019Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:34:48.019Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:39:48.024Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:44:48.025Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:49:48.030Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:54:48.031Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T08:59:48.035Z",
+        "ok": false,
+        "blocked": [
+          "c:blackout"
+        ],
+        "gate_ok": false
+      },
+      {
+        "at": "2026-09-24T09:04:48.037Z",
+        "ok": true,
+        "blocked": [],
+        "gate_ok": true,
+        "also": {
+          "name": "census",
+          "ok": true,
+          "summary": "pass (0/60 min, ratio 0.00, floor 6; edge 0 of 136 request(s) = 0.00 %)"
+        }
+      }
+    ],
+    "opened_at": "2026-09-24T09:04:47.970458+00:00",
+    "opening_reading": {
+      "ok": true,
+      "readings": {
+        "vacuum": {
+          "jobs": [
+            {
+              "active": true,
+              "jobname": "dpr-vacuum-analyze",
+              "last_end": "2026-09-23T02:00:02.418025+00:00",
+              "runs_14d": 4,
+              "schedule": "0 2 * * 0,3",
+              "next_slot": null,
+              "mean_14d_s": 3.6,
+              "last_wall_s": 2.4,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "ec-vacuum-analyze",
+              "last_end": "2026-09-24T04:30:09.273702+00:00",
+              "runs_14d": 14,
+              "schedule": "30 4 * * *",
+              "next_slot": "2026-09-25T04:30:00+00:00",
+              "mean_14d_s": 294.2,
+              "last_wall_s": 9.2,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "ecs-vacuum-analyze",
+              "last_end": "2026-09-23T17:20:02.040054+00:00",
+              "runs_14d": 28,
+              "schedule": "20 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 104.1,
+              "last_wall_s": 2,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "fe-vacuum-analyze",
+              "last_end": "2026-09-24T04:50:11.523468+00:00",
+              "runs_14d": 14,
+              "schedule": "50 4 * * *",
+              "next_slot": "2026-09-25T04:50:00+00:00",
+              "mean_14d_s": 30.9,
+              "last_wall_s": 11.5,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "fr-vacuum-analyze",
+              "last_end": "2026-09-24T03:00:09.864139+00:00",
+              "runs_14d": 6,
+              "schedule": "0 3 * * *",
+              "next_slot": "2026-09-25T03:00:00+00:00",
+              "mean_14d_s": 100.5,
+              "last_wall_s": 9.8,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odbt-vacuum-analyze",
+              "last_end": "2026-09-23T17:18:00.265425+00:00",
+              "runs_14d": 28,
+              "schedule": "18 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 99.6,
+              "last_wall_s": 0.2,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odr-mv-vacuum-analyze",
+              "last_end": "2026-09-23T17:05:01.436407+00:00",
+              "runs_14d": 28,
+              "schedule": "5 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 135,
+              "last_wall_s": 1.4,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "odt-vacuum-analyze",
+              "last_end": "2026-09-23T17:12:00.145896+00:00",
+              "runs_14d": 28,
+              "schedule": "12 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 99.5,
+              "last_wall_s": 0.1,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "officials-vacuum-analyze",
+              "last_end": "2026-09-21T01:30:02.629078+00:00",
+              "runs_14d": 2,
+              "schedule": "30 1 * * 1",
+              "next_slot": null,
+              "mean_14d_s": 3,
+              "last_wall_s": 2.3,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "osar-vacuum-analyze",
+              "last_end": "2026-09-23T17:16:00.259799+00:00",
+              "runs_14d": 28,
+              "schedule": "16 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 99.7,
+              "last_wall_s": 0.2,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "osdr-vacuum-analyze",
+              "last_end": "2026-09-23T17:14:00.158673+00:00",
+              "runs_14d": 28,
+              "schedule": "14 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 99.5,
+              "last_wall_s": 0.1,
+              "running_since": null
+            },
+            {
+              "active": true,
+              "jobname": "treemap-individuals-vacuum-analyze",
+              "last_end": "2026-09-23T17:10:00.582638+00:00",
+              "runs_14d": 28,
+              "schedule": "10 11,17 * * *",
+              "next_slot": null,
+              "mean_14d_s": 120.8,
+              "last_wall_s": 0.6,
+              "running_since": null
+            }
+          ],
+          "unparsed": [
+            {
+              "active": true,
+              "jobname": "dpr-vacuum-analyze",
+              "schedule": "0 2 * * 0,3",
+              "mean_14d_s": 3.6
+            },
+            {
+              "active": true,
+              "jobname": "ecs-vacuum-analyze",
+              "schedule": "20 11,17 * * *",
+              "mean_14d_s": 104.1
+            },
+            {
+              "active": true,
+              "jobname": "odbt-vacuum-analyze",
+              "schedule": "18 11,17 * * *",
+              "mean_14d_s": 99.6
+            },
+            {
+              "active": true,
+              "jobname": "odr-mv-vacuum-analyze",
+              "schedule": "5 11,17 * * *",
+              "mean_14d_s": 135
+            },
+            {
+              "active": true,
+              "jobname": "odt-vacuum-analyze",
+              "schedule": "12 11,17 * * *",
+              "mean_14d_s": 99.5
+            },
+            {
+              "active": true,
+              "jobname": "officials-vacuum-analyze",
+              "schedule": "30 1 * * 1",
+              "mean_14d_s": 3
+            },
+            {
+              "active": true,
+              "jobname": "osar-vacuum-analyze",
+              "schedule": "16 11,17 * * *",
+              "mean_14d_s": 99.7
+            },
+            {
+              "active": true,
+              "jobname": "osdr-vacuum-analyze",
+              "schedule": "14 11,17 * * *",
+              "mean_14d_s": 99.5
+            },
+            {
+              "active": true,
+              "jobname": "treemap-individuals-vacuum-analyze",
+              "schedule": "10 11,17 * * *",
+              "mean_14d_s": 120.8
+            }
+          ]
+        },
+        "nightly": {
+          "running": [],
+          "last_phase": {
+            "phase": "enrichment-tail",
+            "status": "complete",
+            "started_at": "2026-09-23T23:28:55.106+00:00",
+            "completed_at": "2026-09-23T23:33:47.388+00:00"
+          },
+          "next_start": "2026-09-24T21:00:00+00:00",
+          "required_minutes": 135,
+          "minutes_to_next_start": 715
+        },
+        "blackout": {
+          "source": "pipeline_state.ec_crawl",
+          "now_utc": "09:04:47",
+          "windows": [
+            {
+              "to": "09:00",
+              "from": "05:45"
+            }
+          ]
+        },
+        "interlock": {
+          "held": false,
+          "reason_text": "clear",
+          "live_writers": [],
+          "live_writer_detail": []
+        },
+        "watchdogs": {
+          "jobs": [
+            {
+              "jobname": "cron-job-budget-watchdog",
+              "runs_60m": 30,
+              "max_wall_10m_s": 0.046,
+              "median_wall_60m_s": 0.02
+            },
+            {
+              "jobname": "derived-mvs-unit-watchdog",
+              "runs_60m": 30,
+              "max_wall_10m_s": 0.025,
+              "median_wall_60m_s": 0.006
+            }
+          ],
+          "budget_overruns": [],
+          "startup_timeouts_60m": 0
+        },
+        "stuck_units": {
+          "stuck": [],
+          "guarded_pipelines": [
+            "agency_staffing_rollup_refresh",
+            "contract_flow_rollups_rebuild",
+            "donation_edge_orphan_sweep",
+            "donor_party_rollup_orphan_sweep",
+            "donor_party_rollup_refresh",
+            "donor_rollup_orphan_sweep",
+            "donor_rollup_refresh",
+            "entity_connection_stats_orphan_sweep",
+            "entity_connection_stats_rebuild",
+            "entity_connections_rebuild",
+            "financial_entity_totals_reconcile",
+            "financial_entity_totals_refresh",
+            "group_donor_rollup_refresh",
+            "official_vote_stats_rebuild",
+            "refresh_derived_mvs",
+            "run_rule_taggers",
+            "treemap_individuals_global_refresh"
+          ]
+        }
+      },
+      "span_end": "2026-09-24T11:04:47.970458+00:00",
+      "blocked_by": [],
+      "checked_at": "2026-09-24T09:04:47.970458+00:00",
+      "expected_seconds": 3600
+    },
+    "opening_census": {
+      "name": "census",
+      "ok": true,
+      "summary": "pass (0/60 min, ratio 0.00, floor 6; edge 0 of 136 request(s) = 0.00 %)"
+    },
+    "waited_seconds": 28806.234,
+    "last_blocked_by": null
+  },
+  "census": [
+    {
+      "at": "2026-09-24T09:04:53.734Z",
+      "minutes": 60,
+      "code": 0,
+      "summary": "pass (0/60 min, ratio 0.00, floor 6; edge 0 of 136 request(s) = 0.00 %)",
+      "phase": "gate",
+      "before_call": null
+    },
+    {
+      "at": "2026-09-24T09:04:59.126Z",
+      "minutes": 15,
+      "code": 0,
+      "summary": "pass (0/15 min, ratio 0.00, floor 3; edge 0 of 136 request(s) = 0.00 %)",
+      "phase": "pre_call",
+      "before_call": 1
+    },
+    {
+      "at": "2026-09-24T09:10:12.401Z",
+      "minutes": 15,
+      "code": 0,
+      "summary": "pass (1/15 min, ratio 2.02, floor 3; edge 0 of 136 request(s) = 0.00 %)",
+      "phase": "pre_call",
+      "before_call": 2
+    },
+    {
+      "at": "2026-09-24T09:16:17.263Z",
+      "minutes": 15,
+      "code": 0,
+      "summary": "pass (1/15 min, ratio 2.02, floor 3; edge 1 of 279 request(s) = 0.36 %)",
+      "phase": "pre_call",
+      "before_call": 3
+    },
+    {
+      "at": "2026-09-24T09:22:29.301Z",
+      "minutes": 15,
+      "code": 0,
+      "summary": "pass (2/15 min, ratio 4.04, floor 3; edge 1 of 279 request(s) = 0.36 %)",
+      "phase": "pre_call",
+      "before_call": 4
+    },
+    {
+      "at": "2026-09-24T09:28:20.309Z",
+      "minutes": 15,
+      "code": 0,
+      "summary": "pass (2/15 min, ratio 4.04, floor 3; edge 1 of 279 request(s) = 0.36 %)",
+      "phase": "pre_call",
+      "before_call": 5
+    },
+    {
+      "at": "2026-09-24T09:34:11.098Z",
+      "minutes": 15,
+      "code": 1,
+      "summary": "FAIL (8/15 min, ratio 16.16, floor 3 — 57014 FAIL; edge 2 of 183 request(s) = 1.09 % — edge FAIL)",
+      "phase": "pre_call",
+      "before_call": 6
+    }
+  ],
+  "claim": {
+    "claimed_at": "2026-09-24T09:04:54.549Z",
+    "released_at": "2026-09-24T09:34:12.693Z",
+    "state_after_arm": {
+      "pid": 17080,
+      "held": true,
+      "defer": false,
+      "reason": "FIX-1212 bootstrap (cc-147 runner)",
+      "claimant": "FIX-1212 bootstrap (cc-147 runner)",
+      "claimed_at": "2026-09-24T09:04:54.154+00:00",
+      "claimed_by": "Craig@DESKTOP-05GHPC2",
+      "age_seconds": 0,
+      "label_stale": false,
+      "reason_text": "prod session held by this claimant: FIX-1212 bootstrap (cc-147 runner)",
+      "live_writers": [],
+      "label_present": true,
+      "claimant_bypass": true,
+      "expected_minutes": 60,
+      "live_writer_detail": []
+    }
+  },
+  "pacing": {
+    "units_per_call": 2,
+    "prior_value": null,
+    "upserts": 5,
+    "restores": 5,
+    "restored": true
+  },
+  "resume": {
+    "windows_done_before": [
+      1,
+      2
+    ],
+    "resuming_at": 3,
+    "target_before": "2026-09-21T00:18:25.831727+00:00"
+  },
+  "calls": [
+    {
+      "n": 1,
+      "units": 2,
+      "pid": 165967,
+      "started_at": "2026-09-24 09:04:58.789798+00",
+      "returned_at": "2026-09-24T09:09:07.081Z",
+      "wall_s": 247.579,
+      "row": {
+        "id": "22d56234-dddc-4fe1-b5f2-2f46710a3ab3",
+        "status": "partial",
+        "started_at": "2026-09-24 09:04:59.168448+00",
+        "completed_at": "2026-09-24 09:09:06.674161+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "54 days 18:23:57.346787",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 371320,
+          "unit_capped": true,
+          "windows_run": [
+            3,
+            4
+          ],
+          "cycle_target": "2026-09-21T00:18:25.831727+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "apply_seconds": [
+            2.8,
+            2.53
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            119.06,
+            123.01
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 248,
+          "next_slice_from": "2026-07-28 05:54:28.48494+00",
+          "cycle_started_at": "2026-09-23T09:02:48.434717+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-28T05:54:28.48494+00:00",
+          "windows_done_before": [
+            1,
+            2
+          ]
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 3,
+          "min": 0.019885,
+          "median": 0.795774,
+          "max": 1.193904,
+          "elevated": 1
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 3,
+          "min": 0.006107,
+          "median": 0.516683,
+          "max": 1.015268,
+          "elevated": 1
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "n": 2,
+      "units": 2,
+      "pid": 165967,
+      "started_at": "2026-09-24 09:10:12.075441+00",
+      "returned_at": "2026-09-24T09:14:43.200Z",
+      "wall_s": 270.627,
+      "row": {
+        "id": "4a554538-8d86-4ca7-bc8e-92e4f75c83ad",
+        "status": "partial",
+        "started_at": "2026-09-24 09:10:12.247009+00",
+        "completed_at": "2026-09-24 09:14:42.831725+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "54 days 18:23:57.346787",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 372310,
+          "unit_capped": true,
+          "windows_run": [
+            5,
+            6
+          ],
+          "cycle_target": "2026-09-21T00:18:25.831727+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "apply_seconds": [
+            2.89,
+            1.96
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            144.83,
+            120.71
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 271,
+          "next_slice_from": "2026-07-28 05:54:28.48494+00",
+          "cycle_started_at": "2026-09-23T09:02:48.434717+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-28T05:54:28.48494+00:00",
+          "windows_done_before": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 3,
+          "min": 0.049368,
+          "median": 1.224024,
+          "max": 1.240292,
+          "elevated": 2
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 3,
+          "min": 0.022361,
+          "median": 0.975053,
+          "max": 1.098798,
+          "elevated": 1
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "n": 3,
+      "units": 2,
+      "pid": 165967,
+      "started_at": "2026-09-24 09:16:16.93355+00",
+      "returned_at": "2026-09-24T09:20:24.289Z",
+      "wall_s": 246.869,
+      "row": {
+        "id": "626e8d1b-08cc-461b-bc74-4c728f1989ab",
+        "status": "partial",
+        "started_at": "2026-09-24 09:16:17.093464+00",
+        "completed_at": "2026-09-24 09:20:23.921239+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "54 days 18:23:57.346787",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 372085,
+          "unit_capped": true,
+          "windows_run": [
+            7,
+            8
+          ],
+          "cycle_target": "2026-09-21T00:18:25.831727+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "apply_seconds": [
+            2.58,
+            8.84
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            118.26,
+            117
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 247,
+          "next_slice_from": "2026-07-28 05:54:28.48494+00",
+          "cycle_started_at": "2026-09-23T09:02:48.434717+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-28T05:54:28.48494+00:00",
+          "windows_done_before": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 3,
+          "min": 0.027559,
+          "median": 0.547652,
+          "max": 1.19,
+          "elevated": 1
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 3,
+          "min": 0.010274,
+          "median": 0.27364,
+          "max": 0.838543,
+          "elevated": 0
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "n": 4,
+      "units": 2,
+      "pid": 165967,
+      "started_at": "2026-09-24 09:22:28.972328+00",
+      "returned_at": "2026-09-24T09:26:45.360Z",
+      "wall_s": 255.903,
+      "row": {
+        "id": "b516361d-bbb4-4892-bcf5-b7fc9f348855",
+        "status": "partial",
+        "started_at": "2026-09-24 09:22:29.129596+00",
+        "completed_at": "2026-09-24 09:26:44.999326+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "54 days 18:23:57.346787",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 371795,
+          "unit_capped": true,
+          "windows_run": [
+            9,
+            10
+          ],
+          "cycle_target": "2026-09-21T00:18:25.831727+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "apply_seconds": [
+            7.82,
+            2.64
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            122.93,
+            122.33
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 256,
+          "next_slice_from": "2026-07-28 05:54:28.48494+00",
+          "cycle_started_at": "2026-09-23T09:02:48.434717+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-28T05:54:28.48494+00:00",
+          "windows_done_before": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ]
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 3,
+          "min": 0.017624,
+          "median": 1.128865,
+          "max": 1.154774,
+          "elevated": 2
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 3,
+          "min": 0.006618,
+          "median": 0.997872,
+          "max": 1.03456,
+          "elevated": 1
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "n": 5,
+      "units": 2,
+      "pid": 165967,
+      "started_at": "2026-09-24 09:28:20.064126+00",
+      "returned_at": "2026-09-24T09:32:36.625Z",
+      "wall_s": 256.069,
+      "row": {
+        "id": "2bb9f584-61a7-4c9f-8374-c71c14ff0b78",
+        "status": "partial",
+        "started_at": "2026-09-24 09:28:20.244194+00",
+        "completed_at": "2026-09-24 09:32:36.269791+00",
+        "error_message": "unit cap reached — 2 unit(s) run, resumable",
+        "metadata": {
+          "lag": "54 days 18:23:57.346787",
+          "mode": "full",
+          "source": "pg_cron",
+          "resumed": true,
+          "canceled": false,
+          "failures": 0,
+          "caught_up": false,
+          "max_units": 2,
+          "units_run": 2,
+          "rollup_rows": 371090,
+          "unit_capped": true,
+          "windows_run": [
+            11,
+            12
+          ],
+          "cycle_target": "2026-09-21T00:18:25.831727+00:00",
+          "dirty_donors": 0,
+          "windows_done": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "apply_seconds": [
+            5.52,
+            3.11
+          ],
+          "cancel_detail": null,
+          "stage_seconds": [
+            117.45,
+            126.77
+          ],
+          "windows_total": 16,
+          "budget_seconds": 1500,
+          "elapsed_seconds": 256,
+          "next_slice_from": "2026-07-28 05:54:28.48494+00",
+          "cycle_started_at": "2026-09-23T09:02:48.434717+00:00",
+          "full_rebuild_lag": "14 days",
+          "watermark_before": "2026-07-28T05:54:28.48494+00:00",
+          "windows_done_before": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ]
+        }
+      },
+      "verdict": "continue: partial: unit cap reached — 2 unit(s) run, resumable",
+      "watchdog_walls": [
+        {
+          "job": "cron-job-budget-watchdog",
+          "n": 3,
+          "min": 0.033092,
+          "median": 0.185539,
+          "max": 0.992559,
+          "elevated": 0
+        },
+        {
+          "job": "derived-mvs-unit-watchdog",
+          "n": 3,
+          "min": 0.025305,
+          "median": 0.131662,
+          "max": 0.743888,
+          "elevated": 0
+        }
+      ],
+      "windows_done_after": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    }
+  ],
+  "breathers": [
+    {
+      "before_call": 2,
+      "started_at": "2026-09-24T09:09:07.382Z",
+      "released_at": "2026-09-24T09:10:08.162Z",
+      "waited_s": 60.78,
+      "released_by": "walls",
+      "readings": 3,
+      "walls_at_release": {
+        "cron-job-budget-watchdog": {
+          "wall_s": 0.049368,
+          "runid": "63147"
+        },
+        "derived-mvs-unit-watchdog": {
+          "wall_s": 0.022361,
+          "runid": "63149"
+        }
+      },
+      "pending_at_release": []
+    },
+    {
+      "before_call": 3,
+      "started_at": "2026-09-24T09:14:43.301Z",
+      "released_at": "2026-09-24T09:16:14.058Z",
+      "waited_s": 90.757,
+      "released_by": "walls",
+      "readings": 4,
+      "walls_at_release": {
+        "cron-job-budget-watchdog": {
+          "wall_s": 0.027559,
+          "runid": "63160"
+        },
+        "derived-mvs-unit-watchdog": {
+          "wall_s": 0.010274,
+          "runid": "63162"
+        }
+      },
+      "pending_at_release": []
+    },
+    {
+      "before_call": 4,
+      "started_at": "2026-09-24T09:20:24.387Z",
+      "released_at": "2026-09-24T09:22:25.303Z",
+      "waited_s": 120.916,
+      "released_by": "walls",
+      "readings": 5,
+      "walls_at_release": {
+        "cron-job-budget-watchdog": {
+          "wall_s": 0.017624,
+          "runid": "63172"
+        },
+        "derived-mvs-unit-watchdog": {
+          "wall_s": 0.006618,
+          "runid": "63174"
+        }
+      },
+      "pending_at_release": []
+    },
+    {
+      "before_call": 5,
+      "started_at": "2026-09-24T09:26:45.518Z",
+      "released_at": "2026-09-24T09:28:16.416Z",
+      "waited_s": 90.898,
+      "released_by": "walls",
+      "readings": 4,
+      "walls_at_release": {
+        "cron-job-budget-watchdog": {
+          "wall_s": 0.033092,
+          "runid": "63184"
+        },
+        "derived-mvs-unit-watchdog": {
+          "wall_s": 0.025305,
+          "runid": "63186"
+        }
+      },
+      "pending_at_release": []
+    },
+    {
+      "before_call": 6,
+      "started_at": "2026-09-24T09:32:36.807Z",
+      "released_at": "2026-09-24T09:34:07.636Z",
+      "waited_s": 90.829,
+      "released_by": "walls",
+      "readings": 4,
+      "walls_at_release": {
+        "cron-job-budget-watchdog": {
+          "wall_s": 0.030777,
+          "runid": "63198"
+        },
+        "derived-mvs-unit-watchdog": {
+          "wall_s": 0.017697,
+          "runid": "63200"
+        }
+      },
+      "pending_at_release": []
+    }
+  ],
+  "watchdog_series": [
+    {
+      "at": "2026-09-24T09:04:59.148Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.019885,
+        "derived-mvs-unit-watchdog": 0.006107
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63135",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63137",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-24T09:06:59.507Z",
+      "walls": {
+        "cron-job-budget-watchdog": 1.193904,
+        "derived-mvs-unit-watchdog": 1.015268
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63139",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63141",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/LWLock:WALWrite \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:08:59.895Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.795774,
+        "derived-mvs-unit-watchdog": 0.516683
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63143",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63145",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFilePrefetch \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:10:12.433Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.049368,
+        "derived-mvs-unit-watchdog": 0.022361
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63147",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63149",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-24T09:12:12.579Z",
+      "walls": {
+        "cron-job-budget-watchdog": 1.224024,
+        "derived-mvs-unit-watchdog": 0.975053
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63151",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63153",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFilePrefetch \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:14:12.864Z",
+      "walls": {
+        "cron-job-budget-watchdog": 1.240292,
+        "derived-mvs-unit-watchdog": 1.098798
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63155",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63157",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFilePrefetch \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:16:17.285Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.027559,
+        "derived-mvs-unit-watchdog": 0.010274
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63160",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63162",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-24T09:18:17.429Z",
+      "walls": {
+        "cron-job-budget-watchdog": 1.19,
+        "derived-mvs-unit-watchdog": 0.838543
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63164",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63166",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:20:17.751Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.547652,
+        "derived-mvs-unit-watchdog": 0.27364
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63168",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63170",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:22:29.322Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.017624,
+        "derived-mvs-unit-watchdog": 0.006618
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63172",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63174",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-24T09:24:29.464Z",
+      "walls": {
+        "cron-job-budget-watchdog": 1.154774,
+        "derived-mvs-unit-watchdog": 0.997872
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63176",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63178",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:26:29.778Z",
+      "walls": {
+        "cron-job-budget-watchdog": 1.128865,
+        "derived-mvs-unit-watchdog": 1.03456
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63180",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63182",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFilePrefetch \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:28:20.410Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.033092,
+        "derived-mvs-unit-watchdog": 0.025305
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63184",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63186",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": null
+    },
+    {
+      "at": "2026-09-24T09:30:20.560Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.185539,
+        "derived-mvs-unit-watchdog": 0.131662
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63189",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63191",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/-:- \"CALL public.refresh_donor_party_rollup_incremental()\""
+    },
+    {
+      "at": "2026-09-24T09:32:21.198Z",
+      "walls": {
+        "cron-job-budget-watchdog": 0.992559,
+        "derived-mvs-unit-watchdog": 0.743888
+      },
+      "runs": {
+        "cron-job-budget-watchdog": {
+          "runid": "63194",
+          "running": false
+        },
+        "derived-mvs-unit-watchdog": {
+          "runid": "63196",
+          "running": false
+        }
+      },
+      "startupTimeouts": 0,
+      "callBackendPresent": true,
+      "backend": "active/IO:DataFilePrefetch \"CALL public.refresh_donor_party_rollup_incremental()\""
+    }
+  ],
+  "elevated_ticks": 12,
+  "trip": {
+    "at": "2026-09-24T09:34:11.098Z",
+    "rule": 3,
+    "reason": "(3) census pass=false (57014 rate or front-door 5xx)",
+    "call": 6,
+    "job": null,
+    "run_ids": [],
+    "cancel_sent": false,
+    "backend_gone_verified": true
+  },
+  "caught_up_check": null,
+  "before": {
+    "at": "2026-09-24T09:04:54.792Z",
+    "watermark": "2026-07-28 05:54:28.48494+00",
+    "cursor": {
+      "mode": "full",
+      "target": "2026-09-21T00:18:25.831727+00:00",
+      "started_at": "2026-09-23T09:02:48.434717+00:00",
+      "windows_done": [
+        1,
+        2
+      ]
+    },
+    "crawl_config": null,
+    "mv_rows": 1728538,
+    "mv_sum_cents": "732520894800"
+  },
+  "after": {
+    "at": "2026-09-24T09:34:12.813Z",
+    "watermark": "2026-07-28 05:54:28.48494+00",
+    "cursor": {
+      "mode": "full",
+      "target": "2026-09-21T00:18:25.831727+00:00",
+      "started_at": "2026-09-23T09:02:48.434717+00:00",
+      "windows_done": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    "crawl_config": null,
+    "mv_rows": 2618055,
+    "mv_sum_cents": "867716229900"
+  },
+  "sum_ratio_after_over_before": 1.1845617456917898,
+  "cursor_last": {
+    "mode": "full",
+    "target": "2026-09-21T00:18:25.831727+00:00",
+    "started_at": "2026-09-23T09:02:48.434717+00:00",
+    "windows_done": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ]
+  }
+}
