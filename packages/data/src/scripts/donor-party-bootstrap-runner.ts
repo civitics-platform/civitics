@@ -83,7 +83,13 @@
  *       consecutive exit-2s trip — the Logs API going dark was itself a symptom
  *       on 09-22 (rule 164). Since cc-151 D1 the 57014 half fails only above
  *       the Poisson P99 floor of the baseline (3 in 15 min at 0.033/min), so a
- *       burst of 4 trips and a single stray timeout does not;
+ *       burst of 4 trips and a single stray timeout does not. With
+ *       --census-mode report (cc-152; default stop) a pass=false reading is
+ *       recorded — `would_trip` on its receipt row — and logged, and does not
+ *       stop the run: the op's front-door cost is measured, not guarded. The
+ *       dark-twice trip stays armed in both modes, and the gate wait's census
+ *       half (step 1) holds the window in both; report demotes only this
+ *       pass=false stop;
  *   (4) the CALL's backend gone from pg_stat_activity (the box, not the
  *       procedure).
  * On trip: pg_cancel_backend(<CALL pid>) from T; wait for the CALL to return
@@ -156,6 +162,9 @@ export function vocabularyLine(): string {
 // Args
 // ---------------------------------------------------------------------------
 
+/** Rule (3)'s pass=false: `stop` trips it; `report` records it (cc-152 D1). */
+export type CensusMode = "stop" | "report";
+
 export interface RunnerArgs {
   unitsPerCall: number;
   wallTripS: number;
@@ -169,6 +178,7 @@ export interface RunnerArgs {
   tripOnWallMs: number | null;
   tripFromCall: number;
   receiptTag: string | null;
+  censusMode: CensusMode;
 }
 
 function argValue(argv: readonly string[], flag: string): string | null {
@@ -188,7 +198,7 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
   const known = new Set([
     "--units-per-call", "--wall-trip-s", "--breather-until-wall-s", "--breather-max-s",
     "--max-wait-minutes", "--poll-seconds", "--max-calls", "--expected-minutes",
-    "--tick-seconds", "--trip-on-wall-ms", "--trip-from-call", "--receipt-tag",
+    "--tick-seconds", "--trip-on-wall-ms", "--trip-from-call", "--receipt-tag", "--census-mode",
   ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -228,6 +238,10 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
   }
   const tag = argValue(argv, "--receipt-tag");
   if (tag != null && !/^[a-z0-9-]+$/.test(tag)) return { error: "--receipt-tag must be [a-z0-9-]+" };
+  const mode = argValue(argv, "--census-mode");
+  if (mode != null && mode !== "stop" && mode !== "report") {
+    return { error: `--census-mode must be stop|report (got ${JSON.stringify(mode)})` };
+  }
   return {
     unitsPerCall: Math.floor(out["unitsPerCall"]!),
     wallTripS: out["wallTripS"]!,
@@ -241,6 +255,7 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
     tripOnWallMs,
     tripFromCall: Math.floor(out["tripFromCall"]!),
     receiptTag: tag,
+    censusMode: mode === "report" ? "report" : "stop",
   };
 }
 
@@ -341,7 +356,22 @@ export interface Trip {
   job?: string;
   /** Rule (2): the two votes it counted — cron runids (a running run is `<runid>@<reading time>`). */
   run_ids?: string[];
+  /** Never set on a Trip, so a WouldTrip cannot be passed as one. */
+  would_trip?: never;
 }
+
+/**
+ * cc-152 D1 — evaluateCensus's third shape: what rule (3) WOULD have returned
+ * in stop mode, on a pass=false reading in report mode. Recorded and logged,
+ * never a stop.
+ */
+export interface WouldTrip {
+  would_trip: true;
+  rule: 3;
+  reason: string;
+}
+
+export const isTrip = (v: Trip | WouldTrip | null): v is Trip => v !== null && v.would_trip !== true;
 
 export interface StopState {
   consecutiveOver: Record<string, number>;
@@ -403,10 +433,18 @@ export function evaluateWatchdogs(
   return null;
 }
 
-/** Census exit code → trip or null. 0 pass · 1 fail · 2 Logs API dark. */
-export function evaluateCensus(state: StopState, exitCode: number): Trip | null {
+/**
+ * Census exit code → trip, would-trip, or null. 0 pass · 1 fail · 2 Logs API
+ * dark. A fail is a Trip in stop mode and a WouldTrip in report mode; the
+ * dark count and its trip are the same in both.
+ */
+export function evaluateCensus(state: StopState, exitCode: number, mode: CensusMode = "stop"): Trip | WouldTrip | null {
   if (exitCode === 0) { state.consecutiveCensusDark = 0; return null; }
-  if (exitCode === 1) { state.consecutiveCensusDark = 0; return { rule: 3, reason: "(3) census pass=false (57014 rate or front-door 5xx)" }; }
+  if (exitCode === 1) {
+    state.consecutiveCensusDark = 0;
+    const reason = "(3) census pass=false (57014 rate or front-door 5xx)";
+    return mode === "report" ? { would_trip: true, rule: 3, reason } : { rule: 3, reason };
+  }
   state.consecutiveCensusDark += 1;
   return state.consecutiveCensusDark >= 2 ? { rule: 3, reason: "(3) the Logs API was dark on two consecutive census readings" } : null;
 }
@@ -646,6 +684,21 @@ interface BreatherRecord {
   pending_at_release: string[];
 }
 
+export interface CensusRow {
+  at: string;
+  minutes: number;
+  code: number;
+  summary: string;
+  phase: "gate" | "pre_call" | "cadence";
+  before_call: number | null;
+  /**
+   * cc-152 D1: true when this reading would have tripped rule (3) in stop mode
+   * and report mode recorded it instead. null on a gate row — the gate wait's
+   * census half holds the window; it is not rule (3).
+   */
+  would_trip: boolean | null;
+}
+
 interface Receipt {
   runner: string;
   target: "prod" | "local";
@@ -665,7 +718,7 @@ interface Receipt {
     /** On gate_timeout: the half that held the last poll. */
     last_blocked_by: string | null;
   };
-  census: { at: string; minutes: number; code: number; summary: string; phase: "gate" | "pre_call" | "cadence"; before_call: number | null }[];
+  census: CensusRow[];
   claim: { claimed_at: string | null; released_at: string | null; state_after_arm: Partial<ProdSessionState> | null };
   pacing: { units_per_call: number; prior_value: Record<string, unknown> | null; upserts: number; restores: number; restored: boolean | null };
   resume: { windows_done_before: number[] | null; resuming_at: number | null; target_before: string | null } | null;
@@ -735,6 +788,26 @@ export function pollLine(p: GatePoll): string {
   return `- ${p.at} held by the gate: ${p.blocked.join(", ")}${p.error ? ` (${p.error})` : ""}${census}`;
 }
 
+/** The log/receipt suffix of a reading report mode recorded instead of stopping on. */
+export const WOULD_TRIP_NOTE = " — would have tripped rule (3); census mode report";
+
+/** The receipt's `census mode` header row (cc-152 D1). */
+export function censusModeLine(mode: CensusMode, rows: readonly CensusRow[]): string {
+  const rule3 = rows.filter((c) => c.phase !== "gate");
+  if (mode === "stop") {
+    return "stop — rule (3) pass=false stops the run; the dark-twice trip is armed; the gate wait's census half holds the window";
+  }
+  return "report — rule (3) pass=false is recorded, not a stop " +
+    `(${rule3.filter((c) => c.would_trip === true).length} of ${rule3.length} rule (3) reading(s) would have tripped); ` +
+    "the dark-twice trip stays armed; the gate wait's census half still holds the window";
+}
+
+/** One receipt line per census reading. */
+export function censusLine(c: CensusRow): string {
+  const where = c.phase === "gate" ? "gate poll" : c.phase === "pre_call" ? `before CALL ${c.before_call}` : "cadence";
+  return `- ${c.at} (${c.minutes} min, ${where}) exit ${c.code}: ${c.summary}${c.would_trip ? ` — **would_trip**${WOULD_TRIP_NOTE}` : ""}`;
+}
+
 function renderReceipt(r: Receipt): string {
   const L: string[] = [];
   const f = (x: number | null | undefined, d = 1) => (x == null || Number.isNaN(x) ? "—" : x.toFixed(d));
@@ -750,6 +823,7 @@ function renderReceipt(r: Receipt): string {
   L.push(`| launched / finished | ${r.launched_at} / ${r.finished_at ?? "—"} |`);
   L.push(`| pid | ${r.pid} |`);
   L.push(`| args | \`${JSON.stringify(r.args)}\` |`);
+  L.push(`| census mode | ${censusModeLine(r.args.censusMode, r.census)} |`);
   L.push(`| gate | ${gateTally(r.gate.polls)}; opened ${r.gate.opened_at ?? "never"} after ${f(r.gate.waited_seconds != null ? r.gate.waited_seconds / 60 : null)} min` +
     `${r.gate.opening_census ? ` · census at opening: ${r.gate.opening_census.summary}` : ""}` +
     `${r.gate.last_blocked_by ? ` · last poll held by ${r.gate.last_blocked_by}` : ""} |`);
@@ -796,10 +870,7 @@ function renderReceipt(r: Receipt): string {
   L.push("");
   L.push("## Census");
   L.push("");
-  for (const c of r.census) {
-    const where = c.phase === "gate" ? "gate poll" : c.phase === "pre_call" ? `before CALL ${c.before_call}` : "cadence";
-    L.push(`- ${c.at} (${c.minutes} min, ${where}) exit ${c.code}: ${c.summary}`);
-  }
+  for (const c of r.census) L.push(censusLine(c));
   if (r.census.length === 0) L.push("- (none)");
   L.push("");
   L.push("## Cursor at the end");
@@ -1019,9 +1090,11 @@ async function main(): Promise<number> {
       lastCensusAt = Date.now();
       void runCensus(15, log).then((cen) => {
         censusBusy = false;
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "cadence", before_call: null });
-        log(`[census] 15 min: ${cen.summary}`);
-        const trip = evaluateCensus(stopState, cen.code);
+        const v = evaluateCensus(stopState, cen.code, args.censusMode);
+        const wouldTrip = v !== null && !isTrip(v);
+        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "cadence", before_call: null, would_trip: wouldTrip });
+        log(`[census] 15 min: ${cen.summary}${wouldTrip ? WOULD_TRIP_NOTE : ""}`);
+        const trip = isTrip(v) ? v : null;
         if (trip && !stopping) {
           stopping = trip;
           if (inCall) {
@@ -1054,12 +1127,13 @@ async function main(): Promise<number> {
         while (censusBusy) await sleep(1000);   // a cadence census still in flight
         const cen = await runCensus(15, log);
         lastCensusAt = Date.now();
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "pre_call", before_call: n });
-        log(`[census] pre-CALL ${n} 15 min: ${cen.summary}`);
-        const trip = evaluateCensus(stopState, cen.code);
-        if (trip) {
-          recordTrip(trip, n);
-          finish("stopped", `stop rule before CALL ${n}: ${trip.reason}`);
+        const v = evaluateCensus(stopState, cen.code, args.censusMode);
+        const wouldTrip = v !== null && !isTrip(v);
+        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "pre_call", before_call: n, would_trip: wouldTrip });
+        log(`[census] pre-CALL ${n} 15 min: ${cen.summary}${wouldTrip ? WOULD_TRIP_NOTE : ""}`);
+        if (isTrip(v)) {
+          recordTrip(v, n);
+          finish("stopped", `stop rule before CALL ${n}: ${v.reason}`);
           return;
         }
       }
@@ -1204,7 +1278,7 @@ async function main(): Promise<number> {
     const censusHalf = async (): Promise<AlsoReading> => {
       if (target !== "prod") return { name: "census", ok: true, summary: "skipped — local (no Logs API)" };
       const cen = await runCensus(60, log);
-      R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary, phase: "gate", before_call: null });
+      R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary, phase: "gate", before_call: null, would_trip: null });
       return { name: "census", ok: cen.code === 0, summary: cen.summary };
     };
     for (;;) {
