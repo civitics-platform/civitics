@@ -3,19 +3,27 @@
  *
  *   pnpm --filter @civitics/data data:donor-party:bootstrap:prod \
  *     --units-per-call 2 --wall-trip-s 3.0 --breather-until-wall-s 0.5 \
- *     --breather-max-s 600 --max-calls 12 --expected-minutes 60 --max-wait-minutes 180
+ *     --breather-max-s 600 --max-calls 12 --expected-minutes 60 --max-wait-minutes 600
  *
  * Launched once, from the PRIMARY checkout (its .env.local.prod is the real
  * one; a worktree's is a stub), as a background process. It needs nobody:
  *
  *   1. WAIT   waitForProdOpGate(--expected-minutes) — the prod-op window as a
  *             CONDITION read every --poll-seconds from public.prod_op_gate()
- *             (FIX-1215), not a clock anybody computed. The wait is BEFORE the
- *             claim: a claim held through a four-hour wait would hold every
- *             guarded pipeline for nothing (rule 102).
- *   2. CENSUS cancellation-census.ts --minutes 60 --json must PASS, else exit 3
- *             without claiming. (Logs API; prod only — skipped on the clone,
- *             which has no Logs API.)
+ *             (FIX-1215), not a clock anybody computed — AND, on every poll
+ *             where the gate reads ok, the census
+ *             (cancellation-census.ts --minutes 60 --json) must PASS on the
+ *             same poll (cc-151 D2). A census FAIL, or the Logs API dark, is
+ *             "not open yet": keep polling. --max-wait-minutes bounds the whole
+ *             wait → gate_timeout, naming the half that held the last poll.
+ *             The census is read only when the gate is open, so a blocked gate
+ *             costs no Logs API read; on the clone (no Logs API) the census
+ *             half reads `skipped — local`. The wait is BEFORE the claim: a
+ *             claim held through a four-hour wait would hold every guarded
+ *             pipeline for nothing (rule 102).
+ *   2. (retired, cc-151) the one-shot pre-launch census and its exit 3
+ *             `census_fail`. cc-148 polled it by hand for 30 min; the wait
+ *             belongs in code (rule 170).
  *   3. CLAIM  withProdSession({reason}) — every guarded pg_cron job now defers.
  *   4. ARM    connection C (application_name civitics_dp_bootstrap):
  *             SET statement_timeout = '40min' · SET lock_timeout = '60s' ·
@@ -69,10 +77,13 @@
  *       They are logged `elevated` and counted (`elevated_ticks`), never a
  *       trip. >= 3 s is above anything the healthy stacks produce and inside
  *       the Tuesday 1–4 s band — a stop worth losing one window for;
- *   (3) the census (child process) before every CALL and every 15 min during
- *       one: pass=false trips (the front door — rule 65, the load-bearing
- *       stop); exit 2 (Logs API dark) is logged, and TWO consecutive exit-2s
- *       trip — the Logs API going dark was itself a symptom on 09-22 (rule 164);
+ *   (3) the census (child process, --minutes 15) before every CALL and every
+ *       15 min during one: pass=false trips (the front door — rule 65, the
+ *       load-bearing stop); exit 2 (Logs API dark) is logged, and TWO
+ *       consecutive exit-2s trip — the Logs API going dark was itself a symptom
+ *       on 09-22 (rule 164). Since cc-151 D1 the 57014 half fails only above
+ *       the Poisson P99 floor of the baseline (3 in 15 min at 0.033/min), so a
+ *       burst of 4 trips and a single stray timeout does not;
  *   (4) the CALL's backend gone from pg_stat_activity (the box, not the
  *       procedure).
  * On trip: pg_cancel_backend(<CALL pid>) from T; wait for the CALL to return
@@ -83,8 +94,10 @@
  * run ids it counted; exit 4. No retry without Craig.
  *
  * EXIT CODES
- *   0 caught_up · 1 error · 3 census_fail (pre-launch) · 4 stopped ·
- *   5 skipped · 6 max_calls · 7 gate_timeout
+ *   0 caught_up · 1 error · 4 stopped · 5 skipped · 6 max_calls · 7 gate_timeout
+ *   3 is RETIRED (was census_fail, pre-launch — cc-151 D2 made it unreachable:
+ *   the census is waited on inside the gate wait). Never reused, so an old log
+ *   still reads unambiguously.
  * `pnpm --filter … <key>` and plain `pnpm <key>` pass the code through; `pnpm -s
  * <key>` collapses every non-zero code to 1 (pnpm 9, Windows — measured cc-147).
  * The receipt's `exit_code` is authoritative either way.
@@ -109,7 +122,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
-import { GateTimeout, waitForProdOpGate, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
+import { GateTimeout, waitForProdOpGate, type AlsoReading, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
 import { ProdSessionRefused, withProdSession, type ProdSessionState } from "../lib/prod-session";
 import { errText } from "../lib/session-lock";
 
@@ -126,11 +139,18 @@ export const ELEVATED_FROM_S = 1.0;
 const BREATHER_READ_S = 30;
 
 export type Outcome =
-  | "caught_up" | "stopped" | "skipped" | "gate_timeout" | "census_fail" | "max_calls" | "error";
+  | "caught_up" | "stopped" | "skipped" | "gate_timeout" | "max_calls" | "error";
 
+/** 3 is retired (census_fail, cc-151 D2) and never reused. */
 export const EXIT: Record<Outcome, number> = {
-  caught_up: 0, error: 1, census_fail: 3, stopped: 4, skipped: 5, max_calls: 6, gate_timeout: 7,
+  caught_up: 0, error: 1, stopped: 4, skipped: 5, max_calls: 6, gate_timeout: 7,
 };
+
+/** The vocabulary line every receipt carries (rule 48: the receipt's vocabulary IS the code's). */
+export function vocabularyLine(): string {
+  return `${Object.entries(EXIT).sort((a, b) => a[1] - b[1]).map(([o, c]) => `${o} ${c}`).join(" · ")}` +
+    " · (3 retired: census_fail — the census is waited on inside the gate, cc-151)";
+}
 
 // ---------------------------------------------------------------------------
 // Args
@@ -548,6 +568,30 @@ async function readCallRow(c: Client, since: string): Promise<CallRow | null> {
   return r.rows[0] ?? null;
 }
 
+/** The slice of cancellation-census.ts --json this runner reads. */
+export interface CensusJson {
+  cancellations?: { total: number; ratio: number; floor?: number; lambda?: number; pass?: boolean };
+  edge?: { note: string; pass?: boolean };
+  pass?: boolean;
+}
+
+/**
+ * One census reading as one line — `pass|FAIL|dark (N/M min, ratio r, floor f; edge …)`.
+ * Exit 0 pass · 1 FAIL · anything else dark (the Logs API did not answer, or
+ * the child did not run), which is what evaluateCensus counts as dark too.
+ */
+export function censusSummary(code: number, j: CensusJson | null, minutes: number): string {
+  if (code !== 0 && code !== 1) return `dark (exit ${code} — the Logs API did not answer)`;
+  const head = code === 0 ? "pass" : "FAIL";
+  if (!j) return `${head} (exit ${code}; unparsed output)`;
+  const c = j.cancellations;
+  const cPart = c
+    ? `${c.total}/${minutes} min, ratio ${Number(c.ratio).toFixed(2)}, floor ${c.floor ?? "?"}${c.pass === false ? " — 57014 FAIL" : ""}`
+    : "no 57014 reading";
+  const ePart = j.edge ? `edge ${j.edge.note}${j.edge.pass === false ? " — edge FAIL" : ""}` : "no edge reading";
+  return `${head} (${cPart}; ${ePart})`;
+}
+
 /** cancellation-census.ts as a child process; resolves its exit code (2 on any launch failure). */
 function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: number; summary: string }> {
   return new Promise((resolve) => {
@@ -559,15 +603,16 @@ function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: n
     child.stdout?.on("data", (d) => { out += String(d); });
     child.stderr?.on("data", () => { /* the census prints its own diagnostics; the code is the verdict */ });
     const timer = setTimeout(() => { child.kill(); }, 120_000);
-    child.on("error", (e) => { clearTimeout(timer); log(`[census] launch failed: ${e.message}`); resolve({ code: 2, summary: "launch failed" }); });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      log(`[census] launch failed: ${e.message}`);
+      resolve({ code: 2, summary: censusSummary(2, null, minutes) });
+    });
     child.on("exit", (code) => {
       clearTimeout(timer);
-      let summary = `exit ${code}`;
-      try {
-        const j = JSON.parse(out) as { cancellations?: { total: number; rate: number; ratio: number }; edge?: { note: string }; pass?: boolean };
-        summary = `pass=${j.pass} 57014=${j.cancellations?.total} (${j.cancellations?.rate}/min, ratio ${j.cancellations?.ratio}) edge ${j.edge?.note}`;
-      } catch { /* non-JSON: exit 2 paths print nothing to stdout */ }
-      resolve({ code: code ?? 2, summary });
+      let j: CensusJson | null = null;
+      try { j = JSON.parse(out) as CensusJson; } catch { /* non-JSON: exit 2 paths print nothing to stdout */ }
+      resolve({ code: code ?? 2, summary: censusSummary(code ?? 2, j, minutes) });
     });
   });
 }
@@ -612,8 +657,15 @@ interface Receipt {
   outcome: Outcome | null;
   exit_code: number | null;
   detail: string | null;
-  gate: { polls: GatePoll[]; opened_at: string | null; opening_reading: ProdOpGate | null; waited_seconds: number | null };
-  census: { at: string; minutes: number; code: number; summary: string; before_call: number | null }[];
+  gate: {
+    polls: GatePoll[]; opened_at: string | null; opening_reading: ProdOpGate | null;
+    /** The census half of the opening poll (cc-151 D2). */
+    opening_census: AlsoReading | null;
+    waited_seconds: number | null;
+    /** On gate_timeout: the half that held the last poll. */
+    last_blocked_by: string | null;
+  };
+  census: { at: string; minutes: number; code: number; summary: string; phase: "gate" | "pre_call" | "cadence"; before_call: number | null }[];
   claim: { claimed_at: string | null; released_at: string | null; state_after_arm: Partial<ProdSessionState> | null };
   pacing: { units_per_call: number; prior_value: Record<string, unknown> | null; upserts: number; restores: number; restored: boolean | null };
   resume: { windows_done_before: number[] | null; resuming_at: number | null; target_before: string | null } | null;
@@ -666,6 +718,23 @@ export function receiptPaths(
   return at(`${base}-${hms}Z`);
 }
 
+/** `N poll(s): G held by the gate, C by the census (D dark)` — which half held how often. */
+export function gateTally(polls: readonly GatePoll[]): string {
+  const byGate = polls.filter((p) => !p.ok && !(p.gate_ok ?? false)).length;
+  const byCensus = polls.filter((p) => !p.ok && p.gate_ok === true).length;
+  const dark = polls.filter((p) => p.also && /^dark/.test(p.also.summary)).length;
+  return `${polls.length} poll(s): ${byGate} held by the gate, ${byCensus} by the census (${dark} dark)`;
+}
+
+/** One receipt row per poll, naming the half that held it. */
+export function pollLine(p: GatePoll): string {
+  const census = p.also ? ` · census ${p.also.summary}`
+    : p.gate_ok === undefined ? "" : " · census not read (gate blocked)";
+  if (p.ok) return `- ${p.at} **OK**${census}`;
+  if (p.gate_ok) return `- ${p.at} gate ok · **held by the census**${census}`;
+  return `- ${p.at} held by the gate: ${p.blocked.join(", ")}${p.error ? ` (${p.error})` : ""}${census}`;
+}
+
 function renderReceipt(r: Receipt): string {
   const L: string[] = [];
   const f = (x: number | null | undefined, d = 1) => (x == null || Number.isNaN(x) ? "—" : x.toFixed(d));
@@ -676,11 +745,14 @@ function renderReceipt(r: Receipt): string {
   L.push("| | |");
   L.push("|---|---|");
   L.push(`| outcome | **${r.outcome ?? "—"}** (exit ${r.exit_code ?? "—"}) |`);
+  L.push(`| vocabulary | ${vocabularyLine()} |`);
   L.push(`| detail | ${r.detail ?? "—"} |`);
   L.push(`| launched / finished | ${r.launched_at} / ${r.finished_at ?? "—"} |`);
   L.push(`| pid | ${r.pid} |`);
   L.push(`| args | \`${JSON.stringify(r.args)}\` |`);
-  L.push(`| gate | ${r.gate.polls.length} poll(s); opened ${r.gate.opened_at ?? "never"} after ${f(r.gate.waited_seconds != null ? r.gate.waited_seconds / 60 : null)} min |`);
+  L.push(`| gate | ${gateTally(r.gate.polls)}; opened ${r.gate.opened_at ?? "never"} after ${f(r.gate.waited_seconds != null ? r.gate.waited_seconds / 60 : null)} min` +
+    `${r.gate.opening_census ? ` · census at opening: ${r.gate.opening_census.summary}` : ""}` +
+    `${r.gate.last_blocked_by ? ` · last poll held by ${r.gate.last_blocked_by}` : ""} |`);
   L.push(`| claim | ${r.claim.claimed_at ?? "—"} → released ${r.claim.released_at ?? "—"} |`);
   L.push(`| pacing | max_units ${r.pacing.units_per_call} per CALL; prior value ${JSON.stringify(r.pacing.prior_value)}; ${r.pacing.upserts} upsert(s), ${r.pacing.restores} restore(s); restored to prior: ${r.pacing.restored ?? "—"} |`);
   L.push(`| resume | ${r.resume ? `windows_done before ${JSON.stringify(r.resume.windows_done_before)} · resuming at window ${r.resume.resuming_at ?? "—"} · target ${r.resume.target_before ?? "—"}` : "no cursor (a fresh cycle, or crawl)"} |`);
@@ -691,9 +763,9 @@ function renderReceipt(r: Receipt): string {
   L.push(`| elevated ticks | ${r.elevated_ticks} reading(s) with a watchdog wall in [${ELEVATED_FROM_S}, ${r.args.wallTripS}) s |`);
   L.push(`| trip | ${r.trip ? `${r.trip.at} call ${r.trip.call}: rule (${r.trip.rule}) ${r.trip.reason}${r.trip.run_ids.length ? `; runs ${r.trip.run_ids.join(", ")}` : ""}; cancel sent ${r.trip.cancel_sent}; backend gone verified ${r.trip.backend_gone_verified}` : "none"} |`);
   L.push("");
-  L.push("## Gate polls");
+  L.push("## Gate polls (both halves — cc-151 D2)");
   L.push("");
-  for (const p of r.gate.polls) L.push(`- ${p.at} ${p.ok ? "**OK**" : `blocked: ${p.blocked.join(", ")}`}${p.error ? ` (${p.error})` : ""}`);
+  for (const p of r.gate.polls) L.push(pollLine(p));
   L.push("");
   L.push("## CALLs");
   L.push("");
@@ -724,7 +796,10 @@ function renderReceipt(r: Receipt): string {
   L.push("");
   L.push("## Census");
   L.push("");
-  for (const c of r.census) L.push(`- ${c.at} (${c.minutes} min${c.before_call != null ? `, before CALL ${c.before_call}` : ""}) exit ${c.code}: ${c.summary}`);
+  for (const c of r.census) {
+    const where = c.phase === "gate" ? "gate poll" : c.phase === "pre_call" ? `before CALL ${c.before_call}` : "cadence";
+    L.push(`- ${c.at} (${c.minutes} min, ${where}) exit ${c.code}: ${c.summary}`);
+  }
   if (r.census.length === 0) L.push("- (none)");
   L.push("");
   L.push("## Cursor at the end");
@@ -757,7 +832,7 @@ async function main(): Promise<number> {
   const R: Receipt = {
     runner: "donor-party-bootstrap-runner", target, reason: REASON, args, pid: process.pid,
     launched_at: launchedAt, finished_at: null, outcome: null, exit_code: null, detail: null,
-    gate: { polls: [], opened_at: null, opening_reading: null, waited_seconds: null },
+    gate: { polls: [], opened_at: null, opening_reading: null, opening_census: null, waited_seconds: null, last_blocked_by: null },
     census: [], claim: { claimed_at: null, released_at: null, state_after_arm: null },
     pacing: { units_per_call: args.unitsPerCall, prior_value: null, upserts: 0, restores: 0, restored: null },
     resume: null, calls: [], breathers: [], watchdog_series: [], elevated_ticks: 0, trip: null,
@@ -944,7 +1019,7 @@ async function main(): Promise<number> {
       lastCensusAt = Date.now();
       void runCensus(15, log).then((cen) => {
         censusBusy = false;
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, before_call: null });
+        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "cadence", before_call: null });
         log(`[census] 15 min: ${cen.summary}`);
         const trip = evaluateCensus(stopState, cen.code);
         if (trip && !stopping) {
@@ -979,7 +1054,7 @@ async function main(): Promise<number> {
         while (censusBusy) await sleep(1000);   // a cadence census still in flight
         const cen = await runCensus(15, log);
         lastCensusAt = Date.now();
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, before_call: n });
+        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "pre_call", before_call: n });
         log(`[census] pre-CALL ${n} 15 min: ${cen.summary}`);
         const trip = evaluateCensus(stopState, cen.code);
         if (trip) {
@@ -1124,17 +1199,27 @@ async function main(): Promise<number> {
     await tClient.connect();
     await tClient.query("SET statement_timeout = '30s'");
     const deadline = Date.now() + args.maxWaitMinutes * 60_000;
+    // cc-151 D2 — the census half of every poll, read only when the gate is
+    // open. It never throws: the Logs API dark is exit 2 → `dark` → not open.
+    const censusHalf = async (): Promise<AlsoReading> => {
+      if (target !== "prod") return { name: "census", ok: true, summary: "skipped — local (no Logs API)" };
+      const cen = await runCensus(60, log);
+      R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary, phase: "gate", before_call: null });
+      return { name: "census", ok: cen.code === 0, summary: cen.summary };
+    };
     for (;;) {
-      // ── 1. wait for the window ─────────────────────────────────────────────
+      // ── 1. wait for the window: the gate AND the census on the same poll ──
       let opened;
       try {
         opened = await waitForProdOpGate({
           dbUrl, expectedSeconds: args.expectedMinutes * 60, pollSeconds: args.pollSeconds,
           maxWaitSeconds: Math.max(1, (deadline - Date.now()) / 1000), log,
+          andAlso: { name: "census", read: censusHalf },
         });
       } catch (e) {
         if (e instanceof GateTimeout) {
           R.gate.polls.push(...e.polls);
+          R.gate.last_blocked_by = e.lastBlockedBy;
           finish("gate_timeout", e.message);
           return;
         }
@@ -1143,20 +1228,9 @@ async function main(): Promise<number> {
       R.gate.polls.push(...opened.polls);
       R.gate.opened_at = opened.gate.checked_at;
       R.gate.opening_reading = opened.gate;
+      R.gate.opening_census = opened.also;
       R.gate.waited_seconds = (Date.now() - Date.parse(launchedAt)) / 1000;
-
-      // ── 2. pre-launch census ─────────────────────────────────────────────
-      if (target === "prod") {
-        const cen = await runCensus(60, log);
-        R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary, before_call: null });
-        log(`[census] pre-launch 60 min: ${cen.summary}`);
-        if (cen.code !== 0) {
-          finish("census_fail", `pre-launch census exit ${cen.code}: ${cen.summary} — not claiming`);
-          return;
-        }
-      } else {
-        log("[census] skipped — local target has no Logs API");
-      }
+      log(`[gate] open: gate ok at ${opened.gate.checked_at}; census ${opened.also?.summary ?? "—"}`);
 
       // ── 3. claim; 4-6 under it; release in withProdSession's finally ─────
       try {

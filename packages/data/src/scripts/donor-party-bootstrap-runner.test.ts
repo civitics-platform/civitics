@@ -7,20 +7,26 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
+import type { GatePoll } from "../lib/prod-op-gate";
 import {
   EXIT,
   breatherRelease,
   callNoLongerRunning,
   caughtUpMismatch,
+  censusSummary,
   classifyCallRow,
   elevatedJobs,
   evaluateCensus,
   evaluateWatchdogs,
+  gateTally,
   newStopState,
   parseRunnerArgs,
+  pollLine,
   receiptPaths,
   resumeWindow,
+  vocabularyLine,
   type CallRow,
 } from "./donor-party-bootstrap-runner";
 
@@ -207,6 +213,58 @@ test("receipt paths never overwrite: a second launch on the same UTC day gets a 
   assert.equal(path.basename(receiptPaths("local", at, "trip", () => false).md), "2026-09-23-fix1212-bootstrap-runner-local-trip.md");
 });
 
+test("cc-151 D2: census_fail is retired — the vocabulary is six outcomes, exit 3 unused, and the receipt line says so", () => {
+  assert.deepEqual(Object.keys(EXIT).sort(), ["caught_up", "error", "gate_timeout", "max_calls", "skipped", "stopped"]);
+  assert.ok(!Object.values(EXIT).includes(3), "3 is never reused");
+  assert.equal(new Set(Object.values(EXIT)).size, 6, "one code per outcome");
+  assert.equal(vocabularyLine(),
+    "caught_up 0 · error 1 · stopped 4 · skipped 5 · max_calls 6 · gate_timeout 7 · (3 retired: census_fail — the census is waited on inside the gate, cc-151)");
+});
+
+test("cc-151 D2: the census summary carries the floor — cc-148's three prod readings, and dark", () => {
+  const j = (total: number, ratio: number, pass: boolean, edgePass = true) => ({
+    cancellations: { total, ratio, floor: 6, lambda: 1.98, pass },
+    edge: { note: edgePass ? "0 of 192 request(s) = 0.00 %" : "6 of 583 request(s) = 1.03 %", pass: edgePass },
+    pass: pass && edgePass,
+  });
+  assert.equal(censusSummary(0, j(6, 3.0303, true), 60),
+    "pass (6/60 min, ratio 3.03, floor 6; edge 0 of 192 request(s) = 0.00 %)");
+  assert.equal(censusSummary(1, j(12, 6.0606, false), 60),
+    "FAIL (12/60 min, ratio 6.06, floor 6 — 57014 FAIL; edge 0 of 192 request(s) = 0.00 %)");
+  // cc-151 read 6: under the floor, but the edge half held it
+  assert.equal(censusSummary(1, j(6, 3.0303, true, false), 60),
+    "FAIL (6/60 min, ratio 3.03, floor 6; edge 6 of 583 request(s) = 1.03 % — edge FAIL)");
+  assert.equal(censusSummary(2, null, 60), "dark (exit 2 — the Logs API did not answer)");
+  assert.match(censusSummary(127, null, 60), /^dark \(exit 127/, "anything but 0/1 is dark, as evaluateCensus counts it");
+  assert.equal(censusSummary(1, null, 15), "FAIL (exit 1; unparsed output)");
+});
+
+test("cc-151 D2: every receipt poll row names the half that held it; the tally counts both halves", () => {
+  const polls: GatePoll[] = [
+    { at: "08:55", ok: false, blocked: ["c:blackout"], gate_ok: false },
+    { at: "09:00", ok: false, blocked: ["census"], gate_ok: true, also: { name: "census", ok: false, summary: "FAIL (7/60 min, ratio 3.54, floor 6 — 57014 FAIL; edge …)" } },
+    { at: "09:05", ok: false, blocked: ["census"], gate_ok: true, also: { name: "census", ok: false, summary: "dark (exit 2 — the Logs API did not answer)" } },
+    { at: "09:08", ok: false, blocked: ["read-error"], gate_ok: false, error: "ECONNRESET" },
+    { at: "09:10", ok: true, blocked: [], gate_ok: true, also: { name: "census", ok: true, summary: "pass (2/60 min, ratio 1.01, floor 6; edge …)" } },
+  ];
+  assert.equal(gateTally(polls), "5 poll(s): 2 held by the gate, 2 by the census (1 dark)");
+  assert.equal(pollLine(polls[0]!), "- 08:55 held by the gate: c:blackout · census not read (gate blocked)");
+  assert.equal(pollLine(polls[1]!), "- 09:00 gate ok · **held by the census** · census FAIL (7/60 min, ratio 3.54, floor 6 — 57014 FAIL; edge …)");
+  assert.equal(pollLine(polls[3]!), "- 09:08 held by the gate: read-error (ECONNRESET) · census not read (gate blocked)");
+  assert.equal(pollLine(polls[4]!), "- 09:10 **OK** · census pass (2/60 min, ratio 1.01, floor 6; edge …)");
+  // the clone's poll row
+  assert.equal(pollLine({ at: "t", ok: true, blocked: [], gate_ok: true, also: { name: "census", ok: true, summary: "skipped — local (no Logs API)" } }),
+    "- t **OK** · census skipped — local (no Logs API)");
+});
+
+test("the runner no longer carries a one-shot pre-launch census or a census_fail path", () => {
+  const src = fs.readFileSync(path.join(__dirname, "donor-party-bootstrap-runner.ts"), "utf8");
+  const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /"census_fail"/);
+  assert.doesNotMatch(code, /pre-launch 60 min/);
+  assert.match(code, /andAlso: \{ name: "census", read: censusHalf \}/);
+});
+
 test("args: defaults, overrides, and refusals", () => {
   assert.deepEqual(parseRunnerArgs([]), {
     unitsPerCall: 2, wallTripS: 3.0, breatherUntilWallS: 0.5, breatherMaxS: 600,
@@ -228,6 +286,10 @@ test("args: defaults, overrides, and refusals", () => {
   const cmd = parseRunnerArgs(["--units-per-call", "2", "--wall-trip-s", "3.0", "--breather-until-wall-s", "0.5",
     "--breather-max-s", "600", "--max-calls", "12", "--expected-minutes", "60", "--max-wait-minutes", "180"]);
   assert.ok(!("error" in cmd), "the cc-148 launch command parses");
+  const cc151 = parseRunnerArgs(["--units-per-call", "2", "--wall-trip-s", "3.0", "--breather-until-wall-s", "0.5",
+    "--breather-max-s", "600", "--max-calls", "12", "--expected-minutes", "60", "--max-wait-minutes", "600"]);
+  assert.ok(!("error" in cc151), "the cc-151 launch command parses");
+  assert.equal(cc151.maxWaitMinutes, 600, "--max-wait-minutes has a floor of 1 and no ceiling below 600");
   const dd = parseRunnerArgs(["--", "--units-per-call", "2", "--max-calls", "8"]);
   assert.ok(!("error" in dd), "pnpm 9 forwards a bare -- ; the prompt-shaped command must launch");
   assert.equal(dd.maxCalls, 8);
