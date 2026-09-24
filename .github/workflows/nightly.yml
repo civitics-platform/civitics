@@ -72,6 +72,35 @@ on:
         type: boolean
         required: false
         default: false
+      # FIX-1218 — THE SLOT IS NOW FIRED BY A DISPATCHER, NOT BY GITHUB'S QUEUE.
+      # /api/cron/gha-dispatch (a Vercel cron at `0 21 * * *`) POSTs
+      # /repos/.../actions/workflows/nightly.yml/dispatches with the two inputs
+      # below, so the run starts AT the slot instead of 1.6-2.7 h after it
+      # (cc-150 read 2: 14 scheduled starts 09-10..09-23, median 2.11 h).
+      #
+      # The `schedule:` above STAYS, as a free fallback: the fec-phase preflight
+      # makes the nightly idempotent by NOMINAL DAY, so the late scheduled run
+      # finds the dispatched run's nightly_cron rows and every phase is skipped
+      # — about one runner-minute — while on a night the dispatcher died it
+      # finds nothing and does the work. Do not delete the cron; it is the
+      # backstop the dispatcher's liveness stamp is measured against.
+      #
+      # This is workflow_dispatch through the REST API, not repository_dispatch:
+      # the latter is a webhook event for external systems with a free-form
+      # payload and would need a new `on:` trigger; this needs neither.
+      slot_offset_hours:
+        description: "FIX-1218: NIGHTLY_SLOT_OFFSET_HOURS for this run. The dispatcher passes 3 (the slot rule); leave 0 for wall-clock semantics"
+        type: string
+        required: false
+        default: "0"
+      dispatched_by:
+        description: "FIX-1218: which trigger fired this run. vercel-cron is the dispatcher and is de-duplicated by the preflight; manual always runs"
+        type: choice
+        required: false
+        default: manual
+        options:
+          - manual
+          - vercel-cron
 
 permissions:
   contents: read
@@ -142,6 +171,13 @@ jobs:
     # It is decoupled from the OUTCOME (FIX-462/FIX-740) but not from the wait.
     timeout-minutes: 300
 
+    # FIX-1218: every downstream phase job gates on this. `true` only when an
+    # automated trigger (schedule / vercel-cron) found another run's
+    # nightly_cron rows for its nominal day; unset (a preflight crash) reads as
+    # not-already-ran, so the gate FAILS OPEN.
+    outputs:
+      already_ran: ${{ steps.preflight.outputs.already_ran }}
+
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -160,9 +196,15 @@ jobs:
       # names, so the weekly gate reads the day off `now + 3h` instead of off
       # the wall clock — otherwise an ON-TIME Saturday-evening start would skip
       # Sunday's heavy FEC ingest and only a late GitHub would run it. Keep this
-      # equal to (24 - cron hour); the two are one change. Scheduled runs only:
-      # a workflow_dispatch passes 0 and keeps wall-clock semantics.
-      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      # equal to (24 - cron hour); the two are one change. FIX-1218: the Vercel
+      # dispatcher fires at the same slot and passes inputs.slot_offset_hours=3,
+      # so a dispatched run names the same day a schedule event does; a manual
+      # dispatch leaves the input at "0" and keeps wall-clock semantics.
+      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
+      # FIX-1218: which trigger fired this run — stamped into every nightly_cron
+      # row and read by the fec-phase preflight, which guards only the two
+      # automated triggers (schedule, vercel-cron).
+      NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       # FIX-1060 — heap ceiling SIZED FROM MEASURED RSS, not from the OOM that
       # predates the external sort.
       #
@@ -233,7 +275,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # FIX-1218 — "Already ran for this nominal day?" The first thing the job
+      # decides, before any prod write. See
+      # packages/data/src/pipelines/nightly-preflight.ts for what counts and
+      # whom it guards. continue-on-error: a crashed preflight must never cost
+      # the night; the script itself also answers false on every failure.
+      - name: Already ran for this nominal day? (FIX-1218)
+        id: preflight
+        continue-on-error: true
+        run: pnpm --filter @civitics/data data:nightly:preflight:ci
+
       - name: Run FEC phase
+        if: steps.preflight.outputs.already_ran != 'true'
         run: pnpm --filter @civitics/data data:nightly:fec:ci
 
       # FIX-462: pass --phase so the kill-detector only considers this phase's
@@ -249,8 +302,13 @@ jobs:
       # `nightly_killed` row to data_sync_log only if there's a recent
       # `nightly_cron` row stuck at status='running'. Observability, never
       # gates the job (always exits 0).
+      #
+      # FIX-1218: not in a duplicate run. That run wrote no row of its own, so
+      # the only `running` row mark-killed could find is the OTHER run's — a
+      # dispatched fec-phase that was itself killed, which that run's own
+      # post-step has already marked.
       - name: Mark nightly-killed if no completion row
-        if: always()
+        if: always() && steps.preflight.outputs.already_ran != 'true'
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=fec
 
   # FIX-740: the single enrichment-phase job hit timeout-minutes: 120 on
@@ -276,7 +334,11 @@ jobs:
     # the LittleSis matcher builds its index (FIX-276 ordering); on an overrun
     # Sunday the matcher just sees last week's FEC entities for the unlanded
     # portion — acceptable, next week reconciles.
-    if: ${{ !cancelled() }}
+    #
+    # FIX-1218: and not when fec-phase's preflight found another run already
+    # did this nominal day. Kept as one expression with !cancelled() so the
+    # FIX-462/740 decoupling is unchanged for every run that is not a duplicate.
+    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran != 'true' }}
     runs-on: ubuntu-latest
     # LittleSis is the ~35-min stage (17-min match-index build + stream 1.9M
     # rels + direct-pg upsert 601k external_relationships, FIX-741). 90 min is
@@ -301,9 +363,15 @@ jobs:
       # names, so the weekly gate reads the day off `now + 3h` instead of off
       # the wall clock — otherwise an ON-TIME Saturday-evening start would skip
       # Sunday's heavy FEC ingest and only a late GitHub would run it. Keep this
-      # equal to (24 - cron hour); the two are one change. Scheduled runs only:
-      # a workflow_dispatch passes 0 and keeps wall-clock semantics.
-      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      # equal to (24 - cron hour); the two are one change. FIX-1218: the Vercel
+      # dispatcher fires at the same slot and passes inputs.slot_offset_hours=3,
+      # so a dispatched run names the same day a schedule event does; a manual
+      # dispatch leaves the input at "0" and keeps wall-clock semantics.
+      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
+      # FIX-1218: which trigger fired this run — stamped into every nightly_cron
+      # row and read by the fec-phase preflight, which guards only the two
+      # automated triggers (schedule, vercel-cron).
+      NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       # LittleSis bulk + matcher index build is RAM-heavy; keep the 12 GB ceiling.
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -341,12 +409,15 @@ jobs:
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment-heavy
 
   enrichment-light-phase:
-    needs: enrichment-heavy-phase
+    # FIX-1218: fec-phase is listed so this job can read its already_ran output
+    # (a job reads outputs only from jobs in its own `needs:`). Ordering is
+    # unchanged — heavy already needs fec-phase.
+    needs: [fec-phase, enrichment-heavy-phase]
     # Chained after heavy (serialize the two DB writers on the Micro) but
     # decoupled from its outcome: `!cancelled()` runs the light stages even when
     # heavy times out, so EDGAR / MV refreshes / AI taggers never go dark just
-    # because LittleSis overran.
-    if: ${{ !cancelled() }}
+    # because LittleSis overran. FIX-1218: skipped in a duplicate run.
+    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran != 'true' }}
     runs-on: ubuntu-latest
     # FIX-746: the weekly INGESTS only now — EDGAR (~6 min) + CourtListener +
     # OpenStates + agencies/OPM/PLUM/elections/committees/agency-* + tag-industry.
@@ -373,9 +444,15 @@ jobs:
       # names, so the weekly gate reads the day off `now + 3h` instead of off
       # the wall clock — otherwise an ON-TIME Saturday-evening start would skip
       # Sunday's heavy FEC ingest and only a late GitHub would run it. Keep this
-      # equal to (24 - cron hour); the two are one change. Scheduled runs only:
-      # a workflow_dispatch passes 0 and keeps wall-clock semantics.
-      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      # equal to (24 - cron hour); the two are one change. FIX-1218: the Vercel
+      # dispatcher fires at the same slot and passes inputs.slot_offset_hours=3,
+      # so a dispatched run names the same day a schedule event does; a manual
+      # dispatch leaves the input at "0" and keeps wall-clock semantics.
+      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
+      # FIX-1218: which trigger fired this run — stamped into every nightly_cron
+      # row and read by the fec-phase preflight, which guards only the two
+      # automated triggers (schedule, vercel-cron).
+      NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
@@ -423,8 +500,9 @@ jobs:
   # (donor_party_rollup_mv + entity_connection_stats_mv) are now incremental
   # TABLEs on their own pg_cron jobs and no longer run here.
   enrichment-tail-phase:
-    needs: enrichment-light-phase
-    if: ${{ !cancelled() }}
+    # FIX-1218: fec-phase listed for its already_ran output, as in light above.
+    needs: [fec-phase, enrichment-light-phase]
+    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran != 'true' }}
     runs-on: ubuntu-latest
     # The ~30-min AI/MV work that was getting squeezed — rule + AI taggers, AI
     # summaries, and the two capped-admin.rpc() MV refreshes. 90 min is ample
@@ -449,9 +527,15 @@ jobs:
       # names, so the weekly gate reads the day off `now + 3h` instead of off
       # the wall clock — otherwise an ON-TIME Saturday-evening start would skip
       # Sunday's heavy FEC ingest and only a late GitHub would run it. Keep this
-      # equal to (24 - cron hour); the two are one change. Scheduled runs only:
-      # a workflow_dispatch passes 0 and keeps wall-clock semantics.
-      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      # equal to (24 - cron hour); the two are one change. FIX-1218: the Vercel
+      # dispatcher fires at the same slot and passes inputs.slot_offset_hours=3,
+      # so a dispatched run names the same day a schedule event does; a manual
+      # dispatch leaves the input at "0" and keeps wall-clock semantics.
+      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
+      # FIX-1218: which trigger fired this run — stamped into every nightly_cron
+      # row and read by the fec-phase preflight, which guards only the two
+      # automated triggers (schedule, vercel-cron).
+      NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
@@ -516,6 +600,16 @@ jobs:
   # receipts-only commit skips it; fixes-integrity.yml has no path filter and
   # does run (~2 s, pure Node, no install), which is correct and is exactly why
   # FIX-466 split the two.
+  #
+  # FIX-1218 — WHAT IT DOES IN A DUPLICATE RUN (rule 48: say it, do not imply
+  # it). It still runs (`always()` is unchanged): the late scheduled fallback
+  # regenerates the SAME nominal day's file, a read-only pass of a few seconds,
+  # and commits it again if anything moved. That second write is the point —
+  # it is the only file that sees BOTH runs, so its section 1 lists the
+  # dispatched run and the fallback side by side and marks the fallback
+  # `already_ran` (its fec-phase "Run FEC phase" step concluded skipped). The
+  # dispatched run's own receipt, written ~15 min after 21:00, cannot: the
+  # fallback does not exist yet.
   receipts:
     needs: enrichment-tail-phase
     if: always()
@@ -537,8 +631,9 @@ jobs:
       SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
       # Mirrors the phase jobs' expression exactly, so the file is named for the
       # same nominal day the run itself gated on (FIX-1163). A manual dispatch
-      # passes 0 here and 0 there, and the two stay in step.
-      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      # passes 0 here and 0 there, and the two stay in step; the Vercel
+      # dispatcher passes 3 to both (FIX-1218).
+      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
       # Authenticates the preinstalled `gh` for the one read that is not SQL:
       # this run's createdAt and conclusion. Without it the script records that
       # section as UNCHECKED rather than guessing.
