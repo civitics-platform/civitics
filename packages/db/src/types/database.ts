@@ -7530,6 +7530,7 @@ export type Database = {
         Args: { p_error: string; p_queue_id: number }
         Returns: string
       }
+      record_gha_dispatch: { Args: { p: Json }; Returns: Json }
       refresh_agency_page_cache: { Args: never; Returns: number }
       refresh_chord_donor_state_party_flows_mv: {
         Args: never
