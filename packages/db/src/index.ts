@@ -547,3 +547,21 @@ export type {
 // reason front-door-verdict.ts is.
 export { decideCronWatchdogVerdict } from "./cron-watchdog-verdict";
 export type { CronWatchdogVerdict, UnitAction } from "./cron-watchdog-verdict";
+
+// FIX-1125 / FIX-1194 P1-B — the box's memory series, kept OFF the box (Upstash
+// ring) and mirrored on it. runBoxHealth is the /api/cron/box-health firing;
+// readBoxHealthRing is what data:box-health:series and the receipts read.
+export {
+  BOX_HEALTH_COMMANDS_PER_SAMPLE,
+  BOX_HEALTH_LATEST_KEY,
+  BOX_HEALTH_RING_KEY,
+  BOX_HEALTH_RING_LEN,
+  offBoxCommands,
+  parseBoxHealthSample,
+  readBoxHealthRing,
+  runBoxHealth,
+  sampleSummary,
+  upstashCredsFromEnv,
+  writeBoxHealthOffBox,
+} from "./box-health-store";
+export type { BoxHealthRun, BoxHealthSample, OnBoxStamp, RingRead } from "./box-health-store";

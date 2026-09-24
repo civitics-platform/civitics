@@ -1,0 +1,202 @@
+# HELP node_disk_writes_merged_total The number of writes merged.
+# TYPE node_disk_writes_merged_total counter
+node_disk_writes_merged_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 3.828794e+06
+node_disk_writes_merged_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 41195
+# HELP node_scrape_collector_duration_seconds node_exporter: Duration of a collector scrape.
+# TYPE node_scrape_collector_duration_seconds gauge
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="cpu"} 0.00088533
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="diskstats"} 0.001464821
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="filesystem"} 0.000242415
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="loadavg"} 5.0272e-05
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="meminfo"} 0.000168743
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="netdev"} 0.000192898
+node_scrape_collector_duration_seconds{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="vmstat"} 0.000158323
+# HELP node_scrape_collector_success node_exporter: Whether a collector succeeded.
+# TYPE node_scrape_collector_success gauge
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="cpu"} 1
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="diskstats"} 1
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="filesystem"} 1
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="loadavg"} 1
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="meminfo"} 1
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="netdev"} 1
+node_scrape_collector_success{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",collector="vmstat"} 1
+# HELP pgbouncer_free_clients Count of free clients
+# TYPE pgbouncer_free_clients gauge
+pgbouncer_free_clients{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 49
+# HELP node_disk_discard_time_seconds_total This is the total number of seconds spent by all discards.
+# TYPE node_disk_discard_time_seconds_total counter
+node_disk_discard_time_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 0
+node_disk_discard_time_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 0
+# HELP node_disk_filesystem_info Info about disk filesystem.
+# TYPE node_disk_filesystem_info gauge
+node_disk_filesystem_info{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1",type="ext4",usage="filesystem",uuid="e43de286-1444-4a1d-ba74-ac567fc572d5",version="1.0"} 1
+# HELP node_disk_flush_requests_time_seconds_total This is the total number of seconds spent by all flush requests.
+# TYPE node_disk_flush_requests_time_seconds_total counter
+# HELP node_load1 1m load average.
+# TYPE node_load1 gauge
+node_load1{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0.14
+# HELP node_memory_VmallocChunk_bytes Memory information field VmallocChunk_bytes.
+# TYPE node_memory_VmallocChunk_bytes gauge
+node_memory_VmallocChunk_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_MemFree_bytes Memory information field MemFree_bytes.
+# TYPE node_memory_MemFree_bytes gauge
+node_memory_MemFree_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.20225792e+08
+# HELP node_memory_SwapFree_bytes Memory information field SwapFree_bytes.
+# TYPE node_memory_SwapFree_bytes gauge
+node_memory_SwapFree_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 5.02247424e+08
+# HELP node_memory_VmallocTotal_bytes Memory information field VmallocTotal_bytes.
+# TYPE node_memory_VmallocTotal_bytes gauge
+node_memory_VmallocTotal_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.38535235485696e+14
+# HELP node_memory_Active_bytes Memory information field Active_bytes.
+# TYPE node_memory_Active_bytes gauge
+node_memory_Active_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 2.85147136e+08
+# HELP node_memory_Bounce_bytes Memory information field Bounce_bytes.
+# TYPE node_memory_Bounce_bytes gauge
+node_memory_Bounce_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_SwapCached_bytes Memory information field SwapCached_bytes.
+# TYPE node_memory_SwapCached_bytes gauge
+node_memory_SwapCached_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.7035264e+07
+# HELP node_vmstat_pswpout /proc/vmstat information field pswpout.
+# TYPE node_vmstat_pswpout untyped
+node_vmstat_pswpout{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 5.071728e+06
+# HELP node_load15 15m load average.
+# TYPE node_load15 gauge
+node_load15{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0.06
+# HELP node_memory_WritebackTmp_bytes Memory information field WritebackTmp_bytes.
+# TYPE node_memory_WritebackTmp_bytes gauge
+node_memory_WritebackTmp_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_PageTables_bytes Memory information field PageTables_bytes.
+# TYPE node_memory_PageTables_bytes gauge
+node_memory_PageTables_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.8341888e+07
+# HELP node_memory_VmallocUsed_bytes Memory information field VmallocUsed_bytes.
+# TYPE node_memory_VmallocUsed_bytes gauge
+node_memory_VmallocUsed_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.4434304e+07
+# HELP node_memory_CmaTotal_bytes Memory information field CmaTotal_bytes.
+# TYPE node_memory_CmaTotal_bytes gauge
+node_memory_CmaTotal_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_Unevictable_bytes Memory information field Unevictable_bytes.
+# TYPE node_memory_Unevictable_bytes gauge
+node_memory_Unevictable_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 8192
+# HELP node_memory_Active_anon_bytes Memory information field Active_anon_bytes.
+# TYPE node_memory_Active_anon_bytes gauge
+node_memory_Active_anon_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 8.8731648e+07
+# HELP node_memory_Writeback_bytes Memory information field Writeback_bytes.
+# TYPE node_memory_Writeback_bytes gauge
+node_memory_Writeback_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_SUnreclaim_bytes Memory information field SUnreclaim_bytes.
+# TYPE node_memory_SUnreclaim_bytes gauge
+node_memory_SUnreclaim_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 5.1003392e+07
+# HELP node_vmstat_oom_kill /proc/vmstat information field oom_kill.
+# TYPE node_vmstat_oom_kill untyped
+node_vmstat_oom_kill{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_vmstat_pgmajfault /proc/vmstat information field pgmajfault.
+# TYPE node_vmstat_pgmajfault untyped
+node_vmstat_pgmajfault{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 2.731732e+06
+# HELP node_vmstat_pswpin /proc/vmstat information field pswpin.
+# TYPE node_vmstat_pswpin untyped
+node_vmstat_pswpin{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 4.980534e+06
+# HELP node_memory_HardwareCorrupted_bytes Memory information field HardwareCorrupted_bytes.
+# TYPE node_memory_HardwareCorrupted_bytes gauge
+node_memory_HardwareCorrupted_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_HugePages_Surp Memory information field HugePages_Surp.
+# TYPE node_memory_HugePages_Surp gauge
+node_memory_HugePages_Surp{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_Inactive_file_bytes Memory information field Inactive_file_bytes.
+# TYPE node_memory_Inactive_file_bytes gauge
+node_memory_Inactive_file_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.46898944e+08
+# HELP node_memory_NFS_Unstable_bytes Memory information field NFS_Unstable_bytes.
+# TYPE node_memory_NFS_Unstable_bytes gauge
+node_memory_NFS_Unstable_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_ShmemPmdMapped_bytes Memory information field ShmemPmdMapped_bytes.
+# TYPE node_memory_ShmemPmdMapped_bytes gauge
+node_memory_ShmemPmdMapped_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_SReclaimable_bytes Memory information field SReclaimable_bytes.
+# TYPE node_memory_SReclaimable_bytes gauge
+node_memory_SReclaimable_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 3.6573184e+07
+# HELP node_memory_Hugepagesize_bytes Memory information field Hugepagesize_bytes.
+# TYPE node_memory_Hugepagesize_bytes gauge
+node_memory_Hugepagesize_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 2.097152e+06
+# HELP node_memory_Shmem_bytes Memory information field Shmem_bytes.
+# TYPE node_memory_Shmem_bytes gauge
+node_memory_Shmem_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.12975872e+08
+# HELP node_memory_HugePages_Free Memory information field HugePages_Free.
+# TYPE node_memory_HugePages_Free gauge
+node_memory_HugePages_Free{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_ShmemHugePages_bytes Memory information field ShmemHugePages_bytes.
+# TYPE node_memory_ShmemHugePages_bytes gauge
+node_memory_ShmemHugePages_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_load5 5m load average.
+# TYPE node_load5 gauge
+node_load5{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0.11
+# HELP node_memory_Committed_AS_bytes Memory information field Committed_AS_bytes.
+# TYPE node_memory_Committed_AS_bytes gauge
+node_memory_Committed_AS_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.818959872e+09
+# HELP node_memory_Active_file_bytes Memory information field Active_file_bytes.
+# TYPE node_memory_Active_file_bytes gauge
+node_memory_Active_file_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.96415488e+08
+# HELP node_memory_Buffers_bytes Memory information field Buffers_bytes.
+# TYPE node_memory_Buffers_bytes gauge
+node_memory_Buffers_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 5.226496e+06
+# HELP node_memory_KernelStack_bytes Memory information field KernelStack_bytes.
+# TYPE node_memory_KernelStack_bytes gauge
+node_memory_KernelStack_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 4.25984e+06
+# HELP node_memory_MemAvailable_bytes Memory information field MemAvailable_bytes.
+# TYPE node_memory_MemAvailable_bytes gauge
+node_memory_MemAvailable_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 4.18258944e+08
+# HELP node_memory_Inactive_bytes Memory information field Inactive_bytes.
+# TYPE node_memory_Inactive_bytes gauge
+node_memory_Inactive_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 3.87923968e+08
+# HELP node_memory_MemTotal_bytes Memory information field MemTotal_bytes.
+# TYPE node_memory_MemTotal_bytes gauge
+node_memory_MemTotal_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 9.48195328e+08
+# HELP node_memory_HugePages_Rsvd Memory information field HugePages_Rsvd.
+# TYPE node_memory_HugePages_Rsvd gauge
+node_memory_HugePages_Rsvd{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_vmstat_pgpgin /proc/vmstat information field pgpgin.
+# TYPE node_vmstat_pgpgin untyped
+node_vmstat_pgpgin{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 2.59383326e+08
+# HELP node_memory_AnonPages_bytes Memory information field AnonPages_bytes.
+# TYPE node_memory_AnonPages_bytes gauge
+node_memory_AnonPages_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 2.01756672e+08
+# HELP node_memory_Cached_bytes Memory information field Cached_bytes.
+# TYPE node_memory_Cached_bytes gauge
+node_memory_Cached_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 4.51039232e+08
+# HELP node_memory_Mapped_bytes Memory information field Mapped_bytes.
+# TYPE node_memory_Mapped_bytes gauge
+node_memory_Mapped_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.47218432e+08
+# HELP node_vmstat_pgpgout /proc/vmstat information field pgpgout.
+# TYPE node_vmstat_pgpgout untyped
+node_vmstat_pgpgout{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 4.4181845e+07
+# HELP node_memory_Mlocked_bytes Memory information field Mlocked_bytes.
+# TYPE node_memory_Mlocked_bytes gauge
+node_memory_Mlocked_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 8192
+# HELP node_memory_Slab_bytes Memory information field Slab_bytes.
+# TYPE node_memory_Slab_bytes gauge
+node_memory_Slab_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 8.7576576e+07
+# HELP node_memory_Percpu_bytes Memory information field Percpu_bytes.
+# TYPE node_memory_Percpu_bytes gauge
+node_memory_Percpu_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 860160
+# HELP node_memory_Dirty_bytes Memory information field Dirty_bytes.
+# TYPE node_memory_Dirty_bytes gauge
+node_memory_Dirty_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 430080
+# HELP node_memory_HugePages_Total Memory information field HugePages_Total.
+# TYPE node_memory_HugePages_Total gauge
+node_memory_HugePages_Total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_vmstat_pgfault /proc/vmstat information field pgfault.
+# TYPE node_vmstat_pgfault untyped
+node_vmstat_pgfault{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 6.7341623e+07
+# HELP node_memory_AnonHugePages_bytes Memory information field AnonHugePages_bytes.
+# TYPE node_memory_AnonHugePages_bytes gauge
+node_memory_AnonHugePages_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_memory_CmaFree_bytes Memory information field CmaFree_bytes.
+# TYPE node_memory_CmaFree_bytes gauge
+node_memory_CmaFree_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 188416
+# HELP node_memory_Inactive_anon_bytes Memory information field Inactive_anon_bytes.
+# TYPE node_memory_Inactive_anon_bytes gauge
+node_memory_Inactive_anon_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 2.41025024e+08
+# HELP node_memory_SwapTotal_bytes Memory information field SwapTotal_bytes.
+# TYPE node_memory_SwapTotal_bytes gauge
+node_memory_SwapTotal_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.073737728e+09
+# HELP node_memory_CommitLimit_bytes Memory information field CommitLimit_bytes.
+# TYPE node_memory_CommitLimit_bytes gauge
+node_memory_CommitLimit_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.547833344e+09

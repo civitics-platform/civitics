@@ -113,7 +113,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const PROJECT_REF = "xsazcoxinpgttgquwvuf";
-const METRICS_URL =
+export const METRICS_URL =
   `https://${PROJECT_REF}.supabase.co/customer/v1/privileged/metrics`;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -220,7 +220,7 @@ export function clearSupabasePrometheusCache(): void {
 //
 // Returned map keys back to whatever the caller asked for via `wants`.
 
-type PromMatch = {
+export type PromMatch = {
   /** Metric base name (no labels). */
   name: string;
   /** Optional label-substring predicate to pick a specific mount/device row. */

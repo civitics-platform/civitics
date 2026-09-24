@@ -6460,6 +6460,14 @@ export type Database = {
         Args: { p_geojson: string; p_id: string }
         Returns: boolean
       }
+      box_is_saturated: {
+        Args: {
+          p_fork_failures_10m?: number
+          p_now?: string
+          p_stale_seconds?: number
+        }
+        Returns: Json
+      }
       canonical_donor_fingerprint: {
         Args: { raw_name: string; zip5: string }
         Returns: string
@@ -7515,6 +7523,8 @@ export type Database = {
         Args: { p_entity_id?: string; p_entity_type?: string }
         Returns: number
       }
+      record_box_health: { Args: { p_now?: string }; Returns: Json }
+      record_box_health_mem: { Args: { p: Json }; Returns: Json }
       record_cron_jobs_seen: { Args: never; Returns: number }
       record_enrichment_failure: {
         Args: { p_error: string; p_queue_id: number }
