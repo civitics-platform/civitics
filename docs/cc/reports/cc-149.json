@@ -1,0 +1,43 @@
+{
+  "cc": "149",
+  "prompt": "cc-prompt-149-fix1194-p1b-box-health-probe-fork-failures-staleness-plus-memory-series-off-box-upstash-vercel-cron-receipts.md",
+  "started_at": "2026-09-24T01:31:17Z",
+  "finished_at": "2026-09-24T02:19:00Z",
+  "head_before": "87cdd6cc",
+  "head_after": "07c0181c",
+  "commits": [
+    {
+      "sha": "8a9ac7e4",
+      "subject": "feat(db): FIX-1194 — box_health probe (*/1) + box_is_saturated(); FIX-1125 — record_box_health_mem() stamp"
+    },
+    {
+      "sha": "e9c1769c",
+      "subject": "feat(app): FIX-1125 — /api/cron/box-health (*/2): the memory series, off-box first (Upstash ring), on-box second (pipeline_state stamp)"
+    },
+    {
+      "sha": "45506584",
+      "subject": "feat(data): FIX-1125 — data:box-health:series reads the off-box ring; receipts §9 \\\"Box health\\\"; canary report-only keys"
+    },
+    {
+      "sha": "4b184e46",
+      "subject": "feat(app): FIX-1125 — the memory series is live: 6 samples in the off-box ring since 02:04 UTC; on-box stamp at 02:04:22 and 02:14:22; probe at 02:02:00 and every minute since"
+    },
+    {
+      "sha": "07c0181c",
+      "subject": "docs(fixes): FIX-1194 / 1125 / 1073 / 1137 / 1215 appends"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920130000_fix1194_box_health_probe.sql"
+  ],
+  "prod_writes": "One migration, 20260920130000, applied to Pro 02:01:42.6-02:01:43.4 UTC with db:push:prod after wait-for-gate read OK at 02:01:37Z. It created three functions, the pg_cron job box-health-probe (* * * * *, prod jobid 53) and one cron_job_budget row (60 s). Since then the probe upserts pipeline_state.box_health every minute. From 02:04:22 UTC the Vercel route /api/cron/box-health writes the Upstash ring civitics:box_health:mem and the key civitics:box_health:latest every 2 min (3 commands a sample), and upserts pipeline_state.box_health_mem. Pushes to main, each a Vercel deploy: 02:01:00 UTC (45506584, the code) and 02:16:39 UTC (07c0181c, record + appends), plus this report's push. No CALL, no VACUUM, no cron.alter_job on any existing job. Every other prod contact was a read: db-query --prod, one metrics-endpoint scrape, Upstash LRANGE.",
+  "ci": "green",
+  "stopped_items": [
+    "The FIX-1073 note is not on FIX-1073's own bullet. That bullet is archived (docs/archive/fixes-archive.md), so the note rides on the FIX-1194 append, which cross-links [[FIX-1073]].",
+    "The canary was not run live, locally or on prod. Its two keys are covered by unit tests (canary-box-health 3, and canary-keys 10 with the source census). Running it locally writes a data_sync_log meta row and can send email.",
+    "Commits carry Co-Authored-By only, with no Claude-Session trailer. This VS Code session has no claude.ai session URL, and I did not invent one."
+  ]
+}
