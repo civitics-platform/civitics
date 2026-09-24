@@ -51,6 +51,7 @@ import { runElectionsPipeline } from "./elections";
 import { runAiClassifier } from "./tags/ai-classifier";
 import { seedJurisdictions, seedGoverningBodies } from "../jurisdictions/us-states";
 import { computeRunWeekly, nominalSlotInstant, readSlotOffsetHours, SLOT_OFFSET_ENV } from "./weekly-gate";
+import { nightlyRunStamp } from "./nightly-preflight";
 import { FLAGS } from "../feature-flags";
 import {
   shouldLoadResumeState,
@@ -484,6 +485,12 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     );
   }
 
+  // FIX-1218: the nominal day (and which trigger fired this run) goes into
+  // every nightly_cron row, start AND terminal, because it is the key the
+  // fec-phase preflight de-duplicates the dispatched and scheduled runs on.
+  // Until this line it existed only in the log line above.
+  const runStamp = nightlyRunStamp(now, slotOffsetHours);
+
   const results: NightlySyncResults = {
     started_at: startedAt,
     is_weekly: isWeekly,
@@ -549,7 +556,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         pipeline:   "nightly_cron",
         status:     "running",
         started_at: startedAt.toISOString(),
-        metadata:   { phase, ...githubRunIdentity() },
+        metadata:   { phase, ...githubRunIdentity(), ...runStamp },
       })
       .select("id")
       .single();
@@ -1296,6 +1303,9 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         peak_rss_mb: captureRssMb(),
         phase,
         ...githubRunIdentity(),
+        // FIX-1218: re-applied for the same reason as the run identity — this
+        // UPDATE replaces metadata wholesale.
+        ...runStamp,
         ...(phaseStatus === "skipped"
           ? { skip_reason: results.prod_session_hold, source: "prod_session_hold" }
           : {}),

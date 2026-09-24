@@ -134,6 +134,22 @@ test("FIX-1163 slot offset 0 is byte-identical to the pre-FIX-1163 wall-clock ga
   }
 });
 
+test("FIX-1218 the Vercel dispatch at the slot carries slot_offset_hours=3 and gates exactly like a schedule event", () => {
+  // The dispatch fires ON TIME — Sat 21:00:05 — which is the instant the old
+  // wall-clock semantics (offset 0 on every workflow_dispatch) would have read
+  // as Saturday, skipping Sunday's heavy ingest outright. The input restores the
+  // slot rule: the env reads the input's "3", and the gate names Sunday.
+  const offset = readSlotOffsetHours("3");
+  assert.equal(offset, 3);
+  assert.deepEqual(computeRunWeekly(at(4, 21, 0, 5), undefined, offset), { runWeekly: true, mode: "sunday" });
+  // Friday's dispatch names Saturday — a weekday skip, as the schedule event does.
+  assert.deepEqual(computeRunWeekly(at(3, 21, 0, 5), undefined, offset), { runWeekly: false, mode: "skipped" });
+  // What the tree did BEFORE the input (the regression this row pins): offset 0.
+  assert.deepEqual(computeRunWeekly(at(4, 21, 0, 5), undefined, 0), { runWeekly: false, mode: "skipped" });
+  // A manual dispatch leaves the input at its default "0" — wall clock, unchanged.
+  assert.equal(readSlotOffsetHours("0"), 0);
+});
+
 test("FIX-1163 force_weekly still supersedes the slot gate", () => {
   // A supervised dispatch runs the heavy block whatever day the slot names.
   assert.deepEqual(computeRunWeekly(at(4, 21, 0), "true", SLOT_OFFSET), {
