@@ -13,7 +13,8 @@
  * ── ORDER, AND WHAT EACH HALF IS FOR ─────────────────────────────────────────
  *
  *   (a) OFF the box, first: an Upstash ring, `civitics:box_health:mem`,
- *       LPUSH + LTRIM 0 719 = 24 h at 2 min, plus `civitics:box_health:latest`.
+ *       LPUSH + LTRIM 0 719 = 24 h at 2 min, 2 commands a sample. The ring's
+ *       head is the latest sample (cc-153 dropped the duplicate `SET … latest`).
  *       It needs no Postgres, so it keeps the ramp through an outage (rule 20).
  *       This write is the deliverable, and it decides `ok`.
  *   (b) ON the box, second, best-effort: `record_box_health_mem()` upserts

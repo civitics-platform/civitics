@@ -36,10 +36,12 @@
  * Upstash, over REST, in ONE pipelined request per sample:
  *   LPUSH civitics:box_health:mem <json>
  *   LTRIM civitics:box_health:mem 0 719     — a 24 h ring at 2-min cadence
- *   SET   civitics:box_health:latest <json>
- * These are 3 commands against the 500k/month allotment the rate limiter
- * shares: 720 samples/day × 3 = 2,160/day, about 65k per 30-day month, 13 %.
- * Read 6 had the period at 86,666 (17.3 %) on day 23, all rate limiter. This
+ * These are 2 commands against the 500k/month allotment the rate limiter
+ * shares: 720 samples/day × 2 = 1,440/day, about 43k per 30-day month, 8.6 %.
+ * The latest sample IS the ring's head (LINDEX … 0 — one command, the same as
+ * a GET). cc-153 dropped the `SET civitics:box_health:latest` that duplicated
+ * it: nothing read that key, and it cost 21,600 commands a month. The on-box
+ * latest is pipeline_state.box_health_mem. cc-149 read 6 had the period at 86,666 (17.3 %) on day 23, all rate limiter. This
  * module never touches `civitics:rl:*`, and ratelimit.ts's private getRedis()
  * is untouched. The REST API is called with fetch, as upstash-usage.ts does,
  * so packages/db takes no @upstash/redis dependency.
@@ -59,11 +61,10 @@
 import { METRICS_URL, parsePrometheusText, type PromMatch } from "./supabase-prometheus";
 
 export const BOX_HEALTH_RING_KEY = "civitics:box_health:mem";
-export const BOX_HEALTH_LATEST_KEY = "civitics:box_health:latest";
 /** 24 h at the route's 2-minute cadence. */
 export const BOX_HEALTH_RING_LEN = 720;
 /** Upstash commands each sample costs, stated so the quota share is checkable. */
-export const BOX_HEALTH_COMMANDS_PER_SAMPLE = 3;
+export const BOX_HEALTH_COMMANDS_PER_SAMPLE = 2;
 
 /** Only the db host's series. The endpoint also serves gotrue/pooler/postgresql/postgrest. */
 export const BOX_HEALTH_LABEL = 'service_type="db"';
@@ -241,19 +242,17 @@ async function upstash(
   }
 }
 
-/** The three commands, in order. Exported so a test pins the order and the trim bound. */
+/** The two commands, in order. Exported so a test pins the order and the trim bound. */
 export function offBoxCommands(sample: BoxHealthSample): string[][] {
-  const json = JSON.stringify(sample);
   return [
-    ["LPUSH", BOX_HEALTH_RING_KEY, json],
+    ["LPUSH", BOX_HEALTH_RING_KEY, JSON.stringify(sample)],
     ["LTRIM", BOX_HEALTH_RING_KEY, "0", String(BOX_HEALTH_RING_LEN - 1)],
-    ["SET", BOX_HEALTH_LATEST_KEY, json],
   ];
 }
 
 export type OffBoxResult = { ok: true; ring_len: number } | { ok: false; error: string };
 
-/** Write one sample to the ring and to `latest`, in ONE pipelined request. */
+/** Write one sample to the ring, in ONE pipelined request. */
 export async function writeBoxHealthOffBox(
   sample: BoxHealthSample,
   creds: UpstashCreds,
@@ -263,8 +262,11 @@ export async function writeBoxHealthOffBox(
   const r = await upstash(creds, "/pipeline", offBoxCommands(sample), fetchImpl, timeoutMs);
   if (!r.ok) return r;
   const replies = Array.isArray(r.reply) ? (r.reply as UpstashReply[]) : null;
-  if (replies === null || replies.length !== 3) {
-    return { ok: false, error: `upstash pipeline: expected 3 replies, got ${JSON.stringify(r.reply).slice(0, 120)}` };
+  if (replies === null || replies.length !== BOX_HEALTH_COMMANDS_PER_SAMPLE) {
+    return {
+      ok: false,
+      error: `upstash pipeline: expected ${BOX_HEALTH_COMMANDS_PER_SAMPLE} replies, got ${JSON.stringify(r.reply).slice(0, 120)}`,
+    };
   }
   const failed = replies.findIndex((x) => x?.error);
   if (failed >= 0) return { ok: false, error: `upstash ${offBoxCommands(sample)[failed]![0]}: ${replies[failed]!.error}` };

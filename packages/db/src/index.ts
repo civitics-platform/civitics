@@ -553,7 +553,6 @@ export type { CronWatchdogVerdict, UnitAction } from "./cron-watchdog-verdict";
 // readBoxHealthRing is what data:box-health:series and the receipts read.
 export {
   BOX_HEALTH_COMMANDS_PER_SAMPLE,
-  BOX_HEALTH_LATEST_KEY,
   BOX_HEALTH_RING_KEY,
   BOX_HEALTH_RING_LEN,
   offBoxCommands,

@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  BOX_HEALTH_LATEST_KEY,
+  BOX_HEALTH_COMMANDS_PER_SAMPLE,
   BOX_HEALTH_RING_KEY,
   offBoxCommands,
   parseBoxHealthSample,
@@ -59,7 +59,7 @@ function fakeFetch(opts: {
       return new Response(m.body, { status: m.status });
     }
     opts.log?.push(url.endsWith("/pipeline") ? "upstash:pipeline" : "upstash");
-    return new Response(JSON.stringify(opts.upstash ?? [{ result: 42 }, { result: "OK" }, { result: "OK" }]), {
+    return new Response(JSON.stringify(opts.upstash ?? [{ result: 42 }, { result: "OK" }]), {
       status: opts.upstashStatus ?? 200,
     });
   }) as typeof fetch;
@@ -135,10 +135,10 @@ test("FIX-1125: one firing — metrics, then LPUSH/LTRIM/SET in ONE pipeline, th
   assert.deepEqual(body.map((c) => c.slice(0, 2)), [
     ["LPUSH", BOX_HEALTH_RING_KEY],
     ["LTRIM", BOX_HEALTH_RING_KEY],
-    ["SET", BOX_HEALTH_LATEST_KEY],
   ]);
   assert.deepEqual(body[1], ["LTRIM", "civitics:box_health:mem", "0", "719"], "a 24 h ring at 2 min");
-  assert.equal(body[0]![2], body[2]![2], "the ring and `latest` carry the same sample");
+  // cc-153: no `SET civitics:box_health:latest` — the ring's head is the latest sample.
+  assert.ok(!body.some((c) => c[0] === "SET"), "no separate latest key");
   assert.equal(JSON.parse(body[0]![2]!).mem_available_bytes, 418258944);
   assert.ok(!body.flat().some((x) => x.startsWith("civitics:rl:")), "never the rate limiter's namespace");
 
@@ -172,7 +172,7 @@ test("FIX-1125: an Upstash refusal is not ok, and the on-box stamp is still atte
   assert.equal(attempted, true);
   assert.match(r.line, /off_box=FAILED\(upstash 200: ERR max requests limit exceeded/);
 
-  const partial = fakeFetch({ upstash: [{ result: 3 }, { error: "WRONGTYPE" }, { result: "OK" }] });
+  const partial = fakeFetch({ upstash: [{ result: 3 }, { error: "WRONGTYPE" }] });
   const r2 = await runBoxHealth({ env: ENV, fetchImpl: partial.fetchImpl, now, stampOnBox: async () => ({ at: null, error: "x" }) });
   assert.equal(r2.ok, false);
   assert.match(r2.line, /off_box=FAILED\(upstash LTRIM: WRONGTYPE\)/);
@@ -236,7 +236,15 @@ test("FIX-1125: readBoxHealthRing parses LRANGE newest-first and counts what it 
   assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), ["LRANGE", BOX_HEALTH_RING_KEY, "0", "29"]);
 });
 
-test("FIX-1125: offBoxCommands is exactly three commands (the quota arithmetic depends on it)", () => {
+test("FIX-1125: offBoxCommands is exactly two commands (the quota arithmetic depends on it)", () => {
   const cmds = offBoxCommands({ route_at: "t", scrape_ms: 1, mem_available_bytes: 1, mem_total_bytes: 2 });
-  assert.equal(cmds.length, 3);
+  assert.equal(cmds.length, 2);
+  assert.equal(cmds.length, BOX_HEALTH_COMMANDS_PER_SAMPLE, "the stated per-sample cost is the real one");
+});
+
+test("FIX-1125 cc-153: a pipeline answering the OLD three replies is refused, not half-read", async () => {
+  const { fetchImpl } = fakeFetch({ upstash: [{ result: 42 }, { result: "OK" }, { result: "OK" }] });
+  const r = await runBoxHealth({ env: ENV, fetchImpl, now, stampOnBox: async () => ({ at: null, error: "x" }) });
+  assert.equal(r.ok, false);
+  assert.match(r.line, /off_box=FAILED\(upstash pipeline: expected 2 replies/);
 });
