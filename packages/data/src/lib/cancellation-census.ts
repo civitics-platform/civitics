@@ -25,7 +25,7 @@
  * Above ~10 events the ratio dominates again and the floor stops binding.
  */
 
-import { worstLogsAnswer, type LogsAnswer } from "@civitics/db";
+import { isLogsEndpointGone, worstLogsAnswer, type LogsAnswer } from "@civitics/db";
 
 /** One minute of `postgres_logs`, as the census aggregates it. */
 export interface CancellationBucket {
@@ -289,12 +289,25 @@ export function answersExit(
     : { code: CENSUS_EXIT.dark, detail: worst.detail };
 }
 
-/** The one-line summary of exit 8. */
-export function unavailableSummary(status: number): string {
-  return `unavailable — Logs API endpoint removed (${status}; FIX-1219)`;
+/**
+ * The one-line summary of exit 8. A removed path (410/404) reads by its
+ * status; a removed table or field (a 200 whose error says it does not exist,
+ * cc-156) reads by the helper's detail, which names what is missing.
+ */
+export function unavailableSummary(status: number, detail?: string): string {
+  return detail && !isLogsEndpointGone(status)
+    ? `unavailable — ${detail} (FIX-1219)`
+    : `unavailable — Logs API endpoint removed (${status}; FIX-1219)`;
 }
 
 /** The `--json` body of exit 8, in place of the verdict halves (or the attribution rows). */
-export function unavailableJson(status: number, window: { start: string; end: string; minutes: number }) {
-  return { window, unavailable: true as const, http_status: status, fix: "FIX-1219", summary: unavailableSummary(status) };
+export function unavailableJson(status: number, window: { start: string; end: string; minutes: number }, detail?: string) {
+  return {
+    window,
+    unavailable: true as const,
+    http_status: status,
+    ...(detail ? { detail } : {}),
+    fix: "FIX-1219",
+    summary: unavailableSummary(status, detail),
+  };
 }

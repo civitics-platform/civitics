@@ -35,11 +35,13 @@
  *   0  both gates PASS
  *   1  either gate FAILs
  *   2  dark: the Logs API did not answer (a 5xx, a 429, a timeout, a network
- *      error, a 200 carrying an error or no result array), or the key is missing
+ *      error, a 200 carrying any other error or no result array), or the key
+ *      is missing
  *   8  unavailable: the endpoint is GONE (410, or 404 on the same path) — how
  *      `logs.all` answered from 2026-09-24 until FIX-1219 moved the census to
- *      `logs`, and how the next removal will answer. Not a reading and not a
- *      symptom. `--by` exits 8 the same way.
+ *      `logs` — or a table or field the query names is (a 200 whose error says
+ *      it "does not exist", cc-156; the summary names it). Not a reading and
+ *      not a symptom. `--by` exits 8 the same way.
  *   (3 is not used: it is the bootstrap runner's retired census_fail.)
  *
  * WHAT IT READS. Both halves and `--by` are the helper's builders:
@@ -160,7 +162,7 @@ function parseArgs(argv: readonly string[]): Args {
             "       cancellation-census --by <field> [--like <substring>] [--minutes N] [--end <iso>] [--json]\n" +
             `       fields: ${ATTRIBUTABLE_FIELDS.join(", ")}\n` +
             "       exit: 0 pass · 1 fail · 2 dark (the Logs API did not answer) · " +
-            "8 unavailable (the endpoint is gone — 410; FIX-1219)",
+            "8 unavailable (the endpoint is gone — 410 — or a table/field it names is; FIX-1219)",
         );
         process.exit(0);
         break;
@@ -198,9 +200,14 @@ function logAnswer<T>(a: LogsAnswer<T>): LogsAnswer<T> {
  * UV_HANDLE_CLOSING assertion below) and the shell sees 127, which a consumer
  * would read as dark — measured in cc-152 read 5 on exactly this 410.
  */
-function exitUnavailable(status: number, window: { start: string; end: string; minutes: number }, json: boolean): void {
-  if (json) console.log(JSON.stringify(unavailableJson(status, window), null, 2));
-  else console.log(`\n[census] ${unavailableSummary(status)} — no verdict, no attribution. (exit 8)`);
+function exitUnavailable(
+  status: number,
+  window: { start: string; end: string; minutes: number },
+  json: boolean,
+  detail?: string,
+): void {
+  if (json) console.log(JSON.stringify(unavailableJson(status, window, detail), null, 2));
+  else console.log(`\n[census] ${unavailableSummary(status, detail)} — no verdict, no attribution. (exit 8)`);
   process.exitCode = CENSUS_EXIT.unavailable;
 }
 
@@ -232,7 +239,7 @@ async function main(): Promise<void> {
       await queryAttribution({ field: args.by, like: args.like, startMs, endMs: args.endMs, token, timeoutMs: TIMEOUT_MS }),
     );
     if (a.kind === "unavailable") {
-      exitUnavailable(a.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json);
+      exitUnavailable(a.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json, a.detail);
       return;
     }
     if (a.kind === "dark") {
@@ -293,7 +300,7 @@ async function main(): Promise<void> {
 
   const early = answersExit([cAns, eAns]);
   if (early?.code === CENSUS_EXIT.unavailable) {
-    exitUnavailable(early.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json);
+    exitUnavailable(early.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json, early.detail);
     return;
   }
   if (early || cAns.kind !== "rows" || eAns.kind !== "rows") {
@@ -369,7 +376,11 @@ async function main(): Promise<void> {
     );
   }
 
-  process.exit(v.pass && ev.pass ? 0 : 1);
+  // exitCode, not process.exit(): see exitUnavailable. The verdict path was the
+  // last one left, and cc-156 measured it: a PASS reading printed its verdict
+  // and then aborted on the UV_HANDLE_CLOSING assertion, exit 127 — which every
+  // consumer reads as dark.
+  process.exitCode = v.pass && ev.pass ? 0 : 1;
 }
 
 main().catch((err) => {

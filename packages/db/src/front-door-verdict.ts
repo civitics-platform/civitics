@@ -91,6 +91,8 @@
  * derived from the bucket shape plus the wall clock, and nothing is persisted.
  */
 
+import { isLogsEndpointGone } from "./supabase-logs";
+
 /** One 15-minute slice of `edge_logs`, as returned by the Logs API. */
 export type FrontDoorBucket = {
   /** Bucket start, ms since epoch, aligned to a 15-minute boundary. */
@@ -110,25 +112,34 @@ export type FrontDoorProbe = {
 
 /**
  * FIX-1219 — what the Logs corroborator returned. `ok` carries the rows;
- * `unavailable` is the endpoint GONE (410, or 404 on the same path — how
- * `logs.all` answered after Supabase removed it, changelog 48235, and how the
- * next removal will answer); `dark` is any other failure to answer. Before
+ * `unavailable` is the instrument GONE (410, or 404 on the same path — how
+ * `logs.all` answered after Supabase removed it, changelog 48235 — or a 200
+ * naming a table or field that no longer exists, how a schema removal
+ * answers); `dark` is any other failure to answer. Before
  * this, the route turned every failure into zero buckets and the verdict read
  * `ok` — from 2026-09-24 10:15 UTC on, every firing reported a healthy front
  * door while seeing nothing.
  */
 export type FrontDoorCorroborator =
   | { kind: "ok"; buckets: number }
-  | { kind: "unavailable"; status: number }
+  /** `detail` is the helper's: for a 200 it names the table or field that no
+   *  longer exists (isLogsSchemaRemoval, cc-156). */
+  | { kind: "unavailable"; status: number; detail?: string }
   | { kind: "dark"; detail: string };
 
 /** 410 Gone, and 404 on the same path. Defined once, in supabase-logs.ts. */
-export { isLogsEndpointGone } from "./supabase-logs";
+export { isLogsEndpointGone };
 
 /** The `logs_api` field of the route's body and its data_sync_log row. */
 export function corroboratorLabel(c: FrontDoorCorroborator): string {
   if (c.kind === "ok") return `${c.buckets} bucket(s)`;
-  if (c.kind === "unavailable") return `unavailable (${c.status}, FIX-1219)`;
+  if (c.kind === "unavailable") {
+    // A removed path reads by its status, as it always has; a removed table or
+    // field reads by what is missing — "200" alone would say nothing.
+    return c.detail && !isLogsEndpointGone(c.status)
+      ? `unavailable (${c.detail}, FIX-1219)`
+      : `unavailable (${c.status}, FIX-1219)`;
+  }
   return `dark (${c.detail})`;
 }
 

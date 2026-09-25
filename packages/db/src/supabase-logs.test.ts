@@ -17,6 +17,7 @@ import {
   buildLogsUrl,
   isAttributableField,
   isLogsEndpointGone,
+  isLogsSchemaRemoval,
   queryAttribution,
   queryCancellationBuckets,
   queryEdgeBuckets,
@@ -171,10 +172,30 @@ test("a 200 carrying an error is dark, with the error text — `res.ok` proves n
   const a = await q(stubFetch(200, { error: "Backend error! Retry your query. Please contact support if this continues." }));
   assert.equal(a.kind, "dark");
   assert.match((a as { detail: string }).detail, /^Logs API 200 with an error: Backend error!/);
-  const f = await q(stubFetch(200, { error: 'Field "source_name" does not exist.' }));
-  assert.match((f as { detail: string }).detail, /source_name/);
+  assert.deepEqual(await q(stubFetch(200, { error: "Backend error" })), { kind: "dark", detail: "Logs API 200 with an error: Backend error" });
   assert.deepEqual(await q(stubFetch(200, {})), { kind: "dark", detail: "Logs API answered 200 without a result array" });
   assert.equal((await q(stubFetch(200, { result: [], error: null }))).kind, "rows", "error: null is not an error");
+});
+
+test("a 200 naming a table or field that does not exist is UNAVAILABLE (a schema removal), not dark — cc-156", async () => {
+  // The exact bodies the endpoint returned (cc-152 read 5, cc-155 P8).
+  assert.deepEqual(await q(stubFetch(200, { error: 'Field "source_name" does not exist.' })), {
+    kind: "unavailable", status: 200, detail: 'Logs API schema changed: Field "source_name" does not exist.',
+  });
+  assert.deepEqual(await q(stubFetch(200, { error: 'Table "edge_logs" does not exist.' })), {
+    kind: "unavailable", status: 200, detail: 'Logs API schema changed: Table "edge_logs" does not exist.',
+  });
+  // Everything else stays dark: rule 164 counts dark as a box symptom, and
+  // only this shape is known not to be one.
+  const throttled = await q(stubFetch(429, { message: "ThrottlerException: Too Many Requests" }, "Too Many Requests"));
+  assert.equal(throttled.kind, "dark", "a 429 is still dark");
+  assert.equal((await q(stubFetch(200, { error: "Backend error" }))).kind, "dark");
+  assert.equal(isLogsSchemaRemoval('Field "metadata" does not exist.'), true);
+  assert.equal(isLogsSchemaRemoval("Project does not exist"), false, "only a named table/field/column");
+  assert.equal(isLogsSchemaRemoval("Backend error! Retry your query."), false);
+  // A removed table beats a dark sibling, like a 410 does: they share one endpoint.
+  const gone = await q(stubFetch(200, { error: 'Table "edge_logs" does not exist.' }));
+  assert.equal(worstLogsAnswer([{ kind: "dark", detail: "Logs API 503" }, gone])?.kind, "unavailable");
 });
 
 test("an answer at the 1000-row cap is a truncation, not a reading", async () => {

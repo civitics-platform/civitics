@@ -155,7 +155,9 @@ async function fetchBuckets(
     token,
     timeoutMs: LOGS_TIMEOUT_MS,
   });
-  if (a.kind === "unavailable") return { rows: null, corroborator: { kind: "unavailable", status: a.status } };
+  if (a.kind === "unavailable") {
+    return { rows: null, corroborator: { kind: "unavailable", status: a.status, detail: a.detail } };
+  }
   if (a.kind === "dark") return { rows: null, corroborator: { kind: "dark", detail: a.detail } };
   return { rows: a.rows, corroborator: { kind: "ok", buckets: a.rows.length } };
 }

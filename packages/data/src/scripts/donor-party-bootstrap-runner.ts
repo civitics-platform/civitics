@@ -132,6 +132,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
+import { isLogsEndpointGone } from "@civitics/db";
 import { CENSUS_EXIT } from "../lib/cancellation-census";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { GateTimeout, waitForProdOpGate, type AlsoReading, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
@@ -620,9 +621,11 @@ export interface CensusJson {
   cancellations?: { total: number; ratio: number; floor?: number; lambda?: number; pass?: boolean };
   edge?: { note: string; pass?: boolean };
   pass?: boolean;
-  /** Exit 8's body (FIX-1219): the endpoint is gone. */
+  /** Exit 8's body (FIX-1219): the endpoint is gone, or a table/field it names is. */
   unavailable?: boolean;
   http_status?: number;
+  /** The helper's detail; for a 200 it names what no longer exists (cc-156). */
+  detail?: string;
 }
 
 /**
@@ -633,6 +636,11 @@ export interface CensusJson {
  */
 export function censusSummary(code: number, j: CensusJson | null, minutes: number): string {
   if (code === CENSUS_EXIT.unavailable) {
+    // A removed path reads by its status (cc-154's wording, kept); a removed
+    // table or field — a 200 — reads by the detail that names it (cc-156).
+    if (j?.detail && j.http_status !== undefined && !isLogsEndpointGone(j.http_status)) {
+      return `unavailable (FIX-1219 — ${j.detail})`;
+    }
     return `unavailable (FIX-1219 — Logs API endpoint removed${j?.http_status ? `, HTTP ${j.http_status}` : ""})`;
   }
   if (code !== 0 && code !== 1) return `dark (exit ${code} — the Logs API did not answer)`;

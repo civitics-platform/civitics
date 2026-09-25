@@ -135,9 +135,11 @@ export const TIME_FILTER = "{{time_filter}}";
 //
 // `rows` is a reading. `dark` is the endpoint failing to answer this time — a
 // 5xx, a 429, a timeout, a network error, a 200 carrying an error or no result
-// array, an answer at the row cap. `unavailable` is the endpoint being GONE:
-// 410, or 404 on the same path. That is not a reading and not a symptom of the
-// box, so every consumer keeps it distinct (the census's exit 8, the watch's
+// array, an answer at the row cap. `unavailable` is the instrument being GONE:
+// 410, or 404 on the same path — or a 200 whose error says a table or field
+// the query names does not exist (`status` 200, the error in `detail`; see
+// isLogsSchemaRemoval). That is not a reading and not a symptom of the box, so
+// every consumer keeps it distinct (the census's exit 8, the watch's
 // `corroborator_unavailable`). Moved here from the census lib (cc-154).
 
 export type LogsAnswer<T> =
@@ -148,6 +150,20 @@ export type LogsAnswer<T> =
 /** 410 Gone, and 404 on the same path: the endpoint is not there. Every other non-200 is dark. */
 export function isLogsEndpointGone(status: number): boolean {
   return status === 410 || status === 404;
+}
+
+/**
+ * The other way the instrument goes away (FIX-1219 hardening, cc-156): the
+ * endpoint is there, but a table or field the query names is not. It answers
+ * HTTP 200 with `{error}` — measured cc-152/155: `Table "edge_logs" does not
+ * exist.`, `Field "source_name" does not exist.` That is a schema change, not
+ * a box that failed to answer, so it is `unavailable` (status 200, the error in
+ * the detail). Every other `{error}` — "Backend error!", anything else — stays
+ * dark: rule 164 counts dark as a box symptom, and only this shape is known
+ * not to be one.
+ */
+export function isLogsSchemaRemoval(error: string): boolean {
+  return /\b(field|table|column)\s+"[^"]*"\s+does not exist\b/i.test(error);
 }
 
 /**
@@ -272,6 +288,9 @@ export async function queryLogs<T>(opts: QueryLogsOptions): Promise<LogsAnswer<T
     const err = json?.error;
     if (err !== undefined && err !== null && err !== "") {
       const text = typeof err === "string" ? err : JSON.stringify(err);
+      if (isLogsSchemaRemoval(text)) {
+        return { kind: "unavailable", status: res.status, detail: `Logs API schema changed: ${text.slice(0, 200)}` };
+      }
       return { kind: "dark", detail: `Logs API 200 with an error: ${text.slice(0, 200)}` };
     }
     if (!Array.isArray(json?.result)) {

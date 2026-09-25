@@ -438,6 +438,18 @@ test("cc-154 D2: censusSummary names exit 8 unavailable, with the HTTP status wh
   assert.match(censusSummary(2, null, 15), /^dark/, "2 is still dark");
 });
 
+test("cc-156: censusSummary names a removed table or field from the detail, not 'endpoint removed, HTTP 200'", () => {
+  const detail = 'Logs API schema changed: Table "edge_logs" does not exist.';
+  const s = censusSummary(8, { unavailable: true, http_status: 200, detail }, 60);
+  assert.equal(s, `unavailable (FIX-1219 — ${detail})`);
+  assert.equal(censusHalfReading(8, s).ok, true, "still exit 8: the gate opens on the gate alone, as for a 410");
+  assert.equal(
+    censusSummary(8, { unavailable: true, http_status: 410, detail: "Logs API 410 Gone" }, 60),
+    "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)",
+    "a removed path keeps cc-154's wording",
+  );
+});
+
 test("cc-154 D2: an unavailable opening poll is counted as opened on the gate, not as dark; the poll line says unavailable", () => {
   const u = "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)";
   const polls: GatePoll[] = [

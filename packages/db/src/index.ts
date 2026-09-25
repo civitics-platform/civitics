@@ -559,6 +559,7 @@ export {
   queryStringRange,
   bucketStartMs,
   worstLogsAnswer,
+  isLogsSchemaRemoval,
   sqlEdgeBuckets,
   sqlCancellationBuckets,
   sqlAttribution,

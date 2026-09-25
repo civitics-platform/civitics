@@ -1004,6 +1004,12 @@ describe("the Logs corroborator unavailable (FIX-1219)", () => {
   test("the logs_api labels, and which statuses mean the endpoint is gone", () => {
     assert.equal(corroboratorLabel({ kind: "ok", buckets: 4 }), "4 bucket(s)");
     assert.equal(corroboratorLabel(GONE), "unavailable (410, FIX-1219)");
+    assert.equal(corroboratorLabel({ kind: "unavailable", status: 410, detail: "Logs API 410 Gone" }), "unavailable (410, FIX-1219)");
+    // cc-156: a removed table or field answers 200; the label names what is missing.
+    assert.equal(
+      corroboratorLabel({ kind: "unavailable", status: 200, detail: 'Logs API schema changed: Table "edge_logs" does not exist.' }),
+      'unavailable (Logs API schema changed: Table "edge_logs" does not exist., FIX-1219)',
+    );
     assert.equal(corroboratorLabel(DARK), "dark (HTTP 503)");
     assert.equal(isLogsEndpointGone(410), true);
     assert.equal(isLogsEndpointGone(404), true);

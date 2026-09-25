@@ -340,8 +340,9 @@ test("the attribution path RETURNS — a process.exit(0) there exits 127 on Wind
   // Not a style point. `process.exit(0)` after a single fetch aborts the
   // process on Windows (libuv UV_HANDLE_CLOSING assertion) and the shell reads
   // 127, so a prompt gating on `exit 0` sees a failure. Measured on this box.
-  // The gate path below it still exits explicitly and is fine — it awaits two
-  // fetches. This pins the asymmetry, which is otherwise invisible.
+  // The gate path was believed safe because it awaits two fetches; cc-156
+  // measured it too (2026-09-25 03:55:12 UTC: VERDICT PASS, then the
+  // assertion, exit 127), so it sets exitCode as well.
   const src = readFileSync(
     new URL("../scripts/cancellation-census.ts", import.meta.url),
     "utf8",
@@ -354,6 +355,10 @@ test("the attribution path RETURNS — a process.exit(0) there exits 127 on Wind
   const block = src.slice(from, to);
   assert.match(block, /process\.exitCode = 0;\s*\n\s*return;/);
   assert.doesNotMatch(block, /process\.exit\(0\);/);
+  // The gate path, after both halves' fetches: exitCode, never process.exit.
+  const gate = src.slice(to, src.indexOf("main().catch("));
+  assert.match(gate, /process\.exitCode = v\.pass && ev\.pass \? 0 : 1;/);
+  assert.doesNotMatch(gate, /^\s*process\.exit\(/m, "a call, not the comments that name it");
 });
 
 test("--by is allow-listed before it reaches the SQL string", () => {
@@ -397,6 +402,20 @@ test("FIX-1219: the exit-8 JSON replaces the verdict halves, and the summary nam
     summary: "unavailable — Logs API endpoint removed (410; FIX-1219)",
   });
   assert.ok(!("cancellations" in j) && !("edge" in j) && !("pass" in j), "no verdict half rides an exit 8");
+});
+
+test("cc-156: a removed table or field (a 200) exits 8 with the helper's detail in the summary", () => {
+  const w = { start: "2026-09-25T02:40:00Z", end: "2026-09-25T03:40:00Z", minutes: 60 };
+  const detail = 'Logs API schema changed: Field "source_name" does not exist.';
+  assert.equal(unavailableSummary(200, detail), `unavailable — ${detail} (FIX-1219)`);
+  assert.deepEqual(unavailableJson(200, w, detail), {
+    window: w, unavailable: true, http_status: 200, detail, fix: "FIX-1219",
+    summary: `unavailable — ${detail} (FIX-1219)`,
+  });
+  // A removed PATH keeps cc-154's wording whatever the detail says.
+  assert.equal(unavailableSummary(410, "Logs API 410 Gone"), "unavailable — Logs API endpoint removed (410; FIX-1219)");
+  const u = { kind: "unavailable" as const, status: 200, detail };
+  assert.deepEqual(answersExit([{ kind: "rows" as const, rows: [] }, u]), { code: 8, status: 200, detail });
 });
 
 test("FIX-1219: the script ends exit 8 and exit 2 on process.exitCode, never process.exit() (the Windows 127)", () => {
