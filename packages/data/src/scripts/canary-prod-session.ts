@@ -238,3 +238,78 @@ export function classifyHoldStale(
     oldestAgeHours,
   };
 }
+
+// ---------------------------------------------------------------------------
+// FIX-1224 — the two reads above, when they could not read at all
+// ---------------------------------------------------------------------------
+
+/**
+ * `prod_session_read_failed` — the prod-session detectors read nothing.
+ *
+ * WHY. Both classifiers above take `null` as "could not read" and report it as
+ * nothing, which is the right contract for ONE bad run and the wrong one for
+ * every run. sync-canary-check.yml never passed a DB password, so
+ * `buildDbUrl()` threw on every GHA run from the day FIX-950 shipped
+ * (2026-09-11): 0 of 17 prod meta rows carried a prod-session read, and
+ * `prod_session_overrun`, `prod_session_label_stale` and
+ * `prod_session_hold_stale` could never fire. The only trace was a
+ * `console.warn` in a log nobody reads — the FIX-1223 shape. A detector that
+ * reads "unknown" on every run is absent, and absent has to be loud.
+ *
+ * `report`, not `escalate` — the posture of `front_door_corroborator_unavailable`.
+ * Nothing is broken on the box; an instrument is blind and a human should look.
+ * Escalating would page nightly for a missing env var.
+ *
+ * ONE key for both reads. They share a DSN and a connection path, so they fail
+ * together, and the remedy is the same. Severity counts the reads that failed,
+ * so one of the two recovering reads as better rather than as a new condition.
+ */
+export const KEY_READ_FAILED = "prod_session_read_failed";
+
+/**
+ * The detail for a read that produced nothing and threw nothing. Only
+ * `buildDbUrl()` throws: `withClient` returns null on a failed connection (a
+ * wrong password included) and `readProdSessionState` returns null on a failed
+ * query, each after its own `[prod-session]` warning. So this is the COMMON
+ * blind shape — every failure except a missing DSN.
+ */
+export const QUIET_FAILURE =
+  "read nothing without throwing — a failed connection or prod_session_state() query (see the [prod-session] line)";
+
+/** One of the canary's two direct-pg session reads, as it came back. */
+export type SessionRead = {
+  /** The name its log line uses. */
+  name: "prod session" | "session holds";
+  /** False when the read produced no status — thrown, or swallowed as null. */
+  ok: boolean;
+  /** The thrown error's text. Null when it did not throw, or read fine. */
+  error: string | null;
+};
+
+export type SessionReadStatus = {
+  tier: "report" | null;
+  severity: number;
+  detail: string;
+  /** The names of the reads that failed. */
+  failed: string[];
+};
+
+export function classifySessionReads(reads: readonly SessionRead[]): SessionReadStatus {
+  const failed = reads.filter((r) => !r.ok);
+  if (failed.length === 0) {
+    return { tier: null, severity: 0, detail: "prod-session reads answered", failed: [] };
+  }
+  return {
+    tier: "report",
+    severity: failed.length,
+    failed: failed.map((r) => r.name),
+    detail:
+      `prod-session detector blind — ${failed.length} of ${reads.length} direct-pg read(s) failed: ` +
+      failed
+        .map((r) => `${r.name}: ${r.error ?? QUIET_FAILURE}`)
+        .join("; ") +
+      `. ${KEY_OVERRUN}, ${KEY_LABEL_STALE} and ${KEY_HOLD_STALE} cannot fire, and this run's ` +
+      "prod_session / session_holds trail is null. A workflow env with no SUPABASE_DB_PASSWORD " +
+      "reads exactly like this — FIX-1224",
+  };
+}

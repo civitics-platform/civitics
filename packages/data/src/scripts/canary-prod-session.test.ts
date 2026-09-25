@@ -17,7 +17,11 @@ import {
   KEY_HOLD_STALE,
   KEY_LABEL_STALE,
   KEY_OVERRUN,
+  KEY_READ_FAILED,
+  QUIET_FAILURE,
   classifyHoldStale,
+  classifySessionReads,
+  type SessionRead,
   type SessionHoldRow,
   OVERRUN_FACTOR,
 } from "./canary-prod-session";
@@ -211,4 +215,65 @@ test("a null held_since still reports — a row with no timestamp is not health"
 
 test("the condition key is stable", () => {
   assert.equal(KEY_HOLD_STALE, "prod_session_hold_stale");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1224 — prod_session_read_failed
+// ---------------------------------------------------------------------------
+
+/** What every GHA canary run logged from 2026-09-11 to 2026-09-25, verbatim. */
+const NO_DSN =
+  "buildDbUrl: need SUPABASE_DB_URL, a local NEXT_PUBLIC_SUPABASE_URL, or " +
+  "(NEXT_PUBLIC_SUPABASE_URL + SUPABASE_DB_PASSWORD) to compose a DSN";
+
+function reads(prod: Partial<SessionRead>, holds: Partial<SessionRead>): SessionRead[] {
+  return [
+    { name: "prod session", ok: true, error: null, ...prod },
+    { name: "session holds", ok: true, error: null, ...holds },
+  ];
+}
+
+test("both reads answered: no finding", () => {
+  const s = classifySessionReads(reads({}, {}));
+  assert.equal(s.tier, null);
+  assert.equal(s.severity, 0);
+  assert.deepEqual(s.failed, []);
+});
+
+test("the cc-156 shape — no DSN, both reads threw — REPORTS, never escalates", () => {
+  const s = classifySessionReads(reads({ ok: false, error: NO_DSN }, { ok: false, error: NO_DSN }));
+  assert.equal(s.tier, "report", "a blind instrument wants a look, not a nightly page");
+  assert.equal(s.severity, 2);
+  assert.deepEqual(s.failed, ["prod session", "session holds"]);
+  assert.match(s.detail, /prod session: buildDbUrl: need SUPABASE_DB_URL/);
+  assert.match(s.detail, /session holds: buildDbUrl: need SUPABASE_DB_URL/);
+  // It names what it blinds, so the tile says why three other keys are quiet.
+  for (const k of [KEY_OVERRUN, KEY_LABEL_STALE, KEY_HOLD_STALE]) assert.match(s.detail, new RegExp(k));
+  assert.match(s.detail, /FIX-1224/);
+});
+
+test("one read failing reports on that read alone, and ranks below both failing", () => {
+  const one = classifySessionReads(reads({}, { ok: false, error: "connection terminated unexpectedly" }));
+  const both = classifySessionReads(reads({ ok: false, error: NO_DSN }, { ok: false, error: NO_DSN }));
+  assert.equal(one.tier, "report");
+  assert.deepEqual(one.failed, ["session holds"]);
+  assert.match(one.detail, /1 of 2/);
+  assert.doesNotMatch(one.detail, /prod session: /);
+  assert.ok(both.severity > one.severity, "severity must be monotone-worse for the transition classifier");
+});
+
+test("a read that failed WITHOUT throwing still reports — null is not health", () => {
+  // withClient() swallows a failed connection (a wrong password included) and
+  // readProdSessionState() a failed query; both return null, so the canary sees
+  // no status AND no error. Measured locally with an unreachable DSN: both reads
+  // came back exactly like this. It is the common blind shape, not an edge.
+  const s = classifySessionReads(reads({ ok: false, error: null }, { ok: false, error: null }));
+  assert.equal(s.tier, "report");
+  assert.equal(s.severity, 2);
+  assert.ok(s.detail.includes(`prod session: ${QUIET_FAILURE}`));
+  assert.ok(s.detail.includes(`session holds: ${QUIET_FAILURE}`));
+});
+
+test("the read-failed key is stable", () => {
+  assert.equal(KEY_READ_FAILED, "prod_session_read_failed");
 });

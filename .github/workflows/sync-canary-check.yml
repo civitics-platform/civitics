@@ -25,6 +25,13 @@ jobs:
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      # FIX-1224 — the prod-session and session-hold detectors (FIX-950,
+      # FIX-1177/1172) read over direct pg, and buildDbUrl() composes that DSN
+      # from NEXT_PUBLIC_SUPABASE_URL + this, exactly as nightly.yml's phase
+      # jobs do. Without it both reads threw on every run from 2026-09-11 and
+      # their three keys could never fire; a failed read now raises the
+      # report-only prod_session_read_failed instead of a log line.
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
       ADMIN_EMAIL:              ${{ secrets.ADMIN_EMAIL }}
       RESEND_API_KEY:           ${{ secrets.RESEND_API_KEY }}
       # FIX-289: unify From: address across canary + kill-switch alerts.

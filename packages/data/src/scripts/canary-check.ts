@@ -59,15 +59,20 @@ import {
   KEY_HOLD_STALE,
   KEY_LABEL_STALE,
   KEY_OVERRUN,
+  KEY_READ_FAILED,
   type ProdSessionStatus,
   classifyHoldStale,
   classifyProdSession,
+  classifySessionReads,
   type HoldStaleStatus,
   type SessionHoldRow,
 } from "./canary-prod-session";
 import { SESSION_HOLD_PREFIX, readProdSessionState, withClient } from "../lib/prod-session";
 import { KEY_MEM_STALE, KEY_PROBE_STALE, type BoxHealthCanary, classifyBoxHealth } from "./canary-box-health";
 import { buildDbUrl } from "../lib/heavy-rebuild";
+
+/** FIX-1224 — a direct-pg read's status, with the error text when it threw. */
+type DirectRead<T> = { value: T | null; error: string | null };
 
 const PIPELINE_NAME      = "nightly_cron";
 const KILLED_PIPELINE    = "nightly_killed";
@@ -730,18 +735,18 @@ async function fetchFecDropStatus(now: Date): Promise<FecDropStatus | null> {
 // A held session is NOT a finding — see canary-prod-session.ts. This exists so
 // the meta row carries the trail, so the tile can say WHY the platform is quiet,
 // and so the two ways a hold goes wrong (an overrun, a dead label) report.
-async function fetchProdSessionStatus(): Promise<ProdSessionStatus | null> {
+//
+// FIX-1224 — returns the error text alongside the status, so a read that
+// failed can raise prod_session_read_failed instead of staying a log line.
+async function fetchProdSessionStatus(): Promise<DirectRead<ProdSessionStatus>> {
   try {
     const state = await withClient(buildDbUrl(), readProdSessionState);
-    return classifyProdSession(state);
+    return { value: classifyProdSession(state), error: null };
   } catch (err) {
     // Non-fatal, same contract as every other detector here.
-    console.warn(
-      `[canary-check] prod session read failed (non-fatal): ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return null;
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn(`[canary-check] prod session read failed (non-fatal): ${error}`);
+    return { value: null, error };
   }
 }
 
@@ -797,10 +802,12 @@ async function fetchGhaDispatch(now: Date): Promise<GhaDispatchCanary | null> {
  * `hold_reason LIKE 'prod session held:%'` is the filter that keeps a HUMAN's
  * declared hold out of this. A human hold has no session behind it by design
  * and reporting it as stale would train an operator to ignore the finding.
+ *
+ * FIX-1224 — the error text rides back with the status, as above.
  */
-async function fetchHoldStale(): Promise<HoldStaleStatus | null> {
+async function fetchHoldStale(): Promise<DirectRead<HoldStaleStatus>> {
   try {
-    return await withClient(buildDbUrl(), async (client) => {
+    const value = await withClient(buildDbUrl(), async (client) => {
       const state = await readProdSessionState(client);
       const res = await client.query<{ pipeline: string; held_since: string | null }>(
         `SELECT pipeline, held_since::text AS held_since
@@ -812,13 +819,11 @@ async function fetchHoldStale(): Promise<HoldStaleStatus | null> {
       const rows: SessionHoldRow[] = res.rows;
       return classifyHoldStale(rows, state?.held === true);
     });
+    return { value, error: null };
   } catch (err) {
-    console.warn(
-      `[canary-check] session-hold read failed (non-fatal): ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return null;
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn(`[canary-check] session-hold read failed (non-fatal): ${error}`);
+    return { value: null, error };
   }
 }
 
@@ -1735,7 +1740,8 @@ async function main(): Promise<number> {
   );
   // FIX-950 — read BEFORE the findings are assembled so a held session is
   // visible in the log next to everything it is the explanation for.
-  const prodSession = await fetchProdSessionStatus();
+  const prodSessionRead = await fetchProdSessionStatus();
+  const prodSession = prodSessionRead.value;
   console.log(
     `[canary-check] prod session: ${
       prodSession ? `${prodSession.state} — ${prodSession.detail}` : "unknown (read failed)"
@@ -1751,10 +1757,17 @@ async function main(): Promise<number> {
   // FIX-1219 — is the front-door watch's Logs corroborator seeing anything?
   const frontDoor = await fetchFrontDoorWatch(now);
   console.log(`[canary-check] front-door watch: ${frontDoor ? frontDoor.detail : "unknown (read failed)"}`);
-  const holdStale = await fetchHoldStale();
+  const holdStaleRead = await fetchHoldStale();
+  const holdStale = holdStaleRead.value;
   console.log(
     `[canary-check] session holds: ${holdStale ? holdStale.detail : "unknown (read failed)"}`,
   );
+  // FIX-1224 — both reads above ride one DSN; a run where either read nothing
+  // raises a report-only key rather than leaving "unknown" in the log alone.
+  const sessionReads = classifySessionReads([
+    { name: "prod session", ok: prodSession !== null, error: prodSessionRead.error },
+    { name: "session holds", ok: holdStale !== null, error: holdStaleRead.error },
+  ]);
   // FIX-1194 P1-B / FIX-1125 — the probe and the memory mirror, alive or not.
   const boxHealth = await fetchBoxHealth(now);
   console.log(
@@ -1904,6 +1917,10 @@ async function main(): Promise<number> {
   // classifier would read a recovery from one as a recovery from the other.
   if (holdStale?.tier) {
     push(KEY_HOLD_STALE, holdStale.tier, holdStale.severity, holdStale.detail);
+  }
+  // FIX-1224 — report-only: the three keys above cannot fire while this one is up.
+  if (sessionReads.tier) {
+    push(KEY_READ_FAILED, sessionReads.tier, sessionReads.severity, sessionReads.detail);
   }
   // FIX-1194 P1-B / FIX-1125 — one key per stamp: the probe (pg_cron) and the
   // memory mirror (Vercel) go dark for different reasons, and one recovering

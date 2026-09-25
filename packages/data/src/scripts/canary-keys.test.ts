@@ -31,7 +31,7 @@ import {
 import { KEY_DISPATCH_REFUSED, KEY_DISPATCH_STALE } from "./canary-gha-dispatch";
 import { KEY_FRONT_DOOR_BLIND } from "./canary-front-door";
 import { KEY_BLIND, KEY_MISSING, KEY_UNCOLLECTED } from "./canary-fec-drop";
-import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN } from "./canary-prod-session";
+import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN, KEY_READ_FAILED } from "./canary-prod-session";
 import { KEY_MEM_STALE, KEY_PROBE_STALE } from "./canary-box-health";
 
 const SRC = readFileSync(fileURLToPath(new URL("./canary-check.ts", import.meta.url)), "utf8");
@@ -51,6 +51,7 @@ const CONSTANTS: Record<string, string> = {
   KEY_OVERRUN,
   KEY_LABEL_STALE,
   KEY_HOLD_STALE,
+  KEY_READ_FAILED,
   KEY_UNCOLLECTED,
   KEY_BLIND,
   KEY_MISSING,

@@ -29,7 +29,7 @@
 import { KEY_DISPATCH_REFUSED, KEY_DISPATCH_STALE } from "./canary-gha-dispatch";
 import { KEY_FRONT_DOOR_BLIND } from "./canary-front-door";
 import { KEY_BLIND, KEY_MISSING, KEY_UNCOLLECTED } from "./canary-fec-drop";
-import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN } from "./canary-prod-session";
+import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN, KEY_READ_FAILED } from "./canary-prod-session";
 import { KEY_MEM_STALE, KEY_PROBE_STALE } from "./canary-box-health";
 
 /**
@@ -51,6 +51,7 @@ export const CONDITION_KEYS: readonly string[] = [
   KEY_OVERRUN, //          prod_session_overrun
   KEY_LABEL_STALE, //      prod_session_label_stale
   KEY_HOLD_STALE, //       prod_session_hold_stale   (FIX-1177/1172)
+  KEY_READ_FAILED, //      prod_session_read_failed  (FIX-1224, report-only)
   KEY_UNCOLLECTED, //      fec_drop_uncollected      \
   KEY_BLIND, //            fec_drop_probe_blind       > one key per STATE, so a
   KEY_MISSING, //          fec_drop_probe_missing    /  probe outage cannot read
