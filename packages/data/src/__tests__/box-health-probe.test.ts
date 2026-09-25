@@ -27,7 +27,18 @@ import { Client } from "pg";
 
 const MIGRATIONS = path.join(__dirname, "..", "..", "..", "..", "supabase", "migrations");
 const MIGRATION = path.join(MIGRATIONS, "20260920130000_fix1194_box_health_probe.sql");
-const GATE = path.join(MIGRATIONS, "20260920120000_fix1215_prod_op_gate.sql");
+// cc-153: the LATEST migration that (re)defines prod_op_gate, derived as
+// prod-op-gate.test.ts derives it. Pinned to 20260920120000, the rule-93 and
+// c_wd_max_wall_s anchors kept passing on a body two later migrations replaced.
+const GATE = path.join(
+  MIGRATIONS,
+  fs
+    .readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .filter((f) => fs.readFileSync(path.join(MIGRATIONS, f), "utf8").includes("CREATE OR REPLACE FUNCTION public.prod_op_gate("))
+    .pop()!,
+);
 const LOCAL_DSN =
   process.env["SUPABASE_DB_URL"] ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 

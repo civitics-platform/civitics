@@ -852,6 +852,13 @@ type StartupStreak = {
   first_at: string;
   last_at: string;
   span_minutes: number;
+  /** FIX-1220 — the job's median firing interval, and the streak in minutes at
+   *  that cadence (runs x interval). A streak escalates only when this also
+   *  reaches the tiers' streak_minutes_threshold, so the every-minute
+   *  box-health-probe needs 12 runs where a 2-minute watchdog needs 6. Absent
+   *  before the migration. */
+  interval_minutes?: number;
+  streak_minutes?: number;
 };
 
 /** FIX-1073 — a 60-minute bucket with M-or-more startup timeouts across ALL
@@ -866,6 +873,8 @@ type StartupBurst = {
 
 type StartupTimeoutTiers = {
   streakThreshold: number;
+  /** FIX-1220 — null on a database that predates the migration. */
+  streakMinutesThreshold: number | null;
   burstThreshold: number;
   perJob: StartupStreak[];
   burst: StartupBurst[];
@@ -927,6 +936,7 @@ async function fetchCronJobHealth(): Promise<CronJobHealth | null> {
     startup_timeouts?: CronJobFiring[];
     startup_timeout_tiers?: {
       streak_threshold?: number;
+      streak_minutes_threshold?: number;
       burst_threshold?: number;
       per_job?: StartupStreak[];
       burst?: StartupBurst[];
@@ -945,6 +955,8 @@ async function fetchCronJobHealth(): Promise<CronJobHealth | null> {
   const tiers: StartupTimeoutTiers | null = t
     ? {
         streakThreshold: Number(t.streak_threshold ?? 0),
+        streakMinutesThreshold:
+          t.streak_minutes_threshold === undefined ? null : Number(t.streak_minutes_threshold),
         burstThreshold:  Number(t.burst_threshold ?? 0),
         perJob: Array.isArray(t.per_job) ? t.per_job : [],
         burst:  Array.isArray(t.burst)   ? t.burst   : [],
@@ -963,9 +975,15 @@ async function fetchCronJobHealth(): Promise<CronJobHealth | null> {
 }
 
 function describeStreak(s: StartupStreak): string {
+  // FIX-1220 — runs AND minutes: six runs is 12 minutes of a */2 watchdog and
+  // six of the */1 probe, and only the minutes say which.
+  const minutes =
+    s.streak_minutes !== undefined && s.interval_minutes !== undefined
+      ? ` = ${s.streak_minutes} min at a ${s.interval_minutes}-min cadence`
+      : "";
   return (
     `${s.jobname ?? `jobid ${s.jobid}`}${s.schedule ? ` (${s.schedule})` : ""}: ` +
-    `${s.streak} consecutive startup timeouts over ${s.span_minutes} min, ` +
+    `${s.streak} consecutive startup timeouts${minutes} (first to last ${s.span_minutes} min), ` +
     `last ${s.last_at}`
   );
 }
@@ -1506,8 +1524,11 @@ Triage: the missing/killed sections above usually explain it. If the ` +
       `pg_cron startup timeouts crossed a TIER (FIX-1073) — a single abandoned ` +
         `firing is ordinary weather on this box (1,849 in the 30 days to ` +
         `2026-09-02, dominated by the */2 watchdogs), so what escalates is ` +
-        `either ${tiers!.streakThreshold}+ CONSECUTIVE timeouts for one job (that ` +
-        `job has stopped running, not merely stumbled) or ${tiers!.burstThreshold}+ ` +
+        `either ${tiers!.streakThreshold}+ CONSECUTIVE timeouts for one job` +
+        (tiers!.streakMinutesThreshold !== null
+          ? ` spanning ${tiers!.streakMinutesThreshold}+ min at its own cadence (FIX-1220)`
+          : "") +
+        ` (that job has stopped running, not merely stumbled) or ${tiers!.burstThreshold}+ ` +
         `in one 60-minute bucket across all jobs (the box stopped accepting ` +
         `pg_cron's connections):\n` +
         (tiers!.perJob.length > 0
@@ -2013,6 +2034,7 @@ async function main(): Promise<number> {
       cron_startup_timeouts: (cronHealth?.startupTimeouts ?? []).map(describeFiring),
       cron_startup_tiers: {
         streak_threshold: tiers?.streakThreshold ?? null,
+        streak_minutes_threshold: tiers?.streakMinutesThreshold ?? null,
         burst_threshold:  tiers?.burstThreshold ?? null,
         per_job:          (tiers?.perJob ?? []).map(describeStreak),
         burst:            (tiers?.burst ?? []).map(describeBurst),

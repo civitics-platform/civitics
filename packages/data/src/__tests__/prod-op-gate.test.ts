@@ -78,10 +78,30 @@ test("FIX-1215: the guarded-set regexes are the cron-job-pipelines.ts constants,
 
 test("FIX-1215: every clock comparison reads p_now — no now() in the body", () => {
   const src = fs.readFileSync(MIGRATION, "utf8");
-  const body = src.slice(src.indexOf("AS $function$"), src.lastIndexOf("$function$"))
+  // cc-153: the gate's OWN body. The defining migration can carry other
+  // functions (20260920150000 redefines check_cron_job_health first, which
+  // reads now() by design), so first-AS-to-last-$function$ is not the gate.
+  const at = src.indexOf("AS $function$", src.indexOf("CREATE OR REPLACE FUNCTION public.prod_op_gate("));
+  const body = src.slice(at, src.indexOf("$function$;", at + 13))
     .split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
   assert.doesNotMatch(body, /\bnow\(\)/);
   assert.doesNotMatch(body, /clock_timestamp\(\)/);
+});
+
+test("FIX-1194 cc-153: (d) scans cron.job_run_details ONCE, the probe's MATERIALIZED form", () => {
+  const src = fs.readFileSync(MIGRATION, "utf8");
+  const fn = src.slice(src.indexOf("CREATE OR REPLACE FUNCTION public.prod_op_gate("));
+  const d = fn.slice(fn.indexOf("-- ══ (d) watchdogs"), fn.indexOf("-- ══ (e) interlock"))
+    .split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
+  // Three statements cost 112-133 ms on prod (the ILIKE evaluated before the
+  // start_time filter); one MATERIALIZED scan over the 1-day window, 23-26 ms.
+  assert.equal((d.match(/cron\.job_run_details/g) ?? []).length, 1, "(d) reads the table once");
+  assert.match(d, /WITH d AS MATERIALIZED/);
+  assert.match(d.replace(/\s+/g, " "), /d\.start_time > p_now - interval '1 day' AND d\.start_time <= p_now/);
+  // The predicate sits in the CTE's select list, byte for byte (rule 93).
+  assert.ok(
+    d.replace(/\s+/g, " ").includes("(d.status = 'failed' AND d.return_message ILIKE '%startup timeout%') AS startup_timeout"),
+  );
 });
 
 // ---------------------------------------------------------------------------
