@@ -1,0 +1,54 @@
+{
+  "cc": "156",
+  "prompt": "cc-prompt-156-fix1221-retention-in-order-fix1222-burst-weight-logs-schema-removal-reads-unavailable.md",
+  "started_at": "2026-09-25T03:06:32Z",
+  "finished_at": "2026-09-25T05:10:00Z",
+  "head_before": "4188273b",
+  "head_after": "ad106814",
+  "commits": [
+    {
+      "sha": "245a4022",
+      "subject": "docs(fixes): file FIX-1223 (cc-156: the canary's derived rollup registry has timed out on every run since 2026-09-08 and watched a 1-entry fallback)"
+    },
+    {
+      "sha": "173a301f",
+      "subject": "feat(db): FIX-1221 — list_scheduled_rollup_pipelines takes its era boundary from cron_job_first_seen and correlates over the retention window; cron-job-run-details-retention (daily 01:51, 42 d) + budget row; FIX-1222 — the startup-timeout burst weighs each failure at the */2 cadence; FIX-1223 — the registry's correlation joins through a shared minute (35.7 s -> 0.43 s)"
+    },
+    {
+      "sha": "5dab7e84",
+      "subject": "fix(db,data,app): FIX-1219 hardening — a Logs answer of 200 + \"does not exist\" is unavailable, not dark; the detail names the field"
+    },
+    {
+      "sha": "f1b185bb",
+      "subject": "docs(fixes): FIX-1221 / 1219 / 1194 appends (cc-156: the retention is 42 days at 01:51 and closes on its first firing; a removed Logs column reads unavailable; the retention answers cc-149's finding 2)"
+    },
+    {
+      "sha": "3c6c3503",
+      "subject": "chore(fixes): sync status after FIX-1222"
+    },
+    {
+      "sha": "e174cfe3",
+      "subject": "chore(canary): FIX-1223 receipt — the 05:00 canary read the derived rollup registry again (52 pipelines) for the first time since 2026-09-08"
+    },
+    {
+      "sha": "ad106814",
+      "subject": "chore(fixes): sync status after FIX-1223"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1222",
+    "FIX-1223"
+  ],
+  "fixes_filed": [
+    "FIX-1223"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920160000_fix1221_1222_1223_registry_era_retention_burst_weight.sql"
+  ],
+  "prod_writes": "One migration, 20260920160000, applied to Pro at 03:47 UTC through wait-for-gate (gate OK on its first poll at 03:47:03, held=false at 03:46:55, census PASS at 03:46:33). wait-for-gate claimed the FIX-950 session, pushed and released. The migration redefined list_scheduled_rollup_pipelines() (+45/-8, adding proconfig enable_nestloop=off) and check_cron_job_health() (+15/-0), re-asserted both functions' grants and COMMENTs, scheduled cron-job-run-details-retention (prod jobid 54, 51 1 * * *, DELETE FROM cron.job_run_details WHERE start_time < now() - 42 days; it has not fired yet, first firing 2026-09-26 01:51 UTC), and upserted its cron_job_budget row (300 s). No DELETE ran by hand. Pushes to main, each a Vercel deploy: ~03:54, ~03:59 (5dab7e84 changed /api/cron/front-door-watch; Vercel success 04:01:20), ~04:00, ~04:01, ~05:02 (x2) and this report. The 05:00 canary's own record_cron_jobs_seen() wrote the new job's cron_job_first_seen row (05:00:43); this session wrote nothing there. Every other prod contact was a read: db-query --prod (EXPLAIN ANALYZE, pg_get_functiondef, inline reads of both registry bodies), prod_op_gate(), PostgREST RPC calls of list_scheduled_rollup_pipelines as service_role (x2), Logs API calls (7 census readings of 2 calls each, and 1 scratch call naming a removed column), and gh.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 3, FIX-1221's first-firing receipt: the job first fires at 2026-09-26 01:51 UTC, outside this session. FIX-1221 stays open, and its bullet names the slot and what the receipt reads (rows older than 42 d before and after, and the job's job_run_details wall)."
+  ]
+}
