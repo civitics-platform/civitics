@@ -5,15 +5,18 @@
  * instruments: a direct probe of /rest/v1/ and the Logs API's edge_logs as a
  * corroborator. From 2026-09-24 10:15 UTC the corroborator answered 410 Gone
  * (Supabase removed logs.all), and the route zero-filled its buckets and read
- * `ok` on every firing. It now writes `corroborator_unavailable` instead. This
- * key surfaces that state, because nothing else reads the watch's rows: the
- * rollup registry reads only their cadence.
+ * `ok` on every firing. It now writes `corroborator_unavailable` instead, and
+ * since FIX-1219 moved the watch to the `logs` endpoint (through
+ * packages/db/src/supabase-logs.ts) it reads that state only when the
+ * corroborator is actually blind — dark (a 5xx, the endpoint's 10/min 429, a
+ * 200 carrying an error) or unavailable (the next removal). This key surfaces
+ * that state, because nothing else reads the watch's rows: the rollup
+ * registry reads only their cadence.
  *
  * REPORT-ONLY. The direct probe still pages on a front door that does not
  * answer, whatever the corroborator did. What a blind corroborator loses is
  * the 52x wedge shape (08-31: the probe answering while Cloudflare 52x
- * saturates the data front door). That wants a look, not a page, until
- * FIX-1219 ports the watch to the `logs` endpoint.
+ * saturates the data front door). That wants a look, not a page.
  *
  * Staleness is NOT this key's job. A watch that stopped writing rows is the
  * rollup registry's `rollup:front_door_watch` (cadence 0.25 h). Here, no rows

@@ -695,7 +695,7 @@ async function readMemDay(now: Date): Promise<MemDay> {
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
 const NOT_CAPTURABLE = [
   "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase " +
-    "Analytics (Logflare) API serves and SQL does not reach at all — so they are not capturable " +
+    "Management API's `logs` endpoint serves and SQL does not reach at all — so they are not capturable " +
     "from HERE, which is a Postgres session. They ARE capturable: " +
     "`pnpm --filter @civitics/data data:census:cancellations:prod` reads them (and the " +
     "front-door 5xx rate) through the Logs API and prints both against the cc-131 read 7 (f) " +

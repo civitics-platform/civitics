@@ -13,13 +13,9 @@ import test from "node:test";
 
 import {
   answersExit,
-  buildAttributionSql,
-  fetchLogs,
-  isEndpointGone,
   unavailableJson,
   unavailableSummary,
   CENSUS_EXIT,
-  type LogsFetch,
   edgeVerdictFor,
   formatAttribution,
   isAttributableField,
@@ -286,31 +282,16 @@ test("no match is stated, not rendered as an empty table", () => {
   assert.doesNotMatch(out, /total/);
 });
 
-test("--by query groups by the function name, never the pgrst envelope", () => {
-  const sql = buildAttributionSql("query", null);
-  // The envelope is ~600 chars and differs per bind shape; grouping on it would
-  // return one row per shape and blow the ~100-row cap.
-  assert.match(sql, /regexp_extract\(p\.query/);
-  assert.match(sql, /"public"/);
-  assert.match(sql, /group by g/);
-  assert.match(sql, /limit 20/);
-});
-
-test("a non-query field groups on the field itself", () => {
-  const sql = buildAttributionSql("user_name", null);
-  assert.match(sql, /cast\(p\.user_name as string\)/);
-  assert.doesNotMatch(sql, /regexp_extract/);
-});
-
-test("--like lands in the WHERE clause, not the grouping", () => {
-  const sql = buildAttributionSql("query", "get_official_page");
-  assert.match(sql, /and p\.query like '%get_official_page%'/);
-});
+// The attribution SQL's own tests (grouping by function name, the field key,
+// --like in the WHERE) moved with the builder to packages/db/src/
+// supabase-logs.test.ts (FIX-1219). What stays here is the census's side: the
+// allow-list it re-exports is the one the builder enforces.
 
 test("every attributable field is a field a cancel row actually carries", () => {
-  // Probed on prod, cc-137 read 2. A field not in metadata.parsed makes the
-  // whole query error rather than return a null column, so this list is load-
-  // bearing and not decoration.
+  // Probed on prod, cc-137 read 2, and re-probed on the `logs` endpoint in
+  // cc-155 (every one is a parsed.* key on the 09-24 09:30:26 cancellation).
+  // An unknown key reads '' rather than erroring now, so the list is what
+  // keeps --by from grouping everything under (null).
   for (const f of ATTRIBUTABLE_FIELDS) assert.equal(isAttributableField(f), true);
   assert.equal(isAttributableField("duration"), false);
   assert.equal(isAttributableField("role"), false);
@@ -327,10 +308,26 @@ test("sanitizeLike rejects anything that could close the SQL string literal", ()
 });
 
 test("the 24h clamp and the 7-day retention are stated as constants, not prose", () => {
-  // Measured (cc-137 read 2): above 1440 minutes the Logs API returns the
-  // OLDEST 24 h of the range with no error — a wrong answer that looks right.
+  // Measured (cc-137 read 2, and again on the `logs` endpoint in cc-155 D2):
+  // above 1440 minutes the Logs API returns the OLDEST 24 h of the range with
+  // no error — a wrong answer that looks right.
   assert.equal(MAX_ATTRIBUTION_MINUTES, 1440);
   assert.equal(LOGS_RETENTION_DAYS, 7);
+});
+
+test("FIX-1219: the census refuses --minutes over the clamp in BOTH modes, not only --by", () => {
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  assert.match(src, /if \(a\.minutes > MAX_ATTRIBUTION_MINUTES\) \{/);
+  assert.doesNotMatch(src, /a\.by !== null && a\.minutes > MAX_ATTRIBUTION_MINUTES/);
+});
+
+test("FIX-1219: the census builds no Logs URL and no SQL of its own — both come from the helper", () => {
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  // (The header may still NAME logs.all as history; it must not build a URL.)
+  assert.doesNotMatch(src, /api\.supabase\.com|analytics\/endpoints/);
+  assert.doesNotMatch(src, /\bselect\b[\s\S]*\bfrom (postgres|edge)_logs\b/i);
+  assert.doesNotMatch(src, /\/ 1000\)/, "buckets arrive in ms; no consumer keeps a unit conversion");
+  for (const f of ["queryCancellationBuckets", "queryEdgeBuckets", "queryAttribution"]) assert.match(src, new RegExp(`\\b${f}\\(`));
 });
 
 test("the attribution path RETURNS — a process.exit(0) there exits 127 on Windows", () => {
@@ -364,35 +361,13 @@ test("--by is allow-listed before it reaches the SQL string", () => {
 });
 
 // ── FIX-1219 (cc-154 D1): a removed endpoint is `unavailable` (exit 8), not dark (exit 2) ──
+//
+// The fetch cases (410 / 404 / 503 / 429 / throw / 200-with-error / row cap)
+// moved with `queryLogs` to packages/db/src/supabase-logs.test.ts. The exit
+// mapping stays here: it is the census's vocabulary, not the helper's.
 
-const stubFetch = (status: number, body: unknown = {}, statusText = ""): LogsFetch =>
-  async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    statusText,
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  });
-const URL_ = new URL("https://api.supabase.com/v1/projects/x/analytics/endpoints/logs.all");
-
-test("FIX-1219: a 410 (and a 404 on the same path) is unavailable; a 503, a throw and a 200 without rows stay dark", async () => {
-  // The body cc-152 read 5 actually got.
-  const gone = await fetchLogs(stubFetch(410, { message: "The logs.all endpoint has been removed." }, "Gone"), URL_, "t", 1000);
-  assert.deepEqual(gone, { kind: "unavailable", status: 410, detail: "Logs API 410 Gone" });
-  assert.equal((await fetchLogs(stubFetch(404, {}, "Not Found"), URL_, "t", 1000)).kind, "unavailable");
-  const d503 = await fetchLogs(stubFetch(503, {}, "Service Unavailable"), URL_, "t", 1000);
-  assert.deepEqual(d503, { kind: "dark", detail: "Logs API 503 Service Unavailable" });
-  const thrown = await fetchLogs(async () => { throw new Error("ECONNRESET"); }, URL_, "t", 1000);
-  assert.deepEqual(thrown, { kind: "dark", detail: "Logs API request failed: ECONNRESET" });
-  assert.equal((await fetchLogs(stubFetch(200, { error: "Table edge_logs does not exist." }), URL_, "t", 1000)).kind, "dark",
-    "the replacement endpoint's 200-with-error body is dark, not rows");
-  assert.equal(isEndpointGone(500), false);
-  assert.equal(isEndpointGone(401), false, "a bad key is dark, not a removed endpoint");
-});
-
-test("FIX-1219: a 200 with a result array is rows, unchanged", async () => {
-  const rows = [{ b: 1, requests: 10, n_5xx: 0 }];
-  assert.deepEqual(await fetchLogs(stubFetch(200, { result: rows }), URL_, "t", 1000), { kind: "rows", rows });
+test("FIX-1219: rows on every half go on to the verdict", () => {
+  const rows = [{ startMs: 1, requests: 10, n5xx: 0 }];
   assert.equal(answersExit([{ kind: "rows", rows: [] }, { kind: "rows", rows }]), null, "rows on both halves: go on to the verdict");
 });
 

@@ -10,15 +10,18 @@
  *   pnpm --filter @civitics/data data:census:cancellations:prod
  *   pnpm --filter @civitics/data data:census:cancellations:prod -- --minutes 90 --json
  *
- * NO POSTGRES. Everything here is HTTP against the Supabase Analytics
- * (Logflare) API. That is not incidental: the census exists to be readable
- * exactly when the box is unwell, and an instrument that opens a DB connection
- * to report a DB problem is the FIX-1125 lesson (`front-door-watch/route.ts`
- * carries the same constraint for the same reason). There is no `:local`
- * variant because there is no local Logs API.
+ * NO POSTGRES. Everything here is HTTP against the Supabase Management API's
+ * `logs` endpoint, through the one Logs helper (`packages/db/src/
+ * supabase-logs.ts` — the SQL, the time range and the unit all live there,
+ * FIX-1219). That is not incidental: the census exists to be readable exactly
+ * when the box is unwell, and an instrument that opens a DB connection to
+ * report a DB problem is the FIX-1125 lesson (`front-door-watch/route.ts`
+ * carries the same constraint for the same reason, and reads through the same
+ * helper). There is no `:local` variant because there is no local Logs API.
  *
  * FLAGS
- *   --minutes N        window length, default 60
+ *   --minutes N        window length, default 60, at most 1440 in either mode
+ *                      (the endpoint answers the OLDEST 24 h of a longer range)
  *   --end <iso>        window end, default now
  *   --baseline <n>     cancellations/min, default 0.033 (cc-129's measurement,
  *                      quoted in docs/audits/2026-09-17-fix1187-prod-apply.md).
@@ -31,20 +34,33 @@
  * EXIT CODES — so a prompt can gate on the process rather than on prose.
  *   0  both gates PASS
  *   1  either gate FAILs
- *   2  dark: the Logs API did not answer (a 5xx, a timeout, a network error,
- *      no result array), or the key is missing
- *   8  unavailable: the endpoint is GONE (410, or 404 on the same path).
- *      Supabase removed logs.all on 2026-09-24; this is not a reading and
- *      not a symptom, and it holds until FIX-1219 ports the census.
- *      `--by` exits 8 the same way.
+ *   2  dark: the Logs API did not answer (a 5xx, a 429, a timeout, a network
+ *      error, a 200 carrying an error or no result array), or the key is missing
+ *   8  unavailable: the endpoint is GONE (410, or 404 on the same path) — how
+ *      `logs.all` answered from 2026-09-24 until FIX-1219 moved the census to
+ *      `logs`, and how the next removal will answer. Not a reading and not a
+ *      symptom. `--by` exits 8 the same way.
  *   (3 is not used: it is the bootstrap runner's retired census_fail.)
+ *
+ * WHAT IT READS. Both halves and `--by` are the helper's builders:
+ * `queryCancellationBuckets` (per-minute `statement timeout` and `user
+ * request` counts — a hand cancel is a different event and is reported
+ * alongside, never added in), `queryEdgeBuckets` at 900 s (the front-door
+ * route's own read, the same builder), and `queryAttribution`. Buckets arrive
+ * in ms. Re-validated on the 09-23/24 fixtures in cc-155 (the report carries
+ * the old/new table): every count identical.
  */
 
 import {
+  queryAttribution,
+  queryCancellationBuckets,
+  queryEdgeBuckets,
+  sqlAttribution,
+} from "@civitics/db";
+
+import {
   answersExit,
-  buildAttributionSql,
   edgeVerdictFor,
-  fetchLogs,
   formatAttribution,
   isAttributableField,
   sanitizeLike,
@@ -63,60 +79,11 @@ import {
   type LogsAnswer,
 } from "../lib/cancellation-census";
 
-const PROJECT_REF = "xsazcoxinpgttgquwvuf";
-const LOGS_URL = `https://api.supabase.com/v1/projects/${PROJECT_REF}/analytics/endpoints/logs.all`;
 const TIMEOUT_MS = 20_000;
 const EDGE_BUCKET_MS = 15 * 60 * 1000;
 
 /** cc-129's measured baseline. Stated here once; every other mention quotes it. */
 const DEFAULT_BASELINE = 0.033;
-
-/**
- * Per-minute cancellation buckets out of `postgres_logs`.
- *
- * Both classes in ONE query rather than two: `statement timeout` is the 57014
- * the gate is about, and `user request` is a cancel somebody issued by hand —
- * which is a different event with a different cause (it is what a `Ctrl-C` or a
- * `pg_cancel_backend` looks like from here) and must not inflate the gated
- * number. Reported alongside, never added in.
- *
- * `countif` is Logflare's BigQuery dialect. The aggregate is server-side, so a
- * 60-minute window returns 60 rows at most — far inside the ~100-row cap that
- * makes the front-door route's own query safe.
- */
-const SQL_CANCELLATIONS = `
-select
-  timestamp_seconds(div(unix_seconds(t.timestamp), 60) * 60) as b,
-  countif(t.event_message like '%canceling statement due to statement timeout%') as n_timeout,
-  countif(t.event_message like '%canceling statement due to user request%') as n_user
-from postgres_logs t
-group by b
-order by b`;
-
-/**
- * The front-door 5xx aggregate.
- *
- * COPIED VERBATIM from `fetchBuckets()` in
- * `apps/civitics/app/api/cron/front-door-watch/route.ts`, and deliberately not
- * imported: that file lives in `apps/` and this one in `packages/data`, so
- * sharing it means a new `packages/db` Logs-API helper. That is the right
- * refactor and the wrong week for it — it would put a new shared module on the
- * request path of the front-door watchdog on the Friday before a prod op. If a
- * third consumer appears, file it.
- *
- * Keep the two in step: the shape that matters is the double `unnest` down to
- * `m.response` and `r.status_code`, and `b` coming back in MICROseconds.
- */
-const SQL_EDGE = `
-select
-  timestamp_seconds(div(unix_seconds(t.timestamp), 900) * 900) as b,
-  count(*) as requests,
-  countif(r.status_code >= 500) as n_5xx
-from edge_logs t
-cross join unnest(t.metadata) as m
-cross join unnest(m.response) as r
-group by b
-order by b`;
 
 interface Args {
   minutes: number;
@@ -199,9 +166,11 @@ function parseArgs(argv: readonly string[]): Args {
   if (!Number.isFinite(a.minutes) || a.minutes <= 0) throw new Error("--minutes must be > 0");
   if (!Number.isFinite(a.baseline) || a.baseline < 0) throw new Error("--baseline must be >= 0");
   if (a.like !== null && a.by === null) throw new Error("--like needs --by (it narrows an attribution)");
-  // The clamp, refused rather than silently under-reported. See
-  // MAX_ATTRIBUTION_MINUTES for the measurement this rests on.
-  if (a.by !== null && a.minutes > MAX_ATTRIBUTION_MINUTES) {
+  // The clamp, refused rather than silently under-reported — in BOTH modes
+  // now: a gate read over a longer window got the oldest day just the same.
+  // See MAX_ATTRIBUTION_MINUTES for the measurement this rests on (re-measured
+  // on the `logs` endpoint, cc-155).
+  if (a.minutes > MAX_ATTRIBUTION_MINUTES) {
     throw new Error(
       `--minutes ${a.minutes} exceeds the Logs API's measured ${MAX_ATTRIBUTION_MINUTES}-minute ` +
         "answer window. Above it the API returns the OLDEST 24 h of the range asked for, with " +
@@ -212,13 +181,8 @@ function parseArgs(argv: readonly string[]): Args {
   return a;
 }
 
-/** rows, dark or unavailable — the caller turns the last two into exit 2 / exit 8. */
-async function query<T>(sql: string, startMs: number, endMs: number, token: string): Promise<LogsAnswer<T>> {
-  const url = new URL(LOGS_URL);
-  url.searchParams.set("sql", sql);
-  url.searchParams.set("iso_timestamp_start", new Date(startMs).toISOString());
-  url.searchParams.set("iso_timestamp_end", new Date(endMs).toISOString());
-  const a = await fetchLogs<T>(fetch, url, token, TIMEOUT_MS);
+/** Log a non-rows answer's detail to stderr; the caller turns it into exit 2 / exit 8. */
+function logAnswer<T>(a: LogsAnswer<T>): LogsAnswer<T> {
   if (a.kind !== "rows") console.error(`[census] ${a.detail}`);
   return a;
 }
@@ -258,8 +222,10 @@ async function main(): Promise<void> {
   // runs neither gate and exits 0 on every outcome including "nothing matched".
   // Conflating the two is how an instrument becomes a gate nobody trusts.
   if (args.by !== null) {
-    const sql = buildAttributionSql(args.by, args.like);
-    const a = await query<{ g: string | null; n: number }>(sql, startMs, args.endMs, token);
+    const sql = sqlAttribution(args.by, args.like);
+    const a = logAnswer(
+      await queryAttribution({ field: args.by, like: args.like, startMs, endMs: args.endMs, token, timeoutMs: TIMEOUT_MS }),
+    );
     if (a.kind === "unavailable") {
       exitUnavailable(a.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json);
       return;
@@ -271,10 +237,7 @@ async function main(): Promise<void> {
       process.exitCode = CENSUS_EXIT.dark;
       return;
     }
-    const parsed: AttributionRow[] = a.rows.map((r) => ({
-      group: r.g === null || r.g === "" ? "(null)" : String(r.g),
-      count: Number(r.n) || 0,
-    }));
+    const parsed: AttributionRow[] = a.rows;
     if (args.json) {
       console.log(
         JSON.stringify(
@@ -319,8 +282,8 @@ async function main(): Promise<void> {
   const edgeStart = edgeEnd - 4 * EDGE_BUCKET_MS;
 
   const [cAns, eAns] = await Promise.all([
-    query<{ b: number; n_timeout: number; n_user: number }>(SQL_CANCELLATIONS, startMs, args.endMs, token),
-    query<{ b: number; requests: number; n_5xx: number }>(SQL_EDGE, edgeStart, edgeEnd, token),
+    queryCancellationBuckets({ startMs, endMs: args.endMs, token, timeoutMs: TIMEOUT_MS }).then(logAnswer),
+    queryEdgeBuckets({ startMs: edgeStart, endMs: edgeEnd, bucketSeconds: EDGE_BUCKET_MS / 1000, token, timeoutMs: TIMEOUT_MS }).then(logAnswer),
   ]);
 
   const early = answersExit([cAns, eAns]);
@@ -334,20 +297,10 @@ async function main(): Promise<void> {
     process.exitCode = CENSUS_EXIT.dark;
     return;
   }
-  const cRows = cAns.rows;
-  const eRows = eAns.rows;
-
-  // `b` comes back in MICROseconds, same as the front-door route.
-  const cancellations: CancellationBucket[] = cRows.map((r) => ({
-    startMs: Math.round(Number(r.b) / 1000),
-    timeouts: Number(r.n_timeout) || 0,
-    userRequests: Number(r.n_user) || 0,
-  }));
-  const edge: EdgeBucket[] = eRows.map((r) => ({
-    startMs: Math.round(Number(r.b) / 1000),
-    requests: Number(r.requests) || 0,
-    n5xx: Number(r.n_5xx) || 0,
-  }));
+  // Buckets arrive in ms from the helper. Only minutes WITH a cancellation come
+  // back (the helper's WHERE), which is all the verdict and the table read.
+  const cancellations: CancellationBucket[] = cAns.rows;
+  const edge: EdgeBucket[] = eAns.rows.map(({ startMs, requests, n5xx }) => ({ startMs, requests, n5xx }));
 
   const v = verdictFor({ cancellations, minutes: args.minutes, baseline: args.baseline });
   const ev = edgeVerdictFor(edge);

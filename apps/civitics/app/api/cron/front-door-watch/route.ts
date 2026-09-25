@@ -75,8 +75,8 @@ import {
   decideFrontDoorVerdict,
   shouldSend,
   renderFrontDoorEmail,
-  isLogsEndpointGone,
   corroboratorLabel,
+  queryEdgeBuckets,
   BUCKET_MS,
   BUCKET_COUNT,
   type FrontDoorBucket,
@@ -85,7 +85,6 @@ import {
 } from "@civitics/db";
 import { sendEmail } from "@/lib/email";
 
-const PROJECT_REF = "xsazcoxinpgttgquwvuf";
 const PROBE_ATTEMPTS = 3;
 const PROBE_TIMEOUT_MS = 5_000;
 const LOGS_TIMEOUT_MS = 10_000;
@@ -128,76 +127,37 @@ async function probeFrontDoor(baseUrl: string): Promise<FrontDoorProbe> {
 /**
  * Pull the four closed 15-minute buckets ending at `endBoundaryMs`.
  *
- * ONE query, aggregated server-side. That matters: the Logs API caps a result
- * at roughly 100 rows (measured 2026-09-04 — a 280-bucket range came back with
- * 93 rows covering only the newest ~24 h), so anything that returns raw log
- * lines silently truncates. Four aggregate rows is far inside the cap.
+ * Through the one Logs helper (`queryEdgeBuckets`, packages/db/src/
+ * supabase-logs.ts — FIX-1219), which owns the SQL, the time range, the unit
+ * and the endpoint. It is the SAME builder the census's edge half reads, so
+ * the two can no longer drift apart: before FIX-1219 each carried its own copy
+ * of the BigQuery query, and one removal took both dark on the same morning.
+ *
+ * ONE query, aggregated server-side. The endpoint caps an answer at 1000 rows
+ * silently (measured cc-155) and the helper reads an answer at the cap as
+ * dark; four aggregate rows is far inside it.
  *
  * rows is null when the Logs API itself returned nothing, which is NOT evidence
  * of a healthy or unhealthy front door. `corroborator` says which failure it
- * was (FIX-1219): `unavailable` is the endpoint gone (410 since 2026-09-24),
- * `dark` is anything else. The verdict then reads corroborator_unavailable,
- * never ok. Before FIX-1219 it read ok on zero-filled buckets, silently.
+ * was: `unavailable` is the endpoint gone (410/404 — how `logs.all` answered
+ * after its removal), `dark` is anything else, including the endpoint's 429
+ * (10 requests / 60 s per token, shared with the census). The verdict then
+ * reads corroborator_unavailable, never ok.
  */
 async function fetchBuckets(
   endBoundaryMs: number,
   token: string,
 ): Promise<{ rows: FrontDoorBucket[] | null; corroborator: FrontDoorCorroborator }> {
-  const startMs = endBoundaryMs - BUCKET_COUNT * BUCKET_MS;
-  const sql = `
-select
-  timestamp_seconds(div(unix_seconds(t.timestamp), 900) * 900) as b,
-  count(*) as requests,
-  countif(r.status_code >= 500) as n_5xx,
-  countif(r.status_code between 520 and 526) as n_52x
-from edge_logs t
-cross join unnest(t.metadata) as m
-cross join unnest(m.response) as r
-group by b
-order by b`;
-
-  const url = new URL(
-    `https://api.supabase.com/v1/projects/${PROJECT_REF}/analytics/endpoints/logs.all`,
-  );
-  url.searchParams.set("sql", sql);
-  url.searchParams.set("iso_timestamp_start", new Date(startMs).toISOString());
-  url.searchParams.set("iso_timestamp_end", new Date(endBoundaryMs).toISOString());
-
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(LOGS_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      return {
-        rows: null,
-        corroborator: isLogsEndpointGone(res.status)
-          ? { kind: "unavailable", status: res.status }
-          : { kind: "dark", detail: `HTTP ${res.status}` },
-      };
-    }
-    const json = (await res.json()) as {
-      result?: Array<{ b: number; requests: number; n_5xx: number; n_52x: number }>;
-    };
-    if (!Array.isArray(json.result)) {
-      return { rows: null, corroborator: { kind: "dark", detail: "200 without a result array" } };
-    }
-
-    // `b` comes back as MICROseconds since epoch.
-    const rows = json.result.map((r) => ({
-      startMs: Math.round(Number(r.b) / 1000),
-      requests: Number(r.requests) || 0,
-      n5xx: Number(r.n_5xx) || 0,
-      n52x: Number(r.n_52x) || 0,
-    }));
-    return { rows, corroborator: { kind: "ok", buckets: rows.length } };
-  } catch (err) {
-    return {
-      rows: null,
-      corroborator: { kind: "dark", detail: err instanceof Error ? err.message : "request failed" },
-    };
-  }
+  const a = await queryEdgeBuckets({
+    startMs: endBoundaryMs - BUCKET_COUNT * BUCKET_MS,
+    endMs: endBoundaryMs,
+    bucketSeconds: BUCKET_MS / 1000,
+    token,
+    timeoutMs: LOGS_TIMEOUT_MS,
+  });
+  if (a.kind === "unavailable") return { rows: null, corroborator: { kind: "unavailable", status: a.status } };
+  if (a.kind === "dark") return { rows: null, corroborator: { kind: "dark", detail: a.detail } };
+  return { rows: a.rows, corroborator: { kind: "ok", buckets: a.rows.length } };
 }
 
 export async function GET(request: NextRequest) {

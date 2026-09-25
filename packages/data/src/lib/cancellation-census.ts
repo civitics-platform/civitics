@@ -25,6 +25,8 @@
  * Above ~10 events the ratio dominates again and the floor stops binding.
  */
 
+import { worstLogsAnswer, type LogsAnswer } from "@civitics/db";
+
 /** One minute of `postgres_logs`, as the census aggregates it. */
 export interface CancellationBucket {
   /** Bucket start, ms since epoch. */
@@ -35,7 +37,7 @@ export interface CancellationBucket {
   userRequests: number;
 }
 
-/** One 15-minute `edge_logs` bucket. Same shape the front-door route reads. */
+/** One 15-minute `edge_logs` bucket. The helper's LogsEdgeBucket, less the 52x count the verdict does not read. */
 export interface EdgeBucket {
   startMs: number;
   requests: number;
@@ -175,6 +177,18 @@ export function edgeVerdictFor(buckets: readonly EdgeBucket[]): EdgeVerdict {
 // `SET statement_timeout='1s'` + `pg_sleep(3.5)` leaves ZERO pgss rows), so
 // every 57014 is invisible there by construction and the Logs API is the only
 // instrument that can see one.
+//
+// The SQL, the field allow-list and the `--like` sanitiser live with the Logs
+// helper (`packages/db/src/supabase-logs.ts`, FIX-1219): they are facts about
+// the log schema, and the schema is what changed under them.
+
+export {
+  ATTRIBUTABLE_FIELDS,
+  isAttributableField,
+  sanitizeLike,
+  LOGS_RETENTION_DAYS,
+  type AttributableField,
+} from "@civitics/db";
 
 /** One attribution group: a field value and how many cancellations carried it. */
 export interface AttributionRow {
@@ -183,46 +197,13 @@ export interface AttributionRow {
 }
 
 /**
- * The `metadata.parsed` fields a cancellation row actually carries, PROBED on
- * prod (cc-137 read 2) rather than assumed. Allow-listed because `--by` is
- * interpolated into the SQL string.
- *
- * `user_name` is deliberately included and is deliberately near-useless for
- * splitting a PostgREST request by its effective role: PostgREST logs in as
- * `authenticator` and then `SET ROLE`s to anon / authenticated / service_role,
- * and the Postgres log records the LOGIN role. Measured over 24 h of prod: all
- * 38 cancellations carried `user_name = authenticator`, none carried anon,
- * authenticated or service_role. So the role split is not readable here; the
- * QUERY is, which is what `--by query` is for.
- */
-export const ATTRIBUTABLE_FIELDS = [
-  "query",
-  "user_name",
-  "application_name",
-  "backend_type",
-  "command_tag",
-  "database_name",
-  "connection_from",
-  "error_severity",
-  "sql_state_code",
-  "session_id",
-] as const;
-
-export type AttributableField = (typeof ATTRIBUTABLE_FIELDS)[number];
-
-export function isAttributableField(v: string): v is AttributableField {
-  return (ATTRIBUTABLE_FIELDS as readonly string[]).includes(v);
-}
-
-/**
  * THE 24-HOUR CLAMP — the single most important thing to know about this API.
  *
- * The Logs API answers a query from the partition holding `iso_timestamp_start`
- * and silently ignores an `iso_timestamp_end` more than 24 h later. It does not
- * error, it does not warn, and it does not return a short window — it returns a
- * FULL, PLAUSIBLE 24 h of rows that are the OLDEST day of the range asked for.
+ * Asked for more than 24 h, the Logs API answers the OLDEST 24 h of the range.
+ * It does not error, it does not warn, and it does not return a short window —
+ * it returns a FULL, PLAUSIBLE 24 h of rows that are the first day asked for.
  *
- * Measured on prod (cc-137 read 2), each request made at 2026-09-19T03:07Z:
+ * Measured on the old `logs.all` endpoint (cc-137 read 2, at 2026-09-19T03:07Z):
  *
  *   lookback   rows   rows actually covering
  *   1 day      3790   2026-09-18T03:08 → 2026-09-19T03:06   (the whole window)
@@ -230,28 +211,14 @@ export function isAttributableField(v: string): v is AttributableField {
  *   3 days     3857   2026-09-16T03:08 → 2026-09-17T03:06   (the OLDEST day)
  *   7 days     3874   2026-09-12T03:08 → 2026-09-13T03:06   (the OLDEST day)
  *
- * A caller asking for "the last 7 days" therefore gets day 1 of 7 and no
- * indication of it. That is a wrong answer wearing a right answer's clothes, so
- * this refuses above the clamp rather than quietly under-reporting; walk a
- * longer span with repeated `--end` runs, which is what the audit did.
+ * Re-measured on its replacement, `logs` (cc-155 D2, per-hour buckets of
+ * postgres_logs): 24 h → 24 rows, the whole window; 25 h, 48 h and 7 d → 24
+ * rows each, the OLDEST day each time. Same clamp, so the same constant — now
+ * the helper's `MAX_LOGS_RANGE_MINUTES`, which also refuses to SEND a longer
+ * range. The script refuses first, in both modes, with a message a person can
+ * act on: walk a longer span with repeated `--end` runs.
  */
-export const MAX_ATTRIBUTION_MINUTES = 1440;
-
-/**
- * Retention, measured the same way: a window STARTING 7 days back returns rows;
- * one starting 8, 9 or 10 days back returns zero. Supabase Pro keeps 7 days.
- */
-export const LOGS_RETENTION_DAYS = 7;
-
-/**
- * `--like` is interpolated into a BigQuery string literal, so it is restricted
- * to characters that cannot close one or start a comment. Returns null when the
- * value is unusable, and the caller turns that into a refusal.
- */
-export function sanitizeLike(raw: string): string | null {
-  if (raw.length === 0 || raw.length > 120) return null;
-  return /^[A-Za-z0-9_. :/-]+$/.test(raw) ? raw : null;
-}
+export { MAX_LOGS_RANGE_MINUTES as MAX_ATTRIBUTION_MINUTES } from "@civitics/db";
 
 /**
  * Render the attribution table. Pure, so the shape is a test rather than a
@@ -288,110 +255,38 @@ export function formatAttribution(input: {
   ].join("\n");
 }
 
-/**
- * The attribution query, server-side aggregated so the ~100-row cap that makes
- * the gate queries safe holds here too: `limit 20` over a `group by` returns at
- * most 20 rows however busy the window was.
- *
- * `--by query` does NOT group by the query text. PostgREST wraps every RPC in a
- * ~600-character `WITH pgrst_source AS (…)` envelope, so grouping on the raw
- * text would return one row per distinct bind-parameter shape and blow the cap
- * while telling you nothing. It groups by the FUNCTION NAME extracted from the
- * envelope (`"public"."get_official_page"` → `get_official_page`), falling back
- * to the first 60 characters for a table-level query with no function in it.
- */
-export function buildAttributionSql(field: AttributableField, like: string | null): string {
-  const groupExpr =
-    field === "query"
-      ? `coalesce(regexp_extract(p.query, r'"public"[.]"([a-z0-9_]+)"'), ` +
-        `substr(regexp_replace(coalesce(p.query, t.event_message), r'\s+', ' '), 1, 60))`
-      : `coalesce(cast(p.${field} as string), '(null)')`;
-  const likeClause = like ? `\n  and p.query like '%${like}%'` : "";
-  return `
-select
-  ${groupExpr} as g,
-  count(*) as n
-from postgres_logs t
-cross join unnest(t.metadata) as m
-cross join unnest(m.parsed) as p
-where p.sql_state_code = '57014'${likeClause}
-group by g
-order by n desc
-limit 20`;
-}
-
 // ──────────────────── the Logs API's answer, three ways (FIX-1219) ────────────────────
 //
-// `rows` is a reading. `dark` is the Logs API failing to answer: a 5xx, a
-// timeout, a network error, a 200 with no result array. On 09-22 that was
-// itself a symptom of the box (rule 164), so a runner counts it. `unavailable`
-// is the endpoint being GONE. Supabase removed `logs.all` on 2026-09-24
-// (changelog 48235; prod's front_door_watch rows put the cutover at
-// 10:00-10:15 UTC), and it answers 410 Gone. That is not a reading and not a
-// symptom. It is an instrument that does not exist until FIX-1219 ports the
-// census to the `logs` endpoint, and it gets its own exit code so no consumer
-// mistakes it for dark.
+// `rows` is a reading. `dark` is the Logs API failing to answer: a 5xx, a 429,
+// a timeout, a network error, a 200 carrying an error or no result array. On
+// 09-22 that was itself a symptom of the box (rule 164), so a runner counts it.
+// `unavailable` is the endpoint being GONE — how `logs.all` answered from
+// 2026-09-24 10:00 UTC (410; changelog 48235) until FIX-1219 ported the census
+// to `logs`, and how the next removal will answer. That is not a reading and
+// not a symptom, and it keeps its own exit code so no consumer mistakes it for
+// dark. The answer type and its precedence are the Logs helper's
+// (`packages/db/src/supabase-logs.ts`); the exit codes are the census's.
+
+export type { LogsAnswer } from "@civitics/db";
 
 /** The census's exit codes. 3 is not used (it is the bootstrap runner's retired census_fail). */
 export const CENSUS_EXIT = { pass: 0, fail: 1, dark: 2, unavailable: 8 } as const;
-
-/** 410 Gone, and 404 on the same path: the endpoint is not there. Every other non-200 is dark. */
-export function isEndpointGone(status: number): boolean {
-  return status === 410 || status === 404;
-}
-
-export type LogsAnswer<T> =
-  | { kind: "rows"; rows: T[] }
-  | { kind: "dark"; detail: string }
-  | { kind: "unavailable"; status: number; detail: string };
-
-/** The slice of `fetch` the census uses, so a test can stub it. */
-export type LogsFetch = (
-  url: URL,
-  init: { headers: Record<string, string>; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; statusText: string; json(): Promise<unknown>; text(): Promise<string> }>;
-
-export async function fetchLogs<T>(
-  fetchImpl: LogsFetch,
-  url: URL,
-  token: string,
-  timeoutMs: number,
-): Promise<LogsAnswer<T>> {
-  try {
-    const res = await fetchImpl(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) {
-      // Drain the body so the socket goes back to the pool: the script ends on
-      // process.exitCode, not process.exit(), and must not wait on it.
-      await res.text().catch(() => "");
-      const detail = `Logs API ${res.status} ${res.statusText}`.trim();
-      return isEndpointGone(res.status) ? { kind: "unavailable", status: res.status, detail } : { kind: "dark", detail };
-    }
-    const json = (await res.json()) as { result?: T[] };
-    return Array.isArray(json.result)
-      ? { kind: "rows", rows: json.result }
-      : { kind: "dark", detail: "Logs API answered 200 without a result array" };
-  } catch (err) {
-    return { kind: "dark", detail: `Logs API request failed: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
 
 /**
  * The exit a set of answers owes before any verdict: `unavailable` if ANY half
  * found the endpoint gone (both halves share one endpoint, and a dark sibling
  * of a removed endpoint says nothing), else `dark` if any half was dark, else
- * null (every half has rows, go on to the verdict).
+ * null (every half has rows, go on to the verdict). The precedence is the
+ * helper's `worstLogsAnswer`; this only names the exit.
  */
 export function answersExit(
   answers: readonly LogsAnswer<unknown>[],
 ): { code: typeof CENSUS_EXIT.unavailable; status: number; detail: string } | { code: typeof CENSUS_EXIT.dark; detail: string } | null {
-  const gone = answers.find((a): a is Extract<LogsAnswer<unknown>, { kind: "unavailable" }> => a.kind === "unavailable");
-  if (gone) return { code: CENSUS_EXIT.unavailable, status: gone.status, detail: gone.detail };
-  const dark = answers.find((a): a is Extract<LogsAnswer<unknown>, { kind: "dark" }> => a.kind === "dark");
-  if (dark) return { code: CENSUS_EXIT.dark, detail: dark.detail };
-  return null;
+  const worst = worstLogsAnswer(answers);
+  if (!worst) return null;
+  return worst.kind === "unavailable"
+    ? { code: CENSUS_EXIT.unavailable, status: worst.status, detail: worst.detail }
+    : { code: CENSUS_EXIT.dark, detail: worst.detail };
 }
 
 /** The one-line summary of exit 8. */
