@@ -19,8 +19,9 @@
  *
  * The Cloudflare-class 52x statuses (520-526) are edge-to-origin failures, not
  * application errors. Measured over the Logs API's full retention window
- * (`analytics/endpoints/logs.all` over `edge_logs`, 15-minute buckets), that
- * distinction is the whole ballgame:
+ * (then `analytics/endpoints/logs.all`, removed 2026-09-23; since FIX-1219 the
+ * same `edge_logs` buckets come from `logs` through supabase-logs.ts, which
+ * reproduced cc-151's buckets exactly), that distinction is the whole ballgame:
  *
  *   550 healthy buckets across 2026-08-28/29/30 and 09-01/02/03
  *     n_52x   p50 0   p90 0   p95 0   p99 0    — and 544 of 550 are exactly 0
@@ -109,21 +110,20 @@ export type FrontDoorProbe = {
 
 /**
  * FIX-1219 — what the Logs corroborator returned. `ok` carries the rows;
- * `unavailable` is the endpoint GONE (410, or 404 on the same path: Supabase
- * removed `logs.all` on 2026-09-24, changelog 48235); `dark` is any other
- * failure to answer. Before this, the route turned every failure into zero
- * buckets and the verdict read `ok` — from 2026-09-24 10:15 UTC on, every
- * firing reported a healthy front door while seeing nothing.
+ * `unavailable` is the endpoint GONE (410, or 404 on the same path — how
+ * `logs.all` answered after Supabase removed it, changelog 48235, and how the
+ * next removal will answer); `dark` is any other failure to answer. Before
+ * this, the route turned every failure into zero buckets and the verdict read
+ * `ok` — from 2026-09-24 10:15 UTC on, every firing reported a healthy front
+ * door while seeing nothing.
  */
 export type FrontDoorCorroborator =
   | { kind: "ok"; buckets: number }
   | { kind: "unavailable"; status: number }
   | { kind: "dark"; detail: string };
 
-/** 410 Gone, and 404 on the same path: the Logs endpoint is not there. */
-export function isLogsEndpointGone(status: number): boolean {
-  return status === 410 || status === 404;
-}
+/** 410 Gone, and 404 on the same path. Defined once, in supabase-logs.ts. */
+export { isLogsEndpointGone } from "./supabase-logs";
 
 /** The `logs_api` field of the route's body and its data_sync_log row. */
 export function corroboratorLabel(c: FrontDoorCorroborator): string {

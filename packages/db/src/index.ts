@@ -546,6 +546,43 @@ export type {
   FrontDoorVerdict,
 } from "./front-door-verdict";
 
+// FIX-1219 — the ONE client for the Management API `logs` endpoint (ClickHouse).
+// The census and the front-door watch both read through it; the schema map it
+// was built from is in its header.
+export {
+  queryLogs,
+  queryEdgeBuckets,
+  queryCancellationBuckets,
+  queryAttribution,
+  buildLogsUrl,
+  timeFilterSql,
+  queryStringRange,
+  bucketStartMs,
+  worstLogsAnswer,
+  sqlEdgeBuckets,
+  sqlCancellationBuckets,
+  sqlAttribution,
+  isAttributableField,
+  sanitizeLike,
+  ATTRIBUTABLE_FIELDS,
+  MGMT_BASE,
+  LOGS_ENDPOINT,
+  MAX_LOGS_RANGE_MINUTES,
+  LOGS_RETENTION_DAYS,
+  LOGS_ROW_CAP,
+  LOGS_RATE_LIMIT_PER_MIN,
+  TIME_FILTER,
+} from "./supabase-logs";
+export type {
+  LogsAnswer,
+  LogsFetch,
+  QueryLogsOptions,
+  LogsEdgeBucket,
+  LogsCancellationBucket,
+  LogsAttributionRow,
+  AttributableField,
+} from "./supabase-logs";
+
 // FIX-1194 P2-A — the cron-watchdog route's decision logic, pure for the same
 // reason front-door-verdict.ts is.
 export { decideCronWatchdogVerdict } from "./cron-watchdog-verdict";
