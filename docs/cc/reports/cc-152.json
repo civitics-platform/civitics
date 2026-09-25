@@ -1,0 +1,52 @@
+{
+  "cc": "152",
+  "prompt": "cc-prompt-152-fix1212-tail-windows-13-16-census-report-only-relaunch-plus-fix1218-pattern-b.md",
+  "started_at": "2026-09-24T23:39:59Z",
+  "finished_at": "2026-09-25T00:21:17Z",
+  "head_before": "9f7462ab",
+  "head_after": "b6fda36f",
+  "commits": [
+    {
+      "sha": "7ee63e55",
+      "subject": "feat(data): FIX-1212 — the runner's census can run in report mode; rule (3) pass=false is recorded, not a stop; the dark-twice trip stays armed"
+    },
+    {
+      "sha": "0d96d726",
+      "subject": "docs(fixes): file FIX-1219 (Supabase removed the Logs API logs.all endpoint; the census and the front-door watch's corroborator are dark)"
+    },
+    {
+      "sha": "23adb556",
+      "subject": "chore(nightly): FIX-1218 Pattern B record — the dispatched nightly did nominal day 2026-09-25 at its slot; the schedule fallback stood down"
+    },
+    {
+      "sha": "56a0fad5",
+      "subject": "chore(fixes): sync status after FIX-1218"
+    },
+    {
+      "sha": "6e7d106b",
+      "subject": "docs(receipts): FIX-1212 clone rehearsal of --census-mode report, 2026-09-25 — caught_up in 2 CALLs from a [1..12] cursor"
+    },
+    {
+      "sha": "b6fda36f",
+      "subject": "docs(fixes): FIX-1212 / 1218 / 969 appends (cc-152: report mode built and rehearsed; the tail not launched on a dark census; the 1218 Pattern B record)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1218"
+  ],
+  "fixes_filed": [
+    "FIX-1219"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "None to the database. The FIX-1212 runner was NOT launched, so there was no claim, no pipeline_state write, no CALL and no label. Pushes to main at 23:53:53 UTC (7ee63e55..23adb556) and 00:19:09 UTC (56a0fad5..b6fda36f) deploy to Vercel; no app-route code changed. Every other prod contact was a read: db-query.mjs --prod (read-only by construction), gh, and eight Supabase Management API Logs calls (the census attempt's two, a direct 410 probe, a re-probe at 00:17:40, and four probes of the replacement endpoint).",
+  "ci": "green",
+  "stopped_items": [
+    "Item 5 (the prod launch) did not run. Supabase removed the Management API endpoint the census reads (analytics/endpoints/logs.all answers 410 Gone, confirmed at 23:42:49, 23:43:14 and 00:17:40 UTC), so every census reading is dark (exit 2). The runner's gate wait treats dark as not-open, so it would hold until gate_timeout, and its pre-CALL dark-twice rule would trip if it ever opened, in either census mode. Launch gates (i)-(v) were all true at 00:17:44 and prod_op_gate(1200) was ok at 00:17:47; the instrument the whole op rests on is gone. Filed as FIX-1219. The census script is out of this prompt's scope, so it was not ported.",
+    "Item 6 (the FIX-1212 Pattern B record) did not apply: no caught_up. FIX-1212 stays open with no trailer; the only receipt is the clone rehearsal, committed as docs(receipts) (6e7d106b).",
+    "Item 7 (attribution of the tail's cost) did not run: no tail ran, and the attribution mode (--by) reads the same removed endpoint.",
+    "Read 5's census before-reading has no value: the Logs API answered 410 Gone and the script exited 2 (dark).",
+    "Item 8 wrote appends for FIX-1212, FIX-1218 and FIX-969 only. FIX-1216, FIX-1125 and FIX-1194 got none: nothing ran on prod, so there is no started_at handling or watchdog series to add.",
+    "Rule 180's held=false read before the 00:19:09 push ran, but my output filter printed '(1 row)' instead of the value, so the push went out on an unseen reading. The re-read at 00:19:17 (8 s later) was held=false, claimed_at null, live_writers []. No claim existed this session: the runner never launched, and cc-153 does not claim."
+  ]
+}
