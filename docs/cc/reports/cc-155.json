@@ -1,0 +1,45 @@
+{
+  "cc": "155",
+  "prompt": "cc-prompt-155-fix1219-port-census-and-front-door-watch-to-the-clickhouse-logs-endpoint-revalidate-against-cc151-burst.md",
+  "started_at": "2026-09-25T01:35:53Z",
+  "finished_at": "2026-09-25T02:33:00Z",
+  "head_before": "1ae7592f",
+  "head_after": "ce833887",
+  "commits": [
+    {
+      "sha": "e59b7dc6",
+      "subject": "feat(db): FIX-1219 — one Logs helper for the Management API logs endpoint (ClickHouse): queryLogs, the two bucket builders, attribution; the schema map as measured"
+    },
+    {
+      "sha": "e85edf1c",
+      "subject": "fix(data,app): FIX-1219 — the census and the front-door watch read through the helper; verdict rules unchanged; re-validated against cc-151/cc-148's readings"
+    },
+    {
+      "sha": "89652c55",
+      "subject": "fix(data): FIX-1219 — the census skips pnpm's literal `--` instead of exiting 2 (dark) on it"
+    },
+    {
+      "sha": "7e153bec",
+      "subject": "docs(audits): FIX-1219 Pattern B — the front-door watch's first post-deploy firing read ok with 4 buckets; the census re-validated identical on the logs endpoint"
+    },
+    {
+      "sha": "0442dc7b",
+      "subject": "docs(fixes): FIX-1219 / 1217 appends (cc-155: the logs port landed and re-validated identical; the visitor cost of one paced CALL is one official-page render)"
+    },
+    {
+      "sha": "ce833887",
+      "subject": "chore(fixes): sync status after FIX-1219"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1219"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "None to the database. Pushes to main at 01:57, 02:06 and 02:21 UTC deployed to Vercel, and e85edf1c (Vercel success 02:08:43) changed the front-door-watch route so its corroborator now reads the logs endpoint; its firings write their usual data_sync_log rows. Every other prod contact was a read: about 60 Management API logs calls (D2 probes, D3 re-validation, D4), one usage.api-counts read, and db-query.mjs --prod / db-poll.mjs --prod reads.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 3's FIX-1130 append was not written. FIX-1130 is closed (f706f301) and archived, and cc-154 folded it into FIX-1219, so there is no live bullet to append to. The corroborator's return rides the FIX-1219 append instead."
+  ]
+}
