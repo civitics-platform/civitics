@@ -18,7 +18,9 @@
  *             wait → gate_timeout, naming the half that held the last poll.
  *             The census is read only when the gate is open, so a blocked gate
  *             costs no Logs API read; on the clone (no Logs API) the census
- *             half reads `skipped — local`. The wait is BEFORE the claim: a
+ *             half reads `skipped — local`, and on a census exit 8 (the
+ *             endpoint is gone, FIX-1219) it reads `unavailable` — both open
+ *             on the gate alone. The wait is BEFORE the claim: a
  *             claim held through a four-hour wait would hold every guarded
  *             pipeline for nothing (rule 102).
  *   2. (retired, cc-151) the one-shot pre-launch census and its exit 3
@@ -89,7 +91,10 @@
  *       stop the run: the op's front-door cost is measured, not guarded. The
  *       dark-twice trip stays armed in both modes, and the gate wait's census
  *       half (step 1) holds the window in both; report demotes only this
- *       pass=false stop;
+ *       pass=false stop. Exit 8 (endpoint removed, FIX-1219) is not a reading
+ *       and never trips: it neither counts toward nor resets the dark count,
+ *       and at the gate it opens on the gate alone. Exit 2 (dark) still trips
+ *       on two consecutive;
  *   (4) the CALL's backend gone from pg_stat_activity (the box, not the
  *       procedure).
  * On trip: pg_cancel_backend(<CALL pid>) from T; wait for the CALL to return
@@ -127,6 +132,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
+import { CENSUS_EXIT } from "../lib/cancellation-census";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { GateTimeout, waitForProdOpGate, type AlsoReading, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
 import { ProdSessionRefused, withProdSession, type ProdSessionState } from "../lib/prod-session";
@@ -435,10 +441,13 @@ export function evaluateWatchdogs(
 
 /**
  * Census exit code → trip, would-trip, or null. 0 pass · 1 fail · 2 Logs API
- * dark. A fail is a Trip in stop mode and a WouldTrip in report mode; the
- * dark count and its trip are the same in both.
+ * dark · 8 unavailable. A fail is a Trip in stop mode and a WouldTrip in
+ * report mode; the dark count and its trip are the same in both. 8 (the
+ * endpoint is gone, FIX-1219) is TRANSPARENT: null in both modes, and the dark
+ * count is neither advanced nor reset, so dark, 8, dark still trips.
  */
 export function evaluateCensus(state: StopState, exitCode: number, mode: CensusMode = "stop"): Trip | WouldTrip | null {
+  if (exitCode === CENSUS_EXIT.unavailable) return null;
   if (exitCode === 0) { state.consecutiveCensusDark = 0; return null; }
   if (exitCode === 1) {
     state.consecutiveCensusDark = 0;
@@ -611,14 +620,21 @@ export interface CensusJson {
   cancellations?: { total: number; ratio: number; floor?: number; lambda?: number; pass?: boolean };
   edge?: { note: string; pass?: boolean };
   pass?: boolean;
+  /** Exit 8's body (FIX-1219): the endpoint is gone. */
+  unavailable?: boolean;
+  http_status?: number;
 }
 
 /**
  * One census reading as one line — `pass|FAIL|dark (N/M min, ratio r, floor f; edge …)`.
- * Exit 0 pass · 1 FAIL · anything else dark (the Logs API did not answer, or
- * the child did not run), which is what evaluateCensus counts as dark too.
+ * Exit 0 pass · 1 FAIL · 8 unavailable (the endpoint is gone, FIX-1219) ·
+ * anything else dark (the Logs API did not answer, or the child did not run),
+ * which is what evaluateCensus counts as dark too.
  */
 export function censusSummary(code: number, j: CensusJson | null, minutes: number): string {
+  if (code === CENSUS_EXIT.unavailable) {
+    return `unavailable (FIX-1219 — Logs API endpoint removed${j?.http_status ? `, HTTP ${j.http_status}` : ""})`;
+  }
   if (code !== 0 && code !== 1) return `dark (exit ${code} — the Logs API did not answer)`;
   const head = code === 0 ? "pass" : "FAIL";
   if (!j) return `${head} (exit ${code}; unparsed output)`;
@@ -628,6 +644,16 @@ export function censusSummary(code: number, j: CensusJson | null, minutes: numbe
     : "no 57014 reading";
   const ePart = j.edge ? `edge ${j.edge.note}${j.edge.pass === false ? " — edge FAIL" : ""}` : "no edge reading";
   return `${head} (${cPart}; ${ePart})`;
+}
+
+/**
+ * The gate wait's census half from one reading (cc-151 D2; cc-154 D2). A pass
+ * opens; a FAIL or dark holds. Exit 8 (the endpoint is gone, FIX-1219) opens
+ * on the gate alone, as `skipped — local` does: there is no instrument to wait
+ * on, and a removed endpoint is not a symptom of the box.
+ */
+export function censusHalfReading(code: number, summary: string): AlsoReading {
+  return { name: "census", ok: code === 0 || code === CENSUS_EXIT.unavailable, summary };
 }
 
 /** cancellation-census.ts as a child process; resolves its exit code (2 on any launch failure). */
@@ -776,7 +802,9 @@ export function gateTally(polls: readonly GatePoll[]): string {
   const byGate = polls.filter((p) => !p.ok && !(p.gate_ok ?? false)).length;
   const byCensus = polls.filter((p) => !p.ok && p.gate_ok === true).length;
   const dark = polls.filter((p) => p.also && /^dark/.test(p.also.summary)).length;
-  return `${polls.length} poll(s): ${byGate} held by the gate, ${byCensus} by the census (${dark} dark)`;
+  const unavailable = polls.filter((p) => p.also && /^unavailable/.test(p.also.summary)).length;
+  return `${polls.length} poll(s): ${byGate} held by the gate, ${byCensus} by the census (${dark} dark)` +
+    (unavailable ? `; ${unavailable} read the census unavailable (FIX-1219) and opened on the gate alone` : "");
 }
 
 /** One receipt row per poll, naming the half that held it. */
@@ -793,13 +821,17 @@ export const WOULD_TRIP_NOTE = " — would have tripped rule (3); census mode re
 
 /** The receipt's `census mode` header row (cc-152 D1). */
 export function censusModeLine(mode: CensusMode, rows: readonly CensusRow[]): string {
-  const rule3 = rows.filter((c) => c.phase !== "gate");
+  const unavailable = rows.filter((c) => c.code === CENSUS_EXIT.unavailable).length;
+  const rule3 = rows.filter((c) => c.phase !== "gate" && c.code !== CENSUS_EXIT.unavailable);
+  const tail = unavailable
+    ? ` · ${unavailable} census call(s) unavailable (exit 8, FIX-1219) — not readings, never a trip`
+    : "";
   if (mode === "stop") {
-    return "stop — rule (3) pass=false stops the run; the dark-twice trip is armed; the gate wait's census half holds the window";
+    return "stop — rule (3) pass=false stops the run; the dark-twice trip is armed; the gate wait's census half holds the window" + tail;
   }
   return "report — rule (3) pass=false is recorded, not a stop " +
     `(${rule3.filter((c) => c.would_trip === true).length} of ${rule3.length} rule (3) reading(s) would have tripped); ` +
-    "the dark-twice trip stays armed; the gate wait's census half still holds the window";
+    "the dark-twice trip stays armed; the gate wait's census half still holds the window" + tail;
 }
 
 /** One receipt line per census reading. */
@@ -1279,7 +1311,7 @@ async function main(): Promise<number> {
       if (target !== "prod") return { name: "census", ok: true, summary: "skipped — local (no Logs API)" };
       const cen = await runCensus(60, log);
       R.census.push({ at: new Date().toISOString(), minutes: 60, code: cen.code, summary: cen.summary, phase: "gate", before_call: null, would_trip: null });
-      return { name: "census", ok: cen.code === 0, summary: cen.summary };
+      return censusHalfReading(cen.code, cen.summary);
     };
     for (;;) {
       // ── 1. wait for the window: the gate AND the census on the same poll ──

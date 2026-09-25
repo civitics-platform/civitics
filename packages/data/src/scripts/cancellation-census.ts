@@ -31,17 +31,28 @@
  * EXIT CODES — so a prompt can gate on the process rather than on prose.
  *   0  both gates PASS
  *   1  either gate FAILs
- *   2  the Logs API answered anything but 200, or the key is missing
+ *   2  dark: the Logs API did not answer (a 5xx, a timeout, a network error,
+ *      no result array), or the key is missing
+ *   8  unavailable: the endpoint is GONE (410, or 404 on the same path).
+ *      Supabase removed logs.all on 2026-09-24; this is not a reading and
+ *      not a symptom, and it holds until FIX-1219 ports the census.
+ *      `--by` exits 8 the same way.
+ *   (3 is not used: it is the bootstrap runner's retired census_fail.)
  */
 
 import {
+  answersExit,
   buildAttributionSql,
   edgeVerdictFor,
+  fetchLogs,
   formatAttribution,
   isAttributableField,
   sanitizeLike,
+  unavailableJson,
+  unavailableSummary,
   verdictFor,
   ATTRIBUTABLE_FIELDS,
+  CENSUS_EXIT,
   LOGS_RETENTION_DAYS,
   MAX_ATTRIBUTION_MINUTES,
   RATIO_GATE,
@@ -49,6 +60,7 @@ import {
   type AttributionRow,
   type CancellationBucket,
   type EdgeBucket,
+  type LogsAnswer,
 } from "../lib/cancellation-census";
 
 const PROJECT_REF = "xsazcoxinpgttgquwvuf";
@@ -174,7 +186,9 @@ function parseArgs(argv: readonly string[]): Args {
         console.log(
           "Usage: cancellation-census [--minutes N] [--end <iso>] [--baseline <per-min>] [--json]\n" +
             "       cancellation-census --by <field> [--like <substring>] [--minutes N] [--end <iso>] [--json]\n" +
-            `       fields: ${ATTRIBUTABLE_FIELDS.join(", ")}`,
+            `       fields: ${ATTRIBUTABLE_FIELDS.join(", ")}\n` +
+            "       exit: 0 pass · 1 fail · 2 dark (the Logs API did not answer) · " +
+            "8 unavailable (the endpoint is gone — 410; FIX-1219)",
         );
         process.exit(0);
         break;
@@ -198,27 +212,27 @@ function parseArgs(argv: readonly string[]): Args {
   return a;
 }
 
-/** null on any non-200 / malformed answer — the caller turns that into exit 2. */
-async function query<T>(sql: string, startMs: number, endMs: number, token: string): Promise<T[] | null> {
+/** rows, dark or unavailable — the caller turns the last two into exit 2 / exit 8. */
+async function query<T>(sql: string, startMs: number, endMs: number, token: string): Promise<LogsAnswer<T>> {
   const url = new URL(LOGS_URL);
   url.searchParams.set("sql", sql);
   url.searchParams.set("iso_timestamp_start", new Date(startMs).toISOString());
   url.searchParams.set("iso_timestamp_end", new Date(endMs).toISOString());
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      console.error(`[census] Logs API ${res.status} ${res.statusText}`);
-      return null;
-    }
-    const json = (await res.json()) as { result?: T[] };
-    return Array.isArray(json.result) ? json.result : null;
-  } catch (err) {
-    console.error(`[census] Logs API request failed: ${err instanceof Error ? err.message : String(err)}`);
-    return null;
-  }
+  const a = await fetchLogs<T>(fetch, url, token, TIMEOUT_MS);
+  if (a.kind !== "rows") console.error(`[census] ${a.detail}`);
+  return a;
+}
+
+/**
+ * Exit 8, as text or JSON. process.exitCode and a return, never process.exit():
+ * after fast-failing fetches process.exit() aborts on Windows (the
+ * UV_HANDLE_CLOSING assertion below) and the shell sees 127, which a consumer
+ * would read as dark — measured in cc-152 read 5 on exactly this 410.
+ */
+function exitUnavailable(status: number, window: { start: string; end: string; minutes: number }, json: boolean): void {
+  if (json) console.log(JSON.stringify(unavailableJson(status, window), null, 2));
+  else console.log(`\n[census] ${unavailableSummary(status)} — no verdict, no attribution. (exit 8)`);
+  process.exitCode = CENSUS_EXIT.unavailable;
 }
 
 function iso(ms: number): string {
@@ -245,12 +259,19 @@ async function main(): Promise<void> {
   // Conflating the two is how an instrument becomes a gate nobody trusts.
   if (args.by !== null) {
     const sql = buildAttributionSql(args.by, args.like);
-    const rows = await query<{ g: string | null; n: number }>(sql, startMs, args.endMs, token);
-    if (rows === null) {
-      console.error("[census] the Logs API did not answer — no attribution. (exit 2)");
-      process.exit(2);
+    const a = await query<{ g: string | null; n: number }>(sql, startMs, args.endMs, token);
+    if (a.kind === "unavailable") {
+      exitUnavailable(a.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json);
+      return;
     }
-    const parsed: AttributionRow[] = rows.map((r) => ({
+    if (a.kind === "dark") {
+      // exitCode, not process.exit(): see exitUnavailable. Exit 2 was reaching
+      // the shell as 127 on Windows after a fast failure.
+      console.error("[census] the Logs API did not answer — no attribution. (exit 2)");
+      process.exitCode = CENSUS_EXIT.dark;
+      return;
+    }
+    const parsed: AttributionRow[] = a.rows.map((r) => ({
       group: r.g === null || r.g === "" ? "(null)" : String(r.g),
       count: Number(r.n) || 0,
     }));
@@ -297,15 +318,24 @@ async function main(): Promise<void> {
   const edgeEnd = Math.floor(args.endMs / EDGE_BUCKET_MS) * EDGE_BUCKET_MS;
   const edgeStart = edgeEnd - 4 * EDGE_BUCKET_MS;
 
-  const [cRows, eRows] = await Promise.all([
+  const [cAns, eAns] = await Promise.all([
     query<{ b: number; n_timeout: number; n_user: number }>(SQL_CANCELLATIONS, startMs, args.endMs, token),
     query<{ b: number; requests: number; n_5xx: number }>(SQL_EDGE, edgeStart, edgeEnd, token),
   ]);
 
-  if (cRows === null || eRows === null) {
-    console.error("[census] the Logs API did not answer — no verdict. (exit 2)");
-    process.exit(2);
+  const early = answersExit([cAns, eAns]);
+  if (early?.code === CENSUS_EXIT.unavailable) {
+    exitUnavailable(early.status, { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes }, args.json);
+    return;
   }
+  if (early || cAns.kind !== "rows" || eAns.kind !== "rows") {
+    // exitCode, not process.exit(): see exitUnavailable.
+    console.error("[census] the Logs API did not answer — no verdict. (exit 2)");
+    process.exitCode = CENSUS_EXIT.dark;
+    return;
+  }
+  const cRows = cAns.rows;
+  const eRows = eAns.rows;
 
   // `b` comes back in MICROseconds, same as the front-door route.
   const cancellations: CancellationBucket[] = cRows.map((r) => ({

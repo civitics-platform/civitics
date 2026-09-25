@@ -17,6 +17,7 @@ import {
   breatherRelease,
   callNoLongerRunning,
   caughtUpMismatch,
+  censusHalfReading,
   censusLine,
   censusModeLine,
   censusSummary,
@@ -394,4 +395,79 @@ test("args: defaults, overrides, and refusals", () => {
   assert.ok("error" in parseRunnerArgs(["--max-calls", "0"]));
   assert.ok("error" in parseRunnerArgs(["--wall-trip-s", "0"]));
   assert.ok("error" in parseRunnerArgs(["--receipt-tag", "../x"]));
+});
+
+// ── cc-154 D2: exit 8 (the Logs API endpoint is gone, FIX-1219) is "no instrument", not dark ──
+
+test("cc-154 D2 rule 105: {8, 8, 8} is no trip, no would-trip and a dark count of 0, in both modes", () => {
+  for (const mode of ["stop", "report"] as const) {
+    const s = newStopState();
+    for (let i = 0; i < 3; i++) assert.equal(evaluateCensus(s, 8, mode), null, `${mode}: 8 #${i + 1}`);
+    assert.equal(s.consecutiveCensusDark, 0, `${mode}: the dark count never moved`);
+  }
+});
+
+test("cc-154 D2 rule 105: {2, 8, 2} trips — 8 is transparent, it neither advances nor resets the dark count", () => {
+  for (const mode of ["stop", "report"] as const) {
+    const s = newStopState();
+    assert.equal(evaluateCensus(s, 2, mode), null);
+    assert.equal(evaluateCensus(s, 8, mode), null);
+    assert.equal(s.consecutiveCensusDark, 1, `${mode}: the 8 left the count at 1`);
+    const t = evaluateCensus(s, 2, mode);
+    assert.equal(isTrip(t), true, `${mode}: the second dark trips`);
+    assert.match(t?.reason ?? "", /Logs API was dark on two consecutive/);
+    // contrast: a PASS between the darks does reset it
+    const u = newStopState();
+    evaluateCensus(u, 2, mode); evaluateCensus(u, 0, mode);
+    assert.equal(evaluateCensus(u, 2, mode), null, `${mode}: a pass resets, an 8 does not`);
+  }
+});
+
+test("cc-154 D2 rule 105: the gate half opens on {8} alone; a FAIL, a dark and a crashed child still hold", () => {
+  const u = "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)";
+  assert.deepEqual(censusHalfReading(8, u), { name: "census", ok: true, summary: u });
+  assert.equal(censusHalfReading(0, "pass (…)").ok, true);
+  assert.equal(censusHalfReading(1, "FAIL (…)").ok, false);
+  assert.equal(censusHalfReading(2, "dark (…)").ok, false);
+  assert.equal(censusHalfReading(127, "dark (exit 127 …)").ok, false, "the Windows crash code is dark, not unavailable");
+});
+
+test("cc-154 D2: censusSummary names exit 8 unavailable, with the HTTP status when the JSON carries it", () => {
+  assert.equal(censusSummary(8, { unavailable: true, http_status: 410 }, 60), "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)");
+  assert.equal(censusSummary(8, null, 15), "unavailable (FIX-1219 — Logs API endpoint removed)");
+  assert.match(censusSummary(2, null, 15), /^dark/, "2 is still dark");
+});
+
+test("cc-154 D2: an unavailable opening poll is counted as opened on the gate, not as dark; the poll line says unavailable", () => {
+  const u = "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)";
+  const polls: GatePoll[] = [
+    { at: "00:50", ok: false, blocked: ["b:fr-vacuum-analyze"], gate_ok: false },
+    { at: "00:55", ok: true, blocked: [], gate_ok: true, also: { name: "census", ok: true, summary: u } },
+  ];
+  assert.equal(gateTally(polls),
+    "2 poll(s): 1 held by the gate, 0 by the census (0 dark); 1 read the census unavailable (FIX-1219) and opened on the gate alone");
+  assert.equal(pollLine(polls[1]!), `- 00:55 **OK** · census ${u}`);
+  assert.equal(gateTally(polls.slice(0, 1)), "1 poll(s): 1 held by the gate, 0 by the census (0 dark)", "no unavailable poll, the cc-151 line");
+});
+
+test("cc-154 D2: the census-mode row counts unavailable calls apart from the would-trips, in both modes", () => {
+  const row = (phase: CensusRow["phase"], code: number, would_trip: boolean | null): CensusRow => ({
+    at: "t", minutes: phase === "gate" ? 60 : 15, code, summary: code === 8 ? "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)" : "pass (…)",
+    phase, before_call: phase === "pre_call" ? 1 : null, would_trip,
+  });
+  const rows = [row("gate", 8, null), row("pre_call", 8, false), row("pre_call", 8, false)];
+  assert.equal(censusModeLine("report", rows),
+    "report — rule (3) pass=false is recorded, not a stop (0 of 0 rule (3) reading(s) would have tripped); " +
+    "the dark-twice trip stays armed; the gate wait's census half still holds the window" +
+    " · 3 census call(s) unavailable (exit 8, FIX-1219) — not readings, never a trip");
+  assert.match(censusModeLine("stop", rows), /^stop — .* · 3 census call\(s\) unavailable \(exit 8, FIX-1219\)/);
+  assert.equal(censusLine(rows[1]!), "- t (15 min, before CALL 1) exit 8: unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)");
+});
+
+test("cc-154 D2: the gate half goes through censusHalfReading, and evaluateCensus sees 8 before anything touches the dark count", () => {
+  const src = fs.readFileSync(path.join(__dirname, "donor-party-bootstrap-runner.ts"), "utf8");
+  const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.match(code, /return censusHalfReading\(cen\.code, cen\.summary\);/);
+  assert.doesNotMatch(code, /ok: cen\.code === 0/, "the old gate-half verdict is gone");
+  assert.match(code, /mode: CensusMode = "stop"\): Trip \| WouldTrip \| null \{\s*\n\s*if \(exitCode === CENSUS_EXIT\.unavailable\) return null;/);
 });

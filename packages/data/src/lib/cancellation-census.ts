@@ -319,3 +319,87 @@ group by g
 order by n desc
 limit 20`;
 }
+
+// ──────────────────── the Logs API's answer, three ways (FIX-1219) ────────────────────
+//
+// `rows` is a reading. `dark` is the Logs API failing to answer: a 5xx, a
+// timeout, a network error, a 200 with no result array. On 09-22 that was
+// itself a symptom of the box (rule 164), so a runner counts it. `unavailable`
+// is the endpoint being GONE. Supabase removed `logs.all` on 2026-09-24
+// (changelog 48235; prod's front_door_watch rows put the cutover at
+// 10:00-10:15 UTC), and it answers 410 Gone. That is not a reading and not a
+// symptom. It is an instrument that does not exist until FIX-1219 ports the
+// census to the `logs` endpoint, and it gets its own exit code so no consumer
+// mistakes it for dark.
+
+/** The census's exit codes. 3 is not used (it is the bootstrap runner's retired census_fail). */
+export const CENSUS_EXIT = { pass: 0, fail: 1, dark: 2, unavailable: 8 } as const;
+
+/** 410 Gone, and 404 on the same path: the endpoint is not there. Every other non-200 is dark. */
+export function isEndpointGone(status: number): boolean {
+  return status === 410 || status === 404;
+}
+
+export type LogsAnswer<T> =
+  | { kind: "rows"; rows: T[] }
+  | { kind: "dark"; detail: string }
+  | { kind: "unavailable"; status: number; detail: string };
+
+/** The slice of `fetch` the census uses, so a test can stub it. */
+export type LogsFetch = (
+  url: URL,
+  init: { headers: Record<string, string>; signal?: AbortSignal },
+) => Promise<{ ok: boolean; status: number; statusText: string; json(): Promise<unknown>; text(): Promise<string> }>;
+
+export async function fetchLogs<T>(
+  fetchImpl: LogsFetch,
+  url: URL,
+  token: string,
+  timeoutMs: number,
+): Promise<LogsAnswer<T>> {
+  try {
+    const res = await fetchImpl(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      // Drain the body so the socket goes back to the pool: the script ends on
+      // process.exitCode, not process.exit(), and must not wait on it.
+      await res.text().catch(() => "");
+      const detail = `Logs API ${res.status} ${res.statusText}`.trim();
+      return isEndpointGone(res.status) ? { kind: "unavailable", status: res.status, detail } : { kind: "dark", detail };
+    }
+    const json = (await res.json()) as { result?: T[] };
+    return Array.isArray(json.result)
+      ? { kind: "rows", rows: json.result }
+      : { kind: "dark", detail: "Logs API answered 200 without a result array" };
+  } catch (err) {
+    return { kind: "dark", detail: `Logs API request failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * The exit a set of answers owes before any verdict: `unavailable` if ANY half
+ * found the endpoint gone (both halves share one endpoint, and a dark sibling
+ * of a removed endpoint says nothing), else `dark` if any half was dark, else
+ * null (every half has rows, go on to the verdict).
+ */
+export function answersExit(
+  answers: readonly LogsAnswer<unknown>[],
+): { code: typeof CENSUS_EXIT.unavailable; status: number; detail: string } | { code: typeof CENSUS_EXIT.dark; detail: string } | null {
+  const gone = answers.find((a): a is Extract<LogsAnswer<unknown>, { kind: "unavailable" }> => a.kind === "unavailable");
+  if (gone) return { code: CENSUS_EXIT.unavailable, status: gone.status, detail: gone.detail };
+  const dark = answers.find((a): a is Extract<LogsAnswer<unknown>, { kind: "dark" }> => a.kind === "dark");
+  if (dark) return { code: CENSUS_EXIT.dark, detail: dark.detail };
+  return null;
+}
+
+/** The one-line summary of exit 8. */
+export function unavailableSummary(status: number): string {
+  return `unavailable — Logs API endpoint removed (${status}; FIX-1219)`;
+}
+
+/** The `--json` body of exit 8, in place of the verdict halves (or the attribution rows). */
+export function unavailableJson(status: number, window: { start: string; end: string; minutes: number }) {
+  return { window, unavailable: true as const, http_status: status, fix: "FIX-1219", summary: unavailableSummary(status) };
+}

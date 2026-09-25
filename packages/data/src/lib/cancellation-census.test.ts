@@ -12,7 +12,14 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  answersExit,
   buildAttributionSql,
+  fetchLogs,
+  isEndpointGone,
+  unavailableJson,
+  unavailableSummary,
+  CENSUS_EXIT,
+  type LogsFetch,
   edgeVerdictFor,
   formatAttribution,
   isAttributableField,
@@ -354,4 +361,67 @@ test("--by is allow-listed before it reaches the SQL string", () => {
     "utf8",
   );
   assert.match(src, /isAttributableField\(f\)/);
+});
+
+// ── FIX-1219 (cc-154 D1): a removed endpoint is `unavailable` (exit 8), not dark (exit 2) ──
+
+const stubFetch = (status: number, body: unknown = {}, statusText = ""): LogsFetch =>
+  async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
+const URL_ = new URL("https://api.supabase.com/v1/projects/x/analytics/endpoints/logs.all");
+
+test("FIX-1219: a 410 (and a 404 on the same path) is unavailable; a 503, a throw and a 200 without rows stay dark", async () => {
+  // The body cc-152 read 5 actually got.
+  const gone = await fetchLogs(stubFetch(410, { message: "The logs.all endpoint has been removed." }, "Gone"), URL_, "t", 1000);
+  assert.deepEqual(gone, { kind: "unavailable", status: 410, detail: "Logs API 410 Gone" });
+  assert.equal((await fetchLogs(stubFetch(404, {}, "Not Found"), URL_, "t", 1000)).kind, "unavailable");
+  const d503 = await fetchLogs(stubFetch(503, {}, "Service Unavailable"), URL_, "t", 1000);
+  assert.deepEqual(d503, { kind: "dark", detail: "Logs API 503 Service Unavailable" });
+  const thrown = await fetchLogs(async () => { throw new Error("ECONNRESET"); }, URL_, "t", 1000);
+  assert.deepEqual(thrown, { kind: "dark", detail: "Logs API request failed: ECONNRESET" });
+  assert.equal((await fetchLogs(stubFetch(200, { error: "Table edge_logs does not exist." }), URL_, "t", 1000)).kind, "dark",
+    "the replacement endpoint's 200-with-error body is dark, not rows");
+  assert.equal(isEndpointGone(500), false);
+  assert.equal(isEndpointGone(401), false, "a bad key is dark, not a removed endpoint");
+});
+
+test("FIX-1219: a 200 with a result array is rows, unchanged", async () => {
+  const rows = [{ b: 1, requests: 10, n_5xx: 0 }];
+  assert.deepEqual(await fetchLogs(stubFetch(200, { result: rows }), URL_, "t", 1000), { kind: "rows", rows });
+  assert.equal(answersExit([{ kind: "rows", rows: [] }, { kind: "rows", rows }]), null, "rows on both halves: go on to the verdict");
+});
+
+test("FIX-1219: exit 8 when any half is unavailable, 2 when any half is dark, and 8 wins over a dark sibling", () => {
+  const u = { kind: "unavailable" as const, status: 410, detail: "Logs API 410 Gone" };
+  const d = { kind: "dark" as const, detail: "Logs API 503" };
+  const r = { kind: "rows" as const, rows: [] };
+  assert.deepEqual(answersExit([u, u]), { code: 8, status: 410, detail: "Logs API 410 Gone" });
+  assert.deepEqual(answersExit([d, u]), { code: 8, status: 410, detail: "Logs API 410 Gone" });
+  assert.deepEqual(answersExit([r, d]), { code: 2, detail: "Logs API 503" });
+  assert.deepEqual(CENSUS_EXIT, { pass: 0, fail: 1, dark: 2, unavailable: 8 });
+  assert.ok(!(Object.values(CENSUS_EXIT) as number[]).includes(3), "3 stays retired");
+});
+
+test("FIX-1219: the exit-8 JSON replaces the verdict halves, and the summary names the status and the FIX", () => {
+  const w = { start: "2026-09-24T23:38:54Z", end: "2026-09-25T00:38:54Z", minutes: 60 };
+  assert.equal(unavailableSummary(410), "unavailable — Logs API endpoint removed (410; FIX-1219)");
+  const j = unavailableJson(410, w);
+  assert.deepEqual(j, {
+    window: w, unavailable: true, http_status: 410, fix: "FIX-1219",
+    summary: "unavailable — Logs API endpoint removed (410; FIX-1219)",
+  });
+  assert.ok(!("cancellations" in j) && !("edge" in j) && !("pass" in j), "no verdict half rides an exit 8");
+});
+
+test("FIX-1219: the script ends exit 8 and exit 2 on process.exitCode, never process.exit() (the Windows 127)", () => {
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  assert.match(src, /process\.exitCode = CENSUS_EXIT\.unavailable;/);
+  assert.equal((src.match(/process\.exitCode = CENSUS_EXIT\.dark;\s*\n\s*return;/g) ?? []).length, 2, "both dark paths");
+  assert.doesNotMatch(src, /process\.exit\(8\)/);
+  assert.equal((src.match(/exitUnavailable\(/g) ?? []).length, 3, "defined once, called from the gate and from --by");
 });
