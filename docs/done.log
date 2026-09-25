@@ -1483,3 +1483,4 @@
 2026-09-23 | FIX-1215 | 6a826bf9 | prod-only | fix(data): FIX-1215 — the runner waited on prod_op_gate() from 04:52 to 09:02 UTC (51 polls, blocked_by fe-vacuum then the blackout) and launched itself
 2026-09-24 | FIX-1218 | 23adb556 | prod-only | chore(nightly): FIX-1218 Pattern B record — the dispatched nightly did nominal day 2026-09-25 at its slot; the schedule fallback stood down
 2026-09-24 | FIX-1220 | f9b9b43c | local+prod | feat(db): FIX-1220 — a startup-timeout streak must also span 12 min at the job's cadence (the */1 probe needs 12 runs, a */2 job 6); FIX-1194 — prod_op_gate (d) reads one MATERIALIZED scan; record_box_health loses service_role
+2026-09-24 | FIX-1212 | de0ba039 | prod-only | fix(data): FIX-1212 Pattern B — the paced runner banked windows 13-16 on Pro and the donor-party full rebuild is caught up; watermark = 2026-09-21 00:18:25.831727
