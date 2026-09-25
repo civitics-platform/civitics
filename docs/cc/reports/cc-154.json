@@ -1,0 +1,43 @@
+{
+  "cc": "154",
+  "prompt": "cc-prompt-154-addendum-to-152-census-unavailable-is-not-dark-launch-the-1212-tail-front-door-watch-loud-when-blind.md",
+  "started_at": "2026-09-25T00:34:53Z",
+  "finished_at": "2026-09-25T01:09:49Z",
+  "head_before": "edb81f48",
+  "head_after": "6a3ee437",
+  "commits": [
+    {
+      "sha": "715d9dae",
+      "subject": "fix(data): FIX-1219 — the census distinguishes an endpoint that is gone (410 → exit 8, unavailable) from a Logs API that is dark (exit 2); the FIX-1212 runner does not hold or trip on unavailable"
+    },
+    {
+      "sha": "47428fd1",
+      "subject": "fix(app,db,data): FIX-1219 — the front-door watch reports its corroborator unavailable instead of ok; report-only canary"
+    },
+    {
+      "sha": "de0ba039",
+      "subject": "fix(data): FIX-1212 Pattern B — the paced runner banked windows 13-16 on Pro and the donor-party full rebuild is caught up; watermark = 2026-09-21 00:18:25.831727"
+    },
+    {
+      "sha": "4142f7d2",
+      "subject": "chore(fixes): sync status after FIX-1212"
+    },
+    {
+      "sha": "6a3ee437",
+      "subject": "docs(fixes): FIX-1212 / 1219 / 969 appends (cc-154: the tail caught up under the paced runner; exit 8 and the blind front-door watch; jobid 17 takes the crawl branch on 09-29)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1212"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "The FIX-1212 bootstrap runner, launched once from the primary checkout at 00:45:27 UTC (node pid 7828, at 715d9dae). It claimed the FIX-950 session 00:45:29-00:54:09 (label written and deleted). It upserted pipeline_state.donor_party_crawl = {max_units: 2} before each of 2 CALLs and deleted it after each (absent before and after). Two CALLs of public.refresh_donor_party_rollup_incremental() wrote data_sync_log a6e947dc and 337b8512. They replaced donor_party_rollup_mv windows 13-16 (2,618,055 -> 2,972,870 rows), completed the cycle (the procedure deleted the cursor pipeline_state.donor_party_full_rebuild), and advanced the watermark to 2026-09-21 00:18:25.831727. Pushes to main at 00:42:38, 00:55:20 and 00:57:06 UTC deploy to Vercel. de0ba039's deploy (live 00:57:05) changed /api/cron/front-door-watch, which now writes its data_sync_log rows with state corroborator_unavailable and a logs_api field. Every other prod contact was a read: db-query.mjs --prod, and census invocations against the Management API Logs endpoint (all 410).",
+  "ci": "green",
+  "stopped_items": [
+    "Item 5's canary half is not verified by a canary run. sync-canary-check next fires at 05:00 UTC (the Vercel dispatcher), after this session. The key is verified by the unit tests and by running the new classifier over the two real prod front_door_watch rows (tier report, detail quoted in §4). No canary was run by hand: it writes a meta row on prod.",
+    "cc-152 item 7 (the visitor cost of a paced CALL) stays owed. Every census call returned exit 8, so the tail's front-door cost is not measured. It waits on FIX-1219's port.",
+    "FIX-1216 got no append: the run kept the cursor's started_at and the procedure deleted the cursor on caught_up, exactly as its bullet expects."
+  ]
+}
