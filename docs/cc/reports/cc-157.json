@@ -1,0 +1,34 @@
+{
+  "cc": "157",
+  "prompt": "cc-prompt-157-canary-prod-session-read-dsn-fix1221-first-firing-close.md",
+  "started_at": "2026-09-25T22:55:56Z",
+  "finished_at": "2026-09-25T23:10:00Z",
+  "head_before": "47cc9e1c",
+  "head_after": "3425c251",
+  "commits": [
+    {
+      "sha": "2633980f",
+      "subject": "docs(fixes): file FIX-1224 (the canary's prod-session detector has read unknown on every GHA run — no DSN in the workflow env)"
+    },
+    {
+      "sha": "a6986bc9",
+      "subject": "ci(canary): FIX-1224 — sync-canary-check passes SUPABASE_DB_PASSWORD; a failed prod-session read is a report-only canary key"
+    },
+    {
+      "sha": "3425c251",
+      "subject": "docs(fixes): FIX-1221 / 1224 appends (cc-157: the retention has not fired, 1,596 rows past 42 d at 22:58 UTC; the canary is the one DSN-needing workflow that lacked the password)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1224"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none. Every prod contact was a read: db-query --prod (the canary meta-row census, jobid 54 and its job_run_details rows, the 42-day count, the cron_job_budget row, and prod_session_state() + session-hold rows read twice as the held=false check before each push), and gh (run lists and logs, secret NAMES). Two pushes to main (~23:06:00 and ~23:06:55 UTC) plus this report's are Vercel deploys; the change they carry is a GHA workflow env line and canary code, which first runs on prod at the 2026-09-26 05:00 UTC canary.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1224's receipt: the next dispatched canary run is 2026-09-26 05:00 UTC, outside this session (it started 22:55 UTC 09-25). No Fixes trailer; FIX-1224 is open, and its bullet names the receipt.",
+    "FIX-1221's first-firing receipt: jobid 54 first fires 2026-09-26 01:51 UTC, outside this session. No Fixes trailer; FIX-1221 stays open, and its append names the slot and what the receipt reads."
+  ]
+}
