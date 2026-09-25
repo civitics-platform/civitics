@@ -1,0 +1,49 @@
+{
+  "cc": "153",
+  "prompt": "cc-prompt-153-cc149-followups-1073-streak-recalibration-job-run-details-retention-gate-d-materialized-revoke-legacy-canary-upstash-dup.md",
+  "started_at": "2026-09-24T23:42:02Z",
+  "finished_at": "2026-09-25T00:26:41Z",
+  "head_before": "27e66239",
+  "head_after": "a530026d",
+  "commits": [
+    {
+      "sha": "347db426",
+      "subject": "docs(fixes): file FIX-1220, FIX-1221, FIX-1222 (cc-153: the */1 probe's streak recalibration; job_run_details retention blocked by a 90-day reader; the burst rule stopped)"
+    },
+    {
+      "sha": "f9b9b43c",
+      "subject": "feat(db): FIX-1220 — a startup-timeout streak must also span 12 min at the job's cadence (the */1 probe needs 12 runs, a */2 job 6); FIX-1194 — prod_op_gate (d) reads one MATERIALIZED scan; record_box_health loses service_role"
+    },
+    {
+      "sha": "5a4e4072",
+      "subject": "chore(app,db): FIX-1125 — the box-health ring's head is the latest sample; the SET duplicate goes"
+    },
+    {
+      "sha": "5f0ae4bd",
+      "subject": "docs(fixes): FIX-1194 / 1125 / 1218 appends (cc-153: gate (d) one scan and the service_role revoke; the ring head is the latest sample; the 02:00 canary kept, it hosts the grant sweep)"
+    },
+    {
+      "sha": "a530026d",
+      "subject": "chore(fixes): sync status after FIX-1220"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1220"
+  ],
+  "fixes_filed": [
+    "FIX-1220",
+    "FIX-1221",
+    "FIX-1222"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920150000_fix1220_1194_streak_minutes_gate_d_one_scan_revoke.sql"
+  ],
+  "prod_writes": "One migration, 20260920150000, applied to Pro 00:15:44-00:15:47 UTC. wait-for-gate --then ran db-push-prod: the gate read OK on its first poll at 00:15:44Z, it claimed the FIX-950 session, pushed and released. The migration redefined check_cron_job_health() (+31/-0 lines against prod) and prod_op_gate() ((d) rewritten, +40/-24), re-asserted check_cron_job_health's grants and COMMENT, and revoked service_role EXECUTE on record_box_health(timestamptz). No cron.schedule, no cron_job_budget row, no DELETE: the retention job (D2) was stopped. Pushes to main, each a Vercel deploy: 347db426 at ~00:01:25, 5a4e4072 at ~00:21:05 (production deploy success 00:22:57), and a530026d at ~00:22:50 UTC, plus this report. The deploy changed /api/cron/box-health to 2 Upstash commands a sample. Every other prod contact was a read: db-query --prod, EXPLAIN ANALYZE, pg_get_functiondef, prod_op_gate() and check_cron_job_health() calls, 3 Upstash read commands (x2) and gh.",
+  "ci": "green",
+  "stopped_items": [
+    "D2, the cron.job_run_details retention job: read 4's STOP fired. list_scheduled_rollup_pipelines() (the canary calls it with the default p_lookback_days = 90) reads the table over 90 days and takes its FIX-1135 era boundary from min(start_time) over all history. Nothing was scheduled or deleted. Filed as FIX-1221 with the blocker, the numbers and a candidate slot (01:50 UTC). Item 5 (the first-firing receipt) therefore does not apply.",
+    "D1's burst half. The distinct-minutes rule replayed on prod's retained history gives 50 escalating buckets on 11 days against today's 64 on 13, silencing two paging days (08-26, 09-14). That contradicts the prompt's premise that burstThreshold is unchanged in meaning. The burst is unchanged; filed as FIX-1222 with the measured alternatives. D1's streak half was built and FIX-1220 closed on it.",
+    "D5, retiring /api/cron/nightly-sync: the tree contradicts the premise twice. The route also hosts FIX-557's grant-expiry sweep, and the dashboard's nightly_dispatch card reads the dispatched rows. Nothing was deleted; one append on FIX-1218 records the shape that works."
+  ]
+}
