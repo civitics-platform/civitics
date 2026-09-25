@@ -29,7 +29,10 @@ import {
   BUCKET_COUNT,
   RED_MIN_52X,
   RED_MIN_52X_RATIO,
+  corroboratorLabel,
+  isLogsEndpointGone,
   type FrontDoorBucket,
+  type FrontDoorCorroborator,
   type FrontDoorProbe,
 } from "./front-door-verdict";
 
@@ -957,5 +960,54 @@ describe("the alert body", () => {
     });
     assert.match(subject, /FRONT DOOR RECOVERED/);
     assert.match(html, /No action needed/);
+  });
+});
+
+// FIX-1219 — from 2026-09-24 10:15 UTC the Logs API's logs.all answered 410
+// Gone, the route zero-filled the buckets, and every firing read `ok` while
+// the corroborator saw nothing. A blind tick now says so.
+describe("the Logs corroborator unavailable (FIX-1219)", () => {
+  const END = Date.parse("2026-09-25T00:45:00Z");
+  const EMPTY = alignBuckets([], END);
+  const GONE: FrontDoorCorroborator = { kind: "unavailable", status: 410 };
+  const DARK: FrontDoorCorroborator = { kind: "dark", detail: "HTTP 503" };
+
+  test("a 410 corroborator with a probe that answered is corroborator_unavailable — never ok, never paged", () => {
+    const v = decideFrontDoorVerdict(EMPTY, PROBE_OK, GONE);
+    assert.equal(v.state, "corroborator_unavailable");
+    assert.equal(v.isDownEdge, false);
+    assert.match(v.reason, /direct probe answered; the Logs corroborator is unavailable \(410, FIX-1219\)/);
+    assert.equal(shouldSend(v, Date.parse("2026-09-25T01:00:00Z")), false, "report-only: no email, even on the :00 tick");
+  });
+
+  test("a dark corroborator reads the same state, naming dark", () => {
+    const v = decideFrontDoorVerdict(EMPTY, PROBE_OK, DARK);
+    assert.equal(v.state, "corroborator_unavailable");
+    assert.match(v.reason, /dark \(HTTP 503\)/);
+  });
+
+  test("a probe with no answer is still DOWN, whatever the corroborator did — the page does not depend on the Logs API", () => {
+    const noAnswer: FrontDoorProbe = { answered: false, attempts: [{ status: null, ms: 5000, error: "timeout" }] };
+    const v = decideFrontDoorVerdict(EMPTY, noAnswer, GONE);
+    assert.equal(v.state, "down");
+    assert.equal(shouldSend(v, END), true);
+  });
+
+  test("the old shape is unchanged: buckets with an ok corroborator, or no corroborator argument at all", () => {
+    for (const c of [undefined, { kind: "ok", buckets: 4 } as FrontDoorCorroborator]) {
+      assert.equal(decideFrontDoorVerdict(EMPTY, PROBE_OK, c).state, "ok");
+    }
+    const replayed = replay(OUTAGE_0831);
+    assert.ok(replayed.some((r) => r.state === "down"), "the 08-31 replay still pages");
+  });
+
+  test("the logs_api labels, and which statuses mean the endpoint is gone", () => {
+    assert.equal(corroboratorLabel({ kind: "ok", buckets: 4 }), "4 bucket(s)");
+    assert.equal(corroboratorLabel(GONE), "unavailable (410, FIX-1219)");
+    assert.equal(corroboratorLabel(DARK), "dark (HTTP 503)");
+    assert.equal(isLogsEndpointGone(410), true);
+    assert.equal(isLogsEndpointGone(404), true);
+    assert.equal(isLogsEndpointGone(503), false);
+    assert.equal(isLogsEndpointGone(401), false);
   });
 });

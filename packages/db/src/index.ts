@@ -531,6 +531,8 @@ export {
   decideFrontDoorVerdict,
   shouldSend,
   renderFrontDoorEmail,
+  isLogsEndpointGone,
+  corroboratorLabel,
   FRONT_DOOR_RUNBOOK,
   RED_MIN_52X,
   RED_MIN_52X_RATIO,
@@ -539,6 +541,7 @@ export {
 } from "./front-door-verdict";
 export type {
   FrontDoorBucket,
+  FrontDoorCorroborator,
   FrontDoorProbe,
   FrontDoorVerdict,
 } from "./front-door-verdict";

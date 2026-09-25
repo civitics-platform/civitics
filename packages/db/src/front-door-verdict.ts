@@ -107,8 +107,40 @@ export type FrontDoorProbe = {
   attempts: Array<{ status: number | null; ms: number; error?: string }>;
 };
 
+/**
+ * FIX-1219 — what the Logs corroborator returned. `ok` carries the rows;
+ * `unavailable` is the endpoint GONE (410, or 404 on the same path: Supabase
+ * removed `logs.all` on 2026-09-24, changelog 48235); `dark` is any other
+ * failure to answer. Before this, the route turned every failure into zero
+ * buckets and the verdict read `ok` — from 2026-09-24 10:15 UTC on, every
+ * firing reported a healthy front door while seeing nothing.
+ */
+export type FrontDoorCorroborator =
+  | { kind: "ok"; buckets: number }
+  | { kind: "unavailable"; status: number }
+  | { kind: "dark"; detail: string };
+
+/** 410 Gone, and 404 on the same path: the Logs endpoint is not there. */
+export function isLogsEndpointGone(status: number): boolean {
+  return status === 410 || status === 404;
+}
+
+/** The `logs_api` field of the route's body and its data_sync_log row. */
+export function corroboratorLabel(c: FrontDoorCorroborator): string {
+  if (c.kind === "ok") return `${c.buckets} bucket(s)`;
+  if (c.kind === "unavailable") return `unavailable (${c.status}, FIX-1219)`;
+  return `dark (${c.detail})`;
+}
+
 export type FrontDoorVerdict = {
-  state: "ok" | "down" | "recovered";
+  /**
+   * `corroborator_unavailable` (FIX-1219): the direct probe answered, but the
+   * Logs corroborator returned nothing, so the 52x wedge rule could not be
+   * evaluated. Never `ok`, and never paged: shouldSend() sends on `down` and
+   * `recovered` only, and a probe that gets no answer is still `down` whatever
+   * the corroborator did.
+   */
+  state: "ok" | "down" | "recovered" | "corroborator_unavailable";
   /** Per-bucket RED evaluation, oldest first, aligned with the input. */
   red: boolean[];
   /** True when this tick is the DOWN edge (newest two RED, the one before green). */
@@ -194,10 +226,17 @@ export function floorToBucket(ms: number): number {
  * "any RED in the window" — is what makes RECOVERED fire once without any
  * stored state: one tick later the RED bucket has slid to index 0 and the
  * pattern no longer matches.
+ *
+ * CORROBORATOR_UNAVAILABLE (FIX-1219) when the probe answered and
+ * `corroborator` says the Logs API returned nothing (unavailable or dark). The
+ * buckets are then zero-filled, so "no RED" means nothing, and `ok` would be a
+ * claim this tick cannot make. Omitting `corroborator` is the pre-FIX-1219
+ * call, and its verdicts are unchanged.
  */
 export function decideFrontDoorVerdict(
   buckets: FrontDoorBucket[],
   probe: FrontDoorProbe,
+  corroborator?: FrontDoorCorroborator,
 ): FrontDoorVerdict {
   if (buckets.length !== BUCKET_COUNT) {
     throw new Error(
@@ -216,6 +255,16 @@ export function decideFrontDoorVerdict(
       red,
       isDownEdge: true,
       reason: `direct probe got no answer in ${probe.attempts.length} attempt(s)`,
+    };
+  }
+  if (corroborator && corroborator.kind !== "ok") {
+    return {
+      state: "corroborator_unavailable",
+      red,
+      isDownEdge: false,
+      reason:
+        `direct probe answered; the Logs corroborator is ${corroboratorLabel(corroborator)} — ` +
+        "the 52x wedge rule could not be evaluated this tick",
     };
   }
   if (logsDown) {

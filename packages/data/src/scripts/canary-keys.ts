@@ -27,6 +27,7 @@
  */
 
 import { KEY_DISPATCH_REFUSED, KEY_DISPATCH_STALE } from "./canary-gha-dispatch";
+import { KEY_FRONT_DOOR_BLIND } from "./canary-front-door";
 import { KEY_BLIND, KEY_MISSING, KEY_UNCOLLECTED } from "./canary-fec-drop";
 import { KEY_HOLD_STALE, KEY_LABEL_STALE, KEY_OVERRUN } from "./canary-prod-session";
 import { KEY_MEM_STALE, KEY_PROBE_STALE } from "./canary-box-health";
@@ -46,6 +47,7 @@ export const CONDITION_KEYS: readonly string[] = [
   "sector_affinity", //    rollup stranded on a tag change
   KEY_DISPATCH_REFUSED, // gha_dispatch_refused     (FIX-1218, report-only)
   KEY_DISPATCH_STALE, //   gha_dispatch_stale       (FIX-1218, report-only)
+  KEY_FRONT_DOOR_BLIND, // front_door_corroborator_unavailable (FIX-1219, report-only)
   KEY_OVERRUN, //          prod_session_overrun
   KEY_LABEL_STALE, //      prod_session_label_stale
   KEY_HOLD_STALE, //       prod_session_hold_stale   (FIX-1177/1172)

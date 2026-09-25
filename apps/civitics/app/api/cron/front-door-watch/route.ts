@@ -75,9 +75,12 @@ import {
   decideFrontDoorVerdict,
   shouldSend,
   renderFrontDoorEmail,
+  isLogsEndpointGone,
+  corroboratorLabel,
   BUCKET_MS,
   BUCKET_COUNT,
   type FrontDoorBucket,
+  type FrontDoorCorroborator,
   type FrontDoorProbe,
 } from "@civitics/db";
 import { sendEmail } from "@/lib/email";
@@ -130,14 +133,16 @@ async function probeFrontDoor(baseUrl: string): Promise<FrontDoorProbe> {
  * 93 rows covering only the newest ~24 h), so anything that returns raw log
  * lines silently truncates. Four aggregate rows is far inside the cap.
  *
- * Returns null when the Logs API itself is unavailable, which is NOT evidence
- * of a healthy or unhealthy front door — the caller degrades to the direct
- * probe alone rather than guessing.
+ * rows is null when the Logs API itself returned nothing, which is NOT evidence
+ * of a healthy or unhealthy front door. `corroborator` says which failure it
+ * was (FIX-1219): `unavailable` is the endpoint gone (410 since 2026-09-24),
+ * `dark` is anything else. The verdict then reads corroborator_unavailable,
+ * never ok. Before FIX-1219 it read ok on zero-filled buckets, silently.
  */
 async function fetchBuckets(
   endBoundaryMs: number,
   token: string,
-): Promise<FrontDoorBucket[] | null> {
+): Promise<{ rows: FrontDoorBucket[] | null; corroborator: FrontDoorCorroborator }> {
   const startMs = endBoundaryMs - BUCKET_COUNT * BUCKET_MS;
   const sql = `
 select
@@ -164,21 +169,34 @@ order by b`;
       cache: "no-store",
       signal: AbortSignal.timeout(LOGS_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return {
+        rows: null,
+        corroborator: isLogsEndpointGone(res.status)
+          ? { kind: "unavailable", status: res.status }
+          : { kind: "dark", detail: `HTTP ${res.status}` },
+      };
+    }
     const json = (await res.json()) as {
       result?: Array<{ b: number; requests: number; n_5xx: number; n_52x: number }>;
     };
-    if (!Array.isArray(json.result)) return null;
+    if (!Array.isArray(json.result)) {
+      return { rows: null, corroborator: { kind: "dark", detail: "200 without a result array" } };
+    }
 
     // `b` comes back as MICROseconds since epoch.
-    return json.result.map((r) => ({
+    const rows = json.result.map((r) => ({
       startMs: Math.round(Number(r.b) / 1000),
       requests: Number(r.requests) || 0,
       n5xx: Number(r.n_5xx) || 0,
       n52x: Number(r.n_52x) || 0,
     }));
-  } catch {
-    return null;
+    return { rows, corroborator: { kind: "ok", buckets: rows.length } };
+  } catch (err) {
+    return {
+      rows: null,
+      corroborator: { kind: "dark", detail: err instanceof Error ? err.message : "request failed" },
+    };
   }
 }
 
@@ -203,13 +221,19 @@ export async function GET(request: NextRequest) {
 
   // Both instruments in parallel — they are independent, and the probe's worst
   // case (~15 s) should not serialise behind the Logs API's (~10 s).
-  const [probe, rows] = await Promise.all([
+  const [probe, logs] = await Promise.all([
     probeFrontDoor(supabaseUrl),
-    mgmtToken ? fetchBuckets(endBoundary, mgmtToken) : Promise.resolve(null),
+    mgmtToken
+      ? fetchBuckets(endBoundary, mgmtToken)
+      : Promise.resolve({
+          rows: null,
+          corroborator: { kind: "dark", detail: "SUPABASE_MANAGEMENT_API_KEY not configured" } as FrontDoorCorroborator,
+        }),
   ]);
 
-  const buckets = alignBuckets(rows ?? [], endBoundary);
-  const verdict = decideFrontDoorVerdict(buckets, probe);
+  const buckets = alignBuckets(logs.rows ?? [], endBoundary);
+  const verdict = decideFrontDoorVerdict(buckets, probe, logs.corroborator);
+  const logsApi = corroboratorLabel(logs.corroborator);
   const send = shouldSend(verdict, nowMs);
 
   // ── Alert ─────────────────────────────────────────────────────────────────
@@ -240,11 +264,8 @@ export async function GET(request: NextRequest) {
     checked_at: new Date(nowMs).toISOString(),
     // Named so a glance at the Vercel log answers "is this thing wired up?"
     // without anyone printing a secret to find out.
-    logs_api: mgmtToken
-      ? rows === null
-        ? "unavailable"
-        : `${rows.length} bucket(s)`
-      : "SUPABASE_MANAGEMENT_API_KEY not configured",
+    // FIX-1219: "N bucket(s)", "unavailable (410, FIX-1219)" or "dark (…)".
+    logs_api: logsApi,
     email_configured: Boolean(adminEmail),
     emailed,
     probe: { answered: probe.answered, attempts: probe.attempts },
@@ -272,10 +293,14 @@ export async function GET(request: NextRequest) {
         started_at: new Date(nowMs).toISOString(),
         completed_at: new Date().toISOString(),
         status: verdict.state === "down" ? "partial" : "complete",
+        // A blind tick still ran, so it stays "complete": the rollup registry
+        // counts only complete rows, and a watch that ran must not read as a
+        // watch that stopped. The canary reads the state, report-only (FIX-1219).
         metadata: {
           source: "vercel_cron",
           state: verdict.state,
           reason: verdict.reason,
+          logs_api: logsApi,
           probe_answered: probe.answered,
           emailed,
           buckets: body.buckets,

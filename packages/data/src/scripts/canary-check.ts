@@ -39,6 +39,13 @@ import {
   dispatchStampKey,
 } from "./canary-gha-dispatch";
 import {
+  FRONT_DOOR_WINDOW_MINUTES,
+  KEY_FRONT_DOOR_BLIND,
+  type FrontDoorCanary,
+  type FrontDoorWatchRow,
+  classifyFrontDoorWatch,
+} from "./canary-front-door";
+import {
   KEY_BLIND,
   KEY_MISSING,
   KEY_UNCOLLECTED,
@@ -736,6 +743,27 @@ async function fetchProdSessionStatus(): Promise<ProdSessionStatus | null> {
     );
     return null;
   }
+}
+
+// FIX-1219 — the front-door watch's last hour of firings. The classifier lives
+// in ./canary-front-door.ts; report-only, because the watch's direct probe
+// still pages on a front door that does not answer.
+async function fetchFrontDoorWatch(now: Date): Promise<FrontDoorCanary | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const since = new Date(now.getTime() - FRONT_DOOR_WINDOW_MINUTES * 60_000).toISOString();
+  const { data, error } = await db
+    .from("data_sync_log")
+    .select("started_at, metadata")
+    .eq("pipeline", "front_door_watch")
+    .gte("started_at", since)
+    .order("started_at", { ascending: false })
+    .limit(8);
+  if (error) {
+    console.warn(`[canary-check] front_door_watch read failed (non-fatal): ${error.message}`);
+    return null;
+  }
+  return classifyFrontDoorWatch((data ?? []) as FrontDoorWatchRow[]);
 }
 
 // FIX-1218 — the GHA dispatcher's per-call stamps, one PostgREST read of three
@@ -1711,6 +1739,9 @@ async function main(): Promise<number> {
       ghaDispatch ? `${ghaDispatch.refused.detail}; ${ghaDispatch.stale.detail}` : "unknown (read failed)"
     }`,
   );
+  // FIX-1219 — is the front-door watch's Logs corroborator seeing anything?
+  const frontDoor = await fetchFrontDoorWatch(now);
+  console.log(`[canary-check] front-door watch: ${frontDoor ? frontDoor.detail : "unknown (read failed)"}`);
   const holdStale = await fetchHoldStale();
   console.log(
     `[canary-check] session holds: ${holdStale ? holdStale.detail : "unknown (read failed)"}`,
@@ -1842,6 +1873,10 @@ async function main(): Promise<number> {
   }
   if (ghaDispatch?.stale.tier) {
     push(KEY_DISPATCH_STALE, ghaDispatch.stale.tier, ghaDispatch.stale.severity, ghaDispatch.stale.detail);
+  }
+  // FIX-1219 — report-only: the direct probe still pages; the 52x rule is blind.
+  if (frontDoor?.tier) {
+    push(KEY_FRONT_DOOR_BLIND, frontDoor.tier, frontDoor.severity, frontDoor.detail);
   }
   // FIX-950 — one key per state, for the FIX-1036 transition classifier's sake:
   // an overrun clearing and a dead label clearing are different recoveries and
