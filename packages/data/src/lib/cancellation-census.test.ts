@@ -321,6 +321,12 @@ test("FIX-1219: the census refuses --minutes over the clamp in BOTH modes, not o
   assert.doesNotMatch(src, /a\.by !== null && a\.minutes > MAX_ATTRIBUTION_MINUTES/);
 });
 
+test("FIX-1219: a bare `--` (pnpm passes it through) is skipped, not an unknown flag that exits 2 = dark", () => {
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  const sw = src.slice(src.indexOf("switch (argv[i])"), src.indexOf("default:", src.indexOf("switch (argv[i])")));
+  assert.match(sw, /case "--":\s*\n(\s*\/\/[^\n]*\n)*\s*break;/);
+});
+
 test("FIX-1219: the census builds no Logs URL and no SQL of its own — both come from the helper", () => {
   const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
   // (The header may still NAME logs.all as history; it must not build a URL.)

@@ -149,6 +149,11 @@ function parseArgs(argv: readonly string[]): Args {
       case "--json":
         a.json = true;
         break;
+      case "--":
+        // pnpm passes the separator through literally (`… :prod -- --minutes
+        // 90`, the form in the header). Refusing it made a usage error exit 2,
+        // which every consumer reads as DARK. Measured cc-155.
+        break;
       case "--help":
         console.log(
           "Usage: cancellation-census [--minutes N] [--end <iso>] [--baseline <per-min>] [--json]\n" +
