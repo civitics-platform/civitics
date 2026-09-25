@@ -897,6 +897,12 @@ type StartupBurst = {
   count: number;
   jobs_affected: number;
   jobs: string | null;
+  /** FIX-1222 — the bucket with each failure weighed at the 2-minute cadence
+   *  the threshold was sized on (least(1, interval / 2)); this, not `count`,
+   *  is what reaches burst_threshold. Equal to `count` unless a job firing
+   *  more often than every 2 minutes (the box-health-probe) failed in it.
+   *  Absent before the migration. */
+  weighted_count?: number;
 };
 
 type StartupTimeoutTiers = {
@@ -1017,7 +1023,9 @@ function describeStreak(s: StartupStreak): string {
 }
 
 function describeBurst(b: StartupBurst): string {
-  return `${b.bucket}: ${b.count} startup timeouts across ${b.jobs_affected} job(s) — ${b.jobs ?? "?"}`;
+  const w = b.weighted_count === undefined ? null : Number(b.weighted_count);
+  const weighted = w !== null && w !== Number(b.count) ? ` (${w} at the 2-min rate, FIX-1222)` : "";
+  return `${b.bucket}: ${b.count} startup timeouts${weighted} across ${b.jobs_affected} job(s) — ${b.jobs ?? "?"}`;
 }
 
 function describeFiring(f: CronJobFiring): string {
@@ -1557,7 +1565,8 @@ Triage: the missing/killed sections above usually explain it. If the ` +
           ? ` spanning ${tiers!.streakMinutesThreshold}+ min at its own cadence (FIX-1220)`
           : "") +
         ` (that job has stopped running, not merely stumbled) or ${tiers!.burstThreshold}+ ` +
-        `in one 60-minute bucket across all jobs (the box stopped accepting ` +
+        `in one 60-minute bucket across all jobs, each weighed at the 2-min cadence ` +
+        `(FIX-1222) (the box stopped accepting ` +
         `pg_cron's connections):\n` +
         (tiers!.perJob.length > 0
           ? tiers!.perJob.map((s) => `  - streak: ${describeStreak(s)}`).join("\n")

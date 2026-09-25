@@ -53,7 +53,8 @@ test("FIX-1220: the streak needs runs >= 6 AND runs x interval >= 12 min; STABLE
   assert.match(f, /WHERE s\.streak >= v_streak_n\s+AND s\.streak \* COALESCE\(c\.interval_minutes, 2\) >= v_streak_min/);
   // Both the degrade branch and the real answer report the new threshold.
   assert.equal((f.match(/'streak_minutes_threshold', v_streak_min/g) ?? []).length, 2);
-  // The burst is untouched (FIX-1222): still a count of runs per hourly bucket.
+  // The burst's runs floor stays; FIX-1222 adds the weighted decision beside it
+  // (cron-startup-burst-weight.test.ts owns that rule).
   assert.match(f, /FROM buckets WHERE n >= v_burst_m/);
 });
 
