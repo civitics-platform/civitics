@@ -3046,6 +3046,54 @@ export type Database = {
           },
         ]
       }
+      financial_entity_inbound_rollup: {
+        Row: {
+          from_id: string
+          rank: number
+          recipient_id: string
+          total_cents: number
+          tx_count: number
+        }
+        Insert: {
+          from_id: string
+          rank: number
+          recipient_id: string
+          total_cents: number
+          tx_count: number
+        }
+        Update: {
+          from_id?: string
+          rank?: number
+          recipient_id?: string
+          total_cents?: number
+          tx_count?: number
+        }
+        Relationships: []
+      }
+      financial_entity_inbound_totals: {
+        Row: {
+          donor_count: number
+          recipient_id: string
+          refreshed_at: string
+          sum_total: number
+          tx_total: number
+        }
+        Insert: {
+          donor_count: number
+          recipient_id: string
+          refreshed_at?: string
+          sum_total: number
+          tx_total: number
+        }
+        Update: {
+          donor_count?: number
+          recipient_id?: string
+          refreshed_at?: string
+          sum_total?: number
+          tx_total?: number
+        }
+        Relationships: []
+      }
       financial_entity_industry_overrides: {
         Row: {
           audited_sector: string | null
@@ -7548,6 +7596,10 @@ export type Database = {
       refresh_donor_party_rollup_slice: { Args: never; Returns: Json }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
       refresh_entity_engagement_rollup_mv: { Args: never; Returns: undefined }
+      refresh_fe_inbound_rollup_unit: {
+        Args: { p_recipients: string[] }
+        Returns: Json
+      }
       refresh_fe_totals_slice: { Args: never; Returns: Json }
       refresh_gb_page_cache: { Args: never; Returns: number }
       refresh_group_donor_rollup: { Args: never; Returns: Json }
