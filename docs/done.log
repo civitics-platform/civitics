@@ -1497,3 +1497,4 @@
 2026-09-26 | FIX-1214 | 5a6cf3fe | prod-only | chore(fixes): record prod verification of FIX-1214
 2026-09-26 | FIX-1214 | d958e002 | local-only | fix(app): FIX-1214 — every GET-only admin-client route passes noStoreFetch (the FIX-1208 shape); the three revalidate=300 status routes are exempt by design
 2026-09-26 | FIX-1227 | 155975d9 | local-only | feat(app): FIX-1227 — a labelled read timeout marks the render degraded; a degraded render is never cached by Next
+2026-09-26 | FIX-1232 | 64d846de | local-only | docs: FIX-1232 — receipts lines (D5); PROMPT_TEMPLATE gate (f) in renders; prod-holds runner section
