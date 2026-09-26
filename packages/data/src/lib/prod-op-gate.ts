@@ -144,6 +144,24 @@ export function formatPollLine(
     (!open && nextPoll ? ` next_poll=${hhmmss(nextPoll)}` : "");
 }
 
+/** Seconds after :00/:15/:30/:45 a Logs API read must stay clear of (rule 190: "+0–1 min"). */
+export const QUARTER_HOUR_CLEAR_S = 120;
+/** The step a paced poll moves by (cc-159 D2). */
+export const QUARTER_HOUR_SHIFT_S = 90;
+
+/**
+ * Rule 190 — a Logs API read lands clear of :00/:15/:30/:45 +0–1 min, where
+ * `front-door-watch` (Vercel cron, every 15 min) spends the same token
+ * (10 requests / 60 s). A time inside that window moves 90 s later, and again
+ * if it is still inside: :15:00 → :16:30 → :18:00, :15:31 → :17:01. Anything
+ * already clear is returned unchanged. Pure.
+ */
+export function paceOffQuarterHour(ms: number): number {
+  let t = ms;
+  while (Math.floor(t / 1000) % 900 < QUARTER_HOUR_CLEAR_S) t += QUARTER_HOUR_SHIFT_S * 1000;
+  return t;
+}
+
 /** Thrown when the gate never opened inside `maxWaitSeconds`. */
 export class GateTimeout extends Error {
   readonly last: ProdOpGate | null;
@@ -183,6 +201,14 @@ export interface WaitOptions {
    * does throw anyway, the poll counts as blocked by it (fail closed).
    */
   andAlso?: { name: string; read: () => Promise<AlsoReading> };
+  /**
+   * Moves a poll's scheduled time (epoch ms) later, never earlier — applied to
+   * the first poll and to every `next_poll`. The census half reads the Logs
+   * API, whose token `front-door-watch` shares at :00/:15/:30/:45, so a runner
+   * with a census passes {@link paceOffQuarterHour} (cc-159 D2, rule 190).
+   * Absent: polls are exactly `pollSeconds` apart, FIX-1215's schedule.
+   */
+  pace?: (ms: number) => number;
   /** Test seams. */
   readGate?: (dbUrl: string, expectedSeconds: number) => Promise<ProdOpGate>;
   sleep?: (ms: number) => Promise<void>;
@@ -216,9 +242,16 @@ export async function waitForProdOpGate(opts: WaitOptions): Promise<WaitResult> 
   const polls: GatePoll[] = [];
   let last: ProdOpGate | null = null;
 
+  // A paced first poll waits for its slot too — a launch at :15:20 must not
+  // read the census on the minute the rule exists to avoid.
+  if (opts.pace) {
+    const first = opts.pace(t0);
+    if (first > t0) await sleep(first - t0);
+  }
+
   for (;;) {
     const at = new Date(now());
-    const next = new Date(at.getTime() + pollMs);
+    const next = new Date(opts.pace ? opts.pace(at.getTime() + pollMs) : at.getTime() + pollMs);
     const lastChance = next.getTime() > deadline;
     let g: ProdOpGate | null = null;
     let error: string | undefined;

@@ -664,8 +664,12 @@ export function censusHalfReading(code: number, summary: string): AlsoReading {
   return { name: "census", ok: code === 0 || code === CENSUS_EXIT.unavailable, summary };
 }
 
-/** cancellation-census.ts as a child process; resolves its exit code (2 on any launch failure). */
-function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: number; summary: string }> {
+/**
+ * cancellation-census.ts as a child process; resolves its exit code (2 on any
+ * launch failure). Exported for session:wait-for-gate's census half (cc-159 D2),
+ * so both waits read the census through one spawn.
+ */
+export function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: number; summary: string }> {
   return new Promise((resolve) => {
     const child = spawn(
       "tsx", ["src/scripts/cancellation-census.ts", "--minutes", String(minutes), "--json"],
