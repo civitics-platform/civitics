@@ -286,6 +286,7 @@ across every retained successful run.
 | `refresh_derived_mvs` | 9, 10 | refresh-derived-mvs-daily / -weekly | `0 6 * * *`, `47 0 * * 2` | 1300 s / 1943 s | session | ✅ |
 | `run_entity_connections_rebuild` | 45, (2, 22 inactive) | ec-crawl | `*/15 * * * *` | 56 s (max 2114 s) | session | ✅ |
 | `run_fe_totals_crawl` | 46 | fe-crawl | `*/30 * * * *` | 71 s (max 1579 s) | session | ✅ |
+| `run_fe_inbound_rollup` (cc-159) | 55 | fe-inbound-rollup-refresh | `13 2 * * *` | new (see below) | session | ✅ |
 | `run_rule_taggers` | 11, 12 | rule-taggers-daily / -weekly | `30 6 * * *`, `0 16 * * 2` | 836 s / 3717 s | session | ✅ |
 | `donor_rollup_rebuild_bulk` | 24 | donor-rollup-refresh | `0 9,12 * * *` | 2704 s | session | ✅ |
 | `refresh_official_donor_rollup_incremental` | — (called by 24) | — | — | — | session | ✅ |
@@ -311,6 +312,22 @@ across every retained successful run.
 
 The inactive jobs (2, 13, 16, 22) are guarded anyway: a job that is re-enabled
 later must not silently be outside the interlock.
+
+**The FE inbound rollup (FIX-1217, cc-159).** `run_fe_inbound_rollup(p_max_units)`
+owns `financial_entity_inbound_rollup` / `_totals` (migration
+`20260926000000`); nothing else writes them, and a remediation that deletes FR
+donation rows restores its recipients with `refresh_fe_inbound_rollup_unit(<ids>)`.
+Its state is two `pipeline_state` keys: `financial_entity_inbound_rollup_cursor`
+(present only during the bootstrap: `cursor` = the last recipient done,
+`target` = the watermark the bootstrap will hand over, captured once) and
+`financial_entity_inbound_rollup_watermark` (`last_indexed_at`, plus
+`resume_target` / `resume_after` while a capped window is half done). Every unit
+of 200 recipients commits together with its cursor or resume point, so a
+cancelled or deferred bootstrap — the watchdog, a supervised session (it skips
+like every row here), the FEC interlock — loses at most the unit in flight: the
+next firing, scheduled at 02:13 or CALLed by hand, carries on from the cursor.
+Its `data_sync_log` pipeline is `financial_entity_inbound_rollup`, so a session
+holds it with the rest of this set.
 
 **The xact-lock three** (`group_donor_rollup_refresh`,
 `official_vote_stats_rebuild`, `contract_flow_rollups_rebuild`) hold their

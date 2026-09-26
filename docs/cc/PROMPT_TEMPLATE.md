@@ -140,7 +140,10 @@ and its database.
   outside 05:45–09:00 UTC, and ≥ 60 min before any weekend-only job. Vacuum
   spacing is PROPORTIONAL to the job, not one number: ≥ 90 min after the END of
   any unguarded VACUUM job whose wall exceeded 60 s (`fr-vacuum-analyze` 03:00
-  = 161–212 s; `ec`/`fe` 04:30/04:50 = 10–130 s), ≥ 10 min after any other (the
+  is a BAND, not a class: ~10 s between drops, 161–212 s after a weekend drop
+  (14-d mean 87.6 s, cc-158 read 2) — so the ≥ 90-min spacing applies on the
+  night after a drop and ≥ 10 min otherwise; read the LAST wall, never assume
+  the class; `ec`/`fe` 04:30/04:50 = 10–130 s), ≥ 10 min after any other (the
   11:0x / 17:0x series is 0.2–1.5 s), and none of the > 60 s ones scheduled
   inside `[start, start + 2 × expected wall]`. Say which window you are in,
   with the clock reading. These conditions — (g), (d), (e), rule 155's vacuum
