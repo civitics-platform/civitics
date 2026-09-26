@@ -1,0 +1,59 @@
+{
+  "cc": "162",
+  "prompt": "cc-prompt-162-census-in-renders-edge-floor-breather-census-call-budget.md",
+  "started_at": "2026-09-26T21:13:01Z",
+  "finished_at": "2026-09-26T22:46:45Z",
+  "head_before": "18376fed",
+  "head_after": "e9f737a8",
+  "commits": [
+    {
+      "sha": "fd1c1cd8",
+      "subject": "docs(fixes): file FIX-1232 — the front-door census counts queries, not renders; the edge half has no floor; the paced breather never reads it"
+    },
+    {
+      "sha": "7a1f5a03",
+      "subject": "test(db,data): FIX-1232 — census render fixtures from the Logs endpoint (cc-151 / cc-154 / cc-159 windows) + the edge p0 series"
+    },
+    {
+      "sha": "52549f38",
+      "subject": "feat(db): FIX-1232 — sqlCancellationRenders / queryCancellationRenders: 57014s by second"
+    },
+    {
+      "sha": "8fea6c73",
+      "subject": "docs(fixes): file FIX-1233 — the census edge half's binomial floor is stopped: the measured seven-day 5xx rate (1.07 %) is above the 1 % gate"
+    },
+    {
+      "sha": "07d0db33",
+      "subject": "feat(data): FIX-1232 — the census judges renders (Poisson floor); JSON gains renders/events/floors"
+    },
+    {
+      "sha": "cd039e74",
+      "subject": "feat(data): FIX-1232 — the paced runner reads the census in the breather and budgets renders per CALL; the per-reading rule (3) stop is retired"
+    },
+    {
+      "sha": "64d846de",
+      "subject": "docs: FIX-1232 — receipts lines (D5); PROMPT_TEMPLATE gate (f) in renders; prod-holds runner section"
+    },
+    {
+      "sha": "e9f737a8",
+      "subject": "chore(fixes): sync status after FIX-1232"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1232"
+  ],
+  "fixes_filed": [
+    "FIX-1232",
+    "FIX-1233"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "None to the database: no migration, no DDL, no SQL write, no pg_cron change, no runner launch. Six pushes to main (each a Vercel deploy) at 21:26:39, 21:34:41, 21:42:01, 22:40:08, 22:44:46 and 22:45:16 UTC, plus this report. The only Vercel-served code they touch is packages/db/src/supabase-logs.ts, whose edge builder (front-door-watch's read) is unchanged. prod_session_state() read held=false / reason clear before every push. The 21:34:28 read's value was cut off by my output slicing, so the re-read at 21:34:46 is the one that shows false. Everything else on prod was a read: 26 Logs API reads, at most 4 in any minute, none in :00/:15/:30/:45 +0-1, no 429; and 9 read-only prod_session_state() queries (the last at 22:48:30, before this report's push).",
+  "ci": "green",
+  "stopped_items": [
+    "D2 edge half: STOPPED by the prompt's own read-3 stop. The seven-day edge_logs 5xx rate reads 1.0676 % (1,862 / 174,413), above the 1 % gate it would floor. Not built: binomP99, --p0, the edge count floor. edgeVerdictFor is unchanged. Filed FIX-1233 with the per-day series. Consequence: cc-151's pre-CALL 6 reading still FAILs on edge 2/183 = 1.09 %, and the runner would still stop there. The rule-105 flip is complete for the renders half only.",
+    "D3 (i) premise 'breather_timeout stays a stop' is false: the tree has always PROCEEDED on a breather timeout (cc-148 D2; the design note's D3 table has the same error). Built as the tree has it (a timeout proceeds, and the census half's pending renders are recorded), NOT turned into a stop. Craig's decision; see section 4.",
+    "Verification 'session:wait-for-gate --expected-minutes 1 --census report against LOCAL exits 0 and prints the renders line' cannot be satisfied. The clone's prod_op_gate() reads a:nightly_due (the clone has no nightly_cron row), so the census half is never read: exit 7 after 1 min, 3 polls, 21:52:07-21:52:47. And neither .env.local carries SUPABASE_MANAGEMENT_API_KEY. The same summary line was exercised on prod through runCensus(60) at 22:38:04 instead.",
+    "No local runner rehearsal: the same nightly_due gate blocks the runner's wait on the clone, and the runner skips every census half against local anyway. The breather/budget loop is covered by the pure-function suite (runner 37 -> 45 tests), not by a CALL."
+  ]
+}
