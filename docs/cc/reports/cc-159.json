@@ -1,0 +1,70 @@
+{
+  "cc": "159",
+  "prompt": "cc-prompt-159-fix1217-1225-landing-partial-spending-index-fe-inbound-rollup-fix1226-writer-pattern-bs.md",
+  "started_at": "2026-09-26T01:38:15Z",
+  "finished_at": "2026-09-26T04:00:21Z",
+  "head_before": "ff51c3ed",
+  "head_after": "581bc3cb",
+  "commits": [
+    {
+      "sha": "200a98c2",
+      "subject": "fix(data): FIX-1226 — the unscoped PAC entity upsert no longer overwrites received totals on conflict"
+    },
+    {
+      "sha": "e321504d",
+      "subject": "docs(audits): FIX-1221 Pattern B — the retention's first firing"
+    },
+    {
+      "sha": "a3a62cf6",
+      "subject": "chore(fixes): sync status after FIX-1221"
+    },
+    {
+      "sha": "7240c1a7",
+      "subject": "feat(data): FIX-1217 — wait-for-gate composes the census (stop|report|off); the FR spending index build script"
+    },
+    {
+      "sha": "66cd1394",
+      "subject": "feat(db): FIX-1217 — the FE inbound rollup migration"
+    },
+    {
+      "sha": "8a4a326d",
+      "subject": "feat(app): FIX-1217, FIX-1225 — the donor page reads the FE inbound rollup; the spending read is bounded"
+    },
+    {
+      "sha": "cd3c1437",
+      "subject": "chore(fixes): sync status after FIX-1217, FIX-1225"
+    },
+    {
+      "sha": "1c7307ef",
+      "subject": "chore(fixes): record prod verification of FIX-1217, FIX-1225"
+    },
+    {
+      "sha": "ee961c98",
+      "subject": "chore(fixes): sync status after the FIX-1217, FIX-1225 prod record"
+    },
+    {
+      "sha": "581bc3cb",
+      "subject": "docs(fixes): FIX-1226 / 1194 appends; file FIX-1227, FIX-1228; gate (g)'s fr-vacuum band; prod-holds B paragraph (cc-159)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1221",
+    "FIX-1217",
+    "FIX-1225"
+  ],
+  "fixes_filed": [
+    "FIX-1227",
+    "FIX-1228"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260926000000_fix1217_fe_inbound_rollup.sql"
+  ],
+  "prod_writes": "Three landings, each through session:wait-for-gate:prod --census stop --then, from the primary checkout, each under a claimed FIX-950 session released afterwards. (i) 02:11:11-02:12:44 UTC: CREATE INDEX CONCURRENTLY financial_relationships_fe_spending_idx (to_id, amount_cents DESC) WHERE relationship_type IN (contract, grant) AND to_type = financial_entity, plus its COMMENT, via scripts/fix1217-build-fr-spending-index.mjs: valid, 114,360,320 B. (ii) ~02:51:35 UTC: migration 20260926000000 via db-push-prod.mjs: the index IF NOT EXISTS skipped (already there); tables financial_entity_inbound_rollup and financial_entity_inbound_totals with RLS, a SELECT policy and grants; refresh_fe_inbound_rollup_unit(uuid[]) and run_fe_inbound_rollup(integer) with REVOKE/GRANT; cron.schedule fe-inbound-rollup-refresh (prod jobid 55, 13 2 * * *, active, first scheduled firing 2026-09-27 02:13 UTC); its cron_job_budget row (1,800 s); its cron_job_first_seen row (02:51:37); the pipeline_state bootstrap cursor row. (iii) 03:12:34-03:13:36 UTC: CALL public.run_fe_inbound_rollup(p_max_units := 1000) via db-query --prod --call --yes-i-mean-prod under the claimant GUC: complete and caught_up, 49 units, 9,656 recipients, 561,499 rollup rows + 9,656 totals rows, one data_sync_log row (pipeline financial_entity_inbound_rollup), the cursor row replaced by financial_entity_inbound_rollup_watermark {last_indexed_at 2026-09-26 02:12:34.316}. Each claim wrote and cleared its rollup_watch_overrides holds (16 at (i) and (ii), 17 at (iii)). Pushes to main, each a Vercel deploy (the app changed only at 8a4a326d, Vercel success before 03:21:30): 01:55:47, 01:56:39, 01:57:11, 02:09:47, 02:23:03, 03:17:36, 03:27:05, 04:00:02, and this report. No VACUUM, no EXPLAIN ANALYZE and no ad-hoc DELETE on prod. Every other prod contact was a read: db-query --prod (counts, EXPLAIN, pg_stat_user_tables, cron reads, prod_op_gate), the census (Logs API, 7 readings), gh, and HTTPS GETs of three donor pages on the Vercel origin.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2b, FIX-1224's Pattern B: the dispatched 05:00 UTC canary had not fired when read 2 ran (01:55 UTC, and this session ended before 05:00), so there was no receipt to quote. No commit; FIX-1224 stays open with its receipt named on the bullet.",
+    "Item 6's function-log check: the Vercel CLI on this machine has no stored credentials (vercel logs starts an interactive device login), so the function log for the three renders was not read. What stands in for it: every section of the three renders is populated (a withDbTimeout timeout renders as empty lists and 0), and the census read 0 57014s over 03:11:34-03:26:34, which covers the renders.",
+    "Item 6's curls went to https://civitics-civitics.vercel.app, not https://civitics.com: Cloudflare answers every scripted client on civitics.com (home, robots.txt, a browser user-agent) with a 403 managed challenge (cf-mitigated: challenge), as docs/CLOUDFLARE.md section 5 records. The Vercel origin serves the same deployment."
+  ]
+}
