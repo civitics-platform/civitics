@@ -1,0 +1,35 @@
+{
+  "read_at_utc": "2026-09-26T21:17:36.503Z",
+  "wall_ms": 1971,
+  "kind": "buckets",
+  "window": {
+    "start": "2026-09-24T09:00:00Z",
+    "end": "2026-09-24T09:35:00Z"
+  },
+  "sql": "\nSELECT\n  toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b,\n  countIf(event_message LIKE '%canceling statement due to statement timeout%') AS n_timeout,\n  countIf(event_message LIKE '%canceling statement due to user request%') AS n_user\nFROM logs\nWHERE source = 'postgres_logs'\n  AND event_message LIKE '%canceling statement due to%'\n  AND {{time_filter}}\nGROUP BY b\nORDER BY b",
+  "answer": {
+    "kind": "rows",
+    "rows": [
+      {
+        "b": 1790240820,
+        "n_timeout": 1,
+        "n_user": 0
+      },
+      {
+        "b": 1790241540,
+        "n_timeout": 1,
+        "n_user": 0
+      },
+      {
+        "b": 1790241840,
+        "n_timeout": 1,
+        "n_user": 0
+      },
+      {
+        "b": 1790242200,
+        "n_timeout": 6,
+        "n_user": 0
+      }
+    ]
+  }
+}

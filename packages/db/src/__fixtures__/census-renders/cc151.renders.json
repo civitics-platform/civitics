@@ -1,0 +1,35 @@
+{
+  "read_at_utc": "2026-09-26T21:17:19.071Z",
+  "wall_ms": 2117,
+  "kind": "renders",
+  "window": {
+    "start": "2026-09-24T09:00:00Z",
+    "end": "2026-09-24T09:35:00Z"
+  },
+  "sql": "\nSELECT\n  toUnixTimestamp(toStartOfSecond(timestamp)) AS s,\n  count() AS n,\n  anyHeavy(log_attributes['parsed.query']) AS q\nFROM logs\nWHERE source = 'postgres_logs'\n  AND event_message LIKE '%canceling statement due to statement timeout%'\n  AND {{time_filter}}\nGROUP BY s\nORDER BY s",
+  "answer": {
+    "kind": "rows",
+    "rows": [
+      {
+        "n": 1,
+        "q": "WITH pgrst_source AS ( SELECT \"public\".\"proposals\".\"id\" FROM \"public\".\"proposals\"  ORDER BY \"public\".\"proposals\".\"introduced_at\" DESC NULLS LAST, \"public\".\"proposals\".\"id\" ASC  LIMIT $1 OFFSET $2 )  SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status, '' AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+        "s": 1790240873
+      },
+      {
+        "n": 1,
+        "q": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_id\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_id\" uuid) LIMIT 1) pgrst_body , LATERAL (SELECT \"public\".\"get_official_page\"(\"p_id\" := pgrst_body.\"p_id\") pgrst_scalar) pgrst_call) SELECT null::bigint AS total_result_set, 1 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->0, 'null') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status, '' AS response_inserted FROM (SELECT \"get_official_page\".* FROM \"pgrst_source\" AS \"get_official_page\"   LIMIT $2 OFFSET $3) _postgrest_t",
+        "s": 1790241599
+      },
+      {
+        "n": 1,
+        "q": "WITH pgrst_source AS ( SELECT \"public\".\"officials\".\"id\", \"public\".\"officials\".\"full_name\", \"public\".\"officials\".\"role_title\", \"public\".\"officials\".\"party\" FROM \"public\".\"officials\" WHERE  \"public\".\"officials\".\"id\" = ANY ($1)    LIMIT $2 OFFSET $3 )  SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status, '' AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+        "s": 1790241861
+      },
+      {
+        "n": 6,
+        "q": "WITH pgrst_source AS ( SELECT \"public\".\"entity_tags\".\"entity_id\", \"public\".\"entity_tags\".\"tag\", \"public\".\"entity_tags\".\"tag_category\", \"public\".\"entity_tags\".\"display_label\", \"public\".\"entity_tags\".\"display_icon\", \"public\".\"entity_tags\".\"visibility\", \"public\".\"entity_tags\".\"confidence\", \"public\".\"entity_tags\".\"generated_by\", \"public\".\"entity_tags\".\"ai_model\" FROM \"public\".\"entity_tags\" WHERE  \"public\".\"entity_tags\".\"entity_type\" = $1 AND  \"public\".\"entity_tags\".\"entity_id\" = ANY ($2)    LIMIT $3 OFFSET $4 )  SELECT null::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), '[]') AS body, nullif(current_setting('response.headers', true), '') AS response_headers, nullif(current_setting('response.status', true), '') AS response_status, '' AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+        "s": 1790242226
+      }
+    ]
+  }
+}

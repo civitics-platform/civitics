@@ -1,0 +1,51 @@
+{
+  "read_at_utc": "2026-09-26T21:19:09.790Z",
+  "wall_ms": 1746,
+  "kind": "edge900",
+  "window": {
+    "start": "2026-09-26T02:00:00Z",
+    "end": "2026-09-26T03:30:00Z"
+  },
+  "sql": "\nSELECT\n  toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL 900 SECOND)) AS b,\n  count() AS requests,\n  countIf(toInt32OrZero(log_attributes['response.status_code']) >= 500) AS n_5xx,\n  countIf(toInt32OrZero(log_attributes['response.status_code']) BETWEEN 520 AND 526) AS n_52x\nFROM logs\nWHERE source = 'edge_logs'\n  AND {{time_filter}}\nGROUP BY b\nORDER BY b",
+  "answer": {
+    "kind": "rows",
+    "rows": [
+      {
+        "b": 1790388000,
+        "n_52x": 0,
+        "n_5xx": 0,
+        "requests": 595
+      },
+      {
+        "b": 1790388900,
+        "n_52x": 0,
+        "n_5xx": 0,
+        "requests": 541
+      },
+      {
+        "b": 1790389800,
+        "n_52x": 0,
+        "n_5xx": 0,
+        "requests": 424
+      },
+      {
+        "b": 1790390700,
+        "n_52x": 0,
+        "n_5xx": 0,
+        "requests": 165
+      },
+      {
+        "b": 1790391600,
+        "n_52x": 0,
+        "n_5xx": 0,
+        "requests": 434
+      },
+      {
+        "b": 1790392500,
+        "n_52x": 0,
+        "n_5xx": 0,
+        "requests": 582
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "read_at_utc": "2026-09-26T21:19:07.324Z",
+  "wall_ms": 1658,
+  "kind": "diag",
+  "window": {
+    "start": "2026-09-26T02:00:00Z",
+    "end": "2026-09-26T03:30:00Z"
+  },
+  "sql": "\nSELECT\n  toUnixTimestamp(toStartOfSecond(timestamp)) AS s,\n  countIf(event_message LIKE '%canceling statement due to statement timeout%') AS n_timeout,\n  countIf(log_attributes['parsed.sql_state_code'] = '57014') AS n_57014,\n  countIf(event_message LIKE '%canceling statement due to user request%') AS n_user,\n  groupArray(extract(log_attributes['parsed.query'], '\"public\"[.]\"([a-z0-9_]+)\"')) AS rels,\n  groupArray(toString(timestamp)) AS ts,\n  groupArray(log_attributes['parsed.session_id']) AS sessions\nFROM logs\nWHERE source = 'postgres_logs'\n  AND (event_message LIKE '%canceling statement due to%' OR log_attributes['parsed.sql_state_code'] = '57014')\n  AND {{time_filter}}\nGROUP BY s\nORDER BY s",
+  "answer": {
+    "kind": "rows",
+    "rows": []
+  }
+}
