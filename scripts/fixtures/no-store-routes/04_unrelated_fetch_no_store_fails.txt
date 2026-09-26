@@ -1,0 +1,10 @@
+// Wrong-but-green: a no-store fetch elsewhere in the file protects the admin
+// read only if it runs FIRST in the same request; a file-level scan cannot
+// prove that (front-door-watch's Logs fetch happened to).
+import { createAdminClient } from "@civitics/db";
+export const dynamic = "force-dynamic";
+export async function GET() {
+  const { data } = await createAdminClient().from("data_sync_log").select("id").limit(1);
+  const logs = await fetch("https://api.example.com/logs", { cache: "no-store" });
+  return Response.json({ data, logs: logs.status });
+}

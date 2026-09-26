@@ -1,0 +1,6 @@
+import { createAdminClient } from "@civitics/db";
+async function handler() {
+  const { data } = await createAdminClient().rpc("x");
+  return Response.json(data);
+}
+export { handler as GET };

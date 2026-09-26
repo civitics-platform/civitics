@@ -1,0 +1,6 @@
+import { createAdminClient } from "@civitics/db";
+export async function GET() {
+  // TODO: createAdminClient({ fetch: noStoreFetch })
+  const { data } = await createAdminClient().rpc("x");
+  return Response.json(data);
+}

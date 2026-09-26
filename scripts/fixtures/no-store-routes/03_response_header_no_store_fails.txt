@@ -1,0 +1,9 @@
+// Wrong-but-green (cc-161 read 2): the no-store is on the RESPONSE, not on the
+// client's fetch — the RPC is still Data-Cached.
+import { NextResponse } from "next/server";
+import { createAdminClient } from "@civitics/db";
+export const dynamic = "force-dynamic";
+export async function GET() {
+  const { data } = await createAdminClient().rpc("get_costs");
+  return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+}

@@ -122,7 +122,9 @@ export function classifySource(raw, { isRoute }) {
   if (noStoreCalls === calls) escape = "noStoreFetch";
   else if (/\b(cookies|headers)\s*\(\s*\)/.test(code)) escape = "request-bound";
   else if (/\b(unstable_)?noStore\s*\(\s*\)/.test(code)) escape = "noStore()";
-  else if (/\/\/\s*no-store-exempt:\s*\S/.test(raw)) escape = "exempt";
+  // The reason must be on the marker's own line: `\s*` would cross the newline
+  // and let an empty `// no-store-exempt:` borrow the next line's code.
+  else if (/\/\/[ \t]*no-store-exempt:[ \t]*\S/.test(raw)) escape = "exempt";
   return { inScope: true, why: isRoute ? "GET route" : "api helper", calls, noStoreCalls, ok: escape !== null, escape };
 }
 

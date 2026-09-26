@@ -176,14 +176,18 @@ passing, and both failures the clock rather than the data.
 
 - `pnpm build` (or `turbo run typecheck` + `lint` for a code-only change) before
   any non-`[skip vercel]` commit.
-- **`tests.yml` runs SEVEN blocking checks** (FIX-1128 added the last one):
+- **`tests.yml` runs EIGHT blocking checks** (FIX-1214 added the last one):
   `typecheck` · `lint` · `check:reads` · `check:render-timeouts` ·
-  `check:workflow-parity` · `check:proconfig` · the three unit suites
-  (`@civitics/data`, `@civitics/app-civitics`, `@civitics/db`). Run the ones a
-  change can plausibly break before pushing, not after.
+  `check:workflow-parity` · `check:proconfig` · `check:no-store-routes` · the
+  three unit suites (`@civitics/data`, `@civitics/app-civitics`,
+  `@civitics/db`). Run the ones a change can plausibly break before pushing,
+  not after. `check:render-timeouts` also fails a `revalidate` page that reads
+  through `withDbTimeout` without calling `assertRenderNotDegraded()`
+  (FIX-1227).
 - The `scripts/test-*.mjs` suites are fast and dependency-free — run them
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `session:worktree:test`,
-  `drain:test`, `check:proconfig:test`).
+  `drain:test`, `check:proconfig:test`, `check:no-store-routes:test`,
+  `check:render-timeouts:test`).
 - `pnpm fixes:check` after each commit.
 - **A GHA-workflow FIX's receipt is the next run AT ITS SLOT — dispatched or
   scheduled** (rule 71, rewritten by FIX-1218). `nightly.yml`,

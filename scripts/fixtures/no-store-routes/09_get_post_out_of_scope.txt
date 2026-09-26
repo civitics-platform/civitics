@@ -1,0 +1,10 @@
+// A module exporting POST gets revalidate = 0 at request time (Next's
+// hasNonStaticMethods), so its GET reads are already "auto no cache".
+import { createAdminClient } from "@civitics/db";
+export async function GET() {
+  const { data } = await createAdminClient().from("comments").select("id");
+  return Response.json(data);
+}
+export async function POST(req: Request) {
+  return Response.json(await req.json());
+}

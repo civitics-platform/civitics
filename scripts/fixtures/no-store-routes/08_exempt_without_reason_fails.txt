@@ -1,0 +1,6 @@
+import { createAdminClient } from "@civitics/db";
+export async function GET() {
+  // no-store-exempt:
+  const { data } = await createAdminClient().rpc("snapshot");
+  return Response.json(data);
+}

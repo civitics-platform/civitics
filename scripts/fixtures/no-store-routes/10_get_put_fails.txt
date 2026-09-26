@@ -1,0 +1,9 @@
+// PUT is NOT in Next 14.2's hasNonStaticMethods list (it checks POST twice).
+import { createAdminClient } from "@civitics/db";
+export async function GET() {
+  const { data } = await createAdminClient().from("prefs").select("id");
+  return Response.json(data);
+}
+export async function PUT(req: Request) {
+  return Response.json(await req.json());
+}

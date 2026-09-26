@@ -136,6 +136,20 @@ jobs:
       - name: Inert statement_timeout guard
         run: pnpm check:proconfig
 
+      # Blocking (FIX-1214) — flags a GET Route Handler (or an app/api helper)
+      # whose admin-client reads Next 14 can answer from its Data Cache: a
+      # supabase-js read from a GET handler is "auto cache" with revalidate
+      # false — a one-year entry — even under force-dynamic, unless something
+      # earlier in the request lowered revalidate to 0. cron-watchdog answered
+      # from one cached payload for 17 h that way (FIX-1208), and cc-161
+      # measured /api/graph/chord live: two calls, zero gateway requests.
+      # Protection is createAdminClient({ fetch: noStoreFetch }), a request-
+      # bound call, or `// no-store-exempt: <reason>`; a bare `no-store` string
+      # is not. Predicate: scripts/lib/no-store-routes.mjs. Pure text scan, no
+      # DB or secrets.
+      - name: No-store GET route guard
+        run: pnpm check:no-store-routes
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests

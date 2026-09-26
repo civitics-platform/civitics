@@ -1,0 +1,8 @@
+import { cookies } from "next/headers";
+import { createAdminClient, createServerClient } from "@civitics/db";
+export async function GET() {
+  const supabase = createServerClient(cookies());
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data } = await createAdminClient().from("kill_switch_events").select("id");
+  return Response.json({ user, data });
+}

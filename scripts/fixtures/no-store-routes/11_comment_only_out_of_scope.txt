@@ -1,0 +1,6 @@
+/**
+ * MUST be called with createAdminClient() — the insert bypasses RLS.
+ */
+export async function GET() {
+  return Response.json({ ok: true });
+}

@@ -1,0 +1,7 @@
+import { createAdminClient } from "@civitics/db";
+export const revalidate = 300;
+export async function GET() {
+  // no-store-exempt: a 5-minute Data Cache is this route's design.
+  const { data } = await createAdminClient().rpc("snapshot");
+  return Response.json(data);
+}

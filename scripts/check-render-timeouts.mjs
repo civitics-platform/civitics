@@ -36,14 +36,24 @@
 // Render-time helpers imported from apps/civitics/src/lib are NOT scanned (that
 // dir is shared with client code); wrap their reads by hand.
 //
+// Second rule (FIX-1227): a `page.tsx` that exports a numeric `revalidate` and
+// reads through `withDbTimeout` / `withDbTimeoutValue` must call
+// `assertRenderNotDegraded()` (apps/civitics/src/lib/degraded-render.ts) after
+// its reads. The wrapper resolves `{ data: null }` on a timeout instead of
+// throwing, so without the helper a render whose reads ran out of time is
+// cached for the whole revalidate window as empty lists and zero stats (cc-161
+// read 5 measured exactly that). Opt-out: `// degraded-ok: <reason>` anywhere
+// in the page. Lexical, like the first rule: the helper's presence, not its
+// placement, is what is checked — placement after the reads is review's job.
+//
 // Modes:
 //   node scripts/check-render-timeouts.mjs           → check, exit 1 on offenders
 //   node scripts/check-render-timeouts.mjs --audit   → dump EVERY PostgREST read
 //       under the scanned surface with wrapped/exempt columns
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const SCAN_DIRS = ["apps/civitics/app"];
@@ -283,53 +293,100 @@ function scanFile(path) {
 }
 
 // ---------------------------------------------------------------------------
+// Rule 2 (FIX-1227) — a revalidate page must refuse to cache a degraded render
+// ---------------------------------------------------------------------------
+
+/**
+ * For one page.tsx source: null when it complies, otherwise the reason it
+ * does not. Pure, so scripts/test-check-render-timeouts.mjs can drive it.
+ */
+export function degradedHelperOffence(raw) {
+  const code = stripComments(raw);
+  if (!/\bexport\s+const\s+revalidate\s*=\s*\d+/.test(code)) return null;
+  if (!/\bwithDbTimeout(?:Value)?\s*(?:<[^;()]*?>)?\s*\(/.test(code)) return null;
+  if (/\bassertRenderNotDegraded\s*\(/.test(code)) return null;
+  if (/\/\/[ \t]*degraded-ok:[ \t]*\S/.test(raw)) return null;
+  return "exports revalidate and reads through withDbTimeout, but never calls assertRenderNotDegraded()";
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-const all = [];
-for (const dir of SCAN_DIRS) {
-  for (const f of collectFiles(join(ROOT, dir))) all.push(...scanFile(f));
-}
+const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (IS_MAIN) main();
 
-if (AUDIT) {
-  console.log("file:line | kind | wrapped | exempt");
-  for (const r of all) {
-    console.log(
-      `${r.file}:${r.line} | ${r.kind} | ${r.wrapped ? "Y" : "N"} | ${r.optedOut ? "Y" : "N"}`,
+function main() {
+  const all = [];
+  const degraded = [];
+  for (const dir of SCAN_DIRS) {
+    for (const f of collectFiles(join(ROOT, dir))) {
+      all.push(...scanFile(f));
+      if (basename(f) === "page.tsx") {
+        const why = degradedHelperOffence(readFileSync(f, "utf8"));
+        if (why) degraded.push({ file: relative(ROOT, f).replaceAll("\\", "/"), why });
+      }
+    }
+  }
+
+  if (AUDIT) {
+    console.log("file:line | kind | wrapped | exempt");
+    for (const r of all) {
+      console.log(
+        `${r.file}:${r.line} | ${r.kind} | ${r.wrapped ? "Y" : "N"} | ${r.optedOut ? "Y" : "N"}`,
+      );
+    }
+    console.log(`\n${all.length} render-path PostgREST reads scanned.`);
+    process.exit(0);
+  }
+
+  const offenders = all.filter((r) => !r.wrapped && !r.optedOut);
+
+  if (degraded.length > 0) {
+    console.error(`check:render-timeouts — ${degraded.length} revalidate page(s) can cache a degraded render:\n`);
+    for (const d of degraded) console.error(`  ${d.file}  (${d.why})`);
+    console.error(
+      [
+        "",
+        "withDbTimeout resolves { data: null } on a timeout, so this page's ISR cache",
+        "would hold a render with empty lists and zero stats for the whole revalidate",
+        "window (FIX-1227). Call assertRenderNotDegraded() from @/lib/degraded-render",
+        "once, after the page's reads — or, if a degraded render is genuinely fine to",
+        "cache here, add `// degraded-ok: <reason>`.",
+        "",
+      ].join("\n"),
     );
   }
-  console.log(`\n${all.length} render-path PostgREST reads scanned.`);
-  process.exit(0);
-}
 
-const offenders = all.filter((r) => !r.wrapped && !r.optedOut);
+  if (offenders.length === 0) {
+    if (degraded.length > 0) process.exit(1);
+    console.log(
+      `check:render-timeouts — OK (${all.length} render-path PostgREST reads scanned, 0 unwrapped; ` +
+        "every revalidate page calls assertRenderNotDegraded)",
+    );
+    process.exit(0);
+  }
 
-if (offenders.length === 0) {
-  console.log(
-    `check:render-timeouts — OK (${all.length} render-path PostgREST reads scanned, 0 unwrapped)`,
+  console.error(
+    `check:render-timeouts — ${offenders.length} unwrapped render-path read(s):\n`,
   );
-  process.exit(0);
+  for (const r of offenders) {
+    console.error(`  ${r.file}:${r.line}  (${r.kind})`);
+  }
+  console.error(
+    "\nEach of these executes a PostgREST read on the page-render path without",
+  );
+  console.error(
+    "withDbTimeout, so a slow/degraded DB makes the render hang and accrue Vercel",
+  );
+  console.error(
+    "provisioned-memory GB-hours while it waits. Wrap the query in withDbTimeout(",
+  );
+  console.error(
+    "query, ms, \"page:label\") from @/lib/supabase-check — or, only if a hang here",
+  );
+  console.error(
+    "is genuinely fine, add `// db-timeout-exempt: <reason>` on the line above.",
+  );
+  process.exit(1);
 }
-
-console.error(
-  `check:render-timeouts — ${offenders.length} unwrapped render-path read(s):\n`,
-);
-for (const r of offenders) {
-  console.error(`  ${r.file}:${r.line}  (${r.kind})`);
-}
-console.error(
-  "\nEach of these executes a PostgREST read on the page-render path without",
-);
-console.error(
-  "withDbTimeout, so a slow/degraded DB makes the render hang and accrue Vercel",
-);
-console.error(
-  "provisioned-memory GB-hours while it waits. Wrap the query in withDbTimeout(",
-);
-console.error(
-  "query, ms, \"page:label\") from @/lib/supabase-check — or, only if a hang here",
-);
-console.error(
-  "is genuinely fine, add `// db-timeout-exempt: <reason>` on the line above.",
-);
-process.exit(1);

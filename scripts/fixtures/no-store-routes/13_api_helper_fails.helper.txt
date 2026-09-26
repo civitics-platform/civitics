@@ -1,0 +1,7 @@
+// A non-route module under app/api/ that builds the client a GET route reads
+// through (the api/browse/execute.ts shape).
+import { createAdminClient } from "@civitics/db";
+export async function executeBrowse(sp: URLSearchParams) {
+  const db = createAdminClient();
+  return db.rpc("browse", { q: sp.get("q") });
+}

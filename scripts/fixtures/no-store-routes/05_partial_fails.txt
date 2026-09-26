@@ -1,0 +1,7 @@
+import { createAdminClient, noStoreFetch } from "@civitics/db";
+export const dynamic = "force-dynamic";
+export async function GET() {
+  const a = await createAdminClient({ fetch: noStoreFetch }).rpc("one");
+  const b = await createAdminClient().rpc("two");
+  return Response.json({ a, b });
+}
