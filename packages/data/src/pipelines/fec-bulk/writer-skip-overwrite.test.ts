@@ -24,8 +24,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { upsertIndividualDonorsBatch } from "./writer";
+import {
+  ENTITY_AGGREGATE_COLUMNS,
+  PAC_UPDATE_COLUMNS_UNSCOPED,
+  upsertIndividualDonorsBatch,
+  upsertPacEntitiesBatch,
+} from "./writer";
 import { canonicalDonorName } from "./indiv";
+import { buildUpsertStatement } from "../../lib/direct-pg-upsert";
 
 const LOCAL_DSN = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const UNIQ = `${Date.now()}${Math.floor(Math.random() * 1e6)}`;
@@ -421,5 +427,123 @@ test("FIX-1009 coverage gate — the totals rebuild has no cycle predicate", asy
       /* best effort */
     }
     await client.end();
+  }
+});
+
+/**
+ * FIX-1226 — the UNSCOPED committee upsert must not overwrite the received
+ * total either. `upsertPacEntitiesBatch` sent no `updateColumns`, so its
+ * `DO UPDATE SET` carried every non-arbiter column — including the literal `0`
+ * it builds for `total_received_cents`. Every weekend FEC run zeroed every
+ * existing committee's received total, and the FR-dirty fe-crawl re-derives
+ * only a recipient whose FR rows changed, so the zero stuck: 34 of the 41
+ * largest recipients read $0 on prod (cc-158 read 7). FIX-1009's shape, applied
+ * to committees: INSERT the aggregates, never SET them on conflict.
+ *
+ * Pure — runs in the default suite.
+ */
+test("FIX-1226 the unscoped committee SET list excludes both aggregates, and the INSERT list keeps them", () => {
+  assert.deepEqual(
+    PAC_UPDATE_COLUMNS_UNSCOPED,
+    ["canonical_name", "display_name", "entity_type", "metadata"],
+    "every non-arbiter PAC column except the two aggregates",
+  );
+  for (const c of ENTITY_AGGREGATE_COLUMNS) {
+    assert.ok(!PAC_UPDATE_COLUMNS_UNSCOPED.includes(c), `${c} must not be SET on conflict`);
+  }
+  assert.ok(!PAC_UPDATE_COLUMNS_UNSCOPED.includes("fec_committee_id"), "the arbiter is never SET");
+
+  // The statement the unscoped path sends (the writer's columns, in its order).
+  const sql = buildUpsertStatement({
+    table: "financial_entities",
+    columns: [
+      "canonical_name", "display_name", "entity_type", "fec_committee_id",
+      "total_donated_cents", "total_received_cents", "metadata",
+    ],
+    conflictColumns: ["fec_committee_id"],
+    updateColumns: PAC_UPDATE_COLUMNS_UNSCOPED,
+    jsonbColumns: ["metadata"],
+    returningColumns: ["id", "fec_committee_id"],
+    rowCount: 1,
+  });
+  const [insertPart, setPart] = sql.split(" DO UPDATE SET ");
+  assert.ok(setPart, "a DO UPDATE, not a DO NOTHING — the rest of the row still merges");
+  assert.match(insertPart!, /"total_received_cents"/, "a NEW committee still inserts its value");
+  assert.match(insertPart!, /"total_donated_cents"/);
+  assert.doesNotMatch(setPart!, /total_received_cents|total_donated_cents/, "neither aggregate is SET on conflict");
+  assert.match(setPart!, /"display_name" = EXCLUDED\."display_name"/);
+  assert.match(setPart!, / RETURNING "id", "fec_committee_id"$/, "RETURNING still hands back every conflict row");
+});
+
+test("FIX-1226 unscoped committee upsert keeps an EXISTING committee's stored totals and seeds a NEW one", async (t) => {
+  if (process.env.RUN_DB_TESTS !== "1") {
+    t.skip("set RUN_DB_TESTS=1 to run the local-DB committee skip-overwrite proof");
+    return;
+  }
+  const client = await tryConnect();
+  if (!client) {
+    t.skip("local Docker Postgres (127.0.0.1:54322) not reachable");
+    return;
+  }
+
+  const prevDbUrl = process.env.SUPABASE_DB_URL;
+  process.env.SUPABASE_DB_URL = LOCAL_DSN;
+
+  // Real committee ids are C + 8 digits; these stay short and prefixed so the
+  // cleanup below can only ever match the two rows this test made.
+  const tail = UNIQ.slice(-7);
+  const existingCmte = `CX${tail}`;
+  const newCmte = `CN${tail}`;
+
+  try {
+    // A committee whose stored totals are the re-derived, authoritative values.
+    const seed = await client.query(
+      `INSERT INTO public.financial_entities
+         (canonical_name, display_name, entity_type, fec_committee_id,
+          total_donated_cents, total_received_cents, metadata)
+       VALUES ($1, $1, 'party_committee', $2, 7000000, 21031139400, '{}'::jsonb)
+       RETURNING id`,
+      [`FIX1226 EXISTING ${tail}`, existingCmte],
+    );
+    const existingId = seed.rows[0].id as string;
+
+    const res = await upsertPacEntitiesBatch(
+      [
+        { cmteId: existingCmte, name: `FIX1226 RENAMED ${tail}`, cmteType: "Y", connectedOrg: "", totalDonatedCents: 123 },
+        { cmteId: newCmte, name: `FIX1226 FRESH ${tail}`, cmteType: "Q", connectedOrg: "", totalDonatedCents: 4567 },
+      ],
+      false, // UNSCOPED — the weekend fec phase's path
+    );
+    assert.equal(res.failed, 0);
+    assert.equal(res.entityIdByCmte.get(existingCmte), existingId, "RETURNING still maps the conflict row");
+    assert.ok(res.entityIdByCmte.get(newCmte), "and the new one");
+
+    const after = await client.query(
+      `SELECT display_name, total_donated_cents, total_received_cents
+         FROM public.financial_entities WHERE fec_committee_id = $1`,
+      [existingCmte],
+    );
+    assert.equal(after.rows[0].display_name, `FIX1226 RENAMED ${tail}`, "non-aggregate columns still merge");
+    assert.equal(Number(after.rows[0].total_received_cents), 21031139400, "the received total is not zeroed");
+    assert.equal(Number(after.rows[0].total_donated_cents), 7000000, "the donated total is not overwritten");
+
+    const fresh = await client.query(
+      `SELECT total_donated_cents, total_received_cents FROM public.financial_entities WHERE fec_committee_id = $1`,
+      [newCmte],
+    );
+    assert.equal(Number(fresh.rows[0].total_donated_cents), 4567, "a NEW committee lands with its inserted value");
+    assert.equal(Number(fresh.rows[0].total_received_cents), 0, "and received 0 until the crawl derives it");
+  } finally {
+    try {
+      await client.query(
+        `DELETE FROM public.financial_entities WHERE fec_committee_id IN ($1, $2)`,
+        [existingCmte, newCmte],
+      );
+    } catch {
+      /* best effort */
+    }
+    await client.end();
+    if (prevDbUrl === undefined) delete process.env.SUPABASE_DB_URL;
+    else process.env.SUPABASE_DB_URL = prevDbUrl;
   }
 });

@@ -409,6 +409,16 @@ export async function upsertPacEntitiesBatch(
       label:            "pac-entity",
       columns,
       conflictColumns:  ["fec_committee_id"],
+      // FIX-1226: FIX-1009's shape for committees. An UNSCOPED run INSERTs the
+      // aggregates (a new committee lands with a value) but never SETs them on
+      // conflict — it wrote a literal 0 into every existing committee's
+      // total_received_cents, and the FR-dirty fe-crawl only re-derives a
+      // recipient whose FR rows changed, so the zero stuck (the RNC read $0 on
+      // prod). The totals family owns both columns: financial_entity_received_
+      // totals_rebuild() and financial_entity_donation_totals_rebuild(), driven
+      // by fe-crawl and the monthly reconcile. A scoped run's column drop
+      // (FIX-700) already keeps them out of the SET list.
+      updateColumns:    skipAggregateOverwrite ? undefined : PAC_UPDATE_COLUMNS_UNSCOPED,
       jsonbColumns:     ["metadata"],
       returningColumns: ["id", "fec_committee_id"],
       rows,
@@ -891,6 +901,19 @@ export const ENTITY_AGGREGATE_COLUMNS = ["total_donated_cents", "total_received_
 const DONOR_UPDATE_COLUMNS_UNSCOPED: string[] = DONOR_COLUMNS.filter(
   (c) =>
     c !== "donor_fingerprint" &&
+    !(ENTITY_AGGREGATE_COLUMNS as readonly string[]).includes(c),
+);
+
+/**
+ * FIX-1226 — `DO UPDATE SET` list for an UNSCOPED committee upsert
+ * (`upsertPacEntitiesBatch`): every non-arbiter column EXCEPT the aggregates,
+ * the same gate as DONOR_UPDATE_COLUMNS_UNSCOPED. Declared down here, after
+ * ENTITY_AGGREGATE_COLUMNS, because a module-level const cannot be read before
+ * its declaration runs.
+ */
+export const PAC_UPDATE_COLUMNS_UNSCOPED: string[] = PAC_ENTITY_COLUMNS.filter(
+  (c) =>
+    c !== "fec_committee_id" &&
     !(ENTITY_AGGREGATE_COLUMNS as readonly string[]).includes(c),
 );
 
