@@ -1,0 +1,34 @@
+{
+  "cc": "158",
+  "prompt": "cc-prompt-158-fix1217-whale-donor-page-measure-first-index-vs-rollup-stop-for-craig.md",
+  "started_at": "2026-09-25T23:36:00Z",
+  "finished_at": "2026-09-26T00:27:00Z",
+  "head_before": "5b23adf9",
+  "head_after": "b8b437b3",
+  "commits": [
+    {
+      "sha": "e3c00eac",
+      "subject": "docs(audits): FIX-1217 measurement — the whale class, the correctness gap, the scratch index and rollup rehearsals on the clone, the projection table"
+    },
+    {
+      "sha": "b8b437b3",
+      "subject": "docs(fixes): FIX-1217 append; file FIX-1225, FIX-1226 (cc-158: the page's top 50 is a sum over a top-1,000-by-amount sample; the PAC entity upsert zeroes total_received_cents)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1225",
+    "FIX-1226"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none. Every prod contact was a read through db-query --prod (a read-only transaction). It covered: FR sizes, indexes, VM and stats; cron.job with cron_job_budget; pg_proc sources; pipeline_state; financial_entities pkey lookups; prod_op_gate() four times; EXPLAIN without ANALYZE for the three queries and for option C; two index-only GROUP BYs for read 4 (101.6 s at 23:41-23:42 and 13.2 s at 23:45 UTC, gated by prod_op_gate(120) ok at 23:41:00); and three timed option-C SELECTs as anon at 00:13:32-00:13:56 UTC. The first of those was cancelled by its own 3 s statement_timeout, one 57014 attributable to this session. The census and attribution reads went through the Logs API. No index, table, migration or deploy on prod. Two pushes to main are docs-only.",
+  "ci": "green",
+  "stopped_items": [
+    "The landing, by design: STOP for Craig's pick between the options in the audit's section 4 (recommended: partial spending index + FE inbound rollup). cc-159 lands it. No Fixes or Closes trailer.",
+    "Read 4's spending class and from-side mirror ran on the CLONE, not prod. The prod donation GROUP BY took 101.6 s against the ~120 s pooler cap. Prod's contract+grant total is given by subtraction (3,908,956, x1.02 of the clone).",
+    "Read 5 (pair counts) and read 6 (correctness) ran on the CLONE only. Read 5 would be the same scan plus a hash over pairs at postgres work_mem 256MB on a ~1 GB box (the FIX-1123 arithmetic). Read 6 is a window over 3.2M rows. The prod rollup size is given as a band (0.50-0.75M rows, upper bound 1,931,200).",
+    "anon's work_mem on prod is unreadable: pg_file_settings is permission-denied. The clone runs assume 4MB. The prod option-C timings inherited postgres's 256MB, so they are optimistic.",
+    "The census resolves FR 57014s to the table, not the call site. --like cannot isolate donor-page texts, because every FR select list names to_type. The 6 FR events in the 24 h to 00:12 UTC 09-26 are FR reads, not proven donor-page reads."
+  ]
+}
