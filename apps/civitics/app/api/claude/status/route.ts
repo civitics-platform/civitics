@@ -45,6 +45,10 @@ export async function GET(request: Request) {
   }
 
   const t0 = Date.now();
+  // no-store-exempt: getIp(request) above reads request.headers, which (no
+  // `dynamic` export, so `request` is Next's tracking proxy) sets revalidate
+  // to 0 before any fetch — every read below is already "auto no cache"
+  // (FIX-1214, cc-161). `revalidate = 300` is therefore inert on this route.
   const db = createAdminClient() as Db;
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();

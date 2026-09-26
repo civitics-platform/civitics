@@ -11,7 +11,7 @@
  * No auth required. Rate limited to 20 requests/minute/IP.
  */
 
-import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { createAdminClient, noStoreFetch, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   // search_graph_entities RPC was retired in the shadow→public promotion. We now
   // do four parallel ILIKE queries and merge. Good enough for prefix/substring

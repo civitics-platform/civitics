@@ -1,4 +1,4 @@
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
@@ -48,7 +48,7 @@ function isJunkPacName(name: string | null): boolean {
 //     read of the ~7.4k-PAC subset would still hit the 1000-row PostgREST cap).
 export async function GET(request: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   const { searchParams } = new URL(request.url);
   const groupBy = (searchParams.get("groupBy") ?? "sector") as "sector" | "party";

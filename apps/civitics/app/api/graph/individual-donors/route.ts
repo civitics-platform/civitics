@@ -4,7 +4,7 @@
 // Returns the paginated list of real donors aggregated into that bracket,
 // so they can be inspected or pinned as real graph nodes (option c).
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { BRACKET_TIERS } from "@civitics/graph";
@@ -57,7 +57,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient({ fetch: noStoreFetch });
 
     // Step 1: fetch entity_connections rows for this official's individual donors
     const { data: connRows, error: connErr } = await withDbTimeout(

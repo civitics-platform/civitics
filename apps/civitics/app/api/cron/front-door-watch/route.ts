@@ -247,8 +247,8 @@ export async function GET(request: NextRequest) {
   // If Postgres is NOT reachable — the very case this route exists for — the
   // catch swallows it and the alert has already gone out.
   try {
-    const { createAdminClient } = await import("@civitics/db");
-    await createAdminClient()
+    const { createAdminClient, noStoreFetch } = await import("@civitics/db");
+    await createAdminClient({ fetch: noStoreFetch })
       .from("data_sync_log")
       .insert({
         pipeline: "front_door_watch",

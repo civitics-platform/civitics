@@ -12,7 +12,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient, afterKey } from "@civitics/db";
+import { createAdminClient, noStoreFetch, afterKey } from "@civitics/db";
 import { notifyFollowers } from "@/lib/notifications";
 import { fetchChunkedByIds } from "@/lib/paginate";
 
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient({ fetch: noStoreFetch }) as any;
 
   // Fetch last-run cursor
   const { data: stateRow } = await db

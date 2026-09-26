@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { GroupFilter } from "@civitics/graph";
 import { labelToIndustryKey } from "@civitics/graph/industries";
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   // ── Helper: resolve official member IDs for a GroupFilter ─────────────────
   async function getMemberIds(filter: GroupFilter): Promise<string[]> {
@@ -796,7 +796,7 @@ export async function GET(req: NextRequest) {
   // ── Aggregate mode: industry → party flows ────────────────────────────────
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await withDbTimeout<{ data: FlowRow[] | null; error: { message: string } | null }>((createAdminClient() as any).rpc("chord_industry_flows"));
+    const { data, error } = await withDbTimeout<{ data: FlowRow[] | null; error: { message: string } | null }>((createAdminClient({ fetch: noStoreFetch }) as any).rpc("chord_industry_flows"));
 
     if (error) {
       console.error("[chord] RPC error:", error.message);

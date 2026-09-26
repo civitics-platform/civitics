@@ -49,6 +49,8 @@ export async function GET(request: Request) {
   }
 
   const t0 = Date.now();
+  // no-store-exempt: getIp(request) above reads request.headers — see the
+  // same note in ../route.ts (FIX-1214, cc-161).
   const db = createAdminClient();
   const now = new Date();
 

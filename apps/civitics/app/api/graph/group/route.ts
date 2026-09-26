@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 // FIX-883 — fetchIndustryTagsByEntityId dropped: the official branch's per-donor
 // sector resolution moved into get_cohort_top_donors(), and no other branch used it.
-import { createAdminClient, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, fetchAllKeyset, afterKey } from "@civitics/db";
+import { createAdminClient, noStoreFetch, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, fetchAllKeyset, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
@@ -221,7 +221,7 @@ export async function GET(req: NextRequest) {
   // matches the Top-donors dropdown default; still clamped to ≤100.
   const limit      = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_DONATION_LIMIT)), 100);
 
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   // ── Official group mode ──────────────────────────────────────────────────────
   // Who donated to this group of officials, and how much in aggregate?

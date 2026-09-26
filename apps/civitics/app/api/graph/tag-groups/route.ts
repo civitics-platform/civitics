@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 // Presentation thresholds, deliberately kept OUT of the RPC: the aggregate is
@@ -48,7 +48,7 @@ export interface TagGroup {
 export async function GET() {
   if (supabaseUnavailable()) return unavailableResponse();
 
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   // One jsonb array, already ordered count DESC, tag ASC.
   const { data, error } = await supabase.rpc("get_proposal_topic_groups");

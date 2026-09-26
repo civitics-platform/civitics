@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient({ fetch: noStoreFetch }) as any;
 
   const [{ data: officialRows, error: oErr }, { data: pairRows, error: vErr }] =
     await Promise.all([

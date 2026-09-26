@@ -7,7 +7,7 @@
 // (the underlying entities are already public).
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(20, Math.max(1, parseInt(sp.get("limit") ?? "", 10) || 8));
     if (q.length < 2) return NextResponse.json({ results: [] });
 
-    const db = createAdminClient();
+    const db = createAdminClient({ fetch: noStoreFetch });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db2 = db as any;
 

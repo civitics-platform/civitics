@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { isEntityCommentType } from "@civitics/db";
 
 // C1 Wave B (FIX-528): proportional-representation highlights surface backing
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "entity_id is required" }, { status: 400 });
     }
 
-    const admin = createAdminClient();
+    const admin = createAdminClient({ fetch: noStoreFetch });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (admin as any).rpc("get_entity_comment_highlights", {
       p_entity_type: entityType,

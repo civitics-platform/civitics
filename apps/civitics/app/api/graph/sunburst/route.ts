@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { createAdminClient, noStoreFetch, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { GroupFilter } from "@civitics/graph";
 import { fetchChunkedByIds, ID_CHUNK_SIZE } from "@/lib/paginate";
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const maxRing1 = parseInt(searchParams.get("maxRing1") ?? "8");
     const maxRing2 = parseInt(searchParams.get("maxRing2") ?? "10");
 
-    const supabase = createAdminClient();
+    const supabase = createAdminClient({ fetch: noStoreFetch });
 
     // ── Helper: resolve names for a list of to_ids ─────────────────────────
     async function buildNameMap(allToIds: string[]): Promise<Map<string, { name: string; entityType: string; party?: string }>> {

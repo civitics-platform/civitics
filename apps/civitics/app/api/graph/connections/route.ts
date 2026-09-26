@@ -1,4 +1,4 @@
-import { createAdminClient, fetchAllKeyset, afterKey } from "@civitics/db";
+import { createAdminClient, noStoreFetch, fetchAllKeyset, afterKey } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
@@ -351,7 +351,7 @@ export async function GET(request: Request) {
   const votesLimit = VOTES_LIMIT_CHOICES.includes(votesLimitRaw) ? votesLimitRaw : DEFAULT_VOTES_LIMIT;
 
   try {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient({ fetch: noStoreFetch });
 
     let connections: ConnectionRow[] = [];
     let totalCount = 0;

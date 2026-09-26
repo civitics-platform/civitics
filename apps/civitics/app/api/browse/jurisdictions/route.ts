@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ const EXPANDABLE_TYPES = new Set(["country", "state", "county", "federal_distric
 
 export async function GET(req: Request) {
   const parent = new URL(req.url).searchParams.get("parent");
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
 
   let query = db
     .from("jurisdictions")

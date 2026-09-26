@@ -7,7 +7,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient, isMergeStubSourceIds } from "@civitics/db";
+import { createAdminClient, noStoreFetch, isMergeStubSourceIds } from "@civitics/db";
 import { meetingsEnabled } from "@/lib/meetings-flag";
 
 interface EntityDetail {
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "id and type are required" }, { status: 400 });
   }
 
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db2 = db as any;
 

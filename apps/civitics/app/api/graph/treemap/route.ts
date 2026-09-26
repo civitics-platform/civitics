@@ -1,4 +1,4 @@
-import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, afterKey, fetchChunkedByIds } from "@civitics/db";
+import { createAdminClient, noStoreFetch, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, afterKey, fetchChunkedByIds } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
@@ -47,7 +47,7 @@ function bracketIdForCents(cents: number): string {
 
 export async function GET(request: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   const { searchParams } = new URL(request.url);
   const entityId = searchParams.get("entityId");

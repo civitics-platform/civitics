@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { isEntityCommentType } from "@civitics/db";
 import { fetchAuthorMeta } from "../_lib";
 
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "entity_id is required" }, { status: 400 });
     }
 
-    const admin = createAdminClient();
+    const admin = createAdminClient({ fetch: noStoreFetch });
 
     let query = admin
       .from("entity_comments")

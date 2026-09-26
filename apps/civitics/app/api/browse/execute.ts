@@ -10,7 +10,7 @@
  * rendering. Omitted → W0 behavior (both in one response).
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { parseBrowseState } from "@/lib/browse/browse-state";
 import { compileScope } from "@/lib/browse/scope-tree";
 import { encodeCursor, decodeCursor } from "@/lib/browse/cursor";
@@ -63,7 +63,7 @@ export async function executeBrowse(sp: URLSearchParams): Promise<BrowseExecutio
 
   const cursor = decodeCursor(state.cursor);
 
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
 
   // ── Page rows (keyset) ──────────────────────────────────────────────────────
   const rows: BrowseRow[] = [];

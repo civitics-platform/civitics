@@ -38,7 +38,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
-import { calculateCostUsd, createAdminClient, summaryPromptVersion } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, noStoreFetch, summaryPromptVersion } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 // FIX-796 — header handler-owned: only the two summary-bearing 200s are
 // CDN-cached, so a transient null is never pinned at the edge. FIX-1029 makes
@@ -88,7 +88,7 @@ export async function GET(
   const { id } = params;
   if (!id) return summaryNone();
 
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
 
   // 1. Cache check
   try {

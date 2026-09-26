@@ -19,7 +19,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import type {
   SearchResults, SearchOfficial, SearchProposal, SearchAgency,
   SearchFinancialEntity, SearchJurisdiction, SearchInstitution,
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return NextResponse.json(emptyResults(q));
 
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
   const like = `%${q}%`;
 
   const forKind = (kind: string) =>

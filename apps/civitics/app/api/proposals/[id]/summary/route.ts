@@ -14,7 +14,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { calculateCostUsd, createAdminClient, summaryPromptVersion } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, noStoreFetch, summaryPromptVersion } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 // FIX-796 — header handler-owned: only the two summary-bearing 200s are
 // CDN-cached. The `summary: null` variants (kill switch, spend cap, closed
@@ -47,7 +47,7 @@ export async function GET(
   const { id } = params;
   if (!id) return NextResponse.json({ summary: null });
 
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
 
   // 1. Cache check
   try {

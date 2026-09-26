@@ -41,6 +41,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   createAdminClient,
+  noStoreFetch,
   writePlatformUsageSnapshot,
   BURN_ABSOLUTE_FLOOR_USD,
   type PlatformUsagePayload,
@@ -534,7 +535,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const db = createAdminClient();
+  const db = createAdminClient({ fetch: noStoreFetch });
 
   // Two independent writes — wrap each so one failing doesn't block the
   // other. FIX-297: status_snapshot is meaningful on its own even when the

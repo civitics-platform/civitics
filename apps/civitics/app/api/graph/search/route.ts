@@ -1,4 +1,4 @@
-import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { createAdminClient, noStoreFetch, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const q = searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return withPublicCdnCache(Response.json([]));
 
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   // search_graph_entities RPC was retired in the shadow→public promotion.
   // Direct ILIKE queries across the four entity tables; results merged below.

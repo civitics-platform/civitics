@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
  *  - pipeline_state        — latest cost alert from the gate
  */
 
-import { calculateLoggedCostUsd, createAdminClient } from "@civitics/db";
+import { calculateLoggedCostUsd, createAdminClient, noStoreFetch } from "@civitics/db";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient({ fetch: noStoreFetch }) as any;
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();

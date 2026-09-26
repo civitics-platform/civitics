@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
 
@@ -38,7 +38,7 @@ interface MembershipRow {
 export async function GET() {
   if (supabaseUnavailable()) return unavailableResponse();
 
-  const supabase = createAdminClient();
+  const supabase = createAdminClient({ fetch: noStoreFetch });
 
   const { data: committees, error: committeesErr } = await supabase
     .from("governing_bodies")

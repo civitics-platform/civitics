@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient({ fetch: noStoreFetch }) as any;
 
   // FIX-218: when an agencyId is provided, narrow the contract scan to flows
   // originating from that agency. Powers the "Federal Spending Flows on

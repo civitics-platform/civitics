@@ -41,7 +41,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, noStoreFetch } from "@civitics/db";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Feature flag kill switch — set CRON_DISABLED=true to halt without a deploy
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let grantSweepError: string | null = null;
 
   try {
-    const db = createAdminClient();
+    const db = createAdminClient({ fetch: noStoreFetch });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyDb = db as any;
 
