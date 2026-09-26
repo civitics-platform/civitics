@@ -8,6 +8,7 @@ import {
   type AttributionShape,
 } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import {
   foldInboundRollup,
   inboundStats,
@@ -231,6 +232,8 @@ export default async function DonorProfilePage({
 
   const entity = await getCachedDonor(params.id);
   if (!entity) {
+    // A timed-out entity read must not become a cached 404 (FIX-1227).
+    assertRenderNotDegraded();
     notFound();
   }
 
@@ -520,6 +523,10 @@ export default async function DonorProfilePage({
     occurred_at:  r.occurred_at,
     description:  ((r.metadata ?? {}) as Record<string, string>)?.description ?? null,
   }));
+
+  // FIX-1227: every read above has settled. If any ran out of time, this render
+  // is empty lists and zero stats that look real — never cache it.
+  assertRenderNotDegraded();
 
   // ── Aggregates for the header stat grid ────────────────────────────────────
   // Outbound only: the cycle count renders in the Donors note only when

@@ -14,6 +14,7 @@ import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { getSlowMode } from "@/lib/slow-mode";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
@@ -167,7 +168,11 @@ export default async function ProposalDetailPage({
   // metadata JSONB post-promotion. Flatten back into the legacy shape below.
   const proposalRow = await getCachedProposal(params.id);
 
-  if (!proposalRow) notFound();
+  if (!proposalRow) {
+    // A timed-out proposal read must not become a cached 404 (FIX-1227).
+    assertRenderNotDegraded();
+    notFound();
+  }
 
   const rawMeta = (proposalRow.metadata as Record<string, string> | null) ?? {};
   const p: Proposal = {
@@ -353,6 +358,10 @@ export default async function ProposalDetailPage({
       : {}),
     ...(p.congress_gov_url ? { sameAs: p.congress_gov_url } : {}),
   };
+
+  // FIX-1227: every labelled read above has settled — never cache a render in
+  // which one ran out of time.
+  assertRenderNotDegraded();
 
   // C1 Wave C: slow-mode flag (cheap PK lookup; never a request-path aggregation).
   const slowMode = await getSlowMode("proposal", p.id);

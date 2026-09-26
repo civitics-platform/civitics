@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { unstable_noStore as noStore } from "next/cache";
+import { assertRenderNotDegraded, recordDegradedRead } from "@/lib/degraded-render";
 import nextDynamic from "next/dynamic";
 import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { Icon } from "@civitics/graph";
@@ -428,9 +428,10 @@ export default async function OfficialProfilePage({
   if (pageOutcome === "failed") {
     // Never let a cancel be cached as an empty official. `revalidate = 300` at
     // module scope would otherwise hand this render to the next 5 minutes of
-    // visitors; noStore() opts THIS render out and leaves the healthy path's
-    // ISR exactly as it was.
-    noStore();
+    // visitors. A timeout or 57014 is already recorded by withDbTimeout; this
+    // records ANY failure of the page RPC, and assertRenderNotDegraded() below
+    // opts THIS render out (FIX-1227 folded the old direct noStore() into it).
+    recordDegradedRead("officials:page-rpc", "get_official_page failed");
   }
   const page = ((pageRes as { data: GetOfficialPage | null }).data ?? {}) as Partial<GetOfficialPage>;
   const voteCountRes = { count: page.vote_count ?? 0 };
@@ -445,6 +446,8 @@ export default async function OfficialProfilePage({
   const engagement = engagementRollup.get(params.id) ?? EMPTY_ENGAGEMENT;
 
   if (!officialData) {
+    // A timed-out official read must not become a cached 404 (FIX-1227).
+    assertRenderNotDegraded();
     notFound();
   }
 
@@ -909,6 +912,10 @@ export default async function OfficialProfilePage({
       : {}),
   };
 
+  // FIX-1227: every labelled read above has settled — never cache a render in
+  // which one ran out of time.
+  assertRenderNotDegraded();
+
   // C1 Wave C: slow-mode flag — the motivating case is a scandal-day official
   // page. Cheap PK lookup; statements get mode + slow mode but no position card.
   const slowMode = await getSlowMode("official", official.id);
@@ -939,8 +946,12 @@ export default async function OfficialProfilePage({
             official has no record, and saying so is the whole point: without
             this banner the page is indistinguishable from a genuinely empty
             one, which is what 17.9 % of calls rendered (cc-137 §3). The render
-            is also noindexed (generateMetadata) and uncached (noStore above),
-            so neither a crawler nor the next visitor inherits the claim. */}
+            is also noindexed (generateMetadata) and uncached
+            (assertRenderNotDegraded above), so neither a crawler nor the next
+            visitor inherits the claim. Measured (cc-161 read 6): on an ISR
+            render that noStore() ENDS the render — a first render answers
+            500, a revalidation keeps the last good page — so this banner is
+            seen only where the render is dynamic (e.g. `next dev`). */}
         {pageOutcome === "failed" && (
           <div
             role="status"

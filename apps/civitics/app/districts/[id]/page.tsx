@@ -5,6 +5,7 @@ import { createPublicClient } from "@civitics/db";
 import type { MultiPolygon, Polygon } from "geojson";
 import { DeferredDistrictMap } from "../components/DeferredDistrictMap";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { lookupJurisdictionCache } from "@/lib/jurisdiction-cache";
 
 // FIX-645: this page reads only public (RLS USING(true)) data and emits no
@@ -135,6 +136,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function DistrictPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await loadDistrict(id);
+  // FIX-1227: every read is in loadDistrict — a timed-out one must be cached
+  // neither as this page nor as a 404.
+  assertRenderNotDegraded();
   if (!data) notFound();
 
   const { district, parent, officials, geometry } = data;

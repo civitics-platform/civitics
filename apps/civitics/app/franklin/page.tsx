@@ -18,6 +18,7 @@ import Link from "next/link";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { SyntheticBanner, SyntheticMark } from "../components/integrity/Synthetic";
 import { PorticoMark } from "../components/brand/PorticoMark";
 import { OfficialRosterCard, type OfficialRosterData } from "../components/cards/OfficialRosterCard";
@@ -224,7 +225,11 @@ export default async function FranklinHubPage() {
     );
     franklin = fallback.data;
   }
-  if (!franklin) notFound();
+  if (!franklin) {
+    // A timed-out resolve must not become a cached 404 (FIX-1227).
+    assertRenderNotDegraded();
+    notFound();
+  }
 
   const stateId = franklin.id as string;
 
@@ -555,6 +560,10 @@ export default async function FranklinHubPage() {
         )
       : Promise.resolve({ data: [] }),
   ]);
+
+  // FIX-1227: every labelled read has settled — never cache a render in which
+  // one ran out of time.
+  assertRenderNotDegraded();
 
   // Vote split (live).
   const voteRows = (votesRes.data ?? []) as Array<{ vote: string; official_id: string }>;

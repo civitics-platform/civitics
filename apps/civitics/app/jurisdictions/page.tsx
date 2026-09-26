@@ -10,6 +10,7 @@ import Link from "next/link";
 import { createPublicClient } from "@civitics/db";
 import { JurisdictionCard, type JurisdictionCardData } from "../components/cards/JurisdictionCard";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 
 export const revalidate = 300;
 
@@ -179,6 +180,8 @@ export default async function JurisdictionsIndexPage({
     supabase,
     Array.from(new Set(rows.map((r) => r.parent_id).filter(Boolean)))
   );
+  // FIX-1227: never cache a render whose reads ran out of time.
+  assertRenderNotDegraded();
   const jurisdictions: JurisdictionCardData[] = rows.map((r) => ({
     id: r.id,
     name: r.name,

@@ -5,6 +5,7 @@ export const revalidate = 300;
 
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { fetchChunkedByIds } from "@/lib/paginate";
 import { OfficialsList } from "./components/OfficialsList";
 import { PageViewTracker } from "../components/PageViewTracker";
@@ -144,6 +145,11 @@ export default async function OfficialsPage({
       officials.push(mapOfficial(o));
     }
   }
+
+  // FIX-1227: the list reads have settled — never cache a render in which one
+  // ran out of time. Before the tag read on purpose: "partial tags beat no
+  // tags" (below) is that read's own decision.
+  assertRenderNotDegraded();
 
   // Pre-fetch tags for all officials.
   //

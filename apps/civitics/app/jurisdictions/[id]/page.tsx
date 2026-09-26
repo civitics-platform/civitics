@@ -37,6 +37,7 @@ import type { InitiativeCardData } from "../../initiatives/components/Initiative
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { lookupJurisdictionCache } from "@/lib/jurisdiction-cache";
 
 export const revalidate = 300;
@@ -192,6 +193,9 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
     );
     jurisdiction = base ?? null;
   }
+  // FIX-1227: every read has settled — a timed-out one must be cached neither
+  // as this page nor as a 404.
+  assertRenderNotDegraded();
   if (!jurisdiction) notFound();
 
   // ── Shape section data ──────────────────────────────────────────────────────

@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { InstitutionCard, type InstitutionCardData } from "../components/cards/InstitutionCard";
 
 export const revalidate = 300;
@@ -129,6 +130,8 @@ export default async function InstitutionsIndexPage({
     3000,
     "institutions:list",
   );
+  // FIX-1227: never cache a render whose reads ran out of time.
+  assertRenderNotDegraded();
 
   const institutions = (data ?? []) as InstitutionCardData[];
   const total = count ?? 0;

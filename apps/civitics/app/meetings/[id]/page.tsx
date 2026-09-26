@@ -12,6 +12,7 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { fetchChunkedByIds } from "@/lib/paginate";
 import { meetingsEnabled } from "@/lib/meetings-flag";
 import { PageViewTracker } from "../../components/PageViewTracker";
@@ -149,7 +150,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     "meetings:detail"
   );
 
-  if (!meetingData) notFound();
+  if (!meetingData) {
+    // A timed-out meeting read must not become a cached 404 (FIX-1227).
+    assertRenderNotDegraded();
+    notFound();
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const meeting = meetingData as any;
@@ -192,6 +197,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   }
 
   const agendaItems = (agendaRes.data ?? []) as AgendaItem[];
+
+  // FIX-1227: the reads that carry this page have settled — never cache a
+  // render in which one ran out of time. Called BEFORE the proposal-titles
+  // read on purpose: that read's own decision is "partial beats nothing" (an
+  // unresolved title falls back to the agenda text), and a timeout there
+  // should keep that fallback, not turn the render into an uncached 500.
+  assertRenderNotDegraded();
 
   // Resolve linked proposal titles for agenda items that reference one.
   const proposalIds = Array.from(

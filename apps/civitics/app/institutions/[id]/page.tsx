@@ -27,6 +27,7 @@ import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
@@ -266,6 +267,8 @@ export default async function InstitutionPage({
       3000,
       "institutions:slug-resolve"
     );
+    // FIX-1227: a timed-out resolve must not become a cached 404.
+    assertRenderNotDegraded();
     if (!slugRow?.id) notFound();
     permanentRedirect(`/institutions/${slugRow.id}`);
   }
@@ -284,6 +287,8 @@ export default async function InstitutionPage({
   )) as any;
 
   const institution = instRes.data as InstitutionRow | null;
+  // FIX-1227: the page's own reads have settled (each view checks its own).
+  assertRenderNotDegraded();
   if (!institution) notFound();
 
   const attributionEntityType: "agency" | "governing_body" = institution.source_table;
@@ -350,6 +355,8 @@ async function AgencyView({
     3000,
     "institutions:agency-page"
   )) as { data: unknown };
+  // FIX-1227: this view renders after the page body, so it checks its own read.
+  assertRenderNotDegraded();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const payload = (rpcData ?? null) as any;
 
@@ -942,6 +949,8 @@ async function GoverningBodyView({
     3000,
     "institutions:gb-page"
   )) as { data: unknown };
+  // FIX-1227: this view renders after the page body, so it checks its own read.
+  assertRenderNotDegraded();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const payload = (rpcData ?? null) as any;
 

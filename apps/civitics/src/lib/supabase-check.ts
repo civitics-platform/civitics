@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { type DegradedSink, recordDegradedRead, requestDegradedSink } from "./degraded-render";
 
 export function supabaseUnavailable(): boolean {
   return process.env.SUPABASE_AVAILABLE === "false";
@@ -33,6 +34,15 @@ const STRUCTURAL_ERROR_CODES = new Set([
 ]);
 
 /**
+ * FIX-1227 — error codes that mean "this read ran out of time", as opposed to
+ * "this read is wrong". See `withDbTimeout`.
+ */
+const READ_TIMEOUT_CODES = new Set([
+  "57014", // query_canceled — statement_timeout (anon: 3 s)
+  "PGRST003", // PostgREST timed out acquiring a pool connection
+]);
+
+/**
  * Wraps a Supabase query in a 5-second timeout.
  * On timeout, resolves with { data: null, error: Error } instead of hanging.
  * Preserves the full return type (including count, status, etc.) via generic T.
@@ -56,6 +66,19 @@ const STRUCTURAL_ERROR_CODES = new Set([
  * Pass an optional `label` to disambiguate log lines when grepping across
  * many call sites (e.g. "sunburst:donations").
  *
+ * FIX-1227 — a read that does not complete in time is also RECORDED as
+ * degraded, into this request's sink (`degraded-render.ts`), so a `revalidate`
+ * page can refuse to be cached from it (`assertRenderNotDegraded()`). Two
+ * shapes count, and both are logged:
+ *   - this wrapper's own timer fires;
+ *   - the database cancels the statement first (SQLSTATE 57014) or PostgREST
+ *     cannot get a connection in time (PGRST003). The anon role's 3 s
+ *     statement_timeout beats a 5 s timer outright and races a 3 s one — the
+ *     officials page-RPC failed as 57014 in cc-161 read 6, not as a timeout.
+ * Any other error is not a timeout and is not recorded: a permanent error
+ * would otherwise make that page uncacheable for good. `sink` is for callers
+ * outside a page render and for tests; a page never passes it.
+ *
  * Usage:
  *   const { data, error } = await withDbTimeout(
  *     supabase.from("table").select("col").limit(100),
@@ -66,27 +89,35 @@ const STRUCTURAL_ERROR_CODES = new Set([
 export async function withDbTimeout<T>(
   query: PromiseLike<T>,
   ms = 5000,
-  label?: string
+  label?: string,
+  sink: DegradedSink = requestDegradedSink(),
 ): Promise<T> {
+  const labelSeg = label ? ` [label=${label}]` : "";
   const timeoutResult = { data: null, error: new Error(`Supabase query timed out after ${ms}ms`) };
   const wrapped = Promise.resolve(query).then((result) => {
     const code = (result as { error?: { code?: unknown; message?: unknown } } | null)?.error?.code;
     if (typeof code === "string" && STRUCTURAL_ERROR_CODES.has(code)) {
       const message = (result as { error?: { message?: unknown } } | null)?.error?.message;
       const msgStr = typeof message === "string" ? message : "(no message)";
-      const labelSeg = label ? ` [label=${label}]` : "";
       console.error(
         `[withDbTimeout] PostgREST structural error ${code}${labelSeg}: ${msgStr} — likely a dropped column or stale schema reference`
       );
+    } else if (typeof code === "string" && READ_TIMEOUT_CODES.has(code)) {
+      console.error(`[withDbTimeout] read timed out server-side (${code})${labelSeg}`);
+      recordDegradedRead(label, code, sink);
     }
     return result;
   });
-  return Promise.race([
-    wrapped,
-    new Promise<T>((resolve) =>
-      setTimeout(() => resolve(timeoutResult as unknown as T), ms)
-    ),
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      console.error(`[withDbTimeout] timed out after ${ms}ms${labelSeg}`);
+      recordDegradedRead(label, `timed out after ${ms}ms`, sink);
+      resolve(timeoutResult as unknown as T);
+    }, ms);
+  });
+  // A read that settles first must not later log or record a timeout.
+  return Promise.race([wrapped, timeout]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -108,7 +139,8 @@ export async function withDbTimeout<T>(
  * contracts distinguishable at the point of use.
  *
  * The timeout is logged (never silent) so a route serving degraded output has
- * a greppable line behind it.
+ * a greppable line behind it, and recorded as degraded (FIX-1227) exactly as
+ * `withDbTimeout`'s is.
  *
  * Usage:
  *   const snapshot = await withDbTimeoutValue(
@@ -121,16 +153,21 @@ export async function withDbTimeout<T>(
 export async function withDbTimeoutValue<T>(
   promise: PromiseLike<T>,
   ms = 5000,
-  label?: string
+  label?: string,
+  sink: DegradedSink = requestDegradedSink(),
 ): Promise<T | null> {
   const TIMED_OUT = Symbol("withDbTimeoutValue");
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const result = await Promise.race<T | typeof TIMED_OUT>([
     promise,
-    new Promise<typeof TIMED_OUT>((resolve) => setTimeout(() => resolve(TIMED_OUT), ms)),
-  ]);
+    new Promise<typeof TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
   if (result === TIMED_OUT) {
     const labelSeg = label ? ` [label=${label}]` : "";
     console.error(`[withDbTimeoutValue] timed out after ${ms}ms${labelSeg} — resolving null`);
+    recordDegradedRead(label, `timed out after ${ms}ms`, sink);
     return null;
   }
   return result;

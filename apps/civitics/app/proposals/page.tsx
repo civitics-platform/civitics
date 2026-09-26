@@ -7,6 +7,7 @@ export const revalidate = 300;
 import type { Metadata } from "next";
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { ProposalCard, type ProposalCardData } from "./components/ProposalCard";
 import { FeaturedSection } from "./components/FeaturedSection";
 import { AGENCY_FULL_NAMES } from "./components/agencyNames";
@@ -486,6 +487,10 @@ export default async function ProposalsPage({
     .sort((a, b) => (commentedOrder.get(a.id) ?? 999) - (commentedOrder.get(b.id) ?? 999));
   const featuredNewest = rawNewest.map(enrich);
   const mainProposals = rawMainProposals.map(enrich);
+
+  // FIX-1227: every labelled read above has settled — never cache a render in
+  // which one ran out of time.
+  assertRenderNotDegraded();
 
   const showFeaturedSection =
     statusFilter !== "closed" && !typeFilter && !agencyFilter && !topicsFilter && !searchQ && page === 1;

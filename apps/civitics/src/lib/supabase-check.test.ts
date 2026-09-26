@@ -27,6 +27,7 @@ describe("withDbTimeout (builder envelope — unchanged)", () => {
   });
 
   it("still resolves the {data:null,error} envelope on timeout", async () => {
+    mock.method(console, "error", () => {});
     const r = await withDbTimeout<{ data: unknown; error: Error | null }>(never(), 10);
     assert.equal(r.data, null);
     assert.ok(r.error instanceof Error);
