@@ -12,17 +12,22 @@ import path from "node:path";
 import { edgeVerdictFor, verdictFor } from "../lib/cancellation-census";
 import type { GatePoll } from "../lib/prod-op-gate";
 import {
+  BREATHER_CENSUS_REREAD_S,
   EXIT,
   WOULD_TRIP_NOTE,
+  breatherCensus,
   breatherRelease,
   callNoLongerRunning,
+  callWindowRenders,
   caughtUpMismatch,
   censusHalfReading,
   censusLine,
   censusModeLine,
+  censusSeconds,
   censusSummary,
   classifyCallRow,
   elevatedJobs,
+  evaluateCallBudget,
   evaluateCensus,
   evaluateWatchdogs,
   gateTally,
@@ -30,9 +35,12 @@ import {
   newStopState,
   parseRunnerArgs,
   pollLine,
+  preCallFail,
   receiptPaths,
+  rendersSummary,
   resumeWindow,
   vocabularyLine,
+  type BudgetRow,
   type CallRow,
   type CensusRow,
 } from "./donor-party-bootstrap-runner";
@@ -170,80 +178,176 @@ test("test-only --trip-on-wall-ms 0 trips every reading — the same run include
   assert.match(evaluateWatchdogs(armed, { ...r, at: "t2" }, { wallTripS: 3, tripOnWallMs: 0, armed: true })?.reason ?? "", /test trip/);
 });
 
-test("stop rule (3): census fail trips at once; Logs API dark trips on the second consecutive", () => {
+test("stop rule (3): a pre-CALL census fail trips at once; Logs API dark trips on the second consecutive", () => {
   const s = newStopState();
   assert.equal(evaluateCensus(s, 0), null);
   assert.equal(evaluateCensus(s, 2), null);
   assert.equal(evaluateCensus(s, 0), null, "a pass resets the dark count");
   assert.equal(evaluateCensus(s, 2), null);
   assert.equal(evaluateCensus(s, 2)?.rule, 3);
-  assert.match(evaluateCensus(newStopState(), 1)?.reason ?? "", /pass=false/);
+  assert.match(evaluateCensus(newStopState(), 1)?.reason ?? "", /pre-CALL census failed/);
+  assert.deepEqual(evaluateCensus(newStopState(), 1), evaluateCensus(newStopState(), 1, "pre_call"), "pre_call is the default");
 });
 
-test("cc-152 D1 report mode: a census FAIL is a would_trip, not a trip; stop mode is the two-argument call, unchanged", () => {
-  const r = evaluateCensus(newStopState(), 1, "report");
-  assert.deepEqual(r, { would_trip: true, rule: 3, reason: "(3) census pass=false (57014 rate or front-door 5xx)" });
-  assert.equal(isTrip(r), false, "a would_trip is never a trip");
-  const s = evaluateCensus(newStopState(), 1, "stop");
-  assert.equal(isTrip(s), true);
-  assert.deepEqual(s, evaluateCensus(newStopState(), 1), "stop is the default");
-  assert.equal(s?.would_trip, undefined);
-  assert.equal(evaluateCensus(newStopState(), 0, "report"), null, "a pass is null in report mode too");
+test("FIX-1232 rule 183: an exit 1 stops only BEFORE a CALL — a reading in a breather or during a CALL fails by construction and is not a stop", () => {
+  for (const phase of ["breather", "cadence"] as const) {
+    assert.equal(evaluateCensus(newStopState(), 1, phase), null, phase);
+  }
+  assert.equal(isTrip(evaluateCensus(newStopState(), 1, "pre_call")), true);
+  assert.equal(preCallFail(1)?.rule, 3);
+  for (const code of [0, 2, 8, 127]) assert.equal(preCallFail(code), null, `preCallFail(${code})`);
   assert.equal(isTrip(null), false);
 });
 
-test("cc-152 D1: the dark-twice trip is armed in BOTH modes, a pass resets the dark count in both, and a report-mode FAIL resets it as a stop-mode FAIL does", () => {
+test("FIX-1232: the dark-twice trip is armed wherever the census is read — two darks in a row trip across a breather and a CALL, and a FAIL still resets the count", () => {
+  for (const [a, b] of [["pre_call", "pre_call"], ["breather", "breather"], ["breather", "cadence"], ["cadence", "pre_call"]] as const) {
+    const s = newStopState();
+    assert.equal(evaluateCensus(s, 2, a), null, `${a}: one dark is logged`);
+    const t = evaluateCensus(s, 2, b);
+    assert.equal(isTrip(t), true, `${a} → ${b}: two consecutive darks trip`);
+    assert.match(t?.reason ?? "", /Logs API was dark on two consecutive/);
+  }
+  const u = newStopState();
+  evaluateCensus(u, 2, "breather");
+  evaluateCensus(u, 1, "breather");   // the Logs API answered
+  assert.equal(evaluateCensus(u, 2, "breather"), null, "a FAIL answered, so the next dark is the first");
+});
+
+test("FIX-1232 rule 105: cc-151's stop before CALL 6 — 4 renders across 5 CALLs is under budget 3 on every CALL, and the 57014 half of the stopping reading flips to PASS", () => {
+  // Per CALL, from the fixture windows (packages/db/src/__fixtures__/census-renders/cc151.renders.json):
+  // CALL 1 09:07:53, CALL 3 09:19:59, CALL 4 09:24:21, CALL 5 09:30:26 (×6 events).
   for (const mode of ["stop", "report"] as const) {
     const s = newStopState();
-    assert.equal(evaluateCensus(s, 2, mode), null, `${mode}: one dark is logged`);
-    assert.equal(evaluateCensus(s, 0, mode), null, `${mode}: a pass`);
-    assert.equal(evaluateCensus(s, 2, mode), null, `${mode}: the pass reset the count`);
-    const t = evaluateCensus(s, 2, mode);
-    assert.equal(isTrip(t), true, `${mode}: two consecutive darks trip`);
-    assert.match(t?.reason ?? "", /Logs API was dark on two consecutive/);
-    const u = newStopState();
-    evaluateCensus(u, 2, mode);
-    evaluateCensus(u, 1, mode);   // the Logs API answered
-    assert.equal(evaluateCensus(u, 2, mode), null, `${mode}: a FAIL answered, so the next dark is the first`);
+    [1, 0, 1, 1, 1].forEach((renders, i) => {
+      assert.equal(evaluateCallBudget(s, i + 1, renders, 3, mode), null, `${mode}: CALL ${i + 1} (${renders} render(s)) is under budget 3`);
+    });
+    assert.deepEqual(s.overBudgetCalls, []);
+  }
+  // The stopping reading, 09:19:11–09:34:11: 8 events are 3 renders.
+  const v = verdictFor({ renders: [sec3(0, 1), sec3(1000, 1), sec3(2000, 6)], minutes: 15, baseline: 0.033 });
+  assert.equal(v.pass, true, "3 renders <= P99 floor 3 (8 events > 3 stopped the run)");
+  assert.equal(v.floor_renders, 3);
+  assert.equal(v.events, 8);
+  // NOT flipped: the edge half. Its binomial floor was stopped at cc-162 read 3
+  // (FIX-1233), so 2/183 = 1.09 % still fails and the pre-CALL reading still
+  // stops before CALL 6 — now in both modes.
+  const ev = edgeVerdictFor([{ startMs: 0, requests: 183, n5xx: 2 }]);
+  assert.equal(ev.pass, false, "2/183 = 1.09 % > 1 %");
+  const code = v.pass && ev.pass ? 0 : 1;   // cancellation-census.ts exits 0 iff both halves pass
+  assert.equal(isTrip(preCallFail(code)), true);
+});
+
+test("FIX-1232 rule 105: cc-148's ~97 %-trip shape — an ordinary night read every 15 min during CALLs — is no stop at all", () => {
+  // cc-148 §5.3: seven 15-min readings on a healthy night tripped with P ≈ 97 %
+  // under the per-reading rule. During a CALL that reading is now retired, and
+  // every CALL here is inside budget.
+  const s = newStopState();
+  for (let i = 0; i < 7; i++) {
+    assert.equal(evaluateCensus(s, 1, "cadence"), null, `reading ${i + 1}: a FAIL during a CALL is not a stop`);
+    assert.equal(evaluateCallBudget(s, i + 1, [1, 0, 2, 1, 0, 1, 3][i]!, 3, "stop"), null);
   }
 });
 
-test("cc-152 rule 105: cc-151's 09:34:11 reading {8 in 15 min, edge 2/183} is a would_trip in report mode and a trip in stop mode", () => {
-  // FIX-1232: the 8 events are 3 renders (09:19:59, 09:24:21, 09:30:26 ×6) — the
-  // 57014 half now PASSES at floor 3; the edge half is unchanged (its floor was
-  // stopped, FIX-1233), so the reading still exits 1 and this shape still holds.
-  const v = verdictFor({ renders: [sec3(0, 1), sec3(1000, 1), sec3(2000, 6)], minutes: 15, baseline: 0.033 });
-  const ev = edgeVerdictFor([{ startMs: 0, requests: 183, n5xx: 2 }]);
-  assert.equal(v.pass, true, "3 renders <= P99 floor 3");
-  assert.equal(v.floor_renders, 3);
-  assert.equal(v.events, 8);
-  assert.equal(ev.pass, false, "2/183 = 1.09 % > 1 %");
-  const code = v.pass && ev.pass ? 0 : 1;   // cancellation-census.ts exits 0 iff both halves pass
-  const report = evaluateCensus(newStopState(), code, "report");
-  assert.equal(report?.would_trip, true);
-  assert.equal(isTrip(report), false);
-  const stop = evaluateCensus(newStopState(), code, "stop");
-  assert.equal(isTrip(stop), true);
-  assert.equal(stop?.rule, 3);
+test("FIX-1232 rule 105/117: a 6-render CALL is a would_trip once; the second consecutive stops (stop mode); report mode never stops", () => {
+  const s = newStopState();
+  const first = evaluateCallBudget(s, 1, 6, 3, "stop");
+  assert.equal(isTrip(first), false);
+  assert.deepEqual(first, { would_trip: true, rule: 3, reason: "(3) CALL 1 lost 6 render(s) > --renders-per-call-max 3", call: 1, renders: 6, budget: 3 });
+  const second = evaluateCallBudget(s, 2, 6, 3, "stop");
+  assert.equal(isTrip(second), true);
+  assert.equal(second?.reason, "(3) CALL 2 lost 6 render(s) > --renders-per-call-max 3, and CALL 1 was over budget too — two consecutive CALLs (rule 117)");
+  // Report mode: both recorded, neither stops.
+  const r = newStopState();
+  assert.equal(isTrip(evaluateCallBudget(r, 1, 6, 3, "report")), false);
+  const r2 = evaluateCallBudget(r, 2, 6, 3, "report");
+  assert.equal(r2?.would_trip, true);
+  assert.equal(isTrip(r2), false);
 });
 
-test("cc-152 D1: the receipt's census-mode row renders for both modes and counts the would_trips; a would_trip row says so", () => {
-  const row = (phase: CensusRow["phase"], would_trip: boolean | null, code = 1): CensusRow => ({
-    at: "09:34:11", minutes: phase === "gate" ? 60 : 15, code, summary: code === 0 ? "pass (…)" : "FAIL (8/15 min, ratio 16.16, floor 3 — 57014 FAIL; edge …)",
-    phase, before_call: phase === "pre_call" ? 6 : null, would_trip,
+test("FIX-1232 rule 117: one CALL is one vote — a partial and a final reading of the same CALL count once; a CALL under budget breaks the chain", () => {
+  const s = newStopState();
+  assert.equal(evaluateCallBudget(s, 1, 4, 3, "stop")?.would_trip, true, "CALL 1, read while it ran");
+  assert.equal(evaluateCallBudget(s, 1, 6, 3, "stop"), null, "CALL 1 again, once it returned: already counted");
+  assert.equal(evaluateCallBudget(s, 2, 3, 3, "stop"), null, "exactly the budget is inside it");
+  assert.equal(isTrip(evaluateCallBudget(s, 3, 5, 3, "stop")), false, "CALL 3 over, but CALL 2 was not: a would_trip");
+  assert.deepEqual(s.overBudgetCalls, [1, 3]);
+  assert.equal(evaluateCallBudget(newStopState(), 1, 1, 0, "stop")?.would_trip, true, "--renders-per-call-max 0: any render is over");
+});
+
+test("FIX-1232 D3 (i): a breather with a render since the CALL returned is held; the next reading with none releases it; exit 8 releases on the walls; dark holds", () => {
+  const returned = Date.parse("2026-09-25T00:49:37.060Z");
+  const reading = (seconds: string[]) => ({
+    window: { start: "2026-09-25T00:35:00Z", end: "2026-09-25T00:50:00Z", minutes: 15 },
+    cancellations: {
+      total: seconds.length, ratio: 0, pass: true, renders: seconds.length, events: seconds.length,
+      by_second: seconds.map((at) => ({ at, startMs: Date.parse(at), events: 1, page: "get_official_page" })),
+    },
   });
-  const rows = [row("gate", null, 0), row("pre_call", false, 0), row("pre_call", true), row("cadence", true)];
-  assert.equal(censusModeLine("report", rows),
-    "report — rule (3) pass=false is recorded, not a stop (2 of 3 rule (3) reading(s) would have tripped); " +
-    "the dark-twice trip stays armed; the gate wait's census half still holds the window");
-  assert.equal(censusModeLine("stop", rows),
-    "stop — rule (3) pass=false stops the run; the dark-twice trip is armed; the gate wait's census half holds the window");
-  assert.equal(censusLine(rows[2]!),
-    `- 09:34:11 (15 min, before CALL 6) exit 1: FAIL (8/15 min, ratio 16.16, floor 3 — 57014 FAIL; edge …) — **would_trip**${WOULD_TRIP_NOTE}`);
-  assert.equal(censusLine(rows[0]!), "- 09:34:11 (60 min, gate poll) exit 0: pass (…)", "a gate row carries no would_trip");
-  assert.equal(censusLine({ ...rows[2]!, would_trip: false }),
-    "- 09:34:11 (15 min, before CALL 6) exit 1: FAIL (8/15 min, ratio 16.16, floor 3 — 57014 FAIL; edge …)", "stop mode's line is unchanged");
-  assert.equal(WOULD_TRIP_NOTE, " — would have tripped rule (3); census mode report");
+  // cc-154's CALL 1 render (00:46:37) is before the CALL returned: it is the CALL's, not the breather's.
+  assert.deepEqual(breatherCensus(0, reading(["2026-09-25T00:46:37Z"]), returned), { released: true, renders: 0, pending: null });
+  const held = breatherCensus(0, reading(["2026-09-25T00:46:37Z", "2026-09-25T00:49:50Z"]), returned);
+  assert.deepEqual(held, { released: false, renders: 1, pending: "census: 1 render(s) since the CALL returned (get_official_page)" });
+  assert.equal(breatherCensus(1, reading(["2026-09-25T00:49:50Z"]), returned).released, false, "a FAILing reading with a breather render still holds");
+  assert.deepEqual(breatherCensus(8, null, returned), { released: true, renders: null, pending: null });
+  assert.deepEqual(breatherCensus(2, null, returned), { released: false, renders: null, pending: "census dark — cannot confirm 0 renders" });
+  assert.equal(breatherCensus(0, null, returned).pending, "census unparsed — cannot confirm 0 renders");
+  // The render in the returning second counts for the breather.
+  assert.equal(breatherCensus(0, reading(["2026-09-25T00:49:37Z"]), returned).renders, 1);
+  assert.equal(BREATHER_CENSUS_REREAD_S, 60);
+});
+
+test("FIX-1232 D3 (ii): a CALL's renders come out of a reading that reaches back to its start; otherwise the runner reads the span itself", () => {
+  const j = {
+    window: { start: "2026-09-24T09:19:11.098Z", end: "2026-09-24T09:34:11.098Z", minutes: 15 },
+    cancellations: {
+      total: 8, ratio: 16.16, renders: 3, events: 8,
+      by_second: [
+        { at: "2026-09-24T09:19:59Z", startMs: Date.parse("2026-09-24T09:19:59Z"), events: 1, page: "get_official_page" },
+        { at: "2026-09-24T09:24:21Z", startMs: Date.parse("2026-09-24T09:24:21Z"), events: 1, page: "officials" },
+        { at: "2026-09-24T09:30:26Z", startMs: Date.parse("2026-09-24T09:30:26Z"), events: 6, page: "entity_tags" },
+      ],
+    },
+  };
+  const call5 = callWindowRenders(j, Date.parse("2026-09-24T09:28:20.064Z"), Date.parse("2026-09-24T09:32:36.625Z"));
+  assert.deepEqual([call5?.renders, call5?.events, call5?.seconds.map((x) => x.page)], [1, 6, ["entity_tags"]]);
+  assert.equal(callWindowRenders(j, Date.parse("2026-09-24T09:16:16.933Z"), Date.parse("2026-09-24T09:20:24.289Z")), null,
+    "CALL 3 began before the reading's window: not answerable from it");
+  assert.equal(callWindowRenders(null, 0, 1), null);
+  // --renders-only's shape reads the same way.
+  const only = { window: j.window, renders: { renders: 3, events: 8, by_second: j.cancellations.by_second } };
+  assert.equal(callWindowRenders(only, Date.parse("2026-09-24T09:22:28.972Z"), Date.parse("2026-09-24T09:26:45.360Z"))?.renders, 1);
+  assert.equal(censusSeconds(only)?.length, 3);
+});
+
+test("FIX-1232: the receipt's census-mode row says what each mode now decides, and counts the CALLs over budget", () => {
+  const row = (phase: CensusRow["phase"], code = 0): CensusRow => ({
+    at: "t", minutes: phase === "gate" ? 60 : 15, code, summary: "pass (…)", phase, before_call: phase === "gate" ? null : 2, would_trip: phase === "gate" ? null : false,
+  });
+  const budget: BudgetRow[] = [
+    { at: "t", call: 2, renders: 4, budget: 3, final: false, outcome: "would_trip", reason: "(3) …" },
+    { at: "t", call: 2, renders: 5, budget: 3, final: true, outcome: "would_trip", reason: "(3) …" },
+  ];
+  const rows = [row("gate"), row("pre_call"), row("breather", 1), row("cadence")];
+  assert.equal(censusModeLine("stop", rows, budget, 3),
+    "stop — two consecutive CALLs over --renders-per-call-max 3 stop the run (1 CALL(s) over budget); " +
+    "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window");
+  assert.equal(censusModeLine("report", rows, [], 5),
+    "report — CALLs over --renders-per-call-max 5 are recorded, never a stop (0 CALL(s) over budget); " +
+    "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window");
+  assert.equal(censusLine(rows[2]!), "- t (15 min, breather before CALL 2, held it) exit 1: pass (…)");
+  assert.equal(censusLine({ ...row("renders"), minutes: 4.276 }), "- t (4.3 min, renders read of CALL 1) exit 0: pass (…)");
+  assert.equal(censusLine({ ...row("renders"), before_call: null }), "- t (15 min, renders read of the run) exit 0: pass (…)");
+  assert.equal(censusLine(row("cadence")), "- t (15 min, during a CALL) exit 0: pass (…)");
+  assert.equal(censusLine(row("gate")), "- t (60 min, gate poll) exit 0: pass (…)");
+  // A row written before FIX-1232 with would_trip set still says so.
+  assert.equal(censusLine({ ...row("pre_call", 1), would_trip: true }), `- t (15 min, before CALL 2) exit 1: pass (…) — **would_trip**${WOULD_TRIP_NOTE}`);
+});
+
+test("FIX-1232: rendersSummary names a --renders-only reading, or what it was instead", () => {
+  assert.equal(rendersSummary(0, { renders: { renders: 1, events: 6, by_second: [] } }), "renders 1 / events 6");
+  assert.equal(rendersSummary(2, null), "dark (exit 2 — the Logs API did not answer)");
+  assert.equal(rendersSummary(0, null), "dark (exit 0; unparsed output)");
+  assert.equal(rendersSummary(8, { unavailable: true, http_status: 410 }), "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)");
 });
 
 test("cc-152 D1: --census-mode is stop|report, default stop; anything else is refused; the cc-152 launch command parses", () => {
@@ -268,11 +372,15 @@ test("cc-152 D1: --census-mode is stop|report, default stop; anything else is re
   assert.equal(cc152.maxWaitMinutes, 720);
 });
 
-test("cc-152 D1: both rule (3) call sites pass the mode and stop only on isTrip; the gate half is not rule (3)", () => {
+test("FIX-1232: every census call site names its phase; the budget is the only thing the mode reaches; the gate half is not rule (3)", () => {
   const src = fs.readFileSync(path.join(__dirname, "donor-party-bootstrap-runner.ts"), "utf8");
   const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-  assert.equal((code.match(/evaluateCensus\(stopState, cen\.code, args\.censusMode\)/g) ?? []).length, 2);
-  assert.doesNotMatch(code, /evaluateCensus\(stopState, cen\.code\)/, "no call site falls back to the default");
+  const sites = (code.match(/evaluateCensus\(stopState, [a-z.]+\.code, "(pre_call|breather|cadence)"\)/g) ?? [])
+    .map((m) => /"(\w+)"/.exec(m)![1]);
+  assert.deepEqual(sites.sort(), ["breather", "cadence", "pre_call"]);
+  assert.doesNotMatch(code, /evaluateCensus\([^)]*args\.censusMode/, "the mode no longer reaches a census reading");
+  assert.match(code, /evaluateCallBudget\(stopState, rec\.n, got\.renders, args\.rendersPerCallMax, args\.censusMode\)/);
+  assert.match(code, /v = preCallFail\(handed\.code\);/, "the breather's reading is judged once, not re-counted");
   assert.equal((code.match(/phase: "gate", before_call: null, would_trip: null/g) ?? []).length, 1);
 });
 
@@ -386,7 +494,7 @@ test("args: defaults, overrides, and refusals", () => {
   assert.deepEqual(parseRunnerArgs([]), {
     unitsPerCall: 2, wallTripS: 3.0, breatherUntilWallS: 0.5, breatherMaxS: 600,
     maxWaitMinutes: 480, pollSeconds: 300, maxCalls: 12, expectedMinutes: 60,
-    tickSeconds: 120, tripOnWallMs: null, tripFromCall: 1, receiptTag: null, censusMode: "stop",
+    tickSeconds: 120, tripOnWallMs: null, tripFromCall: 1, receiptTag: null, censusMode: "stop", rendersPerCallMax: 3,
   });
   const a = parseRunnerArgs(["--units-per-call", "3", "--max-calls=4", "--trip-on-wall-ms", "0", "--receipt-tag", "trip",
     "--wall-trip-s", "2.5", "--breather-until-wall-s=0.25", "--breather-max-s", "20"]);
@@ -417,8 +525,8 @@ test("args: defaults, overrides, and refusals", () => {
 
 // ── cc-154 D2: exit 8 (the Logs API endpoint is gone, FIX-1219) is "no instrument", not dark ──
 
-test("cc-154 D2 rule 105: {8, 8, 8} is no trip, no would-trip and a dark count of 0, in both modes", () => {
-  for (const mode of ["stop", "report"] as const) {
+test("cc-154 D2 rule 105: {8, 8, 8} is no trip and a dark count of 0, wherever it is read", () => {
+  for (const mode of ["pre_call", "breather", "cadence"] as const) {
     const s = newStopState();
     for (let i = 0; i < 3; i++) assert.equal(evaluateCensus(s, 8, mode), null, `${mode}: 8 #${i + 1}`);
     assert.equal(s.consecutiveCensusDark, 0, `${mode}: the dark count never moved`);
@@ -426,7 +534,7 @@ test("cc-154 D2 rule 105: {8, 8, 8} is no trip, no would-trip and a dark count o
 });
 
 test("cc-154 D2 rule 105: {2, 8, 2} trips — 8 is transparent, it neither advances nor resets the dark count", () => {
-  for (const mode of ["stop", "report"] as const) {
+  for (const mode of ["pre_call", "breather", "cadence"] as const) {
     const s = newStopState();
     assert.equal(evaluateCensus(s, 2, mode), null);
     assert.equal(evaluateCensus(s, 8, mode), null);
@@ -480,15 +588,15 @@ test("cc-154 D2: an unavailable opening poll is counted as opened on the gate, n
   assert.equal(gateTally(polls.slice(0, 1)), "1 poll(s): 1 held by the gate, 0 by the census (0 dark)", "no unavailable poll, the cc-151 line");
 });
 
-test("cc-154 D2: the census-mode row counts unavailable calls apart from the would-trips, in both modes", () => {
+test("cc-154 D2: the census-mode row counts unavailable calls apart, in both modes", () => {
   const row = (phase: CensusRow["phase"], code: number, would_trip: boolean | null): CensusRow => ({
     at: "t", minutes: phase === "gate" ? 60 : 15, code, summary: code === 8 ? "unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)" : "pass (…)",
     phase, before_call: phase === "pre_call" ? 1 : null, would_trip,
   });
   const rows = [row("gate", 8, null), row("pre_call", 8, false), row("pre_call", 8, false)];
   assert.equal(censusModeLine("report", rows),
-    "report — rule (3) pass=false is recorded, not a stop (0 of 0 rule (3) reading(s) would have tripped); " +
-    "the dark-twice trip stays armed; the gate wait's census half still holds the window" +
+    "report — CALLs over --renders-per-call-max 3 are recorded, never a stop (0 CALL(s) over budget); " +
+    "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window" +
     " · 3 census call(s) unavailable (exit 8, FIX-1219) — not readings, never a trip");
   assert.match(censusModeLine("stop", rows), /^stop — .* · 3 census call\(s\) unavailable \(exit 8, FIX-1219\)/);
   assert.equal(censusLine(rows[1]!), "- t (15 min, before CALL 1) exit 8: unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)");
@@ -499,5 +607,5 @@ test("cc-154 D2: the gate half goes through censusHalfReading, and evaluateCensu
   const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
   assert.match(code, /return censusHalfReading\(cen\.code, cen\.summary\);/);
   assert.doesNotMatch(code, /ok: cen\.code === 0/, "the old gate-half verdict is gone");
-  assert.match(code, /mode: CensusMode = "stop"\): Trip \| WouldTrip \| null \{\s*\n\s*if \(exitCode === CENSUS_EXIT\.unavailable\) return null;/);
+  assert.match(code, /phase: CensusPhase = "pre_call"\): Trip \| null \{\s*\n\s*if \(exitCode === CENSUS_EXIT\.unavailable\) return null;/);
 });

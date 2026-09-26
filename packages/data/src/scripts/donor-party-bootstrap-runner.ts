@@ -3,7 +3,8 @@
  *
  *   pnpm --filter @civitics/data data:donor-party:bootstrap:prod \
  *     --units-per-call 2 --wall-trip-s 3.0 --breather-until-wall-s 0.5 \
- *     --breather-max-s 600 --max-calls 12 --expected-minutes 60 --max-wait-minutes 600
+ *     --breather-max-s 600 --max-calls 12 --expected-minutes 60 --max-wait-minutes 600 \
+ *     --renders-per-call-max 3
  *
  * Launched once, from the PRIMARY checkout (its .env.local.prod is the real
  * one; a worktree's is a stub), as a background process. It needs nobody:
@@ -46,11 +47,17 @@
  *             a. BREATHER (from CALL 2): wait until BOTH every-2-min watchdogs have a
  *                completed run that STARTED after the previous CALL returned
  *                with a wall under --breather-until-wall-s — read every 30 s —
- *                or --breather-max-s elapses (then proceed, `breather_timeout`).
+ *                AND (prod, FIX-1232) the census, read ONCE when the walls
+ *                release, shows no render lost since the CALL returned; a
+ *                render keeps it open, re-read no sooner than 60 s later. Or
+ *                --breather-max-s elapses (then proceed, `breather_timeout`).
  *                cc-147 measured the recovery: 1.341 → 0.612 / 0.061 s within
  *                one minute of the probe CALL ending.
- *             b. CENSUS (prod) --minutes 15 before EVERY CALL, after the
- *                breather so it reads the recovered box.
+ *             b. CENSUS (prod) --minutes 15 before EVERY CALL: from CALL 2 it
+ *                is the reading the breather ended on (reordered, not added —
+ *                a 0-render breather costs no Logs call it did not before).
+ *                The CALL just finished is judged on its own span against
+ *                --renders-per-call-max (default 3) here.
  *             c. pipeline_state.donor_party_crawl = {"max_units":
  *                --units-per-call} upserted before the CALL and restored to the
  *                prior value (prod: ABSENT → DELETE, never "defaults") after it
@@ -79,22 +86,28 @@
  *       They are logged `elevated` and counted (`elevated_ticks`), never a
  *       trip. >= 3 s is above anything the healthy stacks produce and inside
  *       the Tuesday 1–4 s band — a stop worth losing one window for;
- *   (3) the census (child process, --minutes 15) before every CALL and every
- *       15 min during one: pass=false trips (the front door — rule 65, the
- *       load-bearing stop); exit 2 (Logs API dark) is logged, and TWO
- *       consecutive exit-2s trip — the Logs API going dark was itself a symptom
- *       on 09-22 (rule 164). Since cc-151 D1 the 57014 half fails only above
- *       the Poisson P99 floor of the baseline (3 in 15 min at 0.033/min), so a
- *       burst of 4 trips and a single stray timeout does not. With
- *       --census-mode report (cc-152; default stop) a pass=false reading is
- *       recorded — `would_trip` on its receipt row — and logged, and does not
- *       stop the run: the op's front-door cost is measured, not guarded. The
- *       dark-twice trip stays armed in both modes, and the gate wait's census
- *       half (step 1) holds the window in both; report demotes only this
- *       pass=false stop. Exit 8 (endpoint removed, FIX-1219) is not a reading
- *       and never trips: it neither counts toward nor resets the dark count,
- *       and at the gate it opens on the gate alone. Exit 2 (dark) still trips
- *       on two consecutive;
+ *   (3) the front door, in RENDERS (FIX-1232 — a render is a second with at
+ *       least one statement timeout; one page's 4–6 fanned-out reads count
+ *       once). Three readings, three jobs:
+ *         - pre-CALL (15 min): pass=false stops, in BOTH census modes. The
+ *           57014 half fails only above the Poisson P99 floor of the baseline
+ *           in renders (3 in 15 min at 0.033/min).
+ *         - the CALL window: every 15 min while a CALL runs (its span so far,
+ *           one --renders-only read) and once it has returned (its whole
+ *           span), renders against --renders-per-call-max. Over budget is a
+ *           `would_trip` in the receipt; TWO CONSECUTIVE CALLs over budget
+ *           stop the run (rule 117) in `stop` mode. `--census-mode report`
+ *           now means only this: an over-budget CALL is recorded, never a
+ *           stop. The old per-reading stop during a CALL is RETIRED — a
+ *           15-min reading taken during a paced CALL fails by construction,
+ *           the CALL's cost being a design constant (rule 183).
+ *         - the breather (step 6a): 0 renders since the CALL returned.
+ *       Exit 2 (Logs API dark) is logged wherever it is read, and TWO
+ *       consecutive exit-2s trip in both modes — the Logs API going dark was
+ *       itself a symptom on 09-22 (rule 164). Exit 8 (endpoint removed,
+ *       FIX-1219) is not a reading and never trips: it neither counts toward
+ *       nor resets the dark count, at the gate it opens on the gate alone,
+ *       and in a breather the walls alone release;
  *   (4) the CALL's backend gone from pg_stat_activity (the box, not the
  *       procedure).
  * On trip: pg_cancel_backend(<CALL pid>) from T; wait for the CALL to return
@@ -133,7 +146,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { isLogsEndpointGone } from "@civitics/db";
-import { CENSUS_EXIT } from "../lib/cancellation-census";
+import { CENSUS_EXIT, rendersIn } from "../lib/cancellation-census";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { GateTimeout, waitForProdOpGate, type AlsoReading, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
 import { ProdSessionRefused, withProdSession, type ProdSessionState } from "../lib/prod-session";
@@ -150,6 +163,12 @@ const DATA_DIR = path.resolve(__dirname, "..", "..");
 export const ELEVATED_FROM_S = 1.0;
 /** Breather read cadence (D2): one every-2-min watchdog run lands per 120 s; 30 s sees each within a quarter-cycle. */
 const BREATHER_READ_S = 30;
+/**
+ * FIX-1232 D3 (i): once the walls have released, the breather reads the census
+ * once, and while renders are still being lost re-reads no sooner than this —
+ * a census read is two Logs calls on a token four readers share (rule 190).
+ */
+export const BREATHER_CENSUS_REREAD_S = 60;
 
 export type Outcome =
   | "caught_up" | "stopped" | "skipped" | "gate_timeout" | "max_calls" | "error";
@@ -169,7 +188,13 @@ export function vocabularyLine(): string {
 // Args
 // ---------------------------------------------------------------------------
 
-/** Rule (3)'s pass=false: `stop` trips it; `report` records it (cc-152 D1). */
+/**
+ * Rule (3)'s CALL-window budget (FIX-1232): `stop` trips on two consecutive
+ * CALLs over --renders-per-call-max; `report` records every over-budget CALL
+ * and never stops on one. Narrowed from cc-152, where `report` also demoted a
+ * failing pre-CALL reading: a pre-CALL FAIL now stops in both modes, and the
+ * dark-twice trip is armed in both.
+ */
 export type CensusMode = "stop" | "report";
 
 export interface RunnerArgs {
@@ -186,6 +211,8 @@ export interface RunnerArgs {
   tripFromCall: number;
   receiptTag: string | null;
   censusMode: CensusMode;
+  /** FIX-1232 D3: renders one CALL may lose before it counts as over budget. */
+  rendersPerCallMax: number;
 }
 
 function argValue(argv: readonly string[], flag: string): string | null {
@@ -206,6 +233,7 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
     "--units-per-call", "--wall-trip-s", "--breather-until-wall-s", "--breather-max-s",
     "--max-wait-minutes", "--poll-seconds", "--max-calls", "--expected-minutes",
     "--tick-seconds", "--trip-on-wall-ms", "--trip-from-call", "--receipt-tag", "--census-mode",
+    "--renders-per-call-max",
   ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -231,6 +259,7 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
     ["expectedMinutes", "--expected-minutes", 60, 1],
     ["tickSeconds", "--tick-seconds", 120, 1],
     ["tripFromCall", "--trip-from-call", 1, 1],
+    ["rendersPerCallMax", "--renders-per-call-max", 3, 0],
   ] as const) {
     const v = num(flag, d, min);
     if (typeof v === "object") return v;
@@ -263,6 +292,7 @@ export function parseRunnerArgs(rawArgv: readonly string[]): RunnerArgs | { erro
     tripFromCall: Math.floor(out["tripFromCall"]!),
     receiptTag: tag,
     censusMode: mode === "report" ? "report" : "stop",
+    rendersPerCallMax: Math.floor(out["rendersPerCallMax"]!),
   };
 }
 
@@ -368,14 +398,18 @@ export interface Trip {
 }
 
 /**
- * cc-152 D1 — evaluateCensus's third shape: what rule (3) WOULD have returned
- * in stop mode, on a pass=false reading in report mode. Recorded and logged,
- * never a stop.
+ * Rule (3)'s record-not-stop shape: a CALL over --renders-per-call-max whose
+ * predecessor was not (FIX-1232 — one observation), or any over-budget CALL
+ * in report mode. Recorded and logged, never a stop.
  */
 export interface WouldTrip {
   would_trip: true;
   rule: 3;
   reason: string;
+  /** FIX-1232: the CALL it was observed on, its renders, and the budget. */
+  call?: number;
+  renders?: number;
+  budget?: number;
 }
 
 export const isTrip = (v: Trip | WouldTrip | null): v is Trip => v !== null && v.would_trip !== true;
@@ -387,9 +421,13 @@ export interface StopState {
   /** The vote key last counted per job — see WatchdogReading.runs. */
   lastVote: Record<string, string>;
   consecutiveCensusDark: number;
+  /** FIX-1232: the CALLs observed over --renders-per-call-max, one vote each. */
+  overBudgetCalls: number[];
 }
 
-export const newStopState = (): StopState => ({ consecutiveOver: {}, overVotes: {}, lastVote: {}, consecutiveCensusDark: 0 });
+export const newStopState = (): StopState => ({
+  consecutiveOver: {}, overVotes: {}, lastVote: {}, consecutiveCensusDark: 0, overBudgetCalls: [],
+});
 
 /** D1 — jobs whose wall is this op's load: in [ELEVATED_FROM_S, wallTripS). */
 export function elevatedJobs(walls: Record<string, number>, wallTripS: number): string[] {
@@ -440,23 +478,98 @@ export function evaluateWatchdogs(
   return null;
 }
 
+/** Where a census reading was taken — it decides what an exit 1 means (FIX-1232). */
+export type CensusPhase = "pre_call" | "breather" | "cadence";
+
+/** The pre-CALL half of rule (3): an exit 1 before a CALL stops, in both modes. */
+export function preCallFail(exitCode: number): Trip | null {
+  return exitCode === CENSUS_EXIT.fail ? { rule: 3, reason: "(3) the pre-CALL census failed (57014 renders or front-door 5xx)" } : null;
+}
+
 /**
- * Census exit code → trip, would-trip, or null. 0 pass · 1 fail · 2 Logs API
- * dark · 8 unavailable. A fail is a Trip in stop mode and a WouldTrip in
- * report mode; the dark count and its trip are the same in both. 8 (the
- * endpoint is gone, FIX-1219) is TRANSPARENT: null in both modes, and the dark
- * count is neither advanced nor reset, so dark, 8, dark still trips.
+ * Census exit code → trip or null. 0 pass · 1 fail · 2 Logs API dark · 8
+ * unavailable. Two consecutive darks trip in both modes, wherever they were
+ * read. 8 (the endpoint is gone, FIX-1219) is TRANSPARENT: the dark count is
+ * neither advanced nor reset, so dark, 8, dark still trips.
+ *
+ * An exit 1 trips ONLY before a CALL, and in both modes (FIX-1232, design
+ * §0.4: report mode is the honest demotion of the CALL-window reading only).
+ * A reading DURING a CALL fails by construction — the CALL's cost is a design
+ * constant (rule 183) — so the old per-reading rule (3) stop is retired and
+ * the CALL is judged on its renders against --renders-per-call-max instead
+ * (evaluateCallBudget). A breather reading's exit 1 is not a stop either: the
+ * breather is still waiting for the box to come back.
  */
-export function evaluateCensus(state: StopState, exitCode: number, mode: CensusMode = "stop"): Trip | WouldTrip | null {
+export function evaluateCensus(state: StopState, exitCode: number, phase: CensusPhase = "pre_call"): Trip | null {
   if (exitCode === CENSUS_EXIT.unavailable) return null;
   if (exitCode === 0) { state.consecutiveCensusDark = 0; return null; }
   if (exitCode === 1) {
     state.consecutiveCensusDark = 0;
-    const reason = "(3) census pass=false (57014 rate or front-door 5xx)";
-    return mode === "report" ? { would_trip: true, rule: 3, reason } : { rule: 3, reason };
+    return phase === "pre_call" ? preCallFail(exitCode) : null;
   }
   state.consecutiveCensusDark += 1;
   return state.consecutiveCensusDark >= 2 ? { rule: 3, reason: "(3) the Logs API was dark on two consecutive census readings" } : null;
+}
+
+/**
+ * FIX-1232 D3 (ii) — the CALL-window budget. `renders` is the renders lost
+ * over one CALL's span (a partial count while it runs, the whole count once it
+ * has returned). Each CALL votes ONCE, on its first observation over budget
+ * (rule 117: two observations are two CALLs, never two readings of one). Over
+ * budget with the previous CALL also over → a Trip in stop mode; otherwise a
+ * WouldTrip, recorded in the receipt. Report mode never stops here.
+ */
+export function evaluateCallBudget(
+  state: StopState, call: number, renders: number, budget: number, mode: CensusMode,
+): Trip | WouldTrip | null {
+  if (renders <= budget || state.overBudgetCalls.includes(call)) return null;
+  state.overBudgetCalls.push(call);
+  const reason = `(3) CALL ${call} lost ${renders} render(s) > --renders-per-call-max ${budget}`;
+  if (mode === "stop" && state.overBudgetCalls.includes(call - 1)) {
+    return { rule: 3, reason: `${reason}, and CALL ${call - 1} was over budget too — two consecutive CALLs (rule 117)` };
+  }
+  return { would_trip: true, rule: 3, reason, call, renders, budget };
+}
+
+/** The seconds of a census --json reading, from either shape (the gate's or --renders-only's). */
+export function censusSeconds(j: CensusJson | null): CensusSecond[] | null {
+  return j?.cancellations?.by_second ?? j?.renders?.by_second ?? null;
+}
+
+/**
+ * FIX-1232 D3 (i) — the breather's census half, from ONE reading taken once
+ * the watchdog walls have released. Released iff no render was lost since the
+ * CALL returned. An exit 8 (no instrument) releases on the walls alone, as the
+ * gate opens on the gate alone; a dark or unparsed reading holds — the breather
+ * cannot confirm 0.
+ */
+export function breatherCensus(
+  code: number, j: CensusJson | null, returnedAtMs: number,
+): { released: boolean; renders: number | null; pending: string | null } {
+  if (code === CENSUS_EXIT.unavailable) return { released: true, renders: null, pending: null };
+  const secs = code === 0 || code === 1 ? censusSeconds(j) : null;
+  if (!secs) return { released: false, renders: null, pending: `census ${code === 0 || code === 1 ? "unparsed" : "dark"} — cannot confirm 0 renders` };
+  const since = rendersIn(secs, returnedAtMs, Number.POSITIVE_INFINITY);
+  if (since.length === 0) return { released: true, renders: 0, pending: null };
+  return {
+    released: false,
+    renders: since.length,
+    pending: `census: ${since.length} render(s) since the CALL returned (${since.map((s) => s.page).join(", ")})`,
+  };
+}
+
+/**
+ * One CALL's renders out of a reading, or null when the reading does not reach
+ * back to the CALL's start (then the runner reads the CALL's span itself).
+ */
+export function callWindowRenders(
+  j: CensusJson | null, startMs: number, endMs: number,
+): { renders: number; events: number; seconds: CensusSecond[] } | null {
+  const secs = censusSeconds(j);
+  const from = j?.window?.start ? Date.parse(j.window.start) : NaN;
+  if (!secs || !(from <= Math.floor(startMs / 1000) * 1000)) return null;
+  const seconds = rendersIn(secs, startMs, endMs);
+  return { renders: seconds.length, events: seconds.reduce((n, s) => n + s.events, 0), seconds };
 }
 
 // ---------------------------------------------------------------------------
@@ -626,6 +739,7 @@ export interface CensusSecond {
 
 /** The slice of cancellation-census.ts --json this runner reads. */
 export interface CensusJson {
+  window?: { start: string; end: string; minutes: number };
   cancellations?: {
     total: number; ratio: number; floor?: number; lambda?: number; pass?: boolean;
     /** FIX-1232: the gated unit, and the seconds behind it. */
@@ -685,15 +799,11 @@ export function censusHalfReading(code: number, summary: string): AlsoReading {
   return { name: "census", ok: code === 0 || code === CENSUS_EXIT.unavailable, summary };
 }
 
-/**
- * cancellation-census.ts as a child process; resolves its exit code (2 on any
- * launch failure). Exported for session:wait-for-gate's census half (cc-159 D2),
- * so both waits read the census through one spawn.
- */
-export function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: number; summary: string }> {
+/** cancellation-census.ts as a child process: its exit code (2 on any launch failure) and its --json body. */
+function spawnCensus(args: readonly string[], log: (l: string) => void): Promise<{ code: number; json: CensusJson | null }> {
   return new Promise((resolve) => {
     const child = spawn(
-      "tsx", ["src/scripts/cancellation-census.ts", "--minutes", String(minutes), "--json"],
+      "tsx", ["src/scripts/cancellation-census.ts", ...args],
       { cwd: DATA_DIR, env: process.env, shell: process.platform === "win32" },
     );
     let out = "";
@@ -703,15 +813,45 @@ export function runCensus(minutes: number, log: (l: string) => void): Promise<{ 
     child.on("error", (e) => {
       clearTimeout(timer);
       log(`[census] launch failed: ${e.message}`);
-      resolve({ code: 2, summary: censusSummary(2, null, minutes) });
+      resolve({ code: 2, json: null });
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
       let j: CensusJson | null = null;
       try { j = JSON.parse(out) as CensusJson; } catch { /* non-JSON: exit 2 paths print nothing to stdout */ }
-      resolve({ code: code ?? 2, summary: censusSummary(code ?? 2, j, minutes) });
+      resolve({ code: code ?? 2, json: j });
     });
   });
+}
+
+/**
+ * The census over the last `minutes` (two Logs calls). Exported for
+ * session:wait-for-gate's census half (cc-159 D2), so both waits read the
+ * census through one spawn. `json` carries the seconds the runner windows into
+ * its CALLs and breathers (FIX-1232).
+ */
+export async function runCensus(minutes: number, log: (l: string) => void): Promise<{ code: number; summary: string; json: CensusJson | null }> {
+  const r = await spawnCensus(["--minutes", String(minutes), "--json"], log);
+  return { ...r, summary: censusSummary(r.code, r.json, minutes) };
+}
+
+/** `renders R / events E` for a --renders-only reading, or what it was instead. */
+export function rendersSummary(code: number, j: CensusJson | null): string {
+  if (code === CENSUS_EXIT.unavailable) return censusSummary(code, j, 0);
+  if (code !== 0) return `dark (exit ${code} — the Logs API did not answer)`;
+  if (!j?.renders) return "dark (exit 0; unparsed output)";
+  return `renders ${j.renders.renders} / events ${j.renders.events}`;
+}
+
+/** FIX-1232 D3 — the renders over [startMs, endMs] and nothing else: ONE Logs call (`--renders-only`). */
+export async function runRenders(
+  startMs: number, endMs: number, log: (l: string) => void,
+): Promise<{ code: number; summary: string; json: CensusJson | null }> {
+  const at = (ms: number) => new Date(ms).toISOString();
+  const r = await spawnCensus(["--renders-only", "--start", at(startMs), "--end", at(endMs), "--json"], log);
+  // Unparsed output on an exit 0 is not a reading: count it as dark.
+  const code = r.code === 0 && !r.json?.renders ? CENSUS_EXIT.dark : r.code;
+  return { code, json: r.json, summary: rendersSummary(r.code, r.json) };
 }
 
 // ---------------------------------------------------------------------------
@@ -723,24 +863,41 @@ interface CallRecord {
   units: number;
   pid: number;
   started_at: string;
+  /** started_at as epoch ms on the DB clock — the clock postgres_logs stamps with (FIX-1232). */
+  started_ms: number;
   returned_at: string | null;
+  /** When the CALL returned, epoch ms on the DB clock; the breather counts renders from here. */
+  returned_ms: number | null;
   wall_s: number | null;
   row: CallRow | null;
   verdict: string;
   watchdog_walls: { job: string; min: number; median: number; max: number; n: number; elevated: number }[];
   windows_done_after: number[] | null;
   error?: string;
+  /**
+   * FIX-1232 D3 (ii): the renders lost over this CALL's span, from the latest
+   * reading that covered all of it (`final`: the next breather's reading, the
+   * CALL's own --renders-only read, or the end-of-run read), else the last
+   * partial one taken while it ran. null when nothing was read (local; dark).
+   */
+  renders: { renders: number; events: number; seconds: CensusSecond[]; final: boolean; at: string } | null;
 }
 
-interface BreatherRecord {
+export interface BreatherRecord {
   before_call: number;
   started_at: string;
   released_at: string;
   waited_s: number;
-  released_by: "walls" | "breather_timeout" | "stop";
+  /** `walls+census` (FIX-1232): the walls released AND the census read 0 renders since the CALL returned. */
+  released_by: "walls" | "walls+census" | "breather_timeout" | "stop";
   readings: number;
   walls_at_release: Record<string, { wall_s: number; runid: string }>;
   pending_at_release: string[];
+  /** FIX-1232 D3 (i): census reads the breather took, and the renders lost since the CALL returned at the last one. */
+  census_reads: number;
+  renders: number | null;
+  /** FIX-1232 D5: the same window, re-counted from the end-of-run read (late-arriving log rows included). */
+  renders_final?: number;
 }
 
 export interface CensusRow {
@@ -748,14 +905,40 @@ export interface CensusRow {
   minutes: number;
   code: number;
   summary: string;
-  phase: "gate" | "pre_call" | "cadence";
+  /**
+   * `breather` — a reading taken once the walls released (FIX-1232); the one
+   * that releases the breather is also the pre-CALL reading, so it is recorded
+   * once, as `pre_call`. `renders` — a one-call --renders-only read of a CALL's
+   * span, a CALL in flight (`cadence` before FIX-1232), or the whole run.
+   */
+  phase: "gate" | "pre_call" | "breather" | "cadence" | "renders";
   before_call: number | null;
   /**
    * cc-152 D1: true when this reading would have tripped rule (3) in stop mode
-   * and report mode recorded it instead. null on a gate row — the gate wait's
-   * census half holds the window; it is not rule (3).
+   * and report mode recorded it instead. Since FIX-1232 only the CALL-window
+   * budget has a report form, so this is false on every row a reading writes;
+   * the budget's would_trips are `Receipt.budget`. null on a gate row.
    */
   would_trip: boolean | null;
+}
+
+/** A census reading the breather took, handed on as the pre-CALL reading (FIX-1232 D3: reordered, not added). */
+export interface BreatherReading {
+  code: number;
+  summary: string;
+  json: CensusJson | null;
+  row: CensusRow;
+}
+
+/** FIX-1232 D3 (ii): one CALL's first over-budget observation — a WouldTrip or the Trip it became. */
+export interface BudgetRow {
+  at: string;
+  call: number;
+  renders: number;
+  budget: number;
+  final: boolean;
+  outcome: "would_trip" | "trip";
+  reason: string;
 }
 
 interface Receipt {
@@ -783,6 +966,10 @@ interface Receipt {
   resume: { windows_done_before: number[] | null; resuming_at: number | null; target_before: string | null } | null;
   calls: CallRecord[];
   breathers: BreatherRecord[];
+  /** FIX-1232 D3 (ii): every CALL observed over --renders-per-call-max. */
+  budget: BudgetRow[];
+  /** FIX-1232 D5: the whole run's renders, read once after the last CALL (null: local, no CALL, or dark). */
+  run_renders: { from: string; to: string; code: number; renders: number; events: number; seconds: CensusSecond[] } | null;
   watchdog_series: WatchdogReading[];
   elevated_ticks: number;
   trip: {
@@ -852,25 +1039,35 @@ export function pollLine(p: GatePoll): string {
 /** The log/receipt suffix of a reading report mode recorded instead of stopping on. */
 export const WOULD_TRIP_NOTE = " — would have tripped rule (3); census mode report";
 
-/** The receipt's `census mode` header row (cc-152 D1). */
-export function censusModeLine(mode: CensusMode, rows: readonly CensusRow[]): string {
+/**
+ * The receipt's `census mode` header row (cc-152 D1). Since FIX-1232 the mode
+ * decides the CALL-window budget only: a pre-CALL FAIL and the dark-twice trip
+ * stop in both, and the per-reading stop during a CALL is retired.
+ */
+export function censusModeLine(
+  mode: CensusMode, rows: readonly CensusRow[], budget: readonly BudgetRow[] = [], budgetMax = 3,
+): string {
   const unavailable = rows.filter((c) => c.code === CENSUS_EXIT.unavailable).length;
-  const rule3 = rows.filter((c) => c.phase !== "gate" && c.code !== CENSUS_EXIT.unavailable);
   const tail = unavailable
     ? ` · ${unavailable} census call(s) unavailable (exit 8, FIX-1219) — not readings, never a trip`
     : "";
+  const over = `${new Set(budget.map((b) => b.call)).size} CALL(s) over budget`;
+  const common = "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window";
   if (mode === "stop") {
-    return "stop — rule (3) pass=false stops the run; the dark-twice trip is armed; the gate wait's census half holds the window" + tail;
+    return `stop — two consecutive CALLs over --renders-per-call-max ${budgetMax} stop the run (${over}); ${common}` + tail;
   }
-  return "report — rule (3) pass=false is recorded, not a stop " +
-    `(${rule3.filter((c) => c.would_trip === true).length} of ${rule3.length} rule (3) reading(s) would have tripped); ` +
-    "the dark-twice trip stays armed; the gate wait's census half still holds the window" + tail;
+  return `report — CALLs over --renders-per-call-max ${budgetMax} are recorded, never a stop (${over}); ${common}` + tail;
 }
 
 /** One receipt line per census reading. */
 export function censusLine(c: CensusRow): string {
-  const where = c.phase === "gate" ? "gate poll" : c.phase === "pre_call" ? `before CALL ${c.before_call}` : "cadence";
-  return `- ${c.at} (${c.minutes} min, ${where}) exit ${c.code}: ${c.summary}${c.would_trip ? ` — **would_trip**${WOULD_TRIP_NOTE}` : ""}`;
+  const where = c.phase === "gate" ? "gate poll"
+    : c.phase === "pre_call" ? `before CALL ${c.before_call}`
+      : c.phase === "breather" ? `breather before CALL ${c.before_call}, held it`
+        : c.phase === "renders" ? `renders read${c.before_call ? ` of CALL ${c.before_call - 1}` : " of the run"}`
+          : "during a CALL";
+  const minutes = Number.isInteger(c.minutes) ? String(c.minutes) : c.minutes.toFixed(1);
+  return `- ${c.at} (${minutes} min, ${where}) exit ${c.code}: ${c.summary}${c.would_trip ? ` — **would_trip**${WOULD_TRIP_NOTE}` : ""}`;
 }
 
 function renderReceipt(r: Receipt): string {
@@ -888,7 +1085,7 @@ function renderReceipt(r: Receipt): string {
   L.push(`| launched / finished | ${r.launched_at} / ${r.finished_at ?? "—"} |`);
   L.push(`| pid | ${r.pid} |`);
   L.push(`| args | \`${JSON.stringify(r.args)}\` |`);
-  L.push(`| census mode | ${censusModeLine(r.args.censusMode, r.census)} |`);
+  L.push(`| census mode | ${censusModeLine(r.args.censusMode, r.census, r.budget, r.args.rendersPerCallMax)} |`);
   L.push(`| gate | ${gateTally(r.gate.polls)}; opened ${r.gate.opened_at ?? "never"} after ${f(r.gate.waited_seconds != null ? r.gate.waited_seconds / 60 : null)} min` +
     `${r.gate.opening_census ? ` · census at opening: ${r.gate.opening_census.summary}` : ""}` +
     `${r.gate.last_blocked_by ? ` · last poll held by ${r.gate.last_blocked_by}` : ""} |`);
@@ -971,7 +1168,7 @@ async function main(): Promise<number> {
     gate: { polls: [], opened_at: null, opening_reading: null, opening_census: null, waited_seconds: null, last_blocked_by: null },
     census: [], claim: { claimed_at: null, released_at: null, state_after_arm: null },
     pacing: { units_per_call: args.unitsPerCall, prior_value: null, upserts: 0, restores: 0, restored: null },
-    resume: null, calls: [], breathers: [], watchdog_series: [], elevated_ticks: 0, trip: null,
+    resume: null, calls: [], breathers: [], budget: [], run_renders: null, watchdog_series: [], elevated_ticks: 0, trip: null,
     caught_up_check: null, before: null, after: null, sum_ratio_after_over_before: null, cursor_last: null,
   };
   const finish = (o: Outcome, detail: string): void => {
@@ -993,6 +1190,24 @@ async function main(): Promise<number> {
       at: new Date().toISOString(), rule: t.rule, reason: t.reason, call, job: t.job ?? null,
       run_ids: t.run_ids ?? [], cancel_sent: false, backend_gone_verified: null,
     };
+  };
+  /**
+   * FIX-1232 D3 (ii) — record a CALL's renders from a reading, and judge the
+   * budget on it. A final count (the reading covered the whole CALL) replaces a
+   * partial one; a partial never replaces a final. Returns the Trip, if any.
+   */
+  const judgeCall = (
+    rec: CallRecord, got: { renders: number; events: number; seconds: CensusSecond[] }, final: boolean,
+  ): Trip | null => {
+    if (!rec.renders?.final || final) rec.renders = { ...got, final, at: new Date().toISOString() };
+    const v = evaluateCallBudget(stopState, rec.n, got.renders, args.rendersPerCallMax, args.censusMode);
+    if (!v) return null;
+    R.budget.push({
+      at: new Date().toISOString(), call: rec.n, renders: got.renders, budget: args.rendersPerCallMax, final,
+      outcome: isTrip(v) ? "trip" : "would_trip", reason: v.reason,
+    });
+    log(`[budget] ${v.reason}${isTrip(v) ? " — STOP" : ` — would_trip (${args.censusMode === "report" ? "census mode report" : "one observation; a second consecutive stops"})`}`);
+    return isTrip(v) ? v : null;
   };
   const wallsLine = (w: Record<string, number>): string =>
     Object.entries(w).map(([j, s]) => `${j}=${s.toFixed(3)}s${s >= ELEVATED_FROM_S && s < args.wallTripS ? "(elevated)" : ""}`).join(" ");
@@ -1069,14 +1284,30 @@ async function main(): Promise<number> {
   process.on("SIGINT", () => onSignal("SIGINT"));
   process.on("SIGTERM", () => onSignal("SIGTERM"));
 
-  // ── the breather (D2) — between CALLs, never a trip on its own ────────────
-  const breathe = async (beforeCall: number, returnedAtMs: number, stSince: string): Promise<void> => {
+  // ── the breather (D2; FIX-1232 D3 (i)) — between CALLs, never a trip on its own ──
+  //
+  // Walls first, as before. Once they release (prod), ONE census reading: the
+  // pre-CALL reading, taken here instead of after the breather — reordered, not
+  // added — so a 0-render breather costs no Logs call it did not cost before.
+  // Released when that reading shows no render lost since the CALL returned; a
+  // render keeps the breather open and the census is re-read no sooner than
+  // BREATHER_CENSUS_REREAD_S later (rule 190). --breather-max-s still bounds it,
+  // and a timeout still PROCEEDS, as it always has: the design note took
+  // `breather_timeout` for a stop, and the tree says otherwise (cc-162 §4).
+  // The reading is handed to the pre-CALL step, which judges it; its dark (if
+  // any) was counted here, once.
+  const breathe = async (beforeCall: number, returnedAtMs: number, stSince: string): Promise<BreatherReading | null> => {
     const t0 = Date.now();
     const startedAt = new Date().toISOString();
     let readings = 0;
     let last: CompletedRun[] = [];
     let verdict = { released: false, pending: ["(no reading yet)"] };
     let by: BreatherRecord["released_by"] = "breather_timeout";
+    let census: BreatherReading | null = null;
+    let censusAtMs = 0;
+    let censusReads = 0;
+    let censusPending: string | null = null;
+    let breatherRenders: number | null = null;
     for (;;) {
       try {
         const q = await tClient.query<CompletedRun>(Q_WATCHDOGS_COMPLETED);
@@ -1097,19 +1328,83 @@ async function main(): Promise<number> {
         log(`[breather] reading failed: ${errText(e)}`);
       }
       if (stopping) { by = "stop"; break; }
-      if (verdict.released) { by = "walls"; break; }
+      if (verdict.released && target !== "prod") { by = "walls"; break; }
+      if (verdict.released && (census === null || Date.now() - censusAtMs >= BREATHER_CENSUS_REREAD_S * 1000)) {
+        const cen = await runCensus(15, log);
+        censusAtMs = Date.now();
+        censusReads += 1;
+        const row: CensusRow = {
+          at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary,
+          phase: "breather", before_call: beforeCall, would_trip: false,
+        };
+        R.census.push(row);
+        census = { ...cen, row };
+        const half = breatherCensus(cen.code, cen.json, returnedAtMs);
+        breatherRenders = half.renders;
+        censusPending = half.pending;
+        log(`[breather] before CALL ${beforeCall} census: ${cen.summary} — ${half.released
+          ? half.renders === null ? "no instrument (exit 8): the walls alone release" : "0 renders since the CALL returned"
+          : half.pending}`);
+        const t = evaluateCensus(stopState, cen.code, "breather");   // the dark count only
+        if (t && !stopping) { stopping = t; recordTrip(t, beforeCall); }
+        if (stopping) { by = "stop"; break; }
+        if (half.released) { by = "walls+census"; break; }
+      }
       const left = args.breatherMaxS * 1000 - (Date.now() - t0);
       if (left <= 0) { by = "breather_timeout"; break; }
       await sleep(Math.min(BREATHER_READ_S * 1000, left));
     }
+    // The last reading is the pre-CALL reading, whether it released the breather or the clock ran out on it.
+    if (census && by !== "stop") census.row.phase = "pre_call";
     const rec: BreatherRecord = {
       before_call: beforeCall, started_at: startedAt, released_at: new Date().toISOString(),
       waited_s: (Date.now() - t0) / 1000, released_by: by, readings,
       walls_at_release: Object.fromEntries(last.map((x) => [x.jobname, { wall_s: x.wall_s, runid: x.runid }])),
-      pending_at_release: verdict.released ? [] : verdict.pending,
+      pending_at_release: !verdict.released ? verdict.pending : by === "walls+census" || !censusPending ? [] : [censusPending],
+      census_reads: censusReads,
+      renders: breatherRenders,
     };
     R.breathers.push(rec);
-    log(`[breather] before CALL ${beforeCall}: ${by} after ${rec.waited_s.toFixed(1)} s`);
+    log(`[breather] before CALL ${beforeCall}: ${by} after ${rec.waited_s.toFixed(1)} s` +
+      `${censusReads ? ` (${censusReads} census read(s); ${breatherRenders ?? "?"} render(s) since the CALL returned)` : ""}`);
+    return by === "stop" ? null : census;
+  };
+
+  // ── FIX-1232 D5: the run's renders, after the last CALL ─────────────────────
+  // At most 60 min per read (the census's own slice). Fills every CALL whose
+  // count is not already final and every breather's window, and judges the
+  // budget for the RECORD only — the run is over, so nothing it finds can stop
+  // anything, whatever the mode.
+  const readRunRenders = async (): Promise<void> => {
+    const fromMs = R.calls[0]!.started_ms;
+    const toMs = Date.now();
+    const seconds: CensusSecond[] = [];
+    for (let s = fromMs; s < toMs; s += 60 * 60_000) {
+      const e = Math.min(s + 60 * 60_000, toMs);
+      const rr = await runRenders(s, e, log);
+      R.census.push({ at: new Date().toISOString(), minutes: (e - s) / 60_000, code: rr.code, summary: rr.summary, phase: "renders", before_call: null, would_trip: false });
+      log(`[census] the run's renders ${new Date(s).toISOString()} → ${new Date(e).toISOString()}: ${rr.summary}`);
+      const got = rr.code === 0 ? censusSeconds(rr.json) : null;
+      if (!got) return;   // dark or gone: the receipt says what was read, and no more
+      seconds.push(...got);
+    }
+    const sum = (xs: readonly CensusSecond[]) => xs.reduce((n, x) => n + x.events, 0);
+    R.run_renders = { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString(), code: 0, renders: seconds.length, events: sum(seconds), seconds };
+    for (const rec of R.calls) {
+      if (rec.renders?.final) continue;
+      const got = rendersIn(seconds, rec.started_ms, rec.returned_ms ?? toMs);
+      rec.renders = { renders: got.length, events: sum(got), seconds: got, final: true, at: new Date().toISOString() };
+      const v = evaluateCallBudget(stopState, rec.n, got.length, args.rendersPerCallMax, "report");
+      if (v) {
+        R.budget.push({ at: new Date().toISOString(), call: rec.n, renders: got.length, budget: args.rendersPerCallMax, final: true, outcome: "would_trip", reason: `${v.reason} (read after the run ended)` });
+      }
+    }
+    for (const b of R.breathers) {
+      const before = R.calls[b.before_call - 2];
+      const after = R.calls[b.before_call - 1];
+      if (!before?.returned_ms) continue;
+      b.renders_final = rendersIn(seconds, before.returned_ms, after?.started_ms ?? Date.parse(b.released_at)).length;
+    }
   };
 
   // ── everything that runs under the claim (steps 4-6) ───────────────────────
@@ -1149,25 +1444,46 @@ async function main(): Promise<number> {
 
     let lastCensusAt = Date.now();
     let censusBusy = false;
-    const maybeCensus = () => {
+    // FIX-1232 D3 (ii): every 15 min DURING a CALL, the renders it has lost so
+    // far (one --renders-only read of its own span) against the budget. A
+    // failing 15-min census here is expected by construction (rule 183), so
+    // that reading is retired; a dark one still counts toward dark-twice.
+    const maybeCensus = (rec: CallRecord) => {
       if (target !== "prod" || censusBusy || Date.now() - lastCensusAt < 15 * 60_000) return;
       censusBusy = true;
       lastCensusAt = Date.now();
-      void runCensus(15, log).then((cen) => {
+      const endMs = Date.now();
+      void runRenders(rec.started_ms, endMs, log).then((cen) => {
         censusBusy = false;
-        const v = evaluateCensus(stopState, cen.code, args.censusMode);
-        const wouldTrip = v !== null && !isTrip(v);
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "cadence", before_call: null, would_trip: wouldTrip });
-        log(`[census] 15 min: ${cen.summary}${wouldTrip ? WOULD_TRIP_NOTE : ""}`);
-        const trip = isTrip(v) ? v : null;
+        const minutes = (endMs - rec.started_ms) / 60_000;
+        R.census.push({ at: new Date().toISOString(), minutes, code: cen.code, summary: cen.summary, phase: "cadence", before_call: null, would_trip: false });
+        log(`[census] CALL ${rec.n} so far (${minutes.toFixed(1)} min): ${cen.summary}`);
+        const dark = evaluateCensus(stopState, cen.code, "cadence");
+        const secs = cen.code === 0 ? censusSeconds(cen.json) : null;
+        const budget = secs && inCall
+          ? judgeCall(rec, { renders: secs.length, events: secs.reduce((n, x) => n + x.events, 0), seconds: secs }, false)
+          : null;
+        const trip = dark ?? budget;
         if (trip && !stopping) {
           stopping = trip;
           if (inCall) {
-            recordTrip(trip, R.calls.length);
+            recordTrip(trip, rec.n);
             void signalBackend("pg_cancel_backend", trip.reason).then((ok) => { if (R.trip) R.trip.cancel_sent = ok; });
           }
         }
       });
+    };
+
+    /** FIX-1232 D3 (ii): a returned CALL's renders over its whole span — from `reading` when it reaches back far enough, else one read of its own. */
+    const finalCallRenders = async (prev: CallRecord, reading: CensusJson | null) => {
+      const endMs = prev.returned_ms ?? Date.now();
+      const got = callWindowRenders(reading, prev.started_ms, endMs);
+      if (got) return got;
+      const rr = await runRenders(prev.started_ms, endMs, log);
+      R.census.push({ at: new Date().toISOString(), minutes: (endMs - prev.started_ms) / 60_000, code: rr.code, summary: rr.summary, phase: "renders", before_call: prev.n + 1, would_trip: false });
+      log(`[census] CALL ${prev.n}'s span, read on its own: ${rr.summary}`);
+      const secs = rr.code === 0 ? censusSeconds(rr.json) : null;
+      return secs ? { renders: secs.length, events: secs.reduce((n, x) => n + x.events, 0), seconds: secs } : null;
     };
 
     let prevSince: string | null = null;
@@ -1176,9 +1492,11 @@ async function main(): Promise<number> {
     for (let n = 1; n <= args.maxCalls; n++) {
       const armed = n >= args.tripFromCall;
 
-      // a. The breather, from CALL 2.
+      // a. The breather, from CALL 2. On prod it ends on a census reading.
+      let handed: BreatherReading | null = null;
       if (n > 1 && returnedAtMs !== null && prevSince !== null) {
-        await breathe(n, returnedAtMs, prevSince);
+        while (censusBusy) await sleep(1000);   // the last CALL's cadence read still in flight: one Logs reader at a time
+        handed = await breathe(n, returnedAtMs, prevSince);
       }
       if (stopping) {
         const t = stopping as Trip;
@@ -1187,23 +1505,41 @@ async function main(): Promise<number> {
         return;
       }
 
-      // b. The census before EVERY CALL (prod), after the breather.
+      // b. The census before EVERY CALL (prod). From CALL 2 it is the reading the
+      //    breather ended on (its dark already counted there); CALL 1, and a
+      //    breather that never got past the walls, read it here.
       if (target === "prod") {
-        while (censusBusy) await sleep(1000);   // a cadence census still in flight
-        const cen = await runCensus(15, log);
+        while (censusBusy) await sleep(1000);   // a cadence read still in flight
+        let reading: { code: number; summary: string; json: CensusJson | null };
+        let v: Trip | null;
+        if (handed) {
+          reading = handed;
+          v = preCallFail(handed.code);
+        } else {
+          reading = await runCensus(15, log);
+          R.census.push({ at: new Date().toISOString(), minutes: 15, code: reading.code, summary: reading.summary, phase: "pre_call", before_call: n, would_trip: false });
+          v = evaluateCensus(stopState, reading.code, "pre_call");
+        }
         lastCensusAt = Date.now();
-        const v = evaluateCensus(stopState, cen.code, args.censusMode);
-        const wouldTrip = v !== null && !isTrip(v);
-        R.census.push({ at: new Date().toISOString(), minutes: 15, code: cen.code, summary: cen.summary, phase: "pre_call", before_call: n, would_trip: wouldTrip });
-        log(`[census] pre-CALL ${n} 15 min: ${cen.summary}${wouldTrip ? WOULD_TRIP_NOTE : ""}`);
-        if (isTrip(v)) {
+        log(`[census] pre-CALL ${n} 15 min: ${reading.summary}${handed ? " (the breather's reading)" : ""}`);
+        // FIX-1232 D3 (ii): the CALL just finished, judged on its whole span.
+        const prev = R.calls[R.calls.length - 1];
+        if (prev && (reading.code === CENSUS_EXIT.pass || reading.code === CENSUS_EXIT.fail)) {
+          const got = await finalCallRenders(prev, reading.json);
+          const bt = got ? judgeCall(prev, got, true) : null;
+          if (got) log(`[budget] CALL ${prev.n}: ${got.renders} render(s) / ${got.events} event(s) (budget ${args.rendersPerCallMax})`);
+          v = bt ?? v;
+        }
+        if (v) {
           recordTrip(v, n);
           finish("stopped", `stop rule before CALL ${n}: ${v.reason}`);
           return;
         }
       }
 
-      const since = (await c.query<{ t: string }>("SELECT clock_timestamp()::text AS t")).rows[0]!.t;
+      const clock = (await c.query<{ t: string; ms: number }>(
+        "SELECT c::text AS t, (EXTRACT(epoch FROM c) * 1000)::float8 AS ms FROM (SELECT clock_timestamp() AS c) x")).rows[0]!;
+      const since = clock.t;
 
       // The stop rule once BEFORE each CALL. Startup timeouts are counted from
       // the previous CALL's start, so one during a breather is not missed.
@@ -1229,8 +1565,8 @@ async function main(): Promise<number> {
       log(`[pacing] donor_party_crawl = {"max_units": ${args.unitsPerCall}} (prior: ${JSON.stringify(R.pacing.prior_value)})`);
 
       const rec: CallRecord = {
-        n, units: args.unitsPerCall, pid, started_at: since, returned_at: null, wall_s: null, row: null,
-        verdict: "", watchdog_walls: [], windows_done_after: null,
+        n, units: args.unitsPerCall, pid, started_at: since, started_ms: Number(clock.ms), returned_at: null, returned_ms: null,
+        wall_s: null, row: null, verdict: "", watchdog_walls: [], windows_done_after: null, renders: null,
       };
       R.calls.push(rec);
       const callSeries: WatchdogReading[] = [pre];
@@ -1261,7 +1597,7 @@ async function main(): Promise<number> {
           noteReading(r);
           const trip = evaluateWatchdogs(stopState, r, { wallTripS: args.wallTripS, tripOnWallMs: args.tripOnWallMs, armed });
           log(`[tick] CALL ${n} +${Math.round((Date.now() - t0) / 1000)}s: ${wallsLine(r.walls)} startup_timeouts=${r.startupTimeouts} backend=${r.backend ?? "GONE"}`);
-          maybeCensus();
+          maybeCensus(rec);
           const why: Trip | null = trip ?? stopping;
           if (why && cancelAt === null) {
             stopping = why;
@@ -1289,6 +1625,7 @@ async function main(): Promise<number> {
       prevSince = since;
       returnedAtMs = await tClient.query<{ ms: number }>("SELECT (EXTRACT(epoch FROM clock_timestamp()) * 1000)::float8 AS ms")
         .then((q) => Number(q.rows[0]!.ms), () => Date.now());
+      rec.returned_ms = returnedAtMs;
 
       await restoreCrawl();
 
@@ -1454,6 +1791,11 @@ async function main(): Promise<number> {
     R.cursor_last = R.after?.cursor ?? null;
     if (R.before?.mv_sum_cents && R.after?.mv_sum_cents) {
       R.sum_ratio_after_over_before = Number(R.after.mv_sum_cents) / Number(R.before.mv_sum_cents);
+    }
+    // FIX-1232 D5 — the whole run's renders, read once the claim is released:
+    // the receipt's per-CALL and per-breather lines, and the run total.
+    if (target === "prod" && R.calls.length > 0) {
+      await readRunRenders().catch((e: unknown) => log(`[census] the run's renders read failed: ${errText(e)}`));
     }
     finish("error", "the runner ended without an outcome");
     R.finished_at = new Date().toISOString();
