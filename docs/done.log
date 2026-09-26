@@ -1493,3 +1493,4 @@
 2026-09-25 | FIX-1217 | 1c7307ef | prod-only | chore(fixes): record prod verification of FIX-1217, FIX-1225
 2026-09-25 | FIX-1225 | 1c7307ef | prod-only | chore(fixes): record prod verification of FIX-1217, FIX-1225
 2026-09-26 | FIX-1224 | 51631d5d | prod-only | docs(audits): FIX-1224 Pattern B — the 05:00 canary read the prod session
+2026-09-26 | FIX-1226 | 30480222 | prod-only | chore(fixes): FIX-1226 prod set — re-derived total_received_cents for 5,713 committees from the manifest
