@@ -699,7 +699,10 @@ const NOT_CAPTURABLE = [
     "from HERE, which is a Postgres session. They ARE capturable: " +
     "`pnpm --filter @civitics/data data:census:cancellations:prod` reads them (and the " +
     "front-door 5xx rate) through the Logs API and prints both against the cc-131 read 7 (f) " +
-    "gates, exiting non-zero when either fails.",
+    "gates, exiting non-zero when either fails. A paced prod op's front-door cost — renders lost " +
+    "per CALL and per breather against `--renders-per-call-max`, and the run total — is in its " +
+    "runner receipt, `docs/audits/<day>-fix1212-bootstrap-runner*.md` (FIX-1232); this job runs " +
+    "no census of its own.",
   "**GHA step logs and per-step timings.** `gh run view --log` only, and they age out. This file " +
     "carries the run's `createdAt`/`conclusion` from the API, not its logs.",
   "**Vercel edge / CDN volume.** Cloudflare analytics only — see `scripts/cf-analytics.mjs`.",

@@ -146,7 +146,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { isLogsEndpointGone } from "@civitics/db";
-import { CENSUS_EXIT, rendersIn } from "../lib/cancellation-census";
+import { CENSUS_EXIT, rendersIn, rendersLine, type RenderSecond } from "../lib/cancellation-census";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { GateTimeout, waitForProdOpGate, type AlsoReading, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
 import { ProdSessionRefused, withProdSession, type ProdSessionState } from "../lib/prod-session";
@@ -858,7 +858,7 @@ export async function runRenders(
 // The run
 // ---------------------------------------------------------------------------
 
-interface CallRecord {
+export interface CallRecord {
   n: number;
   units: number;
   pid: number;
@@ -1070,6 +1070,31 @@ export function censusLine(c: CensusRow): string {
   return `- ${c.at} (${minutes} min, ${where}) exit ${c.code}: ${c.summary}${c.would_trip ? ` — **would_trip**${WOULD_TRIP_NOTE}` : ""}`;
 }
 
+const asRenderSeconds = (xs: readonly CensusSecond[]): RenderSecond[] =>
+  xs.map((x) => ({ startMs: x.startMs, events: x.events, sampleQuery: x.page }));
+
+/** FIX-1232 D5 — one receipt line per CALL: `renders_lost n · events m · budget b · pages: …`. */
+export function callRendersLine(c: Pick<CallRecord, "n" | "renders">, budget: number): string {
+  if (!c.renders) return `- CALL ${c.n}: not read (local, or the Logs API did not answer)`;
+  const line = rendersLine(asRenderSeconds(c.renders.seconds)).replace(/^(renders_lost \d+ · events \d+)/, `$1 · budget ${budget}`);
+  return `- CALL ${c.n}: ${line}${c.renders.renders > budget ? " — **over budget**" : ""}${c.renders.final ? "" : " (partial: read while it ran)"}`;
+}
+
+/** FIX-1232 D5 — one receipt line per breather: `renders n · released after s`. */
+export function breatherRendersLine(b: Pick<BreatherRecord, "before_call" | "renders" | "renders_final" | "waited_s" | "released_by" | "census_reads">): string {
+  const n = b.renders_final ?? b.renders;
+  const drift = b.renders_final !== undefined && b.renders !== null && b.renders_final !== b.renders
+    ? ` — ${b.renders} at release, ${b.renders_final} in the end-of-run read` : "";
+  return `- breather before CALL ${b.before_call}: renders ${n ?? "—"} · released after ${b.waited_s.toFixed(1)} s ` +
+    `(${b.released_by}${b.census_reads ? `, ${b.census_reads} census read(s)` : ""})${drift}`;
+}
+
+/** FIX-1232 D5 — the run's total, from the one read after the last CALL. */
+export function runRendersLine(run: Receipt["run_renders"]): string {
+  if (!run) return "- run: not read (local, no CALL, or the Logs API did not answer)";
+  return `- run: ${rendersLine(asRenderSeconds(run.seconds))} (${run.from} → ${run.to})`;
+}
+
 function renderReceipt(r: Receipt): string {
   const L: string[] = [];
   const f = (x: number | null | undefined, d = 1) => (x == null || Number.isNaN(x) ? "—" : x.toFixed(d));
@@ -1129,6 +1154,16 @@ function renderReceipt(r: Receipt): string {
       `${Object.entries(b.walls_at_release).map(([j, w]) => `${j} ${w.wall_s.toFixed(3)} (run ${w.runid})`).join("; ")} | ${b.pending_at_release.join("; ")} |`);
   }
   if (r.breathers.length === 0) L.push("| — | | | | | | | |");
+  L.push("");
+  L.push("## Front door, in renders (FIX-1232)");
+  L.push("");
+  L.push(`A render is a second with at least one statement timeout. Budget: --renders-per-call-max ${r.args.rendersPerCallMax}; ` +
+    `two consecutive CALLs over it stop the run in \`stop\` mode.`);
+  L.push("");
+  for (const c of r.calls) L.push(callRendersLine(c, r.args.rendersPerCallMax));
+  for (const b of r.breathers) L.push(breatherRendersLine(b));
+  L.push(runRendersLine(r.run_renders));
+  for (const b of r.budget) L.push(`- ${b.at} CALL ${b.call} **${b.outcome}**: ${b.reason}${b.final ? "" : " (read while it ran)"}`);
   L.push("");
   L.push("## Census");
   L.push("");

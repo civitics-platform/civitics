@@ -17,7 +17,9 @@ import {
   WOULD_TRIP_NOTE,
   breatherCensus,
   breatherRelease,
+  breatherRendersLine,
   callNoLongerRunning,
+  callRendersLine,
   callWindowRenders,
   caughtUpMismatch,
   censusHalfReading,
@@ -39,6 +41,7 @@ import {
   receiptPaths,
   rendersSummary,
   resumeWindow,
+  runRendersLine,
   vocabularyLine,
   type BudgetRow,
   type CallRow,
@@ -341,6 +344,32 @@ test("FIX-1232: the receipt's census-mode row says what each mode now decides, a
   assert.equal(censusLine(row("gate")), "- t (60 min, gate poll) exit 0: pass (…)");
   // A row written before FIX-1232 with would_trip set still says so.
   assert.equal(censusLine({ ...row("pre_call", 1), would_trip: true }), `- t (15 min, before CALL 2) exit 1: pass (…) — **would_trip**${WOULD_TRIP_NOTE}`);
+});
+
+test("FIX-1232 D5: the receipt's renders lines — per CALL with its budget, per breather, and the run — on cc-151's numbers", () => {
+  const s = (at: string, events: number, page: string) => ({ at, startMs: Date.parse(at), events, page });
+  const call5 = { n: 5, renders: { renders: 1, events: 6, seconds: [s("2026-09-24T09:30:26Z", 6, "entity_tags")], final: true, at: "t" } };
+  assert.equal(callRendersLine(call5, 3), "- CALL 5: renders_lost 1 · events 6 · budget 3 · pages: entity_tags");
+  assert.equal(callRendersLine({ n: 2, renders: { renders: 0, events: 0, seconds: [], final: true, at: "t" } }, 3),
+    "- CALL 2: renders_lost 0 · events 0 · budget 3");
+  const six = { renders: 6, events: 6, seconds: Array.from({ length: 6 }, (_, i) => s(`2026-09-24T09:30:2${i}Z`, 1, "get_official_page")), final: false, at: "t" };
+  assert.equal(callRendersLine({ n: 7, renders: six }, 3),
+    "- CALL 7: renders_lost 6 · events 6 · budget 3 · pages: get_official_page ×6 — **over budget** (partial: read while it ran)");
+  assert.equal(callRendersLine({ n: 1, renders: null }, 3), "- CALL 1: not read (local, or the Logs API did not answer)");
+  assert.equal(breatherRendersLine({ before_call: 2, renders: 0, waited_s: 60.78, released_by: "walls+census", census_reads: 1 }),
+    "- breather before CALL 2: renders 0 · released after 60.8 s (walls+census, 1 census read(s))");
+  assert.equal(breatherRendersLine({ before_call: 3, renders: 0, renders_final: 1, waited_s: 90.76, released_by: "walls+census", census_reads: 1 }),
+    "- breather before CALL 3: renders 1 · released after 90.8 s (walls+census, 1 census read(s)) — 0 at release, 1 in the end-of-run read");
+  assert.equal(breatherRendersLine({ before_call: 2, renders: null, waited_s: 20, released_by: "walls", census_reads: 0 }),
+    "- breather before CALL 2: renders — · released after 20.0 s (walls)");
+  const run = {
+    from: "2026-09-24T09:04:58.789Z", to: "2026-09-24T09:34:30.000Z", code: 0, renders: 4, events: 9,
+    seconds: [s("2026-09-24T09:07:53Z", 1, "proposals"), s("2026-09-24T09:19:59Z", 1, "get_official_page"),
+      s("2026-09-24T09:24:21Z", 1, "officials"), s("2026-09-24T09:30:26Z", 6, "entity_tags")],
+  };
+  assert.equal(runRendersLine(run),
+    "- run: renders_lost 4 · events 9 · pages: entity_tags, get_official_page, officials (2026-09-24T09:04:58.789Z → 2026-09-24T09:34:30.000Z)");
+  assert.equal(runRendersLine(null), "- run: not read (local, no CALL, or the Logs API did not answer)");
 });
 
 test("FIX-1232: rendersSummary names a --renders-only reading, or what it was instead", () => {

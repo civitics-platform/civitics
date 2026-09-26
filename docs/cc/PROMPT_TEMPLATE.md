@@ -125,10 +125,17 @@ and its database.
 - **(d) Watchdogs.** Both `*/2` jobs 60/60 in the last 60 min, no
   `job startup timeout` on any job, and no budgeted job left `running`.
 - **(e) Interlock.** `prod_session_state()` clear, `live_writers` empty.
-- **(f) Front door.** 57014/min over the last 60 min **≤ 2 ×** the 0.033/min
-  baseline, and front-door 5xx **≤ 1 %** over the last closed 15-min bucket.
-  Read both with `pnpm --filter @civitics/data data:census:cancellations:prod`
-  (Logs API; opens no Postgres connection) and quote the baseline it printed.
+- **(f) Front door, in RENDERS (FIX-1232).** Renders lost (57014 statement
+  timeouts grouped by second, so one page's 4–6 fanned-out reads count once)
+  over the last 60 min fail **only when both** exceed their bounds: more than
+  the Poisson-P99 floor at the printed baseline (6 in 60 min at 0.033/min) **and**
+  a ratio over **2 ×** that baseline. Front-door 5xx **≤ 1 %** over the last
+  closed 15-min bucket, still with **no count floor**: the binomial floor at a
+  measured p0 was stopped when the seven-day 5xx rate read 1.07 %, above the
+  gate it would floor (FIX-1233). Read both with
+  `pnpm --filter @civitics/data data:census:cancellations:prod` (Logs API;
+  opens no Postgres connection) and quote the renders, the events and the
+  baseline it printed. The baseline is not re-derived in renders until ~10-03.
 - **(g) Conditions, not a fixed band.** The nightly is the thing a fixed
   22:30–01:00 band was standing in for, and it is READABLE, so read it: no
   `nightly_cron` phase `running` (`data_sync_log`, last phase `complete`), and

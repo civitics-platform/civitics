@@ -115,6 +115,32 @@ node scripts/db-query.mjs --prod --call --yes-i-mean-prod \
   command with `CIVITICS_PROD_SESSION_CLAIMANT` set; `db-query.mjs --call` reads
   that variable when `--claimant` is not given.
 
+### A paced runner under the claim: the breather and the render budget (FIX-1232)
+
+`data:donor-party:bootstrap:prod` (`donor-party-bootstrap-runner.ts`) holds the
+claim across a series of bounded CALLs with a breather between each. What it
+reads of the front door, and when it stops on it, is the census in RENDERS — a
+second with at least one statement timeout; one page's fanned-out reads count
+once:
+
+- **The breather** releases when both `*/2` watchdog walls are back under
+  `--breather-until-wall-s` **and** one census reading, taken once the walls
+  release, shows **0 renders since the CALL returned**. A render keeps it open;
+  the census is re-read no sooner than 60 s later. That reading is also the
+  pre-CALL reading (reordered, not added), so a 0-render breather costs no extra
+  Logs call. `--breather-max-s` bounds it, and a timeout **proceeds** to the
+  next CALL, as it always has.
+- **Before every CALL** the 15-minute reading must pass, in both census modes.
+- **The CALL window** is budgeted: `--renders-per-call-max` (default **3**,
+  about 3× the measured ~1 render per two-window CALL). A CALL over it is a
+  `would_trip` in the receipt; **two consecutive** over-budget CALLs stop the
+  run in `--census-mode stop`. `--census-mode report` means only that an
+  over-budget CALL is recorded and never stops. There is no longer a stop on a
+  15-minute reading taken during a CALL: that reading fails by construction.
+
+The receipt (`docs/audits/<day>-fix1212-bootstrap-runner*.md`) carries one
+renders line per CALL and per breather, and the run's total.
+
 ### What it does NOT stop
 
 - **The Phase 1 daily ingest** (Regulations.gov, Congress.gov, the OpenStates
