@@ -268,8 +268,12 @@ test("cc-159 D2 resolveCensusMode: the flag wins; the default is stop on prod an
 });
 
 test("cc-159 D2 rule 105: cc-151's 09:34:11 reading {8 in 15 min, edge 2/183} holds the window in stop mode and is a would_trip in report mode", () => {
-  const v = verdictFor({ cancellations: [{ startMs: 0, timeouts: 8, userRequests: 0 }], minutes: 15, baseline: 0.033 });
+  // FIX-1232: 8 events are 3 renders — the 57014 half passes at floor 3; the edge
+  // half (unchanged — FIX-1233) still fails, so the reading still exits 1.
+  const secs = [{ startMs: 0, events: 1, sampleQuery: "x" }, { startMs: 1000, events: 1, sampleQuery: "x" }, { startMs: 2000, events: 6, sampleQuery: "x" }];
+  const v = verdictFor({ renders: secs, minutes: 15, baseline: 0.033 });
   const ev = edgeVerdictFor([{ startMs: 0, requests: 183, n5xx: 2 }]);
+  assert.equal(v.pass, true);
   const code = v.pass && ev.pass ? 0 : 1;   // cancellation-census.ts exits 0 iff both halves pass
   assert.equal(code, 1);
   const summary = "FAIL (8/15 min, ratio 16.16, floor 3 — 57014 FAIL; edge 09:15 2/183 = 1.09 % — edge FAIL)";

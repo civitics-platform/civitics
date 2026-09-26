@@ -11,6 +11,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { sampleQueryName } from "@civitics/db";
+
 import {
   answersExit,
   unavailableJson,
@@ -20,7 +22,10 @@ import {
   formatAttribution,
   isAttributableField,
   poissonP99,
+  rendersIn,
+  rendersLine,
   sanitizeLike,
+  topPages,
   verdictFor,
   ATTRIBUTABLE_FIELDS,
   FLOOR_QUANTILE,
@@ -29,15 +34,15 @@ import {
   PCT_5XX_GATE,
   RATIO_GATE,
   type AttributionRow,
-  type CancellationBucket,
   type EdgeBucket,
+  type RenderSecond,
 } from "./cancellation-census";
 
-const min = (startMs: number, timeouts: number, userRequests = 0): CancellationBucket => ({
-  startMs,
-  timeouts,
-  userRequests,
-});
+/** One second that lost a render. `events` is how many statements timed out in it. */
+const sec = (startMs: number, events = 1, sampleQuery = "get_official_page"): RenderSecond => ({ startMs, events, sampleQuery });
+
+/** `n` renders of one event each, one per second. */
+const renders = (n: number): RenderSecond[] => Array.from({ length: n }, (_, i) => sec(i * 1000));
 
 const bucket = (startMs: number, requests: number, n5xx: number): EdgeBucket => ({
   startMs,
@@ -45,40 +50,47 @@ const bucket = (startMs: number, requests: number, n5xx: number): EdgeBucket => 
   n5xx,
 });
 
-test("the baseline hour passes — 2 cancellations in 60 min is 0.033/min", () => {
+/** A db fixture's rows (the raw Logs answer cc-162 pulled), as the census receives them from the helper. */
+const fixtureRenders = (win: string): RenderSecond[] => {
+  const f = JSON.parse(readFileSync(new URL(`../../../db/src/__fixtures__/census-renders/${win}.renders.json`, import.meta.url), "utf8")) as {
+    answer: { rows: { s: number; n: number; q: string }[] };
+  };
+  return f.answer.rows.map((r) => ({ startMs: r.s * 1000, events: r.n, sampleQuery: sampleQueryName(r.q) }));
+};
+
+test("the baseline hour passes — 2 renders in 60 min is 0.033/min", () => {
   // cc-129's measured baseline, which is the number the gate is stated against.
-  const v = verdictFor({ cancellations: [min(0, 1), min(60_000, 1)], minutes: 60, baseline: 0.033 });
+  const v = verdictFor({ renders: [sec(0), sec(60_000)], minutes: 60, baseline: 0.033 });
+  assert.equal(v.renders, 2);
+  assert.ok(Math.abs(v.ratio_renders - 1.01) < 0.02);
+  assert.equal(v.pass, true);
+  // continuity: the pre-FIX-1232 fields keep their meanings, on events
   assert.equal(v.total, 2);
   assert.ok(Math.abs(v.rate - 0.0333) < 0.001);
   assert.ok(Math.abs(v.ratio - 1.01) < 0.02);
-  assert.equal(v.pass, true);
 });
 
 test("exactly 2x passes — the gate is <=, not <", () => {
   // 4 in 60 min = 0.0667/min = exactly 2 x 0.0333. A strict inequality here
   // would fail a run that is precisely at the stated boundary, which makes the
   // boundary unquotable.
-  const v = verdictFor({
-    cancellations: [min(0, 4)],
-    minutes: 60,
-    baseline: 4 / 60 / RATIO_GATE,
-  });
-  assert.equal(v.ratio, RATIO_GATE);
+  const v = verdictFor({ renders: renders(4), minutes: 60, baseline: 4 / 60 / RATIO_GATE });
+  assert.equal(v.ratio_renders, RATIO_GATE);
   assert.equal(v.pass, true);
 });
 
 test("just past 2x fails once the count is above the floor", () => {
   // At 1/min over 60 min, λ = 60 and the P99 floor (79) sits well under 2x
   // (120), so the ratio is what binds: 121 is just past 2x and fails.
-  const v = verdictFor({ cancellations: [min(0, 121)], minutes: 60, baseline: 1 });
-  assert.ok(v.ratio > RATIO_GATE);
-  assert.ok(v.total > v.floor);
+  const v = verdictFor({ renders: renders(121), minutes: 60, baseline: 1 });
+  assert.ok(v.ratio_renders > RATIO_GATE);
+  assert.ok(v.renders > v.floor_renders);
   assert.equal(v.pass, false);
   // cc-151: the same "just past 2x" at a small count is under the floor and
   // passes — this is the shape that failed before the floor.
-  const small = verdictFor({ cancellations: [min(0, 5)], minutes: 60, baseline: 4 / 60 / RATIO_GATE });
-  assert.ok(small.ratio > RATIO_GATE);
-  assert.equal(small.floor, 6);
+  const small = verdictFor({ renders: renders(5), minutes: 60, baseline: 4 / 60 / RATIO_GATE });
+  assert.ok(small.ratio_renders > RATIO_GATE);
+  assert.equal(small.floor_renders, 6);
   assert.equal(small.pass, true);
 });
 
@@ -116,8 +128,8 @@ test("poissonP99 does not underflow at a large λ", () => {
   assert.ok(k > 1000 && k < 1100, `got ${k}`);
 });
 
-test("cc-148's three prod readings plus the edges — old verdict → new verdict", () => {
-  // [total, minutes, old pass (ratio <= 2), new pass]
+test("cc-148's three prod readings plus the edges — old verdict → new verdict (now counted in renders)", () => {
+  // [renders, minutes, old pass (ratio <= 2), new pass]
   const FIXTURES: Array<[number, number, boolean, boolean]> = [
     [6, 60, false, true], //   cc-148 23:55 — ratio 3.03, under the floor 6
     [12, 60, false, false], // cc-148 00:23
@@ -131,68 +143,113 @@ test("cc-148's three prod readings plus the edges — old verdict → new verdic
     [0, 15, true, true],
   ];
   for (const [n, minutes, oldPass, newPass] of FIXTURES) {
-    const v = verdictFor({ cancellations: n > 0 ? [min(0, n)] : [], minutes, baseline: 0.033 });
-    assert.equal(v.ratio <= RATIO_GATE, oldPass, `{${n}, ${minutes} min} old verdict`);
+    const v = verdictFor({ renders: renders(n), minutes, baseline: 0.033 });
+    assert.equal(v.ratio_renders <= RATIO_GATE, oldPass, `{${n}, ${minutes} min} old verdict`);
     assert.equal(v.pass, newPass, `{${n}, ${minutes} min} new verdict — ${v.note}`);
   }
 });
 
-test("the note names the ratio AND the floor", () => {
-  const under = verdictFor({ cancellations: [min(0, 6)], minutes: 60, baseline: 0.033 });
-  assert.equal(under.note, "6 over 60 min — ratio 3.03 > 2 but <= P99 floor 6 at λ=2.0");
-  const over = verdictFor({ cancellations: [min(0, 12)], minutes: 60, baseline: 0.033 });
-  assert.equal(over.note, "12 over 60 min — ratio 6.06 > 2 and > P99 floor 6 at λ=2.0");
-  const fine = verdictFor({ cancellations: [min(0, 1)], minutes: 60, baseline: 0.033 });
-  assert.equal(fine.note, "1 over 60 min — ratio 0.51 <= 2");
-  assert.equal(under.lambda.toFixed(2), "1.98");
-  assert.equal(under.floor, 6);
+test("the note names the renders, the events, the ratio AND the floor", () => {
+  const under = verdictFor({ renders: renders(6), minutes: 60, baseline: 0.033 });
+  assert.equal(under.note, "6 render(s) (6 event(s)) over 60 min — ratio 3.03 > 2 but <= P99 floor 6 at λ=2.0");
+  const over = verdictFor({ renders: renders(12), minutes: 60, baseline: 0.033 });
+  assert.equal(over.note, "12 render(s) (12 event(s)) over 60 min — ratio 6.06 > 2 and > P99 floor 6 at λ=2.0");
+  const fine = verdictFor({ renders: [sec(0, 3)], minutes: 60, baseline: 0.033 });
+  assert.equal(fine.note, "1 render(s) (3 event(s)) over 60 min — ratio 0.51 <= 2");
+  assert.equal(under.lambda_renders.toFixed(2), "1.98");
+  assert.equal(under.floor_renders, 6);
+  assert.equal(under.floor, 6, "the events floor, kept for continuity, is the same number at the same baseline");
 });
 
-test("the 15-min floor does not blind the burst: 6 in 15 min fails, as cc-148's 00:08–00:23 did", () => {
-  const v = verdictFor({ cancellations: [min(0, 2), min(60_000, 4)], minutes: 15, baseline: 0.033 });
-  assert.equal(v.floor, 3);
+test("the 15-min floor does not blind a real burst: 6 renders in 15 min fails, as cc-148's 00:08–00:23 did", () => {
+  const v = verdictFor({ renders: renders(6), minutes: 15, baseline: 0.033 });
+  assert.equal(v.floor_renders, 3);
   assert.equal(v.pass, false);
 });
 
-test("the 2026-09-07 shape fails loudly — 202 cancellations, ~70x baseline", () => {
+test("the 2026-09-07 shape fails loudly — 202 cancellations, even if every render fanned out five ways", () => {
   // The run this whole gate exists because of: FIX-1165's set-2 apply, 202
-  // cancellations against a baseline of 1 over the equivalent window.
-  const v = verdictFor({ cancellations: [min(0, 202)], minutes: 60, baseline: 0.033 });
+  // cancellations against a baseline of 1 over the equivalent window. Grouped
+  // by second at the worst plausible fan-out it is still ~40 renders.
+  const v = verdictFor({ renders: Array.from({ length: 40 }, (_, i) => sec(i * 1000, 5)), minutes: 60, baseline: 0.033 });
+  assert.equal(v.events, 200);
   assert.equal(v.pass, false);
-  assert.ok(v.ratio > 100);
+  assert.ok(v.ratio_renders > 20);
 });
 
 test("zero cancellations passes and says so", () => {
-  const v = verdictFor({ cancellations: [], minutes: 60, baseline: 0.033 });
-  assert.equal(v.total, 0);
+  const v = verdictFor({ renders: [], minutes: 60, baseline: 0.033 });
+  assert.equal(v.renders, 0);
+  assert.equal(v.events, 0);
   assert.equal(v.rate, 0);
   assert.equal(v.pass, true);
   assert.match(v.note, /no cancellations/);
 });
 
-test("user-request cancels never enter the gated total", () => {
-  // A cancel somebody issued by hand is a different event with a different
-  // cause. Folding it in would fail a window whose only cancellations were an
-  // operator pressing Ctrl-C.
-  const v = verdictFor({
-    cancellations: [min(0, 0, 40), min(60_000, 1, 9)],
-    minutes: 60,
-    baseline: 0.033,
-  });
-  assert.equal(v.total, 1);
-  assert.equal(v.pass, true);
+test("FIX-1232: a fan-out of six statements in one second is ONE render — cc-151's 09:30:26 page", () => {
+  const v = verdictFor({ renders: [sec(0, 6, "entity_tags")], minutes: 15, baseline: 0.033 });
+  assert.equal(v.renders, 1);
+  assert.equal(v.events, 6);
+  assert.equal(v.pass, true, "one render is under the 15-min floor of 3");
+  // In the old unit the same page was 6 > floor 3 at ratio 12.1 — a trip on its own.
+  assert.ok(v.total > v.floor && v.ratio > RATIO_GATE, "the continuity fields show what the old gate saw");
 });
 
 test("a zero baseline is called out rather than dividing to Infinity", () => {
-  const clean = verdictFor({ cancellations: [], minutes: 60, baseline: 0 });
+  const clean = verdictFor({ renders: [], minutes: 60, baseline: 0 });
   assert.equal(clean.pass, true);
   assert.match(clean.note, /baseline is 0/);
 
-  const dirty = verdictFor({ cancellations: [min(0, 1)], minutes: 60, baseline: 0 });
+  const dirty = verdictFor({ renders: [sec(0)], minutes: 60, baseline: 0 });
   assert.equal(dirty.pass, false);
-  assert.equal(dirty.ratio, Number.POSITIVE_INFINITY);
-  // unchanged by the floor (cc-151): λ = 0, floor 0, one event still fails
-  assert.equal(dirty.floor, 0);
+  assert.equal(dirty.ratio_renders, Number.POSITIVE_INFINITY);
+  // unchanged by the floor (cc-151): λ = 0, floor 0, one render still fails
+  assert.equal(dirty.floor_renders, 0);
+});
+
+test("FIX-1232: --baseline-renders moves the renders floor and nothing else; absent, it IS the printed baseline (decision 6)", () => {
+  const same = verdictFor({ renders: renders(4), minutes: 60, baseline: 0.033 });
+  assert.equal(same.baseline_renders, 0.033);
+  assert.equal(same.floor_renders, same.floor);
+  const low = verdictFor({ renders: renders(4), minutes: 60, baseline: 0.033, baselineRenders: 0.01 });
+  assert.equal(low.baseline_renders, 0.01);
+  assert.equal(low.floor_renders, poissonP99(0.6));
+  assert.equal(low.floor, 6, "the events floor stays on --baseline");
+  assert.equal(low.pass, false, "4 renders at 0.01/min: ratio 6.67, floor 3");
+});
+
+// ── FIX-1232 rule 105: the shapes that must flip, on the real fixture rows ──
+
+test("FIX-1232 rule 105: cc-151's stopping 15-min reading (8 events) is 3 renders — the 57014 half PASSES at floor 3", () => {
+  const rows = fixtureRenders("cc151");
+  const end = Date.parse("2026-09-24T09:34:11.098Z");
+  const pre6 = rendersIn(rows, end - 15 * 60_000, end);
+  const v = verdictFor({ renders: pre6, minutes: 15, baseline: 0.033 });
+  assert.deepEqual([v.renders, v.events, v.floor_renders], [3, 8, 3]);
+  assert.equal(v.pass, true, "3 renders <= floor 3");
+  // Before: the same window, gated on the 8 events — 8 > 3 at ratio 16.16.
+  assert.ok(v.total > v.floor && v.ratio > RATIO_GATE);
+  // The edge half is unchanged (its floor was stopped — FIX-1233): 2 of 183 still fails.
+  assert.equal(edgeVerdictFor([bucket(0, 183, 2)]).pass, false);
+});
+
+test("FIX-1232 rule 105: cc-148's ~97 %-trip shape — seven 15-min readings of an ordinary night — all pass in renders", () => {
+  for (const n of [0, 1, 1, 2, 0, 1, 3]) {
+    assert.equal(verdictFor({ renders: renders(n), minutes: 15, baseline: 0.033 }).pass, true, `${n} render(s) in 15 min`);
+  }
+});
+
+test("FIX-1232: rendersIn windows a reading into CALLs; topPages and rendersLine name what was lost — cc-151's run", () => {
+  const rows = fixtureRenders("cc151");
+  // CALL 5 (09:28:20.064 → 09:32:36.625): the six-event page.
+  const call5 = rendersIn(rows, Date.parse("2026-09-24T09:28:20.064Z"), Date.parse("2026-09-24T09:32:36.625Z"));
+  assert.equal(rendersLine(call5), "renders_lost 1 · events 6 · pages: entity_tags");
+  assert.equal(rendersLine([]), "renders_lost 0 · events 0");
+  assert.equal(rendersLine(rows), "renders_lost 4 · events 9 · pages: entity_tags, get_official_page, officials");
+  assert.deepEqual(topPages([sec(0, 1, "a"), sec(1000, 1, "b"), sec(2000, 2, "b")], 5),
+    [{ page: "b", renders: 2, events: 3 }, { page: "a", renders: 1, events: 1 }]);
+  // The CALL's first second counts even though the CALL began mid-second.
+  assert.equal(rendersIn([sec(Date.parse("2026-09-24T09:04:58Z"))], Date.parse("2026-09-24T09:04:58.789Z"), Date.parse("2026-09-24T09:05:00Z")).length, 1);
 });
 
 test("the edge gate reads the last bucket WITH traffic, not the last bucket", () => {
@@ -333,7 +390,19 @@ test("FIX-1219: the census builds no Logs URL and no SQL of its own — both com
   assert.doesNotMatch(src, /api\.supabase\.com|analytics\/endpoints/);
   assert.doesNotMatch(src, /\bselect\b[\s\S]*\bfrom (postgres|edge)_logs\b/i);
   assert.doesNotMatch(src, /\/ 1000\)/, "buckets arrive in ms; no consumer keeps a unit conversion");
-  for (const f of ["queryCancellationBuckets", "queryEdgeBuckets", "queryAttribution"]) assert.match(src, new RegExp(`\\b${f}\\(`));
+  for (const f of ["queryCancellationRenders", "queryEdgeBuckets", "queryAttribution"]) assert.match(src, new RegExp(`\\b${f}\\(`));
+});
+
+test("FIX-1232: the gate reads renders IN PLACE of the per-minute buckets — still two Logs calls, not three (rule 190)", () => {
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /queryCancellationBuckets/, "the bucket read is gone from the census");
+  const gate = code.slice(code.indexOf("const edgeEnd"), code.indexOf("main().catch("));
+  assert.equal((gate.match(/\bquery[A-Za-z]+\(/g) ?? []).length, 2, "the gate path makes exactly two reads");
+  const only = code.slice(code.indexOf("if (args.rendersOnly) {"), code.indexOf("const edgeEnd"));
+  assert.deepEqual(only.match(/\bquery[A-Za-z]+\(/g), ["queryCancellationRenders("], "--renders-only makes one");
+  assert.match(code, /verdictFor\(\{ renders, minutes: args\.minutes, baseline: args\.baseline, baselineRenders: args\.baselineRenders \?\? undefined \}\)/);
+  assert.match(code, /user_requests: null,/, "the field stays, stated as not read");
 });
 
 test("the attribution path RETURNS — a process.exit(0) there exits 127 on Windows", () => {
@@ -421,7 +490,7 @@ test("cc-156: a removed table or field (a 200) exits 8 with the helper's detail 
 test("FIX-1219: the script ends exit 8 and exit 2 on process.exitCode, never process.exit() (the Windows 127)", () => {
   const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
   assert.match(src, /process\.exitCode = CENSUS_EXIT\.unavailable;/);
-  assert.equal((src.match(/process\.exitCode = CENSUS_EXIT\.dark;\s*\n\s*return;/g) ?? []).length, 2, "both dark paths");
+  assert.equal((src.match(/process\.exitCode = CENSUS_EXIT\.dark;\s*\n\s*return;/g) ?? []).length, 3, "all three dark paths: --by, --renders-only, the gate");
   assert.doesNotMatch(src, /process\.exit\(8\)/);
-  assert.equal((src.match(/exitUnavailable\(/g) ?? []).length, 3, "defined once, called from the gate and from --by");
+  assert.equal((src.match(/exitUnavailable\(/g) ?? []).length, 4, "defined once, called from the gate, --by and --renders-only");
 });

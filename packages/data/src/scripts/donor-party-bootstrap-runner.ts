@@ -616,9 +616,24 @@ async function readCallRow(c: Client, since: string): Promise<CallRow | null> {
   return r.rows[0] ?? null;
 }
 
+/** One second of the census's `by_second` (FIX-1232): one render lost. */
+export interface CensusSecond {
+  at: string;
+  startMs: number;
+  events: number;
+  page: string;
+}
+
 /** The slice of cancellation-census.ts --json this runner reads. */
 export interface CensusJson {
-  cancellations?: { total: number; ratio: number; floor?: number; lambda?: number; pass?: boolean };
+  cancellations?: {
+    total: number; ratio: number; floor?: number; lambda?: number; pass?: boolean;
+    /** FIX-1232: the gated unit, and the seconds behind it. */
+    renders?: number; events?: number; ratio_renders?: number; floor_renders?: number;
+    by_second?: CensusSecond[];
+  };
+  /** `--renders-only` (FIX-1232 D3): the seconds and nothing else. */
+  renders?: { renders: number; events: number; by_second: CensusSecond[] };
   edge?: { note: string; pass?: boolean };
   pass?: boolean;
   /** Exit 8's body (FIX-1219): the endpoint is gone, or a table/field it names is. */
@@ -629,7 +644,10 @@ export interface CensusJson {
 }
 
 /**
- * One census reading as one line — `pass|FAIL|dark (N/M min, ratio r, floor f; edge …)`.
+ * One census reading as one line —
+ * `pass|FAIL|dark (R render(s) / E event(s) in M min, ratio r, floor f; edge …)`.
+ * The ratio and floor are the renders' (FIX-1232); a reading from before the
+ * unit changed (no `renders` field) prints its events the old way.
  * Exit 0 pass · 1 FAIL · 8 unavailable (the endpoint is gone, FIX-1219) ·
  * anything else dark (the Logs API did not answer, or the child did not run),
  * which is what evaluateCensus counts as dark too.
@@ -647,9 +665,12 @@ export function censusSummary(code: number, j: CensusJson | null, minutes: numbe
   const head = code === 0 ? "pass" : "FAIL";
   if (!j) return `${head} (exit ${code}; unparsed output)`;
   const c = j.cancellations;
-  const cPart = c
-    ? `${c.total}/${minutes} min, ratio ${Number(c.ratio).toFixed(2)}, floor ${c.floor ?? "?"}${c.pass === false ? " — 57014 FAIL" : ""}`
-    : "no 57014 reading";
+  const fail = c?.pass === false ? " — 57014 FAIL" : "";
+  const cPart = !c
+    ? "no 57014 reading"
+    : c.renders !== undefined
+      ? `${c.renders} render(s) / ${c.events ?? c.total} event(s) in ${minutes} min, ratio ${Number(c.ratio_renders).toFixed(2)}, floor ${c.floor_renders ?? "?"}${fail}`
+      : `${c.total}/${minutes} min, ratio ${Number(c.ratio).toFixed(2)}, floor ${c.floor ?? "?"}${fail}`;
   const ePart = j.edge ? `edge ${j.edge.note}${j.edge.pass === false ? " — edge FAIL" : ""}` : "no edge reading";
   return `${head} (${cPart}; ${ePart})`;
 }

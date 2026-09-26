@@ -23,11 +23,27 @@
  * time. At λ = 2.0 the floor is 6 (a 60-min reading fails at >= 7, tail
  * 0.45 %); at λ = 0.5 it is 3 (a 15-min reading fails at >= 4, tail 0.18 %).
  * Above ~10 events the ratio dominates again and the floor stops binding.
+ *
+ * ── THE UNIT IS A RENDER (FIX-1232) ─────────────────────────────────────────
+ * The visitor pays in renders, not statements: one server render fans out 4–6
+ * PostgREST reads that time out in the same second, so cc-151's 09:30:26 page
+ * was SIX events and tripped a floor of 3 on its own. The gate now counts
+ * RENDERS — statement timeouts grouped by second (`queryCancellationRenders`,
+ * one row per second) — against the same Poisson floor at the same printed
+ * baseline, read as renders per minute (decision 6: the baseline is NOT
+ * re-derived here; `--baseline-renders` overrides it for the ~10-03
+ * re-measure). Events stay in the output for continuity and gate nothing.
+ * cc-151's stopping reading (8 events in 15 min) is 3 renders: at floor 3 it
+ * passes.
+ *
+ * The edge half is unchanged: cc-162's binomial floor for it was stopped
+ * because the measured seven-day 5xx rate (1.07 %) sits above the 1 % gate it
+ * would have floored (FIX-1233).
  */
 
 import { isLogsEndpointGone, worstLogsAnswer, type LogsAnswer } from "@civitics/db";
 
-/** One minute of `postgres_logs`, as the census aggregates it. */
+/** One minute of `postgres_logs`, as the bucket builder aggregates it. The gate no longer reads it (FIX-1232). */
 export interface CancellationBucket {
   /** Bucket start, ms since epoch. */
   startMs: number;
@@ -35,6 +51,16 @@ export interface CancellationBucket {
   timeouts: number;
   /** `canceling statement due to user request` — cancelled by hand. Reported, not gated. */
   userRequests: number;
+}
+
+/** One second with a statement timeout in it — one render lost. The helper's LogsRenderSecond. */
+export interface RenderSecond {
+  /** The second, ms since epoch. */
+  startMs: number;
+  /** Statement timeouts in that second. */
+  events: number;
+  /** The page (relation or function) most of them named. */
+  sampleQuery: string;
 }
 
 /** One 15-minute `edge_logs` bucket. The helper's LogsEdgeBucket, less the 52x count the verdict does not read. */
@@ -45,16 +71,33 @@ export interface EdgeBucket {
 }
 
 export interface CancellationVerdict {
+  // ── the gated unit (FIX-1232) ──
+  /** Seconds with a statement timeout: renders lost. */
+  renders: number;
+  /** (renders / minutes) / baseline_renders. Infinity when that baseline is 0 and renders are not. */
+  ratio_renders: number;
+  /** Renders per minute the floor is computed at — the printed baseline unless overridden. */
+  baseline_renders: number;
+  /** baseline_renders × minutes. */
+  lambda_renders: number;
+  /** poissonP99(lambda_renders): a render count at or below this never fails, whatever the ratio. */
+  floor_renders: number;
+  /** Statement timeouts — the old unit, reported, not gated. */
+  events: number;
+  /** (events / minutes) / baseline. */
+  ratio_events: number;
+  // ── continuity: the pre-FIX-1232 fields, same meanings, all on EVENTS; nothing gates on them ──
+  /** = events. */
   total: number;
   minutes: number;
-  /** Cancellations per minute over the window. */
+  /** Events per minute over the window. */
   rate: number;
   baseline: number;
-  /** rate / baseline. Infinity when the baseline is 0 and the rate is not. */
+  /** = ratio_events. */
   ratio: number;
-  /** baseline × minutes — the count the baseline itself expects in the window. */
+  /** baseline × minutes. */
   lambda: number;
-  /** poissonP99(lambda): a count at or below this never fails, whatever the ratio. */
+  /** poissonP99(lambda) — equal to floor_renders while the two baselines are the same number. */
   floor: number;
   pass: boolean;
   note: string;
@@ -96,37 +139,60 @@ export function poissonP99(lambda: number): number {
   return kMax;
 }
 
+/** A count's ratio to what the baseline expects; a zero baseline reads 0 for no count and Infinity for any. */
+function ratioOf(count: number, minutes: number, baseline: number): number {
+  const rate = minutes > 0 ? count / minutes : 0;
+  return baseline > 0 ? rate / baseline : count === 0 ? 0 : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * The 57014 half. Fails iff `ratio_renders > RATIO_GATE` AND `renders >
+ * poissonP99(baseline_renders × minutes)` — the cc-151 floor, in the unit the
+ * visitor pays in (FIX-1232). `baselineRenders` defaults to `baseline`.
+ */
 export function verdictFor(input: {
-  cancellations: readonly CancellationBucket[];
+  renders: readonly RenderSecond[];
   minutes: number;
   baseline: number;
+  baselineRenders?: number;
 }): CancellationVerdict {
   const { minutes, baseline } = input;
-  const total = input.cancellations.reduce((n, b) => n + b.timeouts, 0);
-  const rate = minutes > 0 ? total / minutes : 0;
+  const baselineRenders = input.baselineRenders ?? baseline;
+  const renders = input.renders.length;
+  const events = input.renders.reduce((n, r) => n + r.events, 0);
+  const rate = minutes > 0 ? events / minutes : 0;
   // A zero baseline makes the ratio meaningless rather than infinite-and-failing,
   // so it is called out as such instead of silently gating on division.
-  const ratio = baseline > 0 ? rate / baseline : total === 0 ? 0 : Number.POSITIVE_INFINITY;
+  const ratioRenders = ratioOf(renders, minutes, baselineRenders);
+  const ratioEvents = ratioOf(events, minutes, baseline);
+  const lambdaRenders = baselineRenders > 0 ? baselineRenders * minutes : 0;
+  const floorRenders = poissonP99(lambdaRenders);
   const lambda = baseline > 0 ? baseline * minutes : 0;
-  const floor = poissonP99(lambda);
-  const overRatio = ratio > RATIO_GATE;
-  const overFloor = total > floor;
-  const pass = baseline > 0 ? !(overRatio && overFloor) : total === 0;
-  const head = `${total} over ${minutes} min — ratio ${ratio.toFixed(2)}`;
-  const at = `P99 floor ${floor} at λ=${lambda.toFixed(1)}`;
+  const overRatio = ratioRenders > RATIO_GATE;
+  const overFloor = renders > floorRenders;
+  const pass = baselineRenders > 0 ? !(overRatio && overFloor) : renders === 0;
+  const head = `${renders} render(s) (${events} event(s)) over ${minutes} min — ratio ${ratioRenders.toFixed(2)}`;
+  const at = `P99 floor ${floorRenders} at λ=${lambdaRenders.toFixed(1)}`;
   return {
-    total,
+    renders,
+    ratio_renders: ratioRenders,
+    baseline_renders: baselineRenders,
+    lambda_renders: lambdaRenders,
+    floor_renders: floorRenders,
+    events,
+    ratio_events: ratioEvents,
+    total: events,
     minutes,
     rate,
     baseline,
-    ratio,
+    ratio: ratioEvents,
     lambda,
-    floor,
+    floor: poissonP99(lambda),
     pass,
     note:
-      baseline <= 0
-        ? "baseline is 0 — the ratio is not meaningful; gating on 'no cancellations at all'"
-        : total === 0
+      baselineRenders <= 0
+        ? "baseline is 0 — the ratio is not meaningful; gating on 'no renders lost at all'"
+        : renders === 0
           ? `no cancellations in the window (${at})`
           : !overRatio
             ? `${head} <= ${RATIO_GATE}`
@@ -134,6 +200,35 @@ export function verdictFor(input: {
               ? `${head} > ${RATIO_GATE} and > ${at}`
               : `${head} > ${RATIO_GATE} but <= ${at}`,
   };
+}
+
+/**
+ * The seconds that fall in `[fromMs, toMs)`, counting the second `fromMs` falls
+ * in — a render cancelled in a CALL's first second belongs to that CALL. The
+ * runner windows one census reading into its CALLs and breathers with this.
+ */
+export function rendersIn<T extends { startMs: number }>(rows: readonly T[], fromMs: number, toMs: number): T[] {
+  const from = Math.floor(fromMs / 1000) * 1000;
+  return rows.filter((r) => r.startMs >= from && r.startMs < toMs);
+}
+
+/** The pages behind a set of seconds, most renders first — the receipt's `pages:` list. */
+export function topPages(rows: readonly RenderSecond[], n = 3): { page: string; renders: number; events: number }[] {
+  const by = new Map<string, { page: string; renders: number; events: number }>();
+  for (const r of rows) {
+    const p = by.get(r.sampleQuery) ?? { page: r.sampleQuery, renders: 0, events: 0 };
+    p.renders += 1;
+    p.events += r.events;
+    by.set(r.sampleQuery, p);
+  }
+  return [...by.values()].sort((a, b) => b.renders - a.renders || b.events - a.events || a.page.localeCompare(b.page)).slice(0, n);
+}
+
+/** `renders_lost n · events m · pages: a ×2, b` — one CALL's or one run's line. */
+export function rendersLine(rows: readonly RenderSecond[]): string {
+  const events = rows.reduce((n, r) => n + r.events, 0);
+  const pages = topPages(rows).map((p) => (p.renders > 1 ? `${p.page} ×${p.renders}` : p.page)).join(", ");
+  return `renders_lost ${rows.length} · events ${events}${pages ? ` · pages: ${pages}` : ""}`;
 }
 
 /**

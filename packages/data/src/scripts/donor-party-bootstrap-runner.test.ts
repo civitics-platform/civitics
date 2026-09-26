@@ -43,6 +43,8 @@ const row = (status: string, extra: Partial<CallRow> = {}, md: Record<string, un
 
 const OPTS = { wallTripS: 3.0, tripOnWallMs: null, armed: true };
 
+const sec3 = (startMs: number, events: number, sampleQuery = "get_official_page") => ({ startMs, events, sampleQuery });
+
 test("caught_up → done, exit 0", () => {
   const v = classifyCallRow(row("complete", {}, { mode: "full", caught_up: true }), 3, 12);
   assert.equal(v.action, "done");
@@ -207,10 +209,14 @@ test("cc-152 D1: the dark-twice trip is armed in BOTH modes, a pass resets the d
 });
 
 test("cc-152 rule 105: cc-151's 09:34:11 reading {8 in 15 min, edge 2/183} is a would_trip in report mode and a trip in stop mode", () => {
-  const v = verdictFor({ cancellations: [{ startMs: 0, timeouts: 8, userRequests: 0 }], minutes: 15, baseline: 0.033 });
+  // FIX-1232: the 8 events are 3 renders (09:19:59, 09:24:21, 09:30:26 ×6) — the
+  // 57014 half now PASSES at floor 3; the edge half is unchanged (its floor was
+  // stopped, FIX-1233), so the reading still exits 1 and this shape still holds.
+  const v = verdictFor({ renders: [sec3(0, 1), sec3(1000, 1), sec3(2000, 6)], minutes: 15, baseline: 0.033 });
   const ev = edgeVerdictFor([{ startMs: 0, requests: 183, n5xx: 2 }]);
-  assert.equal(v.pass, false, "8 > P99 floor 3 and ratio 16.16 > 2");
-  assert.equal(v.floor, 3);
+  assert.equal(v.pass, true, "3 renders <= P99 floor 3");
+  assert.equal(v.floor_renders, 3);
+  assert.equal(v.events, 8);
   assert.equal(ev.pass, false, "2/183 = 1.09 % > 1 %");
   const code = v.pass && ev.pass ? 0 : 1;   // cancellation-census.ts exits 0 iff both halves pass
   const report = evaluateCensus(newStopState(), code, "report");
@@ -336,6 +342,18 @@ test("cc-151 D2: the census summary carries the floor — cc-148's three prod re
   assert.equal(censusSummary(2, null, 60), "dark (exit 2 — the Logs API did not answer)");
   assert.match(censusSummary(127, null, 60), /^dark \(exit 127/, "anything but 0/1 is dark, as evaluateCensus counts it");
   assert.equal(censusSummary(1, null, 15), "FAIL (exit 1; unparsed output)");
+});
+
+test("FIX-1232 D4: the census summary prints renders AND events, with the renders' ratio and floor — cc-151's 09:34:11 reading", () => {
+  const j = {
+    cancellations: { total: 8, ratio: 16.1616, floor: 3, pass: true, renders: 3, events: 8, ratio_renders: 6.0606, floor_renders: 3 },
+    edge: { note: "2 of 183 request(s) = 1.09 %", pass: false },
+    pass: false,
+  };
+  assert.equal(censusSummary(1, j, 15),
+    "FAIL (3 render(s) / 8 event(s) in 15 min, ratio 6.06, floor 3; edge 2 of 183 request(s) = 1.09 % — edge FAIL)");
+  const fail = { ...j, cancellations: { ...j.cancellations, renders: 4, ratio_renders: 8.08, pass: false } };
+  assert.match(censusSummary(1, fail, 15), /^FAIL \(4 render\(s\) \/ 8 event\(s\) in 15 min, ratio 8\.08, floor 3 — 57014 FAIL;/);
 });
 
 test("cc-151 D2: every receipt poll row names the half that held it; the tally counts both halves", () => {
