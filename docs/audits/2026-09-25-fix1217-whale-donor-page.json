@@ -1,0 +1,214 @@
+{
+  "audit": "FIX-1217 measurement — whale donor page: index vs rollup",
+  "cc": 158,
+  "window_utc": { "start": "2026-09-25T23:38:27Z", "end": "2026-09-26T00:17:40Z" },
+  "instruments": {
+    "prod": "node scripts/db-query.mjs --prod (read-only txn, session pooler, role postgres; SET LOCAL ROLE anon where stated). EXPLAIN only, except the three option-C timed SELECTs in d3.option_c.prod_timed",
+    "clone": "node scripts/db-query.mjs --local, EXPLAIN (ANALYZE, BUFFERS); SET random_page_cost=1.1, effective_io_concurrency=200, effective_cache_size=768MB, max_parallel_workers_per_gather=1, jit=off (prod's values), work_mem=4MB (ASSUMED for anon: pg_file_settings is permission-denied on prod), SET ROLE anon",
+    "clone_cold": "docker stop supabase_db_App; privileged container: sync; echo 3 > /proc/sys/vm/drop_caches (VM buff/cache 6,139 MB -> ~560 MB); docker start",
+    "census": "pnpm --filter @civitics/data data:census:cancellations:prod (Logs API, no Postgres)"
+  },
+  "ratios": {
+    "fr_rows_prod_over_clone": 1.389,
+    "fr_heap_prod_over_clone": 1.427,
+    "inbound_donation_rows_prod_over_clone": 1.697,
+    "contract_grant_rows_prod_over_clone": 1.023,
+    "rnc_inbound_rows_prod_over_clone": 2.226
+  },
+  "read1": {
+    "session_check_open": 58,
+    "tests_yml_last": { "run": 36199643878, "conclusion": "success", "at": "2026-09-25T23:06:03Z" },
+    "env_local": "http://127.0.0.1:54321",
+    "fix_status": { "FIX-675": "closed 2026-06-27", "FIX-704": "closed 2026-07-03", "FIX-775": "closed 2026-07-08", "FIX-1178": "OPEN", "FIX-1217": "OPEN" },
+    "clone_fr_max_updated_at": "2026-09-03T01:34:43Z",
+    "prod_fr_max_updated_at": "2026-09-21T00:18:25Z",
+    "clone_fr_rows": 10410330,
+    "prod_fr_rows_reltuples": 14457904,
+    "prod_rows_last_written_after_2026_09_03": 296171
+  },
+  "read2_prod": {
+    "read_at": "2026-09-25T23:38:51Z",
+    "reltuples": 14457904, "relpages": 631265, "relallvisible": 630719, "pct_all_visible": 99.91,
+    "heap_bytes": 5171322880, "n_dead_tup": 884,
+    "last_vacuum": "2026-09-25T03:00:00.955Z", "last_analyze": "2026-09-25T03:00:10.328Z",
+    "tuples_per_page": 22.9, "pg_stats_sum_avg_width": 410,
+    "n_tup_hot_upd": 0,
+    "fr_vacuum_analyze_jobid38_walls_s": [10.3, 9.8, 9.9],
+    "fr_vacuum_analyze_mean_14d_s": 87.6,
+    "index_count": 18,
+    "index_bytes_total": 7575740416,
+    "indexes": [
+      { "name": "financial_relationships_derivation", "bytes": 1217970176, "def": "(relationship_type, from_type, from_id, to_type, to_id)" },
+      { "name": "financial_relationships_donor_rollup_idx", "bytes": 1019363328, "def": "(to_id, relationship_type, from_id) INCLUDE (amount_cents) WHERE relationship_type IN (donation, ie_support, ie_oppose) AND from_type = 'financial_entity'" },
+      { "name": "financial_relationships_relcycle_unique", "bytes": 922927104, "def": "UNIQUE (relationship_type, from_id, to_id, cycle_year)" },
+      { "name": "financial_relationships_donation_size_rollup", "bytes": 652795904, "def": "(from_id) INCLUDE (amount_cents) WHERE from_type = 'financial_entity' AND relationship_type = 'donation'" },
+      { "name": "financial_relationships_agency_spend_lateral", "bytes": 604774400, "def": "(from_id, amount_cents DESC NULLS LAST) INCLUDE (to_id, to_type, relationship_type, occurred_at) WHERE from_type = 'agency' AND relationship_type IN (contract, grant)" },
+      { "name": "financial_relationships_pkey", "bytes": 601759744, "def": "UNIQUE (id)" },
+      { "name": "financial_relationships_usaspending_unique", "bytes": 545480704, "def": "UNIQUE (usaspending_award_id)" },
+      { "name": "financial_relationships_from", "bytes": 483270656, "def": "(from_type, from_id)" },
+      { "name": "financial_relationships_donor_rollup_dirty_idx", "bytes": 287260672, "def": "(updated_at) INCLUDE (to_id) WHERE to_type = 'official' AND from_type = 'financial_entity' AND relationship_type IN (donation, ie_*)" },
+      { "name": "financial_relationships_treemap_global_rollup", "bytes": 269369344, "def": "(from_id) INCLUDE (amount_cents) WHERE from_type = 'financial_entity' AND relationship_type = 'donation' AND to_type = 'official'" },
+      { "name": "financial_relationships_to", "bytes": 219414528, "def": "(to_type, to_id)" },
+      { "name": "financial_relationships_amount", "bytes": 209354752, "def": "(amount_cents DESC) WHERE amount_cents IS NOT NULL" },
+      { "name": "financial_relationships_updated_at", "bytes": 205725696, "def": "(updated_at)" },
+      { "name": "financial_relationships_type", "bytes": 166674432, "def": "(relationship_type)" },
+      { "name": "financial_relationships_cycle", "bytes": 141172736, "def": "(cycle_year) WHERE cycle_year IS NOT NULL" },
+      { "name": "financial_relationships_contract_grant_updated_at", "bytes": 28393472, "def": "(updated_at) WHERE relationship_type IN (contract, grant)" },
+      { "name": "financial_relationships_started_at", "bytes": 16384, "def": "(started_at DESC) WHERE started_at IS NOT NULL" },
+      { "name": "financial_relationships_disclosure_unique", "bytes": 16384, "def": "UNIQUE (disclosure_form_id) WHERE disclosure_form_id IS NOT NULL" }
+    ],
+    "rls": { "enabled": true, "policy": "financial_relationships_select FOR SELECT TO anon, authenticated USING (true)" },
+    "role_timeouts": { "anon": "3s", "authenticated": "8s", "authenticator": "8s" },
+    "leakproof": { "enum_eq": false, "texteq": true, "uuid_eq": true }
+  },
+  "read3": {
+    "rnc_id": "421c9ec5-c476-4ab4-94b6-9a836aeba88d",
+    "ordinary_id": "0e988eec-8b72-488b-8406-62d3ab7c98c4",
+    "ordinary_inbound_donations": { "prod": 126, "clone": 102 },
+    "contractor_whale_id": "01ffa686-bcc5-47e4-9188-9da8453e9c13",
+    "prod_explain_at": "2026-09-25T23:45:49Z",
+    "prod_explain": {
+      "RNC_inbound": "Limit <- Sort <- Bitmap Heap Scan <- BitmapAnd(financial_relationships_to est 168,038; financial_relationships_type est 2,891,581); est rows 33,608 (actual class count 337,058)",
+      "RNC_spending": "Limit <- Sort <- Bitmap Heap Scan <- BitmapAnd(financial_relationships_to; financial_relationships_contract_grant_updated_at est 5,783,162); est 67,215",
+      "RNC_donor_count": "InitPlan count <- Bitmap Heap Scan <- BitmapAnd(_to, _type); page_total <- Limit 1000 <- Index Only Scan financial_relationships_derivation",
+      "ORD_all_three": "Index Scan financial_relationships_to, Filter relationship_type; est 145 / 290"
+    },
+    "clone_before": {
+      "units": "ms / shared buffers touched (hit+read)",
+      "RNC_inbound": { "cold_ms": 1501.1, "warm_ms": 351.6, "buffers": 27743, "plan": "Bitmap Heap Scan (BitmapAnd _to + _type), 151,406 rows, top-N heapsort" },
+      "RNC_spending": { "cold_ms": 189.5, "warm_ms": 159.1, "buffers": 15557, "rows": 0 },
+      "RNC_donor_count": { "cold_ms": 408.4, "warm_ms": 287.9, "buffers": 29141 },
+      "ORD_inbound": { "cold_ms": 14.4, "warm_ms": 0.74, "buffers": 66 },
+      "ORD_spending": { "cold_ms": 0.09, "warm_ms": 0.10, "buffers": 66 },
+      "ORD_donor_count": { "cold_ms": 0.11, "warm_ms": 0.11, "buffers": 132 },
+      "AMB_inbound": { "cold_ms": 1769.9, "warm_ms": 609.0, "buffers": 87477, "rows": 0 },
+      "AMB_spending": { "cold_ms": 810.0, "warm_ms": 665.4, "buffers": 98641, "rows_scanned": 246005 },
+      "AMB_donor_count": { "cold_ms": 14386.7, "warm_ms": 1074.2, "buffers": 166916, "plan": "Index Only Scan financial_relationships_derivation over the whole donation range, 0 matches" }
+    }
+  },
+  "read4": {
+    "prod_inbound_donation_to_fe": { "at": "2026-09-25T23:41:08Z..23:42:50Z", "wall_s": 101.6, "plan": "Parallel Index Only Scan financial_relationships_derivation", "recipients": 9656, "rows": 4023127, "max": 337058, "gt1k": 497, "gt10k": 41, "gt50k": 11, "rows_in_gt1k": 3212386, "p50": 22, "p99": 5057.2 },
+    "prod_inbound_any_type_to_fe": { "at": "2026-09-25T23:44:57Z..23:45:10Z", "wall_s": 13.2, "plan": "Parallel Index Only Scan financial_relationships_to", "recipients": 138711, "rows": 7932083, "max": 337058, "gt1k": 828, "gt10k": 94, "gt50k": 22, "gt100k": 10, "p50": 2, "p99": 523 },
+    "prod_contract_grant_to_fe_by_subtraction": 3908956,
+    "clone_inbound_donation_to_fe": { "recipients": 8483, "rows": 2370787, "max": 159448, "gt1k": 328, "gt10k": 26, "gt50k": 6, "p50": 20, "p99": 3523.2 },
+    "clone_spending_contract_grant_to_fe": { "recipients": 127728, "rows": 3822744, "max": 246005, "max_name": "AMERISOURCEBERGEN DRUG CORP", "gt1k": 327, "gt10k": 53, "gt50k": 11, "p50": 1, "p99": 156 },
+    "clone_outbound_from_fe_donation": { "donors": 2819195, "rows": 6575042, "max": 2279, "gt1k": 75, "gt10k": 0, "p50": 1, "p99": 18 },
+    "clone_type_matrix": { "donation/financial_entity<-financial_entity": 2370787, "donation/official<-financial_entity": 4204255, "contract/financial_entity<-agency": 3240205, "grant/financial_entity<-agency": 582485, "grant/financial_entity<-financial_entity": 54, "ie_support/official": 10039, "ie_oppose/official": 4820, "other/official": 1 },
+    "prod_gt10k_donation_recipients": { "count": 41, "party_committee": 10, "super_pac": 2, "pac": 29 },
+    "prod_census_fr_57014_readings": { "cc151_24h_to_2026-09-24T00:42Z": 34, "cc155_24h_to_2026-09-25T02:17Z": 0, "cc158_24h_to_2026-09-26T00:12Z": 6 }
+  },
+  "read5_clone": {
+    "distinct_recipient_donor_pairs": 1949253,
+    "rows_capped_200": 441378,
+    "rows_capped_50": 202387,
+    "rows_capped_1000": 828185,
+    "recipients_over_200": 1043,
+    "odr_mv_rows": { "clone": 576303, "prod_reltuples": 656050, "prod_heap_bytes": 268566528, "prompt_said": 2972870 },
+    "prod_projection_rows_capped_200": { "low": 502000, "high": 749000, "upper_bound": 1931200 },
+    "prod_rnc_distinct_donors": 283715
+  },
+  "read6_clone": {
+    "named": [
+      { "name": "REPUBLICAN NATIONAL COMMITTEE", "rows": 151406, "true_donors": 125567, "page_donors_stat": 837, "top50_overlap": 44, "same_rank": 16, "page_top50_sum_over_true": 0.966, "present_totals_ratio": 0.972 },
+      { "name": "DNC SERVICES CORP / DEMOCRATIC NATIONAL COMMITTEE", "rows": 159448, "true_donors": 129463, "page_donors_stat": 900, "top50_overlap": 47, "same_rank": 31, "page_top50_sum_over_true": 0.992, "present_totals_ratio": 0.998 },
+      { "name": "DSCC", "rows": 102373, "true_donors": 83939, "page_donors_stat": 752, "top50_overlap": 41, "same_rank": 15, "page_top50_sum_over_true": 0.961, "present_totals_ratio": 0.970 },
+      { "name": "REPUBLICAN PARTY OF TEXAS", "rows": 4357, "true_donors": 3697, "page_donors_stat": 860, "top50_overlap": 50, "same_rank": 50, "page_top50_sum_over_true": 1.0, "present_totals_ratio": 1.0 }
+    ],
+    "bands": [
+      { "band": "1k-2k", "recipients": 167, "wrong_set": 19, "wrong_set_or_order": 54, "min_overlap": 36, "avg_overlap": 49.8, "avg_present_ratio": 0.999, "min_present_ratio": 0.972, "avg_donors_stat_ratio": 0.729 },
+      { "band": "2k-5k", "recipients": 105, "wrong_set": 36, "wrong_set_or_order": 67, "min_overlap": 40, "avg_overlap": 49.3, "avg_present_ratio": 0.998, "min_present_ratio": 0.951, "avg_donors_stat_ratio": 0.361 },
+      { "band": "5k-10k", "recipients": 30, "wrong_set": 17, "wrong_set_or_order": 23, "min_overlap": 36, "avg_overlap": 47.8, "avg_present_ratio": 0.983, "min_present_ratio": 0.840, "avg_donors_stat_ratio": 0.153 },
+      { "band": "10k-50k", "recipients": 20, "wrong_set": 16, "wrong_set_or_order": 17, "min_overlap": 38, "avg_overlap": 46.9, "avg_present_ratio": 0.987, "min_present_ratio": 0.905, "avg_donors_stat_ratio": 0.071 },
+      { "band": ">50k", "recipients": 6, "wrong_set": 6, "wrong_set_or_order": 6, "min_overlap": 41, "avg_overlap": 45.0, "avg_present_ratio": 0.985, "min_present_ratio": 0.970, "avg_donors_stat_ratio": 0.011 }
+    ],
+    "all_over_1k": { "recipients": 328, "wrong_set": 94, "wrong_set_or_order": 167, "missing_top50_slots": 269 }
+  },
+  "read7": {
+    "total_received_cents_owners": {
+      "fe_crawl": "jobid 46 */30, CALL run_fe_totals_crawl(p_max_units := 1) -> refresh_fe_totals_slice() -> financial_entity_received_totals_rebuild(uuid[]) for recipients dirty by FR.updated_at; watermark financial_entity_totals_watermark = 2026-09-21 00:18:25.83",
+      "reconcile": "jobid 14, 0 12 1 * *, reconcile_financial_entity_totals()",
+      "incremental_weekly": "jobid 13, 0 10 * * 2, INACTIVE",
+      "zeroing_writer": "packages/data/src/pipelines/fec-bulk/writer.ts:384-401 upsertPacEntitiesBatch unscoped: literal 0 for total_received_cents; ON CONFLICT (fec_committee_id) DO UPDATE sets it"
+    },
+    "prod_total_received_zero": { "gt10k_recipients": 41, "zero": 34, "zero_and_updated_2026-09-20T22:00..2026-09-21T01:00": 34, "committees_zero_and_touched_in_window": 6953, "committees_nonzero": 3940 },
+    "clone_total_received": { "RNC": 21031139400, "DNC": 22513305600, "DSCC": 0 },
+    "donor_rollup_fe_scope": "official_donor_rollup_mv holds 0 rows for the RNC on prod; FIX-1018 (20260811000000) scoped every dirty-set enumeration to to_type='official' as REQUIRED",
+    "family_at": "2026-09-25T23:58:51Z",
+    "family": [
+      { "jobid": 24, "jobname": "donor-rollup-refresh", "schedule": "0 9,12 * * *", "active": true, "budget_s": 9000, "max_ok_wall_30d_s": 6747 },
+      { "jobid": 28, "jobname": "contract-flow-rollups-refresh", "schedule": "0 14 * * 4", "active": true, "budget_s": 9000, "max_ok_wall_30d_s": 5892 },
+      { "jobid": 46, "jobname": "fe-crawl", "schedule": "*/30 * * * *", "active": true, "budget_s": 1800, "max_ok_wall_30d_s": 1579 },
+      { "jobid": 17, "jobname": "donor-party-rollup-refresh", "schedule": "0 15 * * 2", "active": true, "budget_s": 1800, "max_ok_wall_30d_s": 11335 },
+      { "jobid": 49, "jobname": "group-donor-rollup-refresh", "schedule": "10 3 * * 3", "active": true, "budget_s": 1800, "max_ok_wall_30d_s": 294 },
+      { "jobid": 13, "jobname": "financial-entity-totals-incremental", "schedule": "0 10 * * 2", "active": false, "budget_s": 7200 },
+      { "jobid": 14, "jobname": "financial-entity-totals-reconcile", "schedule": "0 12 1 * *", "active": true, "budget_s": null, "max_ok_wall_30d_s": 134 }
+    ],
+    "prod_fr_rows_by_last_write_day": { "2026-08-24": 616113, "2026-09-01": 139507, "2026-09-07": 62976, "2026-09-13": 19776, "2026-09-14": 41406, "2026-09-17": 46308, "2026-09-19": 47774, "2026-09-20": 55807, "2026-09-21": 20811 }
+  },
+  "d1_clone": {
+    "A_full": { "def": "(to_type, to_id, relationship_type, amount_cents DESC)", "build_cold_ms": 23179.7, "bytes": 255500288,
+      "after": {
+        "RNC_inbound": { "cold_ms": 5634.5, "warm_ms": 229.2, "buffers": 101557, "plan": "Index Scan fix1217_scratch_a, ALL 151,406 rows, then Sort top-N — ordering NOT used as anon", "taken": true, "bounded": false },
+        "RNC_spending": { "cold_ms": 0.08, "warm_ms": 0.05, "buffers": 4, "taken": true },
+        "RNC_donor_count": { "cold_ms": 26.3, "warm_ms": 20.8, "buffers": 8281, "plan": "Index Only Scan, Heap Fetches 0", "taken": true },
+        "AMB_spending": { "cold_ms": 15295.8, "warm_ms": 728.6, "buffers": 246937, "plan": "Index Scan, ALL 246,005 rows, then Sort", "taken": true, "bounded": false },
+        "ORD": { "inbound_cold_ms": 7.7, "spending_cold_ms": 0.06, "donor_count_cold_ms": 0.18 }
+      },
+      "why_unbounded": "as anon (RLS on), relationship_type = 'donation' uses enum_eq, which is not leakproof, so it cannot become an equivalence-class constant; the index order (to_type, to_id, relationship_type, amount_cents) then cannot satisfy ORDER BY amount_cents. As postgres the same query takes Limit <- Index Scan (no Sort)."
+    },
+    "partial_spend": { "def": "(to_type, to_id, amount_cents DESC) WHERE relationship_type IN ('contract','grant')", "build_cold_ms": 13748.8, "rebuild_not_cold_ms": 15572.1, "bytes": 178782208,
+      "after": {
+        "RNC_spending": { "cold_ms": 0.15, "warm_ms": 0.15, "buffers": 4, "plan": "Limit <- Index Scan (ordered, no Sort)" },
+        "AMB_spending": { "cold_ms": 15.2, "warm_ms": 0.31, "buffers": 58, "plan": "Limit <- Index Scan (ordered, 50 rows)" },
+        "ORD_spending": { "cold_ms": 0.06, "warm_ms": 0.03, "buffers": 4 }
+      }
+    },
+    "partial_inbound_added_by_cc158": { "def": "(to_id, amount_cents DESC) WHERE relationship_type = 'donation' AND to_type = 'financial_entity'", "build_cold_ms": 9168.2, "rebuild_not_cold_ms": 3250.2, "bytes": 25755648,
+      "after": {
+        "RNC_inbound": { "cold_ms": 242.3, "warm_ms": 5.9, "buffers": 903, "plan": "Limit <- Index Scan (ordered, 1000 rows)" },
+        "RNC_donor_count": { "cold_ms": 21.0, "warm_ms": 18.7, "buffers": 8267, "plan": "Index Only Scan, Heap Fetches 0" },
+        "AMB_inbound": { "cold_ms": 0.21, "buffers": 3 },
+        "AMB_donor_count": { "cold_ms": 0.08, "buffers": 6 },
+        "ORD_inbound": { "cold_ms": 18.7, "warm_ms": 0.64, "buffers": 84 }
+      }
+    }
+  },
+  "d2_clone": {
+    "B_build_cold_ms": 27237.9, "rows": 441378, "recipients": 8483, "heap_bytes": 48234496,
+    "rnc_summary": { "donor_count": 125567, "tx_total": 151406, "sum_total": 21031139400 },
+    "rnc_top50_vs_independent_truth": { "truth_not_in_roll": 0, "roll_not_in_truth": 0, "sum_truth": 1407627400, "sum_roll": 1407627400 },
+    "incremental_unit_rnc_cold_ms": 606.3,
+    "incremental_26_recipients_over_10k_cold_ms": 13623.6
+  },
+  "option_c_no_ddl": {
+    "shape": "RPC body: WITH g AS (SELECT from_id, sum(amount_cents), count(*) FROM financial_relationships WHERE to_id = $1 AND relationship_type = 'donation' AND from_type = 'financial_entity' GROUP BY from_id) -> donors, tx_count, top-50 by sum. Index Only Scan financial_relationships_donor_rollup_idx (existing)",
+    "prod_explain_at": "2026-09-25T23:59:54Z",
+    "prod_plan": "Index Only Scan financial_relationships_donor_rollup_idx, est 44,581 rows for the RNC (actual 337,058)",
+    "clone": { "RNC_cold_ms": 891.3, "RNC_warm_ms": 224.2, "RNC_groupagg_cold_ms": 653.5, "DNC_cold_ms": 1073.4, "ORD_cold_ms": 1.6, "count_read_warm_ms": 36.5 },
+    "prod_timed": {
+      "conditions": "SET LOCAL ROLE anon; SET LOCAL statement_timeout; work_mem inherited from role postgres (256MB) — anon's real work_mem is smaller, so these are optimistic",
+      "RNC_1": { "at": "2026-09-26T00:13:32Z", "result": "57014 canceled at 3,026 ms (3 s cap)" },
+      "RNC_2": { "at": "2026-09-26T00:13:50Z", "ms": 2421.4 },
+      "RNC_3": { "at": "2026-09-26T00:13:53Z", "ms": 520.9, "cap": "15s" },
+      "DSCC_1": { "at": "2026-09-26T00:13:53Z", "ms": 2731.1, "cap": "15s" }
+    },
+    "verdict": "rejected for the whale class: fails anon's 3 s cold on prod for the RNC, cost grows with inbound rows"
+  },
+  "census": {
+    "verdict_60m": { "window": "2026-09-25T23:12:07Z..2026-09-26T00:12:07Z", "total_57014": 2, "minute": "23:30", "ratio": 1.01, "baseline_per_min": 0.033, "result": "PASS" },
+    "front_door_buckets": { "23:00": "2/946", "23:15": "0/205", "23:30": "2/367", "23:45": "0/533" },
+    "attribution_24h_to_2026-09-26T00:12:18Z": { "total": 43, "enrichment_queue": 23, "financial_relationships": 6, "get_official_page": 4, "check_senate_reference_cohort": 4, "get_jurisdiction_page": 2, "other": 4 }
+  },
+  "d3_projection": {
+    "method": "prod wall = clone cold x 1.389 (primary, rule 173) and x20 (cc-147's prod/clone-warm ratio, as the bracket); upper bound = two FR heap passes (2 x 4,932 MB) at the prod index-scan rate measured tonight (~8.7-9.1 MB/s, read 4). Renders = wall / 240 s (rule 192)",
+    "rows": [
+      { "option": "A", "prod_build_s": [32, 644, 1150], "prod_bytes": 354900000, "renders": [0.1, 2.7, 4.8], "fr_write_amp": "every FR write (+1 of 19 indexes)", "inbound": "taken, NOT bounded (RNC cold 5.6 s clone)", "spending": "contractor whale NOT bounded (15.3 s cold clone)", "count": "index-only", "correctness": "not fixed", "verdict": "reject" },
+      { "option": "partial-A (spending)", "prod_build_s": [19, 382, 1150], "prod_bytes": 182800000, "renders": [0.1, 1.6, 4.8], "fr_write_amp": "contract/grant writes only", "spending": "bounded (RNC 0.15 ms, AMB 15 ms cold)", "correctness": "n/a" },
+      { "option": "partial-inbound", "prod_build_s": [13, 255, 1150], "prod_bytes": 43700000, "renders": [0.1, 1.1, 4.8], "fr_write_amp": "donation-to-FE writes only", "inbound": "bounded 1000 rows (RNC 242 ms cold)", "count": "index-only", "correctness": "not fixed" },
+      { "option": "B", "prod_build_s": [150, 925], "prod_rows": [502000, 749000], "prod_bytes": [55000000, 82000000], "renders": [0.6, 3.9], "fr_write_amp": "none", "inbound_and_count": "O(50) read of the rollup", "correctness": "fixed (0/0 diff vs truth)", "staleness": "one owner cycle after an FR write" },
+      { "option": "A+B", "verdict": "dominated by partial-A + B (A does not bound spending for a contractor whale as anon)" },
+      { "option": "partial-A + B", "verdict": "RECOMMENDED" },
+      { "option": "C (no DDL)", "verdict": "reject for whales (prod RNC cold 57014 at 3 s)" }
+    ]
+  }
+}
