@@ -1,0 +1,40 @@
+{
+  "cc": "160",
+  "prompt": "cc-prompt-160-fix1226-rederive-received-totals-fix1224-pattern-b.md",
+  "started_at": "2026-09-26T18:34:53Z",
+  "finished_at": "2026-09-26T19:51:31Z",
+  "head_before": "fdf6df8c",
+  "head_after": "2bc0259c",
+  "commits": [
+    {
+      "sha": "153eb6f5",
+      "subject": "feat(data): FIX-1226 — the received-totals re-derive script and its manifest"
+    },
+    {
+      "sha": "51631d5d",
+      "subject": "docs(audits): FIX-1224 Pattern B — the 05:00 canary read the prod session"
+    },
+    {
+      "sha": "624a1275",
+      "subject": "chore(fixes): sync status after FIX-1224"
+    },
+    {
+      "sha": "30480222",
+      "subject": "chore(fixes): FIX-1226 prod set — re-derived total_received_cents for 5,713 committees from the manifest"
+    },
+    {
+      "sha": "2bc0259c",
+      "subject": "chore(fixes): sync status after FIX-1226"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1226",
+    "FIX-1224"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "One data set, in two runs of the same committed manifest (docs/audits/2026-09-26-fix1226-rederive-manifest.json), each through session:wait-for-gate:prod --census stop --then from the primary checkout under a claimed FIX-950 session (17 holds written and cleared each time). Each chunk was one autocommitted SELECT public.financial_entity_received_totals_rebuild(ARRAY[...]::uuid[]) after SET statement_timeout = 10min, via scripts/fix1226-rederive-received-totals.mjs. Run 1, 19:22:32-19:23:55 UTC: chunks 1-20, 4,000 rows of financial_entities updated, then the script's budget guard stopped it cleanly before chunk 21 (exit 5). Run 2, 19:29:56-19:41:10 UTC: chunks 1-83, chunks 1-20 re-ran as no-ops (0 rows), 1,713 rows updated. Total 5,713 rows: total_received_cents set to its FR-derived sum, and updated_at bumped by the financial_entities_updated_at trigger. The claims made fe-crawl and ec-crawl log skipped at 19:30. Pushes to main (each a Vercel deploy; no app change): 18:55:56, 18:56:56, 18:57:22, 19:47:41, 19:48:03, and this report. No migration, no DDL, no VACUUM, no EXPLAIN ANALYZE, no ad-hoc UPDATE on prod. Every other prod contact was a read: db-query --prod (counts, plain EXPLAIN, pg_stat_user_tables, cron reads, prod_op_gate), the census (Logs API, 3 standalone readings plus the gate's 2), gh, and two HTTPS GETs of the RNC page on the Vercel origin.",
+  "ci": "green",
+  "stopped_items": []
+}
