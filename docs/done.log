@@ -1487,3 +1487,4 @@
 2026-09-24 | FIX-1219 | 7e153bec | prod-only | docs(audits): FIX-1219 Pattern B — the front-door watch's first post-deploy firing read ok with 4 buckets; the census re-validated identical on the logs endpoint
 2026-09-24 | FIX-1222 | 173a301f | local+prod | feat(db): FIX-1221 — list_scheduled_rollup_pipelines takes its era boundary from cron_job_first_seen and correlates over the retention window; cron-job-run-details-retention (daily 01:51, 42 d) + budget row; FIX-1222 — the startup-timeout burst weighs each failure at the */2 cadence; FIX-1223 — the registry's correlation joins through a shared minute (35.7 s -> 0.43 s)
 2026-09-24 | FIX-1223 | e174cfe3 | local+prod | chore(canary): FIX-1223 receipt — the 05:00 canary read the derived rollup registry again (52 pipelines) for the first time since 2026-09-08
+2026-09-25 | FIX-1221 | e321504d | prod-only | docs(audits): FIX-1221 Pattern B — the retention's first firing
