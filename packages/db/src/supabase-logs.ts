@@ -10,7 +10,8 @@
  * it has answered 410 Gone since ~10:00 UTC 09-24 (changelog 48235). Two
  * consumers read through this file and nothing else may build a Logs URL:
  *
- *   * `packages/data/src/scripts/cancellation-census.ts` — gate (f) and `--by`
+ *   * `packages/data/src/scripts/cancellation-census.ts` — gate (f), `--by`, and
+ *     the renders reading (FIX-1232) the paced runner reads through it
  *   * `apps/civitics/app/api/cron/front-door-watch/route.ts` — the corroborator
  *
  * Before this, each consumer carried its own copy of the edge query, which is
@@ -329,7 +330,8 @@ function mapRows<R, T>(a: LogsAnswer<R>, f: (r: R) => T & { startMs: number }): 
   const rows = a.rows.map(f);
   const bad = rows.find((r) => Number.isNaN(r.startMs));
   if (bad) {
-    const raw = (a.rows[rows.indexOf(bad)] as { b?: unknown } | undefined)?.b;
+    const src = a.rows[rows.indexOf(bad)] as { b?: unknown; s?: unknown } | undefined;
+    const raw = src?.b ?? src?.s;
     return { kind: "dark", detail: `Logs API bucket is not epoch seconds: ${JSON.stringify(raw)}` };
   }
   return { kind: "rows", rows };
@@ -397,6 +399,13 @@ export interface LogsCancellationBucket {
 }
 
 /**
+ * The gated population: a statement cancelled by `statement_timeout`. ONE
+ * string, so the bucket builder's `n_timeout` and the renders builder's rows
+ * (FIX-1232) count the same events by construction, not by agreement (rule 116).
+ */
+const STATEMENT_TIMEOUT = "event_message LIKE '%canceling statement due to statement timeout%'";
+
+/**
  * Per-minute cancellation counts over `postgres_logs`, both classes in one
  * query (the gate counts timeouts; a hand cancel is a different event and is
  * reported alongside, never added in).
@@ -412,7 +421,7 @@ export function sqlCancellationBuckets(): string {
   return `
 SELECT
   toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b,
-  countIf(event_message LIKE '%canceling statement due to statement timeout%') AS n_timeout,
+  countIf(${STATEMENT_TIMEOUT}) AS n_timeout,
   countIf(event_message LIKE '%canceling statement due to user request%') AS n_user
 FROM logs
 WHERE source = 'postgres_logs'
@@ -428,6 +437,90 @@ export async function queryCancellationBuckets(opts: Omit<QueryLogsOptions, "sql
     startMs: bucketStartMs(r.b),
     timeouts: Number(r.n_timeout) || 0,
     userRequests: Number(r.n_user) || 0,
+  }));
+}
+
+// ─────────────────────────────── postgres_logs: renders (FIX-1232) ────────────
+//
+// The visitor pays in RENDERS, not in statements. One server render fans out
+// 4–6 parallel PostgREST reads (`Promise.all`), and when the box is slow they
+// time out together: cc-151's 09:30:26 burst was SIX 57014s — `entity_tags` ×4,
+// `entity_engagement_rollup_mv`, `officials` — from ONE official-page render,
+// stamped .262 → .790, 528 ms inside one second. A per-statement floor of 3
+// tripped on it. So this reading groups the same events by the second they
+// landed in, and one row is one render lost.
+//
+// The trade-off, measured and stated rather than hidden:
+//   * UNDER-counts two visitors whose renders were cancelled in the same second
+//     (they read as one). At the 0.033/min baseline that coincidence is rare,
+//     and a burst that dense fails the gate either way.
+//   * OVER-counts a fan-out that straddles a second boundary (one render, two
+//     rows). The measured fan-out spans 528 ms, so a render starting after
+//     ~.47 s into a second can land in two. Every fan-out in the three fixture
+//     windows (cc-151 / cc-154 / cc-159) sat inside one second.
+//   * A second is a second, not a page: cc-154's 00:30:44 row is a HEAD count
+//     on `enrichment_queue` (cc-155 D4 — "a count, not a page"), and it reads
+//     as one render here. `sampleQuery` names what was cancelled so a reader
+//     can tell.
+//
+// The population is the bucket builder's, by the shared STATEMENT_TIMEOUT
+// string: not `parsed.sql_state_code = '57014'`, which also matches a hand
+// cancel ("due to user request" carries 57014 too) and so would disagree with
+// `timeouts` on any window with one. Summed over a window, `events` equals the
+// bucket builder's `timeouts` — pinned on all three fixture windows.
+//
+// Row cap: a window with 1000 cancelled seconds is an incident, not a census
+// reading; `queryLogs` reads the cap as dark, and the census slices at most 60
+// minutes per reading anyway.
+
+/** The relation or function a statement names — `"public"."get_official_page"` → `get_official_page`; else its first 60 characters. */
+const PARSED_QUERY = "log_attributes['parsed.query']";
+const QUERY_FN = `extract(${PARSED_QUERY}, '"public"[.]"([a-z0-9_]+)"')`;
+const QUERY_NAME =
+  `if(${QUERY_FN} != '', ${QUERY_FN}, substringUTF8(replaceRegexpAll(if(${PARSED_QUERY} = '', event_message, ${PARSED_QUERY}), '[[:space:]]+', ' '), 1, 60))`;
+
+/** One second with at least one statement-timeout cancellation in it: one render lost. */
+export interface LogsRenderSecond {
+  /** The second, ms since epoch. */
+  startMs: number;
+  /** Statement timeouts stamped in that second. */
+  events: number;
+  /** The relation or function most of that second's cancellations named (the `--by query` grouping). */
+  sampleQuery: string;
+}
+
+export function sqlCancellationRenders(): string {
+  return `
+SELECT
+  toUnixTimestamp(toStartOfSecond(timestamp)) AS s,
+  count() AS n,
+  anyHeavy(${QUERY_NAME}) AS q
+FROM logs
+WHERE source = 'postgres_logs'
+  AND ${STATEMENT_TIMEOUT}
+  AND ${TIME_FILTER}
+GROUP BY s
+ORDER BY s`;
+}
+
+/**
+ * The page a sample names. The builder already extracts it server-side; this
+ * applies the same rule to a raw PostgREST envelope (the Phase 0 fixtures were
+ * pulled before the builder existed), so either shape reads the same.
+ */
+export function sampleQueryName(q: unknown): string {
+  if (q === null || q === undefined || q === "") return "(null)";
+  const s = String(q);
+  const m = /"public"[.]"([a-z0-9_]+)"/.exec(s);
+  return m ? m[1]! : s.replace(/\s+/g, " ").slice(0, 60);
+}
+
+export async function queryCancellationRenders(opts: Omit<QueryLogsOptions, "sql">): Promise<LogsAnswer<LogsRenderSecond>> {
+  const a = await queryLogs<{ s: unknown; n: unknown; q: unknown }>({ ...opts, sql: sqlCancellationRenders() });
+  return mapRows(a, (r) => ({
+    startMs: bucketStartMs(r.s),
+    events: Number(r.n) || 0,
+    sampleQuery: sampleQueryName(r.q),
   }));
 }
 
@@ -497,11 +590,7 @@ export function sqlAttribution(field: AttributableField, like: string | null): s
   if (!isAttributableField(field)) throw new Error(`not an attributable field: ${String(field)}`);
   if (like !== null && sanitizeLike(like) !== like) throw new Error(`unusable like: ${like}`);
   const attr = (k: string) => `log_attributes['parsed.${k}']`;
-  const fn = `extract(${attr("query")}, '"public"[.]"([a-z0-9_]+)"')`;
-  const groupExpr =
-    field === "query"
-      ? `if(${fn} != '', ${fn}, substringUTF8(replaceRegexpAll(if(${attr("query")} = '', event_message, ${attr("query")}), '[[:space:]]+', ' '), 1, 60))`
-      : `if(${attr(field)} = '', '(null)', ${attr(field)})`;
+  const groupExpr = field === "query" ? QUERY_NAME : `if(${attr(field)} = '', '(null)', ${attr(field)})`;
   const likeClause = like ? `\n  AND ${attr("query")} LIKE '%${like}%'` : "";
   return `
 SELECT

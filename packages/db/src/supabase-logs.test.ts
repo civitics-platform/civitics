@@ -10,6 +10,8 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -20,12 +22,15 @@ import {
   isLogsSchemaRemoval,
   queryAttribution,
   queryCancellationBuckets,
+  queryCancellationRenders,
   queryEdgeBuckets,
   queryLogs,
   queryStringRange,
+  sampleQueryName,
   sanitizeLike,
   sqlAttribution,
   sqlCancellationBuckets,
+  sqlCancellationRenders,
   sqlEdgeBuckets,
   timeFilterSql,
   worstLogsAnswer,
@@ -36,6 +41,7 @@ import {
   MAX_LOGS_RANGE_MINUTES,
   TIME_FILTER,
   type LogsFetch,
+  type LogsRenderSecond,
 } from "./supabase-logs";
 
 const T0 = Date.parse("2026-09-24T09:15:00Z");
@@ -277,4 +283,154 @@ test("queryAttribution maps g/n to group/count, and an empty group to (null)", a
     fetchImpl: stubFetch(200, { result: [{ g: "financial_relationships", n: 34 }, { g: "", n: 1 }] }),
   });
   assert.deepEqual(a, { kind: "rows", rows: [{ group: "financial_relationships", count: 34 }, { group: "(null)", count: 1 }] });
+});
+
+// ── FIX-1232 D1: the renders reading — 57014s by second ──────────────────────
+//
+// The fixtures are the raw Logs answers cc-162 pulled on 2026-09-26 while the
+// three windows were still inside retention (__fixtures__/census-renders/; the
+// README carries each read's UTC second). The CALL and breather spans are the
+// runner receipts' (docs/audits/2026-09-24- and 2026-09-25-fix1212-bootstrap-
+// runner.json), not re-derived.
+
+interface Fixture { window: { start: string; end: string }; answer: { kind: string; rows?: Record<string, unknown>[] } }
+const fixture = (name: string): Fixture =>
+  JSON.parse(readFileSync(join(__dirname, "__fixtures__", "census-renders", `${name}.json`), "utf8")) as Fixture;
+
+async function rendersOf(win: string): Promise<LogsRenderSecond[]> {
+  const f = fixture(`${win}.renders`);
+  const a = await queryCancellationRenders({
+    startMs: Date.parse(f.window.start), endMs: Date.parse(f.window.end), token: "t", timeoutMs: 1000,
+    fetchImpl: stubFetch(200, { result: f.answer.rows }),
+  });
+  assert.equal(a.kind, "rows", `${win}: the fixture reads as rows`);
+  return (a as { rows: LogsRenderSecond[] }).rows;
+}
+
+async function bucketsOf(win: string): Promise<{ startMs: number; timeouts: number }[]> {
+  const f = fixture(`${win}.buckets`);
+  const a = await queryCancellationBuckets({
+    startMs: Date.parse(f.window.start), endMs: Date.parse(f.window.end), token: "t", timeoutMs: 1000,
+    fetchImpl: stubFetch(200, { result: f.answer.rows }),
+  });
+  assert.equal(a.kind, "rows");
+  return (a as { rows: { startMs: number; timeouts: number }[] }).rows;
+}
+
+/** Rows whose second overlaps [from, to): a render at the CALL's first second counts. */
+const within = (rows: readonly LogsRenderSecond[], from: string, to: string) =>
+  rows.filter((r) => r.startMs >= Math.floor(Date.parse(from) / 1000) * 1000 && r.startMs < Date.parse(to));
+
+test("FIX-1232 D1: the renders builder groups statement timeouts by second, over the bucket builder's own population", () => {
+  const sql = sqlCancellationRenders();
+  assert.match(sql, /toUnixTimestamp\(toStartOfSecond\(timestamp\)\) AS s/);
+  assert.match(sql, /count\(\) AS n/);
+  assert.match(sql, /WHERE source = 'postgres_logs'/);
+  assert.match(sql, /GROUP BY s\s+ORDER BY s$/);
+  assert.ok(sql.includes(TIME_FILTER));
+  const timeout = "event_message LIKE '%canceling statement due to statement timeout%'";
+  assert.ok(sql.includes(`AND ${timeout}`), "the WHERE is the bucket builder's timeout predicate");
+  assert.ok(sqlCancellationBuckets().includes(`countIf(${timeout}) AS n_timeout`), "…and that is the string the bucket builder counts");
+  assert.doesNotMatch(sql, /sql_state_code/, "57014 also matches a hand cancel; the gated population is the timeout");
+  // The sample names a page the way `--by query` does, not by the ~600-char pgrst envelope.
+  const groupExpr = /^\s*(if\(extract\([\s\S]*?\)) AS g,$/m.exec(sqlAttribution("query", null))![1]!;
+  assert.ok(sql.includes(`anyHeavy(${groupExpr}) AS q`), "the attribution builder's query-name expression, verbatim");
+});
+
+test("FIX-1232 D1 on cc-151 (09-24): 9 events in 4 seconds; the 09:30:26 six are ONE render; one render in CALLs 1/3/4/5, none in CALL 2 or any breather", async () => {
+  const rows = await rendersOf("cc151");
+  assert.equal(rows.length, 4, "renders = rows");
+  assert.equal(rows.reduce((n, r) => n + r.events, 0), 9, "events = Σ n");
+  const burst = rows.find((r) => r.startMs === Date.parse("2026-09-24T09:30:26Z"))!;
+  assert.equal(burst.events, 6);
+  assert.equal(burst.sampleQuery, "entity_tags", "entity_tags ×4 of the six");
+  assert.deepEqual(rows.map((r) => r.sampleQuery), ["proposals", "get_official_page", "officials", "entity_tags"]);
+  const calls: [string, string][] = [
+    ["2026-09-24T09:04:58.789Z", "2026-09-24T09:09:07.081Z"],
+    ["2026-09-24T09:10:12.075Z", "2026-09-24T09:14:43.200Z"],
+    ["2026-09-24T09:16:16.933Z", "2026-09-24T09:20:24.289Z"],
+    ["2026-09-24T09:22:28.972Z", "2026-09-24T09:26:45.360Z"],
+    ["2026-09-24T09:28:20.064Z", "2026-09-24T09:32:36.625Z"],
+  ];
+  assert.deepEqual(calls.map(([a, b]) => within(rows, a, b).length), [1, 0, 1, 1, 1]);
+  const breathers: [string, string][] = [
+    ["2026-09-24T09:09:07.382Z", "2026-09-24T09:10:08.162Z"],
+    ["2026-09-24T09:14:43.301Z", "2026-09-24T09:16:14.058Z"],
+    ["2026-09-24T09:20:24.387Z", "2026-09-24T09:22:25.303Z"],
+    ["2026-09-24T09:26:45.518Z", "2026-09-24T09:28:16.416Z"],
+    ["2026-09-24T09:32:36.807Z", "2026-09-24T09:34:07.636Z"],
+  ];
+  assert.deepEqual(breathers.map(([a, b]) => within(rows, a, b).length), [0, 0, 0, 0, 0]);
+  // The pre-CALL 6 reading that stopped the run: 09:19:11–09:34:11 — 8 events, 3 renders.
+  const pre6 = within(rows, "2026-09-24T09:19:11.098Z", "2026-09-24T09:34:11.098Z");
+  assert.equal(pre6.length, 3);
+  assert.equal(pre6.reduce((n, r) => n + r.events, 0), 8);
+});
+
+test("FIX-1232 D1 on cc-154 (09-25): one render in each CALL (get_official_page, +65 s and +158 s), none in the breather; the pre-claim hour's one row is a count, not a page", async () => {
+  const rows = await rendersOf("cc154");
+  const call1 = within(rows, "2026-09-25T00:45:31.171Z", "2026-09-25T00:49:37.060Z");
+  const breather = within(rows, "2026-09-25T00:49:37.286Z", "2026-09-25T00:50:07.664Z");
+  const call2 = within(rows, "2026-09-25T00:50:07.885Z", "2026-09-25T00:54:08.411Z");
+  assert.deepEqual([call1.length, breather.length, call2.length], [1, 0, 1]);
+  assert.equal(call1[0]!.startMs, Date.parse("2026-09-25T00:46:37Z"));
+  assert.equal(call2[0]!.startMs, Date.parse("2026-09-25T00:52:45Z"));
+  assert.deepEqual([call1[0]!.sampleQuery, call2[0]!.sampleQuery], ["get_official_page", "get_official_page"]);
+  // cc-155 D4 counted "0 page renders (1 event)" for 23:45:29–00:45:29: the event
+  // is a HEAD count on enrichment_queue. A by-second reading counts it as one —
+  // the design's stated trade-off, visible in the sample.
+  const preClaim = within(rows, "2026-09-24T23:45:29Z", "2026-09-25T00:45:29Z");
+  assert.equal(preClaim.length, 1);
+  assert.equal(preClaim[0]!.sampleQuery, "enrichment_queue");
+});
+
+test("FIX-1232 D1 on cc-159 (09-26 02:00–03:30): no statement timeout at all", async () => {
+  assert.deepEqual(await rendersOf("cc159"), []);
+});
+
+test("FIX-1232 rule 116: on every fixture window the renders reading's events equal the bucket reading's timeouts — in total AND minute by minute", async () => {
+  for (const win of ["cc151", "cc154", "cc159"]) {
+    const renders = await rendersOf(win);
+    const buckets = await bucketsOf(win);
+    assert.equal(renders.reduce((n, r) => n + r.events, 0), buckets.reduce((n, b) => n + b.timeouts, 0), `${win}: Σ events = Σ timeouts`);
+    const byMinute = new Map<number, number>();
+    for (const r of renders) {
+      const m = Math.floor(r.startMs / 60_000) * 60_000;
+      byMinute.set(m, (byMinute.get(m) ?? 0) + r.events);
+    }
+    assert.deepEqual([...byMinute.entries()], buckets.filter((b) => b.timeouts > 0).map((b) => [b.startMs, b.timeouts]), `${win}: per minute`);
+  }
+});
+
+test("FIX-1232 rule 116: on the fixtures sql_state_code 57014 and the timeout predicate agree only because no hand cancel landed", () => {
+  for (const win of ["cc151", "cc154", "cc159"]) {
+    for (const r of fixture(`${win}.diag`).answer.rows ?? []) {
+      assert.equal(Number(r["n_57014"]), Number(r["n_timeout"]), `${win} ${String(r["s"])}`);
+      assert.equal(Number(r["n_user"]), 0);
+    }
+  }
+  // The 09:30:26 burst: six events, one second, .262 → .790 — no straddle.
+  const burst = (fixture("cc151.diag").answer.rows ?? []).find((r) => r["s"] === 1790242226)!;
+  const ms = (burst["ts"] as string[]).map((t) => Date.parse(`${t.slice(0, 23).replace(" ", "T")}Z`));
+  assert.equal(Math.max(...ms) - Math.min(...ms), 528);
+  assert.deepEqual([...(burst["rels"] as string[])].sort(),
+    ["entity_engagement_rollup_mv", "entity_tags", "entity_tags", "entity_tags", "entity_tags", "officials"]);
+});
+
+test("FIX-1232 D1: sampleQueryName reads a raw envelope and an extracted name the same way; the cap and a bad second are dark", async () => {
+  assert.equal(sampleQueryName('WITH pgrst_source AS ( SELECT "public"."officials"."id" FROM "public"."officials" )'), "officials");
+  assert.equal(sampleQueryName("get_official_page"), "get_official_page");
+  assert.equal(sampleQueryName(""), "(null)");
+  assert.equal(sampleQueryName(null), "(null)");
+  assert.equal(sampleQueryName("SELECT   1\n  FROM x"), "SELECT 1 FROM x");
+  const capped = await queryCancellationRenders({
+    startMs: T0, endMs: T1, token: "t", timeoutMs: 1000,
+    fetchImpl: stubFetch(200, { result: Array.from({ length: LOGS_ROW_CAP }, (_, i) => ({ s: 1790241300 + i, n: 1, q: "x" })) }),
+  });
+  assert.equal(capped.kind, "dark", "1000 cancelled seconds is an incident, not a reading");
+  const bad = await queryCancellationRenders({
+    startMs: T0, endMs: T1, token: "t", timeoutMs: 1000,
+    fetchImpl: stubFetch(200, { result: [{ s: "2026-09-24T09:30:26", n: 6, q: "entity_tags" }] }),
+  });
+  assert.deepEqual(bad, { kind: "dark", detail: 'Logs API bucket is not epoch seconds: "2026-09-24T09:30:26"' });
 });
