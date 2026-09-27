@@ -15,7 +15,7 @@
  *
  * Three job classes resolve NULL, all of them correctly:
  *
- *   - the twelve `*-vacuum-analyze` jobs, whose command is a bare `VACUUM`
+ *   - the thirteen `*-vacuum-analyze` jobs, whose command is a bare `VACUUM`
  *     with no procedure at all (`proc IS NULL`);
  *   - the two every-two-minutes watchdogs (`enforce_cron_job_budgets`,
  *     `enforce_derived_mvs_unit_budget`), which READ and UPDATE other

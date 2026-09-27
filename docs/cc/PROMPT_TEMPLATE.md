@@ -108,7 +108,7 @@ and its database.
   command does not reach a procedure referencing `prod_session_state()` is
   UNGUARDED: it fires inside a supervised session rather than deferring to it.
   Derive the set (`cron.job` JOIN `pg_proc` — `packages/data/src/lib/cron-job-pipelines.ts`,
-  the `guarded` column); today it is the twelve `*-vacuum-analyze` jobs, both
+  the `guarded` column); today it is the thirteen `*-vacuum-analyze` jobs, both
   `*/2` watchdogs, `abuse-events-retention` and `platform-counts-daily`. Start
   **≥ 90 min after the last unguarded VACUUM job's END**, with **none scheduled
   inside `[start, start + 2 × expected wall]`**.

@@ -193,7 +193,7 @@ test("the command pattern reads CALL and SELECT, schema-qualified or not", () =>
   assert.equal(PROC_RE.exec("call  public.donor_rollup_rebuild_bulk( 12 )")?.[1], "donor_rollup_rebuild_bulk");
 });
 
-test("a bare VACUUM command resolves no procedure — the twelve vacuum jobs", () => {
+test("a bare VACUUM command resolves no procedure — the thirteen vacuum jobs", () => {
   assert.equal(PROC_RE.exec("VACUUM (ANALYZE) public.entity_connections;"), null);
 });
 

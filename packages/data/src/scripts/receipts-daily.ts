@@ -107,8 +107,13 @@ const CRON_LOOKBACK_DAYS = 14;
  * why this list is no longer "the two hour-04 jobs": the FR vacuum is the one
  * that does not fire in hour 04, and leaving it out rendered section 4 as a
  * complete series that was missing its most expensive member.
+ *
+ * FIX-1239 added `votes-vacuum-analyze` — WEEKLY (Sat 02:37), not daily, but
+ * `votes` is already on the pre-ec probe, and a probe with no wall beside it is
+ * the cc-138 gap again. Q_VACUUMS' LIMIT is sized to keep one full week of all
+ * four in view (see there).
  */
-const VACUUM_JOBS = ["fr-vacuum-analyze", "ec-vacuum-analyze", "fe-vacuum-analyze"];
+const VACUUM_JOBS = ["fr-vacuum-analyze", "ec-vacuum-analyze", "fe-vacuum-analyze", "votes-vacuum-analyze"];
 
 /** The unit whose duration FIX-1152 watches. */
 const SEARCH_UNIT = "rebuild_entity_search_index";
@@ -499,7 +504,10 @@ JOIN cron.job j ON j.jobid = d.jobid
 WHERE j.jobname = ANY($1::text[])
   AND d.start_time >= now() - make_interval(days => $2::int)
 ORDER BY d.start_time DESC
-LIMIT 20`;
+LIMIT 24`;
+// FIX-1239 — was 20, which is 6 d 16 h of the three daily jobs: a weekly job
+// that last fired 6.9 d ago fell off the bottom. 24 = 7 d x 3 daily + 1 weekly
+// + 2 of slack.
 
 const Q_FEC_STATE = `
 SELECT key, value
