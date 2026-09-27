@@ -1,0 +1,62 @@
+{
+  "cc": "163",
+  "prompt": "cc-prompt-163-fix1230-manual-bypass-fix1231-grant-sweep-receipt-donated-totals-fix1229-close.md",
+  "started_at": "2026-09-27T01:34:40Z",
+  "finished_at": "2026-09-27T02:42:00Z",
+  "head_before": "6966502c",
+  "head_after": "832d6972",
+  "commits": [
+    {
+      "sha": "cb044d2a",
+      "subject": "docs(fixes): file FIX-1235 (donated totals — 232 zeroed + 3,714 cycle-slice drift) and FIX-1236 (the bare pages-router 500)"
+    },
+    {
+      "sha": "43f149fc",
+      "subject": "fix(app): FIX-1230 — notify-followers takes CRON_SECRET only; the ?manual=1 bypass is removed"
+    },
+    {
+      "sha": "32d4eef9",
+      "subject": "chore(fixes): record prod verification of FIX-1230"
+    },
+    {
+      "sha": "318b6d2b",
+      "subject": "feat(data): FIX-1235 — the donated-totals re-derive script (two-term budget guard) and its manifest"
+    },
+    {
+      "sha": "635a6db7",
+      "subject": "chore(fixes): FIX-1235 prod set — re-derived total_donated_cents for 3,946 committees from the manifest"
+    },
+    {
+      "sha": "159e5b68",
+      "subject": "chore(fixes): sync status after FIX-1235"
+    },
+    {
+      "sha": "d8dc8773",
+      "subject": "docs(audits): FIX-1231 Pattern B — the first real grant sweep"
+    },
+    {
+      "sha": "42d3e3f0",
+      "subject": "chore(fixes): record prod verification of FIX-1231"
+    },
+    {
+      "sha": "832d6972",
+      "subject": "chore(fixes): sync status after FIX-1231"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1230",
+    "FIX-1231",
+    "FIX-1235"
+  ],
+  "fixes_filed": [
+    "FIX-1235",
+    "FIX-1236"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "One data set: FIX-1235, financial_entities.total_donated_cents re-derived for 3,946 committees from the committed manifest docs/audits/2026-09-27-fix1235-rederive-donated-manifest.json through financial_entity_donation_totals_rebuild(uuid[]), 22 autocommitted chunks, 02:18:08.7-02:18:32.7 UTC, under a session:wait-for-gate:prod claim (prod_supervised_session interlock plus 17 guarded-pipeline holds, 02:18:05-02:18:33, then cleared). No migration, no DDL, no other SQL write, no pg_cron change, no VACUUM. One HTTPS GET to the Vercel origin (/api/cron/notify-followers?manual=1 with no bearer, 01:54:36 UTC, 401, no side effect). Six pushes to main (each a Vercel deploy) at 01:52:08, 01:55:00, 02:02:18, 02:35:51, 02:36:57 and 02:37:35 UTC, plus this report. prod_session_state() read held=false before each push except 02:35:51, whose reading was cut off by a pipe; the re-read at 02:35:57 was held=false with no claimed_at. Everything else on prod was a read: read-only db-query.mjs --prod queries, the two scripts' READ ONLY --dry-run/--verify modes, and 7 Logs API reads.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 (FIX-1229 close as (b)): read 6 did not establish that Cloudflare excludes 5xx regardless of origin headers. Its default-status table applies only when no cache-control or expires header is present, and the origin stamps CDN-Cache-Control public, s-maxage=300 on every public prefix. Per the prompt's decision rule the close was stopped; FIX-1229 stays OPEN and no next.config.mjs comment was committed. Craig picks (a) or (b). The FIX-1236 UX bullet was still filed (item 0)."
+  ]
+}
