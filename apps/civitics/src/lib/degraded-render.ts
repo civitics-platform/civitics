@@ -27,9 +27,11 @@
  * A plain `throw` measured identical (500, private no-store, uncached) with and
  * without one, so the helper does not ALSO throw — one mechanism.
  *
- * The CDN layers are not covered: next.config.mjs stamps `CDN-Cache-Control:
- * public, s-maxage=300` on these prefixes whatever the status (the 500 above
- * carried it). That is a separate decision (cc-161 item 6).
+ * next.config.mjs stamps `CDN-Cache-Control: public, s-maxage=300` on these
+ * prefixes whatever the status (the 500 above carried it). It is inert on the
+ * 500 (FIX-1229): Cloudflare does not hold pages at all (`cf-cache-status:
+ * DYNAMIC`), and Vercel's edge caches only 200/404/410/3xx. See the comment
+ * above headers() in next.config.mjs.
  *
  * ── Why the sink is request-scoped (and only inside a render)
  *

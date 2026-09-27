@@ -109,9 +109,24 @@ const nextConfig = {
     // used in reverse to *bust* the dashboard cache.
     //
     // We set both so it works on Vercel today and any future generic CDN we
-    // might layer in. Cloudflare (which fronts the site) honors
-    // CDN-Cache-Control as well, so public responses are held at BOTH layers
-    // (observe x-vercel-cache and cf-cache-status when verifying).
+    // might layer in. Cloudflare fronts the site but does NOT hold pages
+    // (FIX-1229, measured 2026-09-27 from a real browser, since scripted clients
+    // get Turnstile — docs/CLOUDFLARE.md §5): `/` and `/officials/<id>` read
+    // `cf-cache-status: DYNAMIC` on every fetch while `x-vercel-cache` went
+    // MISS → HIT. The zone has 0 Cache Rules (docs/CLOUDFLARE.md §3), and
+    // Cloudflare does not cache extension-less HTML by default, whatever
+    // CDN-Cache-Control says. So Vercel's edge is the ONLY CDN layer for pages.
+    //
+    // Vercel caches only 200, 404, 410, 301, 302, 307 and 308
+    // (https://vercel.com/docs/caching/cdn-cache, "Cacheable response
+    // criteria"). A 500 — a degraded render's noStore() bailout (FIX-1227) —
+    // is therefore held at neither layer, even though the rules below stamp it
+    // too (they are status-blind).
+    //
+    // Vercel-CDN-Cache-Control also overrides a page's own Cache-Control at
+    // Vercel's edge. `/` answers the browser `private, no-cache, no-store` yet
+    // is a Vercel HIT (age 143 s) through the exact-match rule below. That is
+    // by design.
     //
     // ──────────────────────────────────────────────────────────────────────
     // CDN CACHE POLICY — ALLOWLIST MODEL (FIX-796)
