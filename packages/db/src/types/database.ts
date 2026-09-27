@@ -7350,6 +7350,15 @@ export type Database = {
       normalize_pv_path: { Args: { p: string }; Returns: string }
       official_donor_totals_backfill: { Args: never; Returns: number }
       official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
+      primary_industry_tag: {
+        Args: { p_entity_ids: string[] }
+        Returns: {
+          display_icon: string
+          display_label: string
+          entity_id: string
+          tag: string
+        }[]
+      }
       prod_op_gate: {
         Args: { p_expected_seconds?: number; p_now?: string }
         Returns: Json

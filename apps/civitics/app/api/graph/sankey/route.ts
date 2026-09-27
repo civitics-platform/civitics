@@ -202,13 +202,11 @@ export async function GET(req: NextRequest) {
       supabase.from("agencies").select("id, name, acronym, short_name").in("id", ids)),
     fetchChunked<FinancialEntityRow>(vendorIds, "vendors", (ids) =>
       supabase.from("financial_entities").select("id, display_name").in("id", ids)),
+    // FIX-918: each vendor's primary industry, from primary_industry_tag() —
+    // one row per vendor. The plain entity_tags read this replaced returned
+    // every industry tag and the Map below kept the LAST, in plan order.
     fetchChunked<TagRow>(vendorIds, "tags", (ids) =>
-      supabase
-        .from("entity_tags")
-        .select("entity_id, tag")
-        .eq("entity_type", "financial_entity")
-        .eq("tag_category", "industry")
-        .in("entity_id", ids)),
+      supabase.rpc("primary_industry_tag", { p_entity_ids: ids })),
   ]);
 
   if (agenciesRes.error) {

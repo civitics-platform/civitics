@@ -186,12 +186,11 @@ export async function GET(req: NextRequest) {
 
       const [connection_count, tagRes, aiRes] = await Promise.all([
         getConnectionCount(db2, id),
-        // FIX-503: lead with entity_type so idx_entity_tags_entity(entity_type,
-        // entity_id) serves this (prod cost 26989 → 2.8). This is the financial
-        // branch, so the tag rows are stored under entity_type 'financial_entity'.
-        db2.from("entity_tags").select("display_label, tag")
-          .eq("entity_type", "financial_entity").eq("entity_id", id)
-          .eq("tag_category", "industry").maybeSingle(),
+        // FIX-918: the entity's primary industry, from primary_industry_tag() —
+        // at most one row. The plain entity_tags read this replaced returned one
+        // row per industry tag, so .maybeSingle() errored on every multi-tag
+        // entity and the subtitle silently lost its industry.
+        db2.rpc("primary_industry_tag", { p_entity_ids: [id] }).maybeSingle(),
         db2.from("ai_summary_cache").select("summary_text")
           .eq("entity_id", id).eq("entity_type", "financial").maybeSingle(),
       ]);

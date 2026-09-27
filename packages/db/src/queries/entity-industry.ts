@@ -10,11 +10,19 @@ export interface IndustryTag {
 }
 
 /**
- * Industry tag for each financial entity, sourced from `entity_tags`
- * (`tag_category='industry'`). This replaced the dropped
- * `financial_entities.industry` column, which was being polluted by the FEC
- * bulk pipeline writing CONNECTED_ORG_NM into a column that should have held
- * a sector code.
+ * The PRIMARY industry tag of each financial entity — one per entity, picked by
+ * the SQL function `primary_industry_tag()` (FIX-918), which is the only place
+ * the ranking rule lives: curated > confidence > rule-before-ai > tag. Every SQL
+ * rollup and MV reads the same function, so a donor shows the same industry on
+ * a page as it does in the aggregates.
+ *
+ * This replaced the dropped `financial_entities.industry` column, which was
+ * being polluted by the FEC bulk pipeline writing CONNECTED_ORG_NM into a
+ * column that should have held a sector code.
+ *
+ * Before FIX-918 this read `entity_tags` directly with no ORDER BY and kept the
+ * first row per entity, so a multi-tag donor's industry was whatever order the
+ * plan returned rows in. Do not re-rank here; call the function.
  */
 export async function fetchIndustryTagsByEntityId(
   db: DB,
@@ -23,25 +31,22 @@ export async function fetchIndustryTagsByEntityId(
   if (entityIds.length === 0) return new Map();
 
   const out = new Map<string, IndustryTag>();
-  // FIX-1037: was a hand-rolled loop at BATCH = 100 with its own derivation of
-  // the URI bound. Same bound, one owner now -- `ID_CHUNK_SIZE` (200, the value
-  // FIX-772/FIX-509 measured the 414 at) lives beside the helper, so the next
-  // person to change it changes it once. `strict` preserves this function's
+  // FIX-1037: chunked at the shared ID_CHUNK_SIZE (200). An RPC takes its ids in
+  // the POST body, so the URI bound that sized the chunk no longer applies;
+  // what still does is PostgREST's 1,000-row cap on a set-returning RPC, and a
+  // 200-id chunk returns at most 200 rows. `strict` preserves this function's
   // throw-on-error contract: a dropped chunk here renders as an untagged donor,
   // which is indistinguishable from a genuinely untagged one.
   const { rows } = await fetchChunkedByIds<{
     entity_id: string; tag: string; display_label: string | null;
   }>(
     entityIds,
-    (chunk) => db
-      .from("entity_tags")
-      .select("entity_id, tag, display_label")
-      .eq("entity_type", "financial_entity")
-      .eq("tag_category", "industry")
-      .in("entity_id", chunk),
-    { strict: true, label: "entity-industry:tags-by-id" },
+    (chunk) => db.rpc("primary_industry_tag", { p_entity_ids: chunk }),
+    { strict: true, label: "entity-industry:primary-by-id" },
   );
   for (const r of rows) {
+    // One row per entity by construction; the guard only keeps a duplicate id
+    // across two chunks (impossible after fetchChunkedByIds' dedupe) harmless.
     if (out.has(r.entity_id)) continue;
     out.set(r.entity_id, { tag: r.tag, display_label: r.display_label ?? r.tag });
   }

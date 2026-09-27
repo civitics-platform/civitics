@@ -57,12 +57,13 @@ interface OfficialRow  { id: string; full_name: string }
 interface RollupRow    { industry: string; total_cents: number | string | null; donor_count: number | string | null }
 
 // FIX-777 live-compute fallback: paginate the official's donations, sum per
-// donor, map each donor to its single (smallest, deterministic) industry tag or
-// 'Untagged', then aggregate dollars + distinct-donor count per industry. This is
-// the pre-materialization request-path aggregation; it stays as the per-entity
+// donor, map each donor to its primary industry tag or 'Untagged', then
+// aggregate dollars + distinct-donor count per industry. This is the
+// pre-materialization request-path aggregation; it stays as the per-entity
 // fallback for a rollup miss (official absent — not yet backfilled, or no
 // donations) so nothing 500s / blanks. Byte-for-byte with
-// official_sector_affinity_rollup (same smallest-tag pick, same Untagged bucket).
+// official_sector_affinity_rollup (same primary_industry_tag() pick, same
+// Untagged bucket).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function computeSectorAffinityLive(supabase: any, entityId: string): Promise<{ totalCents: number; sectors: SectorRow[] }> {
   const donorTotals = new Map<string, number>();
@@ -96,29 +97,20 @@ async function computeSectorAffinityLive(supabase: any, entityId: string): Promi
 
   if (donorTotals.size === 0) return { totalCents: 0, sectors: [] };
 
-  // Pull industry tags for these donors, deterministic smallest-tag per donor
-  // (FIX-777 — was "first seen" across unordered batches; ordering by (entity_id,
-  // tag) + keep-first yields the smallest tag, matching the rollup / the
-  // FIX-518 `ind` CTE / fetchIndustryTagsByEntityId).
+  // Each donor's primary industry, from primary_industry_tag() — the rollup's
+  // own pick (FIX-918; FIX-777 had ordered by (entity_id, tag) and kept the
+  // first, i.e. the alphabet). One row per tagged donor, so keep-first below
+  // is a no-op guard.
   // FIX-902: this loop WAS chunked — at 300, which is over the URL bound, not
-  // under it. 300 uuids is ~11 KB on the request line and FIX-509 verified the
-  // gateway 414 at ~356 / FIX-772 at ~234, so every chunk sat inside the
-  // failure window and each one that tripped it silently dropped 300 donors'
-  // industry tags into "Other". The pagination loop above admits up to 200,000
-  // donors, so this is not a rare shape. Chunked at the shared ID_CHUNK_SIZE.
+  // under it. The RPC takes its ids in the POST body, so the URL bound is gone;
+  // the shared ID_CHUNK_SIZE also keeps each call under PostgREST's 1,000-row
+  // cap on a set-returning RPC. The pagination loop above admits up to 200,000
+  // donors, so this is not a rare shape.
   const donorIds = [...donorTotals.keys()];
   const tagByEntity = new Map<string, string>();
   const { rows: tags, complete: tagsComplete } = await fetchChunkedByIds<TagLite>(
     donorIds,
-    (ids) =>
-      supabase
-        .from("entity_tags")
-        .select("entity_id, tag")
-        .eq("tag_category", "industry")
-        .eq("entity_type", "financial_entity")
-        .in("entity_id", ids)
-        .order("entity_id", { ascending: true })
-        .order("tag", { ascending: true }),
+    (ids) => supabase.rpc("primary_industry_tag", { p_entity_ids: ids }),
     { label: "sector-affinity:industry-tags" },
   );
   if (!tagsComplete) {
