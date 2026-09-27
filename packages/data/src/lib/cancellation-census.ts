@@ -36,9 +36,16 @@
  * cc-151's stopping reading (8 events in 15 min) is 3 renders: at floor 3 it
  * passes.
  *
- * The edge half is unchanged: cc-162's binomial floor for it was stopped
- * because the measured seven-day 5xx rate (1.07 %) sits above the 1 % gate it
- * would have floored (FIX-1233).
+ * ── THE EDGE FLOOR (FIX-1233) ───────────────────────────────────────────────
+ * The edge half had the same small-count problem with no floor at all: cc-151's
+ * pre-CALL 6 failed on 2 of 183 requests = 1.09 %. It now FAILS only when BOTH
+ * hold:
+ *   pct5xx > PCT_5XX_GATE   AND   n5xx > binomP99(requests, p0)
+ * where p0 is the healthy per-request 5xx rate the caller states (the CLI's
+ * DEFAULT_P0 — the MEDIAN of seven measured days, 0.23 %; the pooled 1.07 % it
+ * replaces contains the 09-22 wedge this gate exists to catch). At n = 183 the
+ * floor is 2, so 2/183 passes and 3/183 fails. A bucket under MIN_EDGE_REQUESTS
+ * proves nothing either way and passes, saying so.
  */
 
 import { isLogsEndpointGone, worstLogsAnswer, type LogsAnswer } from "@civitics/db";
@@ -107,6 +114,14 @@ export interface EdgeVerdict {
   /** The last bucket with any traffic in it, or null when every bucket is empty. */
   lastClosed: EdgeBucket | null;
   pct5xx: number | null;
+  /** FIX-1233: the per-request 5xx rate the floor is computed at. */
+  p0: number;
+  /** binomP99(requests, p0): a 5xx count at or below this never fails, whatever the %. null: no traffic. */
+  floor_5xx: number | null;
+  /** pct5xx > PCT_5XX_GATE. null: no traffic. */
+  over_ratio: boolean | null;
+  /** n5xx > floor_5xx. null: no traffic. */
+  over_floor: boolean | null;
   pass: boolean;
   note: string;
 }
@@ -119,6 +134,9 @@ export const PCT_5XX_GATE = 1;
 
 /** The floor's quantile: a count the baseline alone exceeds 1 % of the time. */
 export const FLOOR_QUANTILE = 0.99;
+
+/** FIX-1233: an edge bucket with fewer requests than this proves nothing, and passes saying so. */
+export const MIN_EDGE_REQUESTS = 30;
 
 /**
  * The smallest k with P(X <= k) >= 0.99 for X ~ Poisson(λ). Summed in log
@@ -137,6 +155,27 @@ export function poissonP99(lambda: number): number {
     logP += logL - Math.log(k + 1);
   }
   return kMax;
+}
+
+/**
+ * The smallest k with P(X <= k) >= 0.99 for X ~ Binomial(n, p) — exact, the
+ * edge half's floor (FIX-1233). Walked in log space like poissonP99, each term
+ * from the last by P(k+1)/P(k) = (n−k)/(k+1) · p/(1−p), so a large n does not
+ * underflow (1−p)^n. n <= 0 or p <= 0 is 0; p >= 1 is n.
+ */
+export function binomP99(n: number, p: number): number {
+  if (!Number.isFinite(n) || !Number.isFinite(p) || n <= 0 || p <= 0) return 0;
+  const trials = Math.floor(n);
+  if (p >= 1) return trials;
+  const logOdds = Math.log(p) - Math.log1p(-p);
+  let logP = trials * Math.log1p(-p); // log P(X = 0)
+  let cum = 0;
+  for (let k = 0; k < trials; k++) {
+    cum += Math.exp(logP);
+    if (cum >= FLOOR_QUANTILE) return k;
+    logP += Math.log(trials - k) - Math.log(k + 1) + logOdds;
+  }
+  return trials;
 }
 
 /** A count's ratio to what the baseline expects; a zero baseline reads 0 for no count and Infinity for any. */
@@ -239,24 +278,48 @@ export function rendersLine(rows: readonly RenderSecond[]): string {
  * its window to a bucket boundary, and this takes the last bucket that actually
  * carried traffic — a bucket with zero requests is not evidence of health and is
  * reported as `no traffic` rather than as a pass on 0 %.
+ *
+ * FIX-1233: fails iff `pct5xx > PCT_5XX_GATE` AND `n5xx > binomP99(requests,
+ * p0)` — the renders half's shape, with the exact binomial in place of the
+ * Poisson. A bucket under MIN_EDGE_REQUESTS passes, and says it proved nothing.
  */
-export function edgeVerdictFor(buckets: readonly EdgeBucket[]): EdgeVerdict {
+export function edgeVerdictFor(buckets: readonly EdgeBucket[], p0: number): EdgeVerdict {
   const withTraffic = buckets.filter((b) => b.requests > 0);
   const last = withTraffic.length > 0 ? withTraffic[withTraffic.length - 1]! : null;
   if (!last) {
     return {
       lastClosed: null,
       pct5xx: null,
+      p0,
+      floor_5xx: null,
+      over_ratio: null,
+      over_floor: null,
       pass: true,
       note: "no traffic in any bucket — nothing to fail, and nothing proved either",
     };
   }
   const pct = (last.n5xx / last.requests) * 100;
+  const floor = binomP99(last.requests, p0);
+  const overRatio = pct > PCT_5XX_GATE;
+  const overFloor = last.n5xx > floor;
+  const head = `${last.n5xx} of ${last.requests} request(s) = ${pct.toFixed(2)} %`;
+  const at = `P99 floor ${floor} at p0 ${(p0 * 100).toFixed(2)} %`;
+  const small = last.requests < MIN_EDGE_REQUESTS;
   return {
     lastClosed: last,
     pct5xx: pct,
-    pass: pct <= PCT_5XX_GATE,
-    note: `${last.n5xx} of ${last.requests} request(s) = ${pct.toFixed(2)} %`,
+    p0,
+    floor_5xx: floor,
+    over_ratio: overRatio,
+    over_floor: overFloor,
+    pass: small || !(overRatio && overFloor),
+    note: small
+      ? `${head} — n < ${MIN_EDGE_REQUESTS} — nothing proved`
+      : !overRatio
+        ? `${head} <= ${PCT_5XX_GATE} % (${at})`
+        : overFloor
+          ? `${head} > ${PCT_5XX_GATE} % and > ${at}`
+          : `${head} > ${PCT_5XX_GATE} % but <= ${at}`,
   };
 }
 

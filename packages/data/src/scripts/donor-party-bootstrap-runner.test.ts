@@ -216,7 +216,7 @@ test("FIX-1232: the dark-twice trip is armed wherever the census is read — two
   assert.equal(evaluateCensus(u, 2, "breather"), null, "a FAIL answered, so the next dark is the first");
 });
 
-test("FIX-1232 rule 105: cc-151's stop before CALL 6 — 4 renders across 5 CALLs is under budget 3 on every CALL, and the 57014 half of the stopping reading flips to PASS", () => {
+test("FIX-1232/FIX-1233 rule 105: cc-151's stop before CALL 6 — 4 renders across 5 CALLs is under budget 3 on every CALL, and the stopping reading flips to PASS on both halves", () => {
   // Per CALL, from the fixture windows (packages/db/src/__fixtures__/census-renders/cc151.renders.json):
   // CALL 1 09:07:53, CALL 3 09:19:59, CALL 4 09:24:21, CALL 5 09:30:26 (×6 events).
   for (const mode of ["stop", "report"] as const) {
@@ -231,13 +231,14 @@ test("FIX-1232 rule 105: cc-151's stop before CALL 6 — 4 renders across 5 CALL
   assert.equal(v.pass, true, "3 renders <= P99 floor 3 (8 events > 3 stopped the run)");
   assert.equal(v.floor_renders, 3);
   assert.equal(v.events, 8);
-  // NOT flipped: the edge half. Its binomial floor was stopped at cc-162 read 3
-  // (FIX-1233), so 2/183 = 1.09 % still fails and the pre-CALL reading still
-  // stops before CALL 6 — now in both modes.
-  const ev = edgeVerdictFor([{ startMs: 0, requests: 183, n5xx: 2 }]);
-  assert.equal(ev.pass, false, "2/183 = 1.09 % > 1 %");
+  // FIX-1233 flipped the edge half: 2/183 = 1.09 % is over 1 % but not over the
+  // binomial floor 2 at p0 = 0.23 %. The whole reading exits 0 — cc-151 would
+  // have gone on to CALL 6.
+  const ev = edgeVerdictFor([{ startMs: 0, requests: 183, n5xx: 2 }], 0.0023);
+  assert.equal(ev.pass, true, "2/183 = 1.09 % > 1 % but <= floor 2");
   const code = v.pass && ev.pass ? 0 : 1;   // cancellation-census.ts exits 0 iff both halves pass
-  assert.equal(isTrip(preCallFail(code)), true);
+  assert.equal(code, 0);
+  assert.equal(preCallFail(code), null);
 });
 
 test("FIX-1232 rule 105: cc-148's ~97 %-trip shape — an ordinary night read every 15 min during CALLs — is no stop at all", () => {

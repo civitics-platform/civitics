@@ -15,6 +15,7 @@ import { sampleQueryName } from "@civitics/db";
 
 import {
   answersExit,
+  binomP99,
   unavailableJson,
   unavailableSummary,
   CENSUS_EXIT,
@@ -31,6 +32,7 @@ import {
   FLOOR_QUANTILE,
   LOGS_RETENTION_DAYS,
   MAX_ATTRIBUTION_MINUTES,
+  MIN_EDGE_REQUESTS,
   PCT_5XX_GATE,
   RATIO_GATE,
   type AttributionRow,
@@ -49,6 +51,9 @@ const bucket = (startMs: number, requests: number, n5xx: number): EdgeBucket => 
   requests,
   n5xx,
 });
+
+/** FIX-1233: the p0 the tests run at — the CLI's DEFAULT_P0 (asserted against the committed series below). */
+const P0 = 0.0023;
 
 /** A db fixture's rows (the raw Logs answer cc-162 pulled), as the census receives them from the helper. */
 const fixtureRenders = (win: string): RenderSecond[] => {
@@ -229,8 +234,8 @@ test("FIX-1232 rule 105: cc-151's stopping 15-min reading (8 events) is 3 render
   assert.equal(v.pass, true, "3 renders <= floor 3");
   // Before: the same window, gated on the 8 events — 8 > 3 at ratio 16.16.
   assert.ok(v.total > v.floor && v.ratio > RATIO_GATE);
-  // The edge half is unchanged (its floor was stopped — FIX-1233): 2 of 183 still fails.
-  assert.equal(edgeVerdictFor([bucket(0, 183, 2)]).pass, false);
+  // The edge half flipped with FIX-1233 (see "FIX-1233 rule 105" below): 2 of 183 is under the floor 2.
+  assert.equal(edgeVerdictFor([bucket(0, 183, 2)], P0).pass, true);
 });
 
 test("FIX-1232 rule 105: cc-148's ~97 %-trip shape — seven 15-min readings of an ordinary night — all pass in renders", () => {
@@ -259,14 +264,14 @@ test("the edge gate reads the last bucket WITH traffic, not the last bucket", ()
     bucket(0, 500, 0),
     bucket(900_000, 400, 20), // 5.0 % — the one that should decide
     bucket(1_800_000, 0, 0),
-  ]);
+  ], P0);
   assert.equal(v.lastClosed?.startMs, 900_000);
   assert.ok(v.pct5xx !== null && Math.abs(v.pct5xx - 5) < 0.001);
   assert.equal(v.pass, false);
 });
 
 test("1 % exactly passes", () => {
-  const v = edgeVerdictFor([bucket(0, 1000, 10)]);
+  const v = edgeVerdictFor([bucket(0, 1000, 10)], P0);
   assert.equal(v.pct5xx, PCT_5XX_GATE);
   assert.equal(v.pass, true);
 });
@@ -275,7 +280,7 @@ test("no traffic at all passes, and the note refuses to call it health", () => {
   // The wrong-but-green shape. A front door answering nothing is the FIX-1130
   // wedge, and the verdict must not read as a clean bill just because 0/0 has
   // no 5xx in it.
-  const v = edgeVerdictFor([bucket(0, 0, 0), bucket(900_000, 0, 0)]);
+  const v = edgeVerdictFor([bucket(0, 0, 0), bucket(900_000, 0, 0)], P0);
   assert.equal(v.lastClosed, null);
   assert.equal(v.pct5xx, null);
   assert.equal(v.pass, true);
@@ -283,9 +288,160 @@ test("no traffic at all passes, and the note refuses to call it health", () => {
 });
 
 test("an empty bucket list is the same case as empty buckets", () => {
-  const v = edgeVerdictFor([]);
+  const v = edgeVerdictFor([], P0);
   assert.equal(v.pass, true);
   assert.match(v.note, /no traffic/);
+  assert.deepEqual([v.p0, v.floor_5xx, v.over_ratio, v.over_floor], [P0, null, null, null]);
+});
+
+// ───────────────────────── the edge floor (FIX-1233) ─────────────────────────
+
+/** The reference: Σ_{i<=k} C(n,i) p^i (1−p)^(n−i), summed directly — no logs, no recurrence. */
+const binomCdf = (n: number, p: number, k: number): number => {
+  let c = 0;
+  for (let i = 0; i <= k; i++) {
+    let comb = 1;
+    for (let j = 0; j < i; j++) comb = (comb * (n - j)) / (j + 1);
+    c += comb * p ** i * (1 - p) ** (n - i);
+  }
+  return c;
+};
+
+/** [n, p, P99 floor] — computed with an exact CDF before the prompt quoted them (cc-164, rule 208). */
+const BINOM_PINS: Array<[number, number, number]> = [
+  [183, 0.002, 2], // the design note's "3" was wrong (cc-162 §4.10)
+  [183, 0.0023, 2],
+  [165, 0.0023, 2],
+  [279, 0.0023, 3],
+  [200, 0.0023, 3],
+  [700, 0.0023, 5],
+  [75, 0.0023, 2], // the smallest 15-min bucket in cc-162's 24 h
+  [30, 0.0023, 1],
+  [183, 0.02, 9],
+  [183, 0.0107, 6], // the pooled seven-day rate the median replaced
+];
+
+test("FIX-1233: binomP99 at the ten pins, each checked against the direct binomial sum", () => {
+  for (const [n, p, k] of BINOM_PINS) {
+    assert.equal(binomP99(n, p), k, `binomP99(${n}, ${p})`);
+    assert.ok(binomCdf(n, p, k) >= FLOOR_QUANTILE, `(${n}, ${p}): P(X<=${k}) = ${binomCdf(n, p, k)} >= 0.99`);
+    assert.ok(binomCdf(n, p, k - 1) < FLOOR_QUANTILE, `(${n}, ${p}): P(X<=${k - 1}) = ${binomCdf(n, p, k - 1)} < 0.99 — the SMALLEST k`);
+  }
+});
+
+test("FIX-1233: binomP99 is the smallest k at the 99th percentile across a grid, not only at the pins", () => {
+  for (const n of [1, 5, 29, 30, 31, 75, 183, 279, 500, 1000]) {
+    for (const p of [0.0005, 0.0023, 0.01, 0.05, 0.3, 0.9]) {
+      const k = binomP99(n, p);
+      assert.ok(binomCdf(n, p, k) >= FLOOR_QUANTILE - 1e-12, `(${n}, ${p}) → ${k}`);
+      if (k > 0) assert.ok(binomCdf(n, p, k - 1) < FLOOR_QUANTILE, `(${n}, ${p}) → ${k} is the smallest`);
+    }
+  }
+});
+
+test("FIX-1233: binomP99 edges — no trials or no rate is 0, a certain rate is n, and a large n does not underflow", () => {
+  assert.equal(binomP99(0, 0.0023), 0);
+  assert.equal(binomP99(-5, 0.0023), 0);
+  assert.equal(binomP99(183, 0), 0);
+  assert.equal(binomP99(183, -0.1), 0);
+  assert.equal(binomP99(Number.NaN, 0.0023), 0);
+  assert.equal(binomP99(183, Number.NaN), 0);
+  assert.equal(binomP99(183, 1), 183);
+  assert.equal(binomP99(183, 1.5), 183);
+  // (1 − 0.0023)^1e6 = e^-2302 is 0 in a double; the log-space walk still lands
+  // near n·p + 2.33·sd ≈ 2300 + 112.
+  const k = binomP99(1_000_000, 0.0023);
+  assert.ok(k > 2300 && k < 2450, `got ${k}`);
+});
+
+test("FIX-1233 rule 105: cc-151's pre-CALL 6 edge reading (2 of 183 = 1.09 %) flips to PASS; 6 of 183 still fails", () => {
+  const was = edgeVerdictFor([bucket(0, 183, 2)], P0);
+  assert.equal(was.over_ratio, true, "1.09 % is over the 1 % gate — the old verdict, FAIL");
+  assert.equal(was.floor_5xx, 2);
+  assert.equal(was.over_floor, false, "2 is not above the floor 2");
+  assert.equal(was.pass, true);
+  assert.equal(was.note, "2 of 183 request(s) = 1.09 % > 1 % but <= P99 floor 2 at p0 0.23 %");
+  const six = edgeVerdictFor([bucket(0, 183, 6)], P0);
+  assert.deepEqual([six.over_ratio, six.over_floor, six.pass], [true, true, false], "3.3 %, and 6 > floor 2");
+  assert.equal(six.note, "6 of 183 request(s) = 3.28 % > 1 % and > P99 floor 2 at p0 0.23 %");
+  // 3 of 183 is the first count over the floor
+  assert.equal(edgeVerdictFor([bucket(0, 183, 3)], P0).pass, false);
+});
+
+test("FIX-1233: the wedge fails; the floor moves with n (3/279 passes, 4/279 fails)", () => {
+  const wedge = edgeVerdictFor([bucket(0, 200, 60)], P0);
+  assert.equal(wedge.pass, false, "60 of 200 = 30 % — the 09-22 shape");
+  assert.equal(wedge.floor_5xx, 3);
+  const three = edgeVerdictFor([bucket(0, 279, 3)], P0);
+  assert.deepEqual([three.floor_5xx, three.over_ratio, three.over_floor, three.pass], [3, true, false, true], "1.08 %, floor 3");
+  const four = edgeVerdictFor([bucket(0, 279, 4)], P0);
+  assert.deepEqual([four.over_ratio, four.over_floor, four.pass], [true, true, false]);
+  // Over the floor but under the ratio passes: the ratio arm is kept (both must be exceeded).
+  const bigN = edgeVerdictFor([bucket(0, 5000, 30)], P0);
+  assert.equal(bigN.over_floor, true, `30 > the floor ${bigN.floor_5xx} at n = 5000`);
+  assert.deepEqual([bigN.over_ratio, bigN.pass], [false, true], "0.60 % <= 1 %");
+});
+
+test("FIX-1233: under 30 requests proves nothing and passes, saying so; at 30 the floor decides", () => {
+  assert.equal(MIN_EDGE_REQUESTS, 30);
+  const small = edgeVerdictFor([bucket(0, 29, 1)], P0);
+  assert.equal(small.pass, true);
+  assert.equal(small.note, "1 of 29 request(s) = 3.45 % — n < 30 — nothing proved");
+  assert.equal(edgeVerdictFor([bucket(0, 20, 20)], P0).pass, true, "even 100 % of 20 proves nothing — the smallest measured bucket is 75");
+  // At n = 30 the rule is the floor's: floor 1, so 1/30 passes and 2/30 fails.
+  const one = edgeVerdictFor([bucket(0, 30, 1)], P0);
+  assert.deepEqual([one.floor_5xx, one.over_ratio, one.over_floor, one.pass], [1, true, false, true]);
+  assert.equal(edgeVerdictFor([bucket(0, 30, 2)], P0).pass, false);
+  // cc-162's smallest 15-min bucket (75 requests, p0.smallest-15min-24h.json) is well clear of the clause.
+  assert.equal(edgeVerdictFor([bucket(0, 75, 1)], P0).pass, true, "1/75 = 1.33 % but <= floor 2");
+});
+
+test("FIX-1233: the edge fixtures cc-162 pulled, through the verdict — cc-151's 09:15 bucket passes, cc-159's quiet night passes", () => {
+  const edgeFixture = (name: string): EdgeBucket[] => {
+    const f = JSON.parse(readFileSync(new URL(`../../../db/src/__fixtures__/census-renders/${name}.edge900.json`, import.meta.url), "utf8")) as {
+      answer: { rows: { b: number; requests: number; n_5xx: number }[] };
+    };
+    return f.answer.rows.map((r) => ({ startMs: r.b * 1000, requests: r.requests, n5xx: r.n_5xx }));
+  };
+  const c151 = edgeVerdictFor(edgeFixture("cc151"), P0);
+  assert.deepEqual([c151.lastClosed?.requests, c151.lastClosed?.n5xx, c151.floor_5xx, c151.pass], [183, 2, 2, true]);
+  const c159 = edgeVerdictFor(edgeFixture("cc159"), P0);
+  assert.deepEqual([c159.lastClosed?.requests, c159.lastClosed?.n5xx, c159.over_ratio, c159.pass], [582, 0, false, true]);
+});
+
+test("FIX-1233 rule 134: DEFAULT_P0 is the median of the committed seven-day series, not a number copied from a prompt", () => {
+  const days = [1, 2, 3, 4, 5, 6, 7].map((d) => {
+    const f = JSON.parse(readFileSync(new URL(`../../../db/src/__fixtures__/census-renders/p0.day${d}.json`, import.meta.url), "utf8")) as {
+      answer: { rows: { requests: number; n_5xx: number }[] };
+    };
+    const req = f.answer.rows.reduce((n, r) => n + r.requests, 0);
+    const n5xx = f.answer.rows.reduce((n, r) => n + r.n_5xx, 0);
+    return { req, n5xx, rate: n5xx / req };
+  });
+  const sorted = [...days].sort((a, b) => a.rate - b.rate);
+  const median = sorted[3]!;
+  assert.deepEqual([median.n5xx, median.req], [58, 25_554], "day 5, 09-23 21:00 → 09-24 21:00");
+  const pooled = days.reduce((n, d) => n + d.n5xx, 0) / days.reduce((n, d) => n + d.req, 0);
+  assert.ok(Math.abs(pooled - 0.0107) < 0.0001, `the pooled rate the median replaces: ${pooled}`);
+  assert.ok(pooled * 100 > PCT_5XX_GATE, "the pooled rate sits ABOVE the gate — why it cannot be the floor's p0");
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  const m = /const DEFAULT_P0 = ([0-9.]+);/.exec(src);
+  assert.ok(m, "DEFAULT_P0 is stated once, in the CLI");
+  assert.equal(Number(m[1]), P0, "the tests' P0 is the CLI's");
+  assert.ok(Math.abs(Number(m[1]) - median.rate) < 0.0001, `DEFAULT_P0 ${m[1]} is the median ${median.rate} to 0.01 %`);
+  // The floors are the same at the exact fraction and at the rounded constant, on every pin at p0.
+  for (const [n, p, k] of BINOM_PINS) if (p === P0) assert.equal(binomP99(n, median.rate), k, `n = ${n} at 58/25,554`);
+});
+
+test("FIX-1233: the CLI gates the edge at --p0 (default DEFAULT_P0) and prints p0 and the floor in text and JSON", () => {
+  const src = readFileSync(new URL("../scripts/cancellation-census.ts", import.meta.url), "utf8");
+  const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.match(code, /const ev = edgeVerdictFor\(edge, args\.p0\);/);
+  assert.match(code, /p0: DEFAULT_P0,/, "the default is the constant");
+  assert.match(code, /case "--p0":/);
+  assert.match(code, /\.\.\.ev,\s*\n\s*gate: `fails iff last closed bucket 5xx > \$\{PCT_5XX_GATE\} % AND n5xx > P99 floor/, "the JSON edge object carries p0, floor_5xx, over_ratio, over_floor via ...ev");
+  assert.match(code, /p0 \$\{\(ev\.p0 \* 100\)\.toFixed\(2\)\} %/, "the text line prints p0");
+  assert.match(code, /P99 floor \$\{ev\.floor_5xx \?\? "—"\}/, "the text line prints the floor");
 });
 
 // ───────────────────────── attribution mode (cc-137) ─────────────────────────

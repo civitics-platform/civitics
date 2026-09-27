@@ -36,7 +36,10 @@
  *                      --baseline value (decision 6 of the FIX-1232 design: the
  *                      same number, in the right unit, until the ~10-03
  *                      re-measure supplies its own)
- *   --renders-only     one Logs read, not two: the renders over the window and
+ *   --p0 <fraction>    the per-request 5xx rate the edge half's binomial floor
+ *                      is computed at; default 0.0023 (FIX-1233 — the median
+ *                      day of cc-162 read 3). Printed either way, like --baseline.
+ *   --renders-only    one Logs read, not two: the renders over the window and
  *                      nothing else. An instrument, like --by — no verdict, exit
  *                      0 on any reading, 2 dark, 8 unavailable. The paced
  *                      runner's CALL and breather windows (FIX-1232 D3).
@@ -88,6 +91,8 @@ import {
   CENSUS_EXIT,
   LOGS_RETENTION_DAYS,
   MAX_ATTRIBUTION_MINUTES,
+  MIN_EDGE_REQUESTS,
+  PCT_5XX_GATE,
   RATIO_GATE,
   type AttributableField,
   type AttributionRow,
@@ -102,12 +107,28 @@ const EDGE_BUCKET_MS = 15 * 60 * 1000;
 /** cc-129's measured baseline. Stated here once; every other mention quotes it. */
 const DEFAULT_BASELINE = 0.033;
 
+/**
+ * FIX-1233: the healthy per-request 5xx rate the edge half's binomial floor is
+ * computed at. cc-162 read 3 — the MEDIAN of seven daily `edge_logs` 5xx rates,
+ * 24-h slices ending 2026-09-26 21:00 UTC (series committed at
+ * packages/db/src/__fixtures__/census-renders/p0.day1..7.json): 0.18 / 0.38 /
+ * 6.94 / 1.26 / 0.23 / 0.12 / 0.09 %, median day 5 = 58 / 25,554 = 0.227 %.
+ * It REPLACES the seven-day pooled rate, 1,862 / 174,413 = 1.07 %, because the
+ * pooled rate carries the 09-22 wedge (day 3, 1,268 of its 1,366 5xx were 52x)
+ * — the event this gate exists to catch — and a floor computed at 1.07 % sits
+ * above the 1 % gate it floors. Re-measured with DEFAULT_BASELINE ~10-03 (rule
+ * 198: a daily figure across an instrument change is two readings, not a rate).
+ */
+const DEFAULT_P0 = 0.0023;
+
 interface Args {
   minutes: number;
   endMs: number;
   baseline: number;
   /** null = the --baseline value (FIX-1232 decision 6). */
   baselineRenders: number | null;
+  /** FIX-1233: the edge floor's per-request 5xx rate. */
+  p0: number;
   json: boolean;
   /** Non-null puts the script in attribution mode: no verdict, always exit 0. */
   by: AttributableField | null;
@@ -122,6 +143,7 @@ function parseArgs(argv: readonly string[]): Args {
     endMs: Date.now(),
     baseline: DEFAULT_BASELINE,
     baselineRenders: null,
+    p0: DEFAULT_P0,
     json: false,
     by: null,
     like: null,
@@ -157,6 +179,10 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case "--baseline-renders":
         a.baselineRenders = Number(v);
+        i++;
+        break;
+      case "--p0":
+        a.p0 = Number(v);
         i++;
         break;
       case "--renders-only":
@@ -197,7 +223,7 @@ function parseArgs(argv: readonly string[]): Args {
       case "--help":
         console.log(
           "Usage: cancellation-census [--minutes N | --start <iso>] [--end <iso>] [--baseline <per-min>]\n" +
-            "                           [--baseline-renders <per-min>] [--json]\n" +
+            "                           [--baseline-renders <per-min>] [--p0 <fraction>] [--json]\n" +
             "       cancellation-census --renders-only [--minutes N | --start <iso>] [--end <iso>] [--json]\n" +
             "       cancellation-census --by <field> [--like <substring>] [--minutes N] [--end <iso>] [--json]\n" +
             `       fields: ${ATTRIBUTABLE_FIELDS.join(", ")}\n` +
@@ -219,6 +245,7 @@ function parseArgs(argv: readonly string[]): Args {
   if (a.baselineRenders !== null && (!Number.isFinite(a.baselineRenders) || a.baselineRenders < 0)) {
     throw new Error("--baseline-renders must be >= 0");
   }
+  if (!Number.isFinite(a.p0) || a.p0 < 0 || a.p0 >= 1) throw new Error("--p0 must be a fraction in [0, 1)");
   if (a.like !== null && a.by === null) throw new Error("--like needs --by (it narrows an attribution)");
   if (a.rendersOnly && a.by !== null) throw new Error("--renders-only and --by are two different instruments; give one");
   // The clamp, refused rather than silently under-reported — in BOTH modes
@@ -408,7 +435,7 @@ async function main(): Promise<void> {
   const edge: EdgeBucket[] = eAns.rows.map(({ startMs, requests, n5xx }) => ({ startMs, requests, n5xx }));
 
   const v = verdictFor({ renders, minutes: args.minutes, baseline: args.baseline, baselineRenders: args.baselineRenders ?? undefined });
-  const ev = edgeVerdictFor(edge);
+  const ev = edgeVerdictFor(edge, args.p0);
 
   if (args.json) {
     console.log(
@@ -428,7 +455,7 @@ async function main(): Promise<void> {
             window: { start: iso(edgeStart), end: iso(edgeEnd) },
             buckets: edge,
             ...ev,
-            gate: "last closed bucket 5xx <= 1 %",
+            gate: `fails iff last closed bucket 5xx > ${PCT_5XX_GATE} % AND n5xx > P99 floor (binomP99(requests, p0)); n < ${MIN_EDGE_REQUESTS} proves nothing`,
           },
           pass: v.pass && ev.pass,
         },
@@ -456,7 +483,11 @@ async function main(): Promise<void> {
         `  ${iso(b.startMs).padEnd(22)}  ${String(b.requests).padStart(8)}  ${String(b.n5xx).padStart(4)}  ${String(pct).padStart(6)}`,
       );
     }
-    console.log(`\n  last closed bucket: ${ev.note}  (gate <= 1 %)  → ${ev.pass ? "PASS" : "FAIL"}`);
+    console.log(
+      `\n  last closed bucket: ${ev.lastClosed ? `${ev.lastClosed.n5xx} / ${ev.lastClosed.requests}` : "—"}  p0 ${(ev.p0 * 100).toFixed(2)} %  ` +
+        `P99 floor ${ev.floor_5xx ?? "—"}  (fails iff > ${PCT_5XX_GATE} % AND 5xx > floor; n < ${MIN_EDGE_REQUESTS} proves nothing)  → ${ev.pass ? "PASS" : "FAIL"}`,
+    );
+    console.log(`  ${ev.note}`);
     console.log(
       `\n  VERDICT: ${v.pass && ev.pass ? "PASS" : "FAIL"} — cc-131 read 7 (f), the drain-and-wait\n` +
         `  gate in docs/cc/PROMPT_TEMPLATE.md. Quote both numbers WITH this window.`,

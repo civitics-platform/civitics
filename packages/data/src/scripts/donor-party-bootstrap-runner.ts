@@ -748,7 +748,8 @@ export interface CensusJson {
   };
   /** `--renders-only` (FIX-1232 D3): the seconds and nothing else. */
   renders?: { renders: number; events: number; by_second: CensusSecond[] };
-  edge?: { note: string; pass?: boolean };
+  /** FIX-1233: the note names the floor and p0; the fields ride beside it. */
+  edge?: { note: string; pass?: boolean; p0?: number; floor_5xx?: number | null; over_ratio?: boolean | null; over_floor?: boolean | null };
   pass?: boolean;
   /** Exit 8's body (FIX-1219): the endpoint is gone, or a table/field it names is. */
   unavailable?: boolean;
