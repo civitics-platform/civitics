@@ -1498,3 +1498,8 @@
 2026-09-26 | FIX-1214 | d958e002 | local-only | fix(app): FIX-1214 — every GET-only admin-client route passes noStoreFetch (the FIX-1208 shape); the three revalidate=300 status routes are exempt by design
 2026-09-26 | FIX-1227 | 155975d9 | local-only | feat(app): FIX-1227 — a labelled read timeout marks the render degraded; a degraded render is never cached by Next
 2026-09-26 | FIX-1232 | 64d846de | local-only | docs: FIX-1232 — receipts lines (D5); PROMPT_TEMPLATE gate (f) in renders; prod-holds runner section
+2026-09-26 | FIX-1230 | 32d4eef9 | prod-only | chore(fixes): record prod verification of FIX-1230
+2026-09-26 | FIX-1230 | 43f149fc | local-only | fix(app): FIX-1230 — notify-followers takes CRON_SECRET only; the ?manual=1 bypass is removed
+2026-09-26 | FIX-1233 | 83116fdd | prod-only | chore(fixes): record prod verification of FIX-1233
+2026-09-26 | FIX-1233 | 250614cf | local-only | feat(data): FIX-1233 — binomP99 and the edge floor at p0 = 0.23 % (the median day); the census fails the edge half only when both the 1 % ratio and the floor are exceeded
+2026-09-26 | FIX-1234 | d653e019 | local-only | docs: FIX-1234 — PROMPT_TEMPLATE gate (f) (edge floor; pre-CALL outside CALLs; breather timeout by cause); prod-holds runner section
