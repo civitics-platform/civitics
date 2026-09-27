@@ -1,0 +1,50 @@
+{
+  "cc": "164",
+  "prompt": "cc-prompt-164-fix1233-edge-floor-p0-precall-outside-calls-breather-census-timeout.md",
+  "started_at": "2026-09-27T01:38:53Z",
+  "finished_at": "2026-09-27T02:01:00Z",
+  "head_before": "6966502c",
+  "head_after": "85bdf84d",
+  "commits": [
+    {
+      "sha": "ce01c81d",
+      "subject": "docs(fixes): file FIX-1234 — the paced runner's pre-CALL reading contains the CALL it just ran, and a breather the census still holds at --breather-max-s proceeds"
+    },
+    {
+      "sha": "250614cf",
+      "subject": "feat(data): FIX-1233 — binomP99 and the edge floor at p0 = 0.23 % (the median day); the census fails the edge half only when both the 1 % ratio and the floor are exceeded"
+    },
+    {
+      "sha": "3111c61b",
+      "subject": "feat(data): FIX-1234 — the pre-CALL census judges the time outside the paced op's CALL spans"
+    },
+    {
+      "sha": "444fe736",
+      "subject": "feat(data): FIX-1234 — a breather the census still holds at --breather-max-s is a stop (stop mode) or a would_trip (report mode); a walls-held timeout proceeds as before"
+    },
+    {
+      "sha": "d653e019",
+      "subject": "docs: FIX-1234 — PROMPT_TEMPLATE gate (f) (edge floor; pre-CALL outside CALLs; breather timeout by cause); prod-holds runner section"
+    },
+    {
+      "sha": "83116fdd",
+      "subject": "chore(fixes): record prod verification of FIX-1233"
+    },
+    {
+      "sha": "85bdf84d",
+      "subject": "chore(fixes): sync status after FIX-1233, FIX-1234"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1233",
+    "FIX-1234"
+  ],
+  "fixes_filed": [
+    "FIX-1234"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "None to the database: no migration, no DDL, no SQL write, no pg_cron change, no runner launch. Six pushes to main (each a Vercel deploy) at 01:46:19, 01:51:36, 01:56:05, 01:56:26, 01:57:16 and 01:57:53 UTC, plus this report. None touches Vercel-served code: packages/data scripts, their tests, and docs only. prod_session_state() read held=false before every push. Every other prod contact was a read: 2 Logs API calls (D5, 01:56:45, one census reading, clear of the watch's minute, no 429), and read-only prod_session_state() queries through scripts/db-query.mjs --prod.",
+  "ci": "green",
+  "stopped_items": []
+}
