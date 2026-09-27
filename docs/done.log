@@ -1503,3 +1503,4 @@
 2026-09-26 | FIX-1233 | 83116fdd | prod-only | chore(fixes): record prod verification of FIX-1233
 2026-09-26 | FIX-1233 | 250614cf | local-only | feat(data): FIX-1233 — binomP99 and the edge floor at p0 = 0.23 % (the median day); the census fails the edge half only when both the 1 % ratio and the floor are exceeded
 2026-09-26 | FIX-1234 | d653e019 | local-only | docs: FIX-1234 — PROMPT_TEMPLATE gate (f) (edge floor; pre-CALL outside CALLs; breather timeout by cause); prod-holds runner section
+2026-09-26 | FIX-1235 | 635a6db7 | prod-only | chore(fixes): FIX-1235 prod set — re-derived total_donated_cents for 3,946 committees from the manifest
