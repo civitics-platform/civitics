@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { effectiveGrantStatus, holdsElevatedDesk, isGrantActive } from "@/lib/active-grants";
 import { resolveEntityLabels } from "../../src/lib/entity-labels";
 import { InboxModule, type InboxNotification } from "./components/InboxModule";
 import { WatchingModule, type WatchingItem } from "./components/WatchingModule";
@@ -162,9 +163,12 @@ export default async function DeskPage() {
     created_at: string;
   };
   const grants = (grantsRes.data ?? []) as GrantRow[];
+  // FIX-1237 — "active" means active AND unexpired, as in every has_active_*
+  // helper; a lapsed row the nightly sweep has not flipped yet is not verified.
+  const now = Date.now();
 
   const constituentGrants = grants.filter(
-    (g) => g.role === "constituent" && g.target_type === "jurisdiction" && g.status === "active"
+    (g) => g.role === "constituent" && g.target_type === "jurisdiction" && isGrantActive(g, now)
   );
   const earliestExpiry =
     constituentGrants
@@ -183,10 +187,10 @@ export default async function DeskPage() {
   const officialClaimRows = [...latestClaimByOfficial.values()];
 
   // The official/jurisdiction *desk* is a future workspace — show the placeholder
-  // when the user actually holds such a grant (active), not merely a pending claim.
-  const hasElevatedDesk = grants.some(
-    (g) => (g.role === "official" || g.role === "jurisdiction") && g.status === "active"
-  );
+  // when the user actually holds such a grant (live), not merely a pending claim.
+  // FIX-1237: the role is jurisdiction_admin. The old test named bare
+  // jurisdiction, which is not a grant_role value, so it never matched.
+  const hasElevatedDesk = holdsElevatedDesk(grants, now);
 
   // ── Module data ──────────────────────────────────────────────────────────────
   const notifications = (notificationsRes.data ?? []) as InboxNotification[];
@@ -276,7 +280,7 @@ export default async function DeskPage() {
   const officialClaims: OfficialClaim[] = officialClaimRows.map((g) => ({
     id: g.id,
     target_id: g.target_id,
-    status: g.status,
+    status: effectiveGrantStatus(g, now),
     expires_at: g.expires_at,
     name: labels.get(`official:${g.target_id}`)?.label ?? "Unknown official",
   }));

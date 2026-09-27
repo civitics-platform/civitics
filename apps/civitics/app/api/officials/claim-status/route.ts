@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
+import { effectiveGrantStatus } from "@/lib/active-grants";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // request time. RLS (users_read_own_grants) scopes entity_grants to the
 // signed-in user, so no admin client is needed. Mirrors
 // /api/constituent-status. Returns the LATEST claim's status — a rejected
-// (revoked) claim followed by a fresh pending one reads as pending.
+// (revoked) claim followed by a fresh pending one reads as pending. FIX-1237:
+// an 'active' row past expires_at reads 'expired' (what the nightly sweep will
+// write), so ClaimProfileSection never shows a lapsed claim as verified.
 export async function GET(request: NextRequest) {
   const officialId = request.nextUrl.searchParams.get("official_id");
   if (!officialId || !UUID_RE.test(officialId)) {
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     signedIn: true,
-    status: data?.status ?? "none",
+    status: data ? effectiveGrantStatus(data) : "none",
     expiresAt: data?.expires_at ?? null,
     grantedAt: data?.granted_at ?? null,
   });

@@ -92,6 +92,12 @@ export async function POST(request: NextRequest) {
 
   // 5. One claim per (user, official): reject while an active or pending
   // grant exists. Rejected (revoked) and expired claims may be resubmitted.
+  // FIX-1237: this gate is status-only ON PURPOSE, unlike the UI readers.
+  // entity_grants_unique_active is `WHERE status = 'active'` with no expiry
+  // term, so an active row past expires_at still occupies the key. Letting it
+  // through would turn the exact-email path's INSERT below into a unique
+  // violation (500 grant_write_failed) instead of this 409. The 02:00 UTC
+  // sweep flips it to 'expired' within a day, after which resubmission works.
   const { data: existing } = await admin
     .from("entity_grants")
     .select("id, status")

@@ -17,6 +17,7 @@ import {
   type ResolvedGrant,
   buildActiveGrants,
   identityLabel,
+  isGrantActive,
 } from "@/lib/active-grants";
 
 export const metadata = { title: "Grant Review | Admin" };
@@ -126,18 +127,23 @@ export default async function AdminGrantsPage() {
   // the platform_admin and staff grants most worth revoking. Targets are
   // resolved per-type from the bulk maps below, and `global` resolves to a
   // label rather than to a missing row (see src/lib/active-grants.ts).
+  // FIX-1237 — and "active" means unexpired too, as in has_active_*: a row past
+  // expires_at that the nightly sweep has not flipped yet is not live access.
   const { data: activeRaw } = await withDbTimeout<DbRes>(
     admin
       // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
       .from("entity_grants")
-      .select("id, user_id, role, target_type, target_id, granted_at, expires_at, created_at")
+      .select("id, user_id, role, target_type, target_id, status, granted_at, expires_at, created_at")
       .eq("status", "active")
       .order("granted_at", { ascending: false, nullsFirst: false })
       .limit(100),
     3000,
     "admin-grants:active",
   );
-  const activeRows: ActiveGrantRow[] = activeRaw ?? [];
+  const now = Date.now();
+  const activeRows: ActiveGrantRow[] = ((activeRaw ?? []) as (ActiveGrantRow & { status: string })[]).filter(
+    (g) => isGrantActive(g, now),
+  );
 
   // Bulk-hydrate users / officials / evidence for both lists.
   // .in() bounded (this and the three id lists below): the two source reads are

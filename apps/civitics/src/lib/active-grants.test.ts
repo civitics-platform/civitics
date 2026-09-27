@@ -8,16 +8,27 @@
  * treats "no target row" as "drop the grant" loses exactly the platform_admin
  * and staff grants an operator most needs to revoke. Every other assertion here
  * exists so that one cannot regress quietly.
+ *
+ * FIX-1237 — the liveness predicate every UI grant reader shares. The shape
+ * that matters is the wrong-but-green one: an 'active' row whose expires_at has
+ * passed must read inactive everywhere, exactly as the has_active_* SQL does.
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   type ActiveGrantRow,
   type TargetMaps,
+  ELEVATED_DESK_ROLES,
+  GRANT_ROLES,
   buildActiveGrants,
+  effectiveGrantStatus,
   grantKey,
+  holdsElevatedDesk,
   identityLabel,
+  isGrantActive,
   resolveTargetHref,
   resolveTargetLabel,
   revokeConfirmMessage,
@@ -192,4 +203,110 @@ test("FIX-1167 a count mismatch is shown, not smoothed over", () => {
 
 test("FIX-1167 an empty list shapes to an empty list rather than throwing", () => {
   assert.deepEqual(buildActiveGrants([], users, maps), []);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1237 — liveness: status AND expires_at, the has_active_* shape
+// ---------------------------------------------------------------------------
+
+const NOW = Date.parse("2026-09-27T05:00:00.000Z");
+const PAST = "2026-09-26T05:00:00.000Z"; // one day before NOW
+const FUTURE = "2028-05-29T00:00:00.000Z";
+
+test("FIX-1237 active with no expiry is live", () => {
+  assert.equal(isGrantActive({ status: "active", expires_at: null }, NOW), true);
+});
+
+test("FIX-1237 active with a future expiry is live", () => {
+  assert.equal(isGrantActive({ status: "active", expires_at: FUTURE }, NOW), true);
+});
+
+test("FIX-1237 active PAST its expiry is NOT live — the row the sweep has not flipped yet", () => {
+  // The wrong-but-green shape: status still says 'active'. Every SQL
+  // authorization path already refuses it; the UI must agree.
+  assert.equal(isGrantActive({ status: "active", expires_at: PAST }, NOW), false);
+  // The boundary is exclusive, as in SQL's `expires_at > now()`.
+  assert.equal(isGrantActive({ status: "active", expires_at: new Date(NOW).toISOString() }, NOW), false);
+});
+
+test("FIX-1237 pending / revoked / expired are never live, whatever the expiry", () => {
+  for (const status of ["pending", "revoked", "expired"]) {
+    for (const expires_at of [null, FUTURE, PAST]) {
+      assert.equal(isGrantActive({ status, expires_at }, NOW), false, `${status} / ${expires_at}`);
+    }
+  }
+});
+
+test("FIX-1237 an unparseable expires_at fails closed", () => {
+  assert.equal(isGrantActive({ status: "active", expires_at: "not a date" }, NOW), false);
+});
+
+test("FIX-1237 effectiveGrantStatus shows 'expired' for an active row past its expiry, else the stored status", () => {
+  assert.equal(effectiveGrantStatus({ status: "active", expires_at: PAST }, NOW), "expired");
+  assert.equal(effectiveGrantStatus({ status: "active", expires_at: FUTURE }, NOW), "active");
+  assert.equal(effectiveGrantStatus({ status: "active", expires_at: null }, NOW), "active");
+  // A pending claim has no expiry yet and must stay pending, not become 'expired'.
+  assert.equal(effectiveGrantStatus({ status: "pending", expires_at: null }, NOW), "pending");
+  assert.equal(effectiveGrantStatus({ status: "revoked", expires_at: PAST }, NOW), "revoked");
+  assert.equal(effectiveGrantStatus({ status: "expired", expires_at: PAST }, NOW), "expired");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1237 — the elevated-desk role set, pinned to the enum the migrations define
+// ---------------------------------------------------------------------------
+
+/**
+ * grant_role as the migrations define it: CREATE TYPE, then every ADD VALUE and
+ * RENAME VALUE in timestamp order. Read as text from disk (the FIX-543 drift-test
+ * pattern), so a new, dropped or renamed role fails here, not silently on /desk.
+ */
+function grantRolesFromMigrations(): Set<string> {
+  const dir = join(__dirname, "..", "..", "..", "..", "supabase", "migrations");
+  const roles = new Set<string>();
+  const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  for (const file of files) {
+    // Strip `--` comments so a quoted example in a header is never parsed.
+    const sql = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+    const created = sql.match(/CREATE\s+TYPE\s+(?:public\.)?grant_role\s+AS\s+ENUM\s*\(([^)]*)\)/i);
+    if (created) for (const m of created[1]!.matchAll(/'([^']+)'/g)) roles.add(m[1]!);
+    for (const m of sql.matchAll(/ALTER\s+TYPE\s+(?:public\.)?grant_role\s+ADD\s+VALUE\s+(?:IF\s+NOT\s+EXISTS\s+)?'([^']+)'/gi)) {
+      roles.add(m[1]!);
+    }
+    for (const m of sql.matchAll(/ALTER\s+TYPE\s+(?:public\.)?grant_role\s+RENAME\s+VALUE\s+'([^']+)'\s+TO\s+'([^']+)'/gi)) {
+      roles.delete(m[1]!);
+      roles.add(m[2]!);
+    }
+  }
+  return roles;
+}
+
+test("FIX-1237 GRANT_ROLES matches the grant_role enum the migrations define", () => {
+  const fromSql = grantRolesFromMigrations();
+  assert.ok(fromSql.has("constituent"), "the parser found the CREATE TYPE");
+  assert.deepEqual([...GRANT_ROLES].sort(), [...fromSql].sort());
+});
+
+test("FIX-1237 every elevated-desk role is a real grant_role, and 'jurisdiction' is not one", () => {
+  const fromSql = grantRolesFromMigrations();
+  for (const r of ELEVATED_DESK_ROLES) assert.ok(fromSql.has(r), `${r} is not a grant_role value`);
+  // The old desk literal. It is not in the enum, so a predicate that names it
+  // tests a value no row can hold.
+  assert.equal(fromSql.has("jurisdiction"), false);
+  assert.deepEqual([...ELEVATED_DESK_ROLES].sort(), ["jurisdiction_admin", "official"]);
+});
+
+test("FIX-1237 holdsElevatedDesk accepts a live jurisdiction_admin or official grant and rejects the phantom 'jurisdiction'", () => {
+  const live = (role: string) => ({ role, status: "active", expires_at: FUTURE });
+  assert.equal(holdsElevatedDesk([live("jurisdiction_admin")], NOW), true);
+  assert.equal(holdsElevatedDesk([live("official")], NOW), true);
+  assert.equal(holdsElevatedDesk([live("jurisdiction")], NOW), false, "not a grant_role value");
+  // Not an office desk: the placeholder copy names no organisation.
+  assert.equal(holdsElevatedDesk([live("institution_admin")], NOW), false);
+  assert.equal(holdsElevatedDesk([live("constituent"), live("platform_admin"), live("staff")], NOW), false);
+});
+
+test("FIX-1237 holdsElevatedDesk ignores a pending claim and a lapsed-but-active grant", () => {
+  assert.equal(holdsElevatedDesk([{ role: "official", status: "pending", expires_at: null }], NOW), false);
+  assert.equal(holdsElevatedDesk([{ role: "jurisdiction_admin", status: "active", expires_at: PAST }], NOW), false);
+  assert.equal(holdsElevatedDesk([], NOW), false);
 });
