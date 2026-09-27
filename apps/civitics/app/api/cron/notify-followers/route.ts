@@ -7,7 +7,11 @@
 //   - New proposals for followed agencies since last run -> "new_proposal" notifications
 //
 // State is tracked in pipeline_state key "notify_followers_last_run".
-// Security: CRON_SECRET header, same as nightly-sync.
+// Security: CRON_SECRET bearer only, the strict gate every cron route uses.
+// FIX-1230: there is no manual bypass. A manual run is
+//   curl -H "Authorization: Bearer $CRON_SECRET" https://civitics-civitics.vercel.app/api/cron/notify-followers
+// against the Vercel origin (civitics.com challenges scripted clients). It is a
+// prod write: the follower fan-out and the cursor above.
 
 export const dynamic = "force-dynamic";
 
@@ -59,10 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${process.env["CRON_SECRET"] ?? ""}`;
-  const isVercelCron = !!process.env["CRON_SECRET"] && authHeader === expected;
-  const isManualAdmin = request.nextUrl.searchParams.get("manual") === "1";
-
-  if (!isVercelCron && !isManualAdmin) {
+  if (!process.env["CRON_SECRET"] || authHeader !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
