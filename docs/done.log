@@ -1505,3 +1505,5 @@
 2026-09-26 | FIX-1234 | d653e019 | local-only | docs: FIX-1234 — PROMPT_TEMPLATE gate (f) (edge floor; pre-CALL outside CALLs; breather timeout by cause); prod-holds runner section
 2026-09-26 | FIX-1235 | 635a6db7 | prod-only | chore(fixes): FIX-1235 prod set — re-derived total_donated_cents for 3,946 committees from the manifest
 2026-09-26 | FIX-1231 | 42d3e3f0 | prod-only | chore(fixes): record prod verification of FIX-1231
+2026-09-26 | FIX-1229 | 7a8091a3 | prod-only | docs(app): FIX-1229 — the CDN layers do not hold a page's 500: Cloudflare reads DYNAMIC on every HTML page (0 Cache Rules); Vercel caches 200/404/410/3xx only; (b) accepted
+2026-09-26 | FIX-1237 | 3fdb87b1 | local-only | fix(app): FIX-1237 — grant readers check expires_at through isGrantActive; the desk's elevated-role test names jurisdiction_admin
