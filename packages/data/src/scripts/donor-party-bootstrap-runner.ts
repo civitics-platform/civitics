@@ -50,7 +50,10 @@
  *                AND (prod, FIX-1232) the census, read ONCE when the walls
  *                release, shows no render lost since the CALL returned; a
  *                render keeps it open, re-read no sooner than 60 s later. Or
- *                --breather-max-s elapses (then proceed, `breather_timeout`).
+ *                --breather-max-s elapses: with the walls still holding it
+ *                PROCEEDS (`breather_timeout`); with the census still holding
+ *                it (FIX-1234 D3, `breather_timeout_census`) it is a rule (3)
+ *                stop in stop mode and a would_trip in report mode.
  *                cc-147 measured the recovery: 1.341 → 0.612 / 0.061 s within
  *                one minute of the probe CALL ending.
  *             b. CENSUS (prod) --minutes 15 before EVERY CALL: from CALL 2 it
@@ -104,7 +107,9 @@
  *           stop. The old per-reading stop during a CALL is RETIRED — a
  *           15-min reading taken during a paced CALL fails by construction,
  *           the CALL's cost being a design constant (rule 183).
- *         - the breather (step 6a): 0 renders since the CALL returned.
+ *         - the breather (step 6a): 0 renders since the CALL returned. Still
+ *           held by the census at --breather-max-s: a stop (stop mode) or a
+ *           would_trip (report mode) — FIX-1234 D3.
  *       Exit 2 (Logs API dark) is logged wherever it is read, and TWO
  *       consecutive exit-2s trip in both modes — the Logs API going dark was
  *       itself a symptom on 09-22 (rule 164). Exit 8 (endpoint removed,
@@ -569,6 +574,39 @@ export function breatherCensus(
 }
 
 /**
+ * FIX-1234 D3 — a breather that reaches --breather-max-s, by cause.
+ *
+ * - The walls never released, so the census was never read (`census` null):
+ *   `breather_timeout`, and the run PROCEEDS, as cc-148 D2 built it. Walls can
+ *   "hold" at idle on the 2-minute cadence alone — release needs a watchdog run that
+ *   STARTED after the CALL returned, up to 120 s away (cc-148 §5.6: five of six
+ *   clone breathers timed out that way at --breather-max-s 20).
+ * - The walls released and the LAST census reading held it — renders since the
+ *   CALL returned, or dark/unparsed (it could not confirm 0):
+ *   `breather_timeout_census`. The front door had not come back; in `stop`
+ *   mode that is a rule (3) Trip, in `report` mode a WouldTrip recorded with
+ *   the same numbers, and the run proceeds.
+ *
+ * `call` is the CALL the breather follows; `waitedS` how long it waited.
+ */
+export function breatherTimeout(input: {
+  mode: CensusMode;
+  call: number;
+  waitedS: number;
+  census: { released: boolean; renders: number | null; at: string } | null;
+}): { by: "breather_timeout" | "breather_timeout_census"; verdict: Trip | WouldTrip | null } {
+  const { census } = input;
+  if (!census || census.released) return { by: "breather_timeout", verdict: null };
+  const reason = `(3) the front door had not returned to baseline ${Math.round(input.waitedS)} s after CALL ${input.call} returned — ` +
+    `renders since return ${census.renders ?? "unknown (the census could not confirm 0)"} (last read at ${census.at})`;
+  if (input.mode === "stop") return { by: "breather_timeout_census", verdict: { rule: 3, reason } };
+  return {
+    by: "breather_timeout_census",
+    verdict: { would_trip: true, rule: 3, reason, call: input.call, ...(census.renders !== null ? { renders: census.renders } : {}) },
+  };
+}
+
+/**
  * One CALL's renders out of a reading, or null when the reading does not reach
  * back to the CALL's start (then the runner reads the CALL's span itself).
  */
@@ -997,8 +1035,21 @@ export interface BreatherRecord {
   started_at: string;
   released_at: string;
   waited_s: number;
-  /** `walls+census` (FIX-1232): the walls released AND the census read 0 renders since the CALL returned. */
-  released_by: "walls" | "walls+census" | "breather_timeout" | "stop";
+  /**
+   * `walls+census` (FIX-1232): the walls released AND the census read 0 renders since the CALL returned.
+   * `breather_timeout`: --breather-max-s with the walls still holding — proceeds. `breather_timeout_census`
+   * (FIX-1234 D3): --breather-max-s with the census still holding — a stop in stop mode, a would_trip in report.
+   */
+  released_by: "walls" | "walls+census" | "breather_timeout" | "breather_timeout_census" | "stop";
+  /** FIX-1234 D3: set when --breather-max-s ended it — what held it, and what that decided. */
+  timeout?: {
+    cause: "walls" | "census";
+    /** Renders since the CALL returned at the last census read (null: not read, or it could not confirm 0). */
+    renders: number | null;
+    last_read_at: string | null;
+    outcome: "proceed" | "trip" | "would_trip";
+    reason: string | null;
+  };
   readings: number;
   walls_at_release: Record<string, { wall_s: number; runid: string }>;
   pending_at_release: string[];
@@ -1163,8 +1214,9 @@ export const WOULD_TRIP_NOTE = " — would have tripped rule (3); census mode re
 
 /**
  * The receipt's `census mode` header row (cc-152 D1). Since FIX-1232 the mode
- * decides the CALL-window budget only: a pre-CALL FAIL and the dark-twice trip
- * stop in both, and the per-reading stop during a CALL is retired.
+ * decides the CALL-window budget: a pre-CALL FAIL and the dark-twice trip stop
+ * in both, and the per-reading stop during a CALL is retired. Since FIX-1234
+ * it also decides a breather the census still holds at --breather-max-s.
  */
 export function censusModeLine(
   mode: CensusMode, rows: readonly CensusRow[], budget: readonly BudgetRow[] = [], budgetMax = 3,
@@ -1174,11 +1226,13 @@ export function censusModeLine(
     ? ` · ${unavailable} census call(s) unavailable (exit 8, FIX-1219) — not readings, never a trip`
     : "";
   const over = `${new Set(budget.map((b) => b.call)).size} CALL(s) over budget`;
-  const common = "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window";
+  const common = "a pre-CALL FAIL (outside the CALL spans) stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window";
   if (mode === "stop") {
-    return `stop — two consecutive CALLs over --renders-per-call-max ${budgetMax} stop the run (${over}); ${common}` + tail;
+    return `stop — two consecutive CALLs over --renders-per-call-max ${budgetMax} stop the run (${over}), ` +
+      `and so does a breather the census still holds at --breather-max-s; ${common}` + tail;
   }
-  return `report — CALLs over --renders-per-call-max ${budgetMax} are recorded, never a stop (${over}); ${common}` + tail;
+  return `report — CALLs over --renders-per-call-max ${budgetMax} are recorded, never a stop (${over}), ` +
+    `and so is a breather the census still holds at --breather-max-s; ${common}` + tail;
 }
 
 /** One receipt line per census reading. */
@@ -1203,13 +1257,24 @@ export function callRendersLine(c: Pick<CallRecord, "n" | "renders">, budget: nu
   return `- CALL ${c.n}: ${line}${c.renders.renders > budget ? " — **over budget**" : ""}${c.renders.final ? "" : " (partial: read while it ran)"}`;
 }
 
-/** FIX-1232 D5 — one receipt line per breather: `renders n · released after s`. */
-export function breatherRendersLine(b: Pick<BreatherRecord, "before_call" | "renders" | "renders_final" | "waited_s" | "released_by" | "census_reads">): string {
+/**
+ * FIX-1232 D5 — one receipt line per breather: `renders n · released after s (by)`.
+ * FIX-1234 D3: a breather --breather-max-s ended says what held it, and — when
+ * the census did — the renders still pending and what that decided.
+ */
+export function breatherRendersLine(
+  b: Pick<BreatherRecord, "before_call" | "renders" | "renders_final" | "waited_s" | "released_by" | "census_reads" | "timeout">,
+): string {
   const n = b.renders_final ?? b.renders;
   const drift = b.renders_final !== undefined && b.renders !== null && b.renders_final !== b.renders
     ? ` — ${b.renders} at release, ${b.renders_final} in the end-of-run read` : "";
+  const t = b.timeout;
+  const held = !t ? ""
+    : t.cause === "walls" ? " — the walls held it at --breather-max-s; proceeded"
+      : ` — the census held it at --breather-max-s: ${t.renders ?? "unconfirmed"} render(s) pending since the CALL returned ` +
+        `(last read ${t.last_read_at ?? "—"}) — **${t.outcome === "trip" ? "stop" : t.outcome}**`;
   return `- breather before CALL ${b.before_call}: renders ${n ?? "—"} · released after ${b.waited_s.toFixed(1)} s ` +
-    `(${b.released_by}${b.census_reads ? `, ${b.census_reads} census read(s)` : ""})${drift}`;
+    `(${b.released_by}${b.census_reads ? `, ${b.census_reads} census read(s)` : ""})${drift}${held}`;
 }
 
 /** FIX-1232 D5 — the run's total, from the one read after the last CALL. */
@@ -1450,8 +1515,10 @@ async function main(): Promise<number> {
   // Released when that reading shows no render lost since the CALL returned; a
   // render keeps the breather open and the census is re-read no sooner than
   // BREATHER_CENSUS_REREAD_S later (rule 190). --breather-max-s still bounds it,
-  // and a timeout still PROCEEDS, as it always has: the design note took
-  // `breather_timeout` for a stop, and the tree says otherwise (cc-162 §4).
+  // and what a timeout means depends on what held it (FIX-1234 D3,
+  // breatherTimeout): the walls → PROCEED, as cc-148 D2 built it; the census
+  // (its last reading still saw renders since the CALL returned, or could not
+  // confirm 0) → a rule (3) stop in stop mode, a would_trip in report mode.
   // The reading is handed to the pre-CALL step, which judges it; its dark (if
   // any) was counted here, once.
   const breathe = async (beforeCall: number, returnedAtMs: number, stSince: string): Promise<BreatherReading | null> => {
@@ -1466,6 +1533,8 @@ async function main(): Promise<number> {
     let censusReads = 0;
     let censusPending: string | null = null;
     let breatherRenders: number | null = null;
+    /** FIX-1234 D3: the last census reading's half — what held the breather, if it was the census. */
+    let lastHalf: { released: boolean; renders: number | null; at: string } | null = null;
     for (;;) {
       try {
         const q = await tClient.query<CompletedRun>(Q_WATCHDOGS_COMPLETED);
@@ -1500,6 +1569,7 @@ async function main(): Promise<number> {
         const half = breatherCensus(cen.code, cen.json, returnedAtMs);
         breatherRenders = half.renders;
         censusPending = half.pending;
+        lastHalf = { released: half.released, renders: half.renders, at: row.at };
         log(`[breather] before CALL ${beforeCall} census: ${cen.summary} — ${half.released
           ? half.renders === null ? "no instrument (exit 8): the walls alone release" : "0 renders since the CALL returned"
           : half.pending}`);
@@ -1512,20 +1582,42 @@ async function main(): Promise<number> {
       if (left <= 0) { by = "breather_timeout"; break; }
       await sleep(Math.min(BREATHER_READ_S * 1000, left));
     }
+    const waitedS = (Date.now() - t0) / 1000;
+    // FIX-1234 D3: at --breather-max-s, what held it decides what the timeout means.
+    let timeout: BreatherRecord["timeout"];
+    if (by === "breather_timeout") {
+      const t = breatherTimeout({ mode: args.censusMode, call: beforeCall - 1, waitedS, census: lastHalf });
+      by = t.by;
+      timeout = {
+        cause: t.by === "breather_timeout_census" ? "census" : "walls",
+        renders: lastHalf?.renders ?? null,
+        last_read_at: lastHalf?.at ?? null,
+        outcome: !t.verdict ? "proceed" : isTrip(t.verdict) ? "trip" : "would_trip",
+        reason: t.verdict?.reason ?? null,
+      };
+      if (!t.verdict) log(`[breather] before CALL ${beforeCall}: --breather-max-s with the walls still holding — proceeding (cc-148 D2)`);
+      else log(`[breather] ${t.verdict.reason}${isTrip(t.verdict) ? " — STOP" : " — would_trip (census mode report); proceeding"}`);
+      if (isTrip(t.verdict) && !stopping) { stopping = t.verdict; recordTrip(t.verdict, beforeCall); }
+    }
+    const halted = by === "stop" || timeout?.outcome === "trip";
     // The last reading is the pre-CALL reading, whether it released the breather or the clock ran out on it.
-    if (census && by !== "stop") census.row.phase = "pre_call";
+    if (census && !halted) census.row.phase = "pre_call";
     const rec: BreatherRecord = {
       before_call: beforeCall, started_at: startedAt, released_at: new Date().toISOString(),
-      waited_s: (Date.now() - t0) / 1000, released_by: by, readings,
+      waited_s: waitedS, released_by: by, readings,
       walls_at_release: Object.fromEntries(last.map((x) => [x.jobname, { wall_s: x.wall_s, runid: x.runid }])),
-      pending_at_release: !verdict.released ? verdict.pending : by === "walls+census" || !censusPending ? [] : [censusPending],
+      pending_at_release: [
+        ...(!verdict.released ? verdict.pending : []),
+        ...(by !== "walls+census" && censusPending ? [censusPending] : []),
+      ],
       census_reads: censusReads,
       renders: breatherRenders,
+      ...(timeout ? { timeout } : {}),
     };
     R.breathers.push(rec);
     log(`[breather] before CALL ${beforeCall}: ${by} after ${rec.waited_s.toFixed(1)} s` +
       `${censusReads ? ` (${censusReads} census read(s); ${breatherRenders ?? "?"} render(s) since the CALL returned)` : ""}`);
-    return by === "stop" ? null : census;
+    return halted ? null : census;
   };
 
   // ── FIX-1232 D5: the run's renders, after the last CALL ─────────────────────

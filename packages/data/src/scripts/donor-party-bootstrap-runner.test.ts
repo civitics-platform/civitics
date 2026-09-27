@@ -19,6 +19,7 @@ import {
   breatherCensus,
   breatherRelease,
   breatherRendersLine,
+  breatherTimeout,
   callNoLongerRunning,
   callRendersLine,
   callWindowRenders,
@@ -496,6 +497,78 @@ test("FIX-1234 D2: the receipt's pre-CALL line prints renders outside CALLs, ins
   assert.equal(censusLine({ ...row, outside_calls: undefined }), "- t (15 min, before CALL 6) exit 0: pass (…)", "a row without it reads as before");
 });
 
+// ── FIX-1234 D3: a breather at --breather-max-s, by cause ──
+
+test("FIX-1234 D3: a walls-held timeout proceeds in both modes, as cc-148 D2 built it (the census was never read)", () => {
+  for (const mode of ["stop", "report"] as const) {
+    assert.deepEqual(breatherTimeout({ mode, call: 3, waitedS: 600, census: null }), { by: "breather_timeout", verdict: null }, mode);
+  }
+});
+
+test("FIX-1234 D3: a census-held timeout is a Trip in stop mode and a WouldTrip in report mode, with the same numbers; a dark last reading holds too", () => {
+  const census = { released: false, renders: 2, at: "2026-09-24T09:31:40.000Z" };
+  const reason = "(3) the front door had not returned to baseline 600 s after CALL 3 returned — renders since return 2 (last read at 2026-09-24T09:31:40.000Z)";
+  const stop = breatherTimeout({ mode: "stop", call: 3, waitedS: 600.2, census });
+  assert.equal(stop.by, "breather_timeout_census");
+  assert.deepEqual(stop.verdict, { rule: 3, reason });
+  assert.equal(isTrip(stop.verdict), true);
+  const report = breatherTimeout({ mode: "report", call: 3, waitedS: 600.2, census });
+  assert.equal(report.by, "breather_timeout_census");
+  assert.deepEqual(report.verdict, { would_trip: true, rule: 3, reason, call: 3, renders: 2 });
+  assert.equal(isTrip(report.verdict), false);
+  const dark = breatherTimeout({ mode: "stop", call: 1, waitedS: 600, census: { released: false, renders: null, at: "t" } });
+  assert.equal(dark.verdict?.reason, "(3) the front door had not returned to baseline 600 s after CALL 1 returned — renders since return unknown (the census could not confirm 0) (last read at t)");
+  assert.equal(isTrip(dark.verdict), true);
+  assert.equal(breatherTimeout({ mode: "report", call: 1, waitedS: 600, census: { released: false, renders: null, at: "t" } }).verdict?.would_trip, true);
+});
+
+test("FIX-1234 D3: the receipt's breather line says what held it at --breather-max-s, the renders pending, and what that decided; a released breather reads as before", () => {
+  const base = { before_call: 4, renders: 0, waited_s: 90.9, census_reads: 1 };
+  assert.equal(breatherRendersLine({ ...base, released_by: "walls+census" }),
+    "- breather before CALL 4: renders 0 · released after 90.9 s (walls+census, 1 census read(s))");
+  assert.equal(breatherRendersLine({ ...base, renders: null, census_reads: 0, waited_s: 600, released_by: "breather_timeout",
+    timeout: { cause: "walls", renders: null, last_read_at: null, outcome: "proceed", reason: null } }),
+  "- breather before CALL 4: renders — · released after 600.0 s (breather_timeout) — the walls held it at --breather-max-s; proceeded");
+  const held = { ...base, renders: 2, census_reads: 10, waited_s: 600, released_by: "breather_timeout_census" as const };
+  assert.equal(breatherRendersLine({ ...held, timeout: { cause: "census", renders: 2, last_read_at: "09:31:40Z", outcome: "trip", reason: "(3) …" } }),
+    "- breather before CALL 4: renders 2 · released after 600.0 s (breather_timeout_census, 10 census read(s)) — the census held it at --breather-max-s: 2 render(s) pending since the CALL returned (last read 09:31:40Z) — **stop**");
+  assert.match(breatherRendersLine({ ...held, timeout: { cause: "census", renders: 2, last_read_at: "09:31:40Z", outcome: "would_trip", reason: "(3) …" } }),
+    / — \*\*would_trip\*\*$/);
+});
+
+test("FIX-1234 D3 rule 137: every measured prod breather (cc-151 60.8–120.9 s, cc-154 30.4 s) releases on walls+census before --breather-max-s — the census-held stop is unreachable on them", () => {
+  const measured: number[] = [];
+  for (const [file, win] of [["2026-09-24-fix1212-bootstrap-runner.json", "cc151"], ["2026-09-25-fix1212-bootstrap-runner.json", "cc154"]] as const) {
+    const r = receipt(file);
+    const all = fixtureSeconds(win);
+    for (const b of r.breathers) {
+      const prev = r.spans.find((s) => s.n === b.before_call - 1)!;
+      // The census reading the new rule takes once the walls release — at the moment they did.
+      const reading = gateReading(Date.parse(b.released_at), all, { requests: 183, n5xx: 0 });
+      const half = breatherCensus(0, reading, prev.returned_ms);
+      assert.deepEqual([half.released, half.renders], [true, 0], `${win} breather before CALL ${b.before_call}: 0 renders since CALL ${prev.n} returned`);
+      assert.equal(b.released_by, "walls", "each released on the walls, and the census would have released it at the same read");
+      assert.ok(b.waited_s < r.args.breatherMaxS, `${b.waited_s} s < --breather-max-s ${r.args.breatherMaxS}`);
+      // Were the timeout consulted anyway, this census half would not hold it.
+      assert.equal(breatherTimeout({ mode: "stop", call: prev.n, waitedS: b.waited_s, census: { ...half, at: b.released_at } }).verdict, null);
+      measured.push(Math.round(b.waited_s * 10) / 10);
+    }
+  }
+  assert.deepEqual(measured, [60.8, 90.8, 120.9, 90.9, 90.8, 30.4], "the six breathers the prompt names");
+});
+
+test("FIX-1234 D3: the breather consults breatherTimeout at --breather-max-s with the census mode, and a census-held stop hands no reading on", () => {
+  const src = fs.readFileSync(path.join(__dirname, "donor-party-bootstrap-runner.ts"), "utf8");
+  const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const body = code.slice(code.indexOf("const breathe = async"), code.indexOf("const readRunRenders = async"));
+  assert.match(body, /if \(left <= 0\) \{ by = "breather_timeout"; break; \}/, "the loop still ends on the clock");
+  assert.match(body, /breatherTimeout\(\{ mode: args\.censusMode, call: beforeCall - 1, waitedS, census: lastHalf \}\)/);
+  assert.match(body, /if \(isTrip\(t\.verdict\) && !stopping\) \{ stopping = t\.verdict; recordTrip\(t\.verdict, beforeCall\); \}/);
+  assert.match(body, /const halted = by === "stop" \|\| timeout\?\.outcome === "trip";/);
+  assert.match(body, /return halted \? null : census;/);
+  assert.match(body, /if \(half\.released\) \{ by = "walls\+census"; break; \}/, "a released breather is unchanged");
+});
+
 test("FIX-1232: the receipt's census-mode row says what each mode now decides, and counts the CALLs over budget", () => {
   const row = (phase: CensusRow["phase"], code = 0): CensusRow => ({
     at: "t", minutes: phase === "gate" ? 60 : 15, code, summary: "pass (…)", phase, before_call: phase === "gate" ? null : 2, would_trip: phase === "gate" ? null : false,
@@ -506,11 +579,11 @@ test("FIX-1232: the receipt's census-mode row says what each mode now decides, a
   ];
   const rows = [row("gate"), row("pre_call"), row("breather", 1), row("cadence")];
   assert.equal(censusModeLine("stop", rows, budget, 3),
-    "stop — two consecutive CALLs over --renders-per-call-max 3 stop the run (1 CALL(s) over budget); " +
-    "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window");
+    "stop — two consecutive CALLs over --renders-per-call-max 3 stop the run (1 CALL(s) over budget), and so does a breather the census still holds at --breather-max-s; " +
+    "a pre-CALL FAIL (outside the CALL spans) stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window");
   assert.equal(censusModeLine("report", rows, [], 5),
-    "report — CALLs over --renders-per-call-max 5 are recorded, never a stop (0 CALL(s) over budget); " +
-    "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window");
+    "report — CALLs over --renders-per-call-max 5 are recorded, never a stop (0 CALL(s) over budget), and so is a breather the census still holds at --breather-max-s; " +
+    "a pre-CALL FAIL (outside the CALL spans) stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window");
   assert.equal(censusLine(rows[2]!), "- t (15 min, breather before CALL 2, held it) exit 1: pass (…)");
   assert.equal(censusLine({ ...row("renders"), minutes: 4.276 }), "- t (4.3 min, renders read of CALL 1) exit 0: pass (…)");
   assert.equal(censusLine({ ...row("renders"), before_call: null }), "- t (15 min, renders read of the run) exit 0: pass (…)");
@@ -800,8 +873,8 @@ test("cc-154 D2: the census-mode row counts unavailable calls apart, in both mod
   });
   const rows = [row("gate", 8, null), row("pre_call", 8, false), row("pre_call", 8, false)];
   assert.equal(censusModeLine("report", rows),
-    "report — CALLs over --renders-per-call-max 3 are recorded, never a stop (0 CALL(s) over budget); " +
-    "a pre-CALL FAIL stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window" +
+    "report — CALLs over --renders-per-call-max 3 are recorded, never a stop (0 CALL(s) over budget), and so is a breather the census still holds at --breather-max-s; " +
+    "a pre-CALL FAIL (outside the CALL spans) stops the run in both modes; the dark-twice trip is armed; the gate wait's census half holds the window" +
     " · 3 census call(s) unavailable (exit 8, FIX-1219) — not readings, never a trip");
   assert.match(censusModeLine("stop", rows), /^stop — .* · 3 census call\(s\) unavailable \(exit 8, FIX-1219\)/);
   assert.equal(censusLine(rows[1]!), "- t (15 min, before CALL 1) exit 8: unavailable (FIX-1219 — Logs API endpoint removed, HTTP 410)");
