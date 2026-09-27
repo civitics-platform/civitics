@@ -1507,3 +1507,7 @@
 2026-09-26 | FIX-1231 | 42d3e3f0 | prod-only | chore(fixes): record prod verification of FIX-1231
 2026-09-26 | FIX-1229 | 7a8091a3 | prod-only | docs(app): FIX-1229 — the CDN layers do not hold a page's 500: Cloudflare reads DYNAMIC on every HTML page (0 Cache Rules); Vercel caches 200/404/410/3xx only; (b) accepted
 2026-09-26 | FIX-1237 | 3fdb87b1 | local-only | fix(app): FIX-1237 — grant readers check expires_at through isGrantActive; the desk's elevated-role test names jurisdiction_admin
+2026-09-27 | FIX-1169 | e44deabe | prod-only | chore(fixes): FIX-1169 — decided on the week of pre-vacuum probes: no gate
+2026-09-27 | FIX-1184 | 7f4d5c48 | prod-only | chore(fixes): record prod verification of FIX-1184
+2026-09-27 | FIX-1216 | 1c13713b | local+prod | feat(db): FIX-1216 — the donor-party full-rebuild cursor lives 22 days (three weekly firings), not 7
+2026-09-27 | FIX-1239 | 29df00da | local-only | feat(db): FIX-1239 — votes-vacuum-analyze weekly at Sat 02:37 UTC; receipts §4 lists it
