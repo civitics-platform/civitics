@@ -129,13 +129,19 @@ and its database.
   timeouts grouped by second, so one page's 4–6 fanned-out reads count once)
   over the last 60 min fail **only when both** exceed their bounds: more than
   the Poisson-P99 floor at the printed baseline (6 in 60 min at 0.033/min) **and**
-  a ratio over **2 ×** that baseline. Front-door 5xx **≤ 1 %** over the last
-  closed 15-min bucket, still with **no count floor**: the binomial floor at a
-  measured p0 was stopped when the seven-day 5xx rate read 1.07 %, above the
-  gate it would floor (FIX-1233). Read both with
+  a ratio over **2 ×** that baseline. Front-door 5xx over the last closed
+  15-min bucket fails **only when** pct > 1 % **AND** n5xx > the exact binomial
+  P99 at **p0 = 0.23 %** (the median day, cc-162 read 3; re-measured ~10-03);
+  a bucket of n < 30 proves nothing (FIX-1233). At n = 183 the floor is 2, so
+  cc-151's 2/183 = 1.09 % passes and 3/183 fails. Read both with
   `pnpm --filter @civitics/data data:census:cancellations:prod` (Logs API;
-  opens no Postgres connection) and quote the renders, the events and the
-  baseline it printed. The baseline is not re-derived in renders until ~10-03.
+  opens no Postgres connection) and quote the renders, the events, the
+  baseline, and the edge line's p0 and floor it printed. The baseline is not
+  re-derived in renders until ~10-03. **A paced runner's pre-CALL reading
+  judges the time OUTSIDE its CALL spans; the CALLs are judged by
+  `--renders-per-call-max`; a breather the census still holds at
+  `--breather-max-s` is a stop in stop mode** (a would_trip in report mode; a
+  breather the walls still hold proceeds) (FIX-1234).
 - **(g) Conditions, not a fixed band.** The nightly is the thing a fixed
   22:30–01:00 band was standing in for, and it is READABLE, so read it: no
   `nightly_cron` phase `running` (`data_sync_log`, last phase `complete`), and

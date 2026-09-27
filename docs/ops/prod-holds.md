@@ -115,7 +115,7 @@ node scripts/db-query.mjs --prod --call --yes-i-mean-prod \
   command with `CIVITICS_PROD_SESSION_CLAIMANT` set; `db-query.mjs --call` reads
   that variable when `--claimant` is not given.
 
-### A paced runner under the claim: the breather and the render budget (FIX-1232)
+### A paced runner under the claim: the breather and the render budget (FIX-1232, FIX-1234)
 
 `data:donor-party:bootstrap:prod` (`donor-party-bootstrap-runner.ts`) holds the
 claim across a series of bounded CALLs with a breather between each. What it
@@ -128,14 +128,25 @@ once:
   release, shows **0 renders since the CALL returned**. A render keeps it open;
   the census is re-read no sooner than 60 s later. That reading is also the
   pre-CALL reading (reordered, not added), so a 0-render breather costs no extra
-  Logs call. `--breather-max-s` bounds it, and a timeout **proceeds** to the
-  next CALL, as it always has.
+  Logs call. `--breather-max-s` bounds it, and what a timeout means depends on
+  what held it (FIX-1234): the **walls** still holding → it **proceeds** to the
+  next CALL, as it always has (at idle the walls can hold on the `*/2` cadence
+  alone); the **census** still holding — its last reading still saw renders
+  since the CALL returned, or could not confirm 0 → a **stop** in
+  `--census-mode stop`, a `would_trip` in `report` (the receipt names the
+  renders pending).
 - **Before every CALL** the 15-minute reading must pass, in both census modes.
+  It judges only the time **outside** the CALL spans (FIX-1234): the trailing
+  15 min holds ~2.5 CALLs, and the CALLs are judged by the budget below, every
+  render of them. The receipt's pre-CALL line prints `renders outside CALLs n
+  (inside m) · minutes outside k`. Its edge half fails only above 1 % **and**
+  the binomial P99 at p0 = 0.23 % (FIX-1233; n < 30 proves nothing).
 - **The CALL window** is budgeted: `--renders-per-call-max` (default **3**,
   about 3× the measured ~1 render per two-window CALL). A CALL over it is a
   `would_trip` in the receipt; **two consecutive** over-budget CALLs stop the
   run in `--census-mode stop`. `--census-mode report` means only that an
-  over-budget CALL is recorded and never stops. There is no longer a stop on a
+  over-budget CALL, or a breather the census still holds at `--breather-max-s`,
+  is recorded and never stops. There is no longer a stop on a
   15-minute reading taken during a CALL: that reading fails by construction.
 
 The receipt (`docs/audits/<day>-fix1212-bootstrap-runner*.md`) carries one
