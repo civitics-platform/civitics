@@ -1387,31 +1387,25 @@ export async function tagFinancialEntities(db: any): Promise<number> {
 
   // NAICS-only rollup (FIX-443): replaces the donation-bearing rollup for the
   // industry path. One row per contract/grant entity carrying a NAICS code — the
-  // small slice, not the donor universe — so the payload is safe to fetch.
+  // contractor slice, not the donor universe — so the payload is safe to fetch
+  // (~63k rows, measured on the clone 2026-09-27).
   //
   // FIX-910: read over a DIRECT pg.Client (rollupJsonbDirect), not the capped
   // PostgREST db.rpc()+callWithRetry path — the last of this function's three
   // reads to be lifted (the keyword fetch went in FIX-444, the two official
-  // rollups in FIX-651). The payload is tiny; the COST is planner-dependent.
-  // Prod picks a bitmap index scan on financial_relationships_derivation (79ms,
-  // measured 2026-07-28); the local prod-clone's stale stats pick a Parallel Seq
-  // Scan over 2.77M rows and measured 104s cold — past the 60s PostgREST gateway
-  // cap, so callWithRetry burned 5 × 60s and THREW, taking the whole function
-  // down before it ever reached clear_financial_entity_rule_tags. That failed
-  // CLOSED (the DELETE is downstream of the throw — FIX-443's ordering working as
-  // designed), but a dead tagger writes no overrides either. rollupJsonbDirect
-  // raises statement_timeout at the SESSION level, so the gateway cap stops
-  // applying and the pipeline no longer depends on which plan a given env's
-  // stats happen to produce. THROWS on error (no silent partial), preserving the
-  // FIX-426/427 contract that the clear+rebuild below runs only on a full read.
+  // rollups in FIX-651). rollupJsonbDirect raises statement_timeout at the
+  // SESSION level, so the gateway cap does not apply and the pipeline does not
+  // depend on which plan a given env's stats happen to produce. THROWS on error
+  // (no silent partial), preserving the FIX-426/427 contract that the
+  // clear+rebuild below runs only on a full read.
   //
-  // NOTE (FIX-919): this rollup currently returns [] on BOTH envs — it aggregates
-  // fr.from_id WHERE from_type='financial_entity', but all 3,238,246 NAICS-bearing
-  // contract rows are agency → financial_entity, so the contractor is to_id. The
-  // NAICS pass below has therefore never emitted a tag. Filed, not fixed here:
-  // repointing it writes thousands of new industry rows and needs its own
-  // before/after. Do not "simplify away" the pass on the strength of its zero
-  // output — the code is correct-in-shape and wrong-in-join.
+  // FIX-919: until 2026-09-27 this returned [] on BOTH envs — it aggregated
+  // fr.from_id, but the NAICS-bearing contracts are agency → financial_entity,
+  // so the contractor is to_id. It now reads both sides in one heap pass over
+  // the contract slice: 33.2 s cold on the clone (287,584 buffers), where the
+  // old from_id-only plan cost 79 ms because it matched nothing. That is now
+  // the real price of the NAICS pass.
+  // (20260927020100_fix919_naics_contractor_side.sql).
   const naicsRollup = await timed("get_financial_entity_naics (direct-pg)", () =>
     rollupJsonbDirect<{ entity_id: string; naics_code: string | null }>(
       "get_financial_entity_naics",
