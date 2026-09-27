@@ -1,0 +1,54 @@
+{
+  "cc": "167",
+  "prompt": "cc-prompt-167-fix1216-cycle-age-fix1184-close-fix1169-decide-votes-vacuum-owner.md",
+  "started_at": "2026-09-27T06:38:33Z",
+  "finished_at": "2026-09-27T09:25:00Z",
+  "head_before": "4ecc6ce7",
+  "head_after": "fb15a1fe",
+  "commits": [
+    {
+      "sha": "14812097",
+      "subject": "docs(fixes): file FIX-1238, FIX-1239 — votes gains 433 rolled-back tuples a night from one failing roll, and has no vacuum owner"
+    },
+    {
+      "sha": "1c13713b",
+      "subject": "feat(db): FIX-1216 — the donor-party full-rebuild cursor lives 22 days (three weekly firings), not 7"
+    },
+    {
+      "sha": "7f4d5c48",
+      "subject": "chore(fixes): record prod verification of FIX-1184"
+    },
+    {
+      "sha": "e44deabe",
+      "subject": "chore(fixes): FIX-1169 — decided on the week of pre-vacuum probes: no gate"
+    },
+    {
+      "sha": "29df00da",
+      "subject": "feat(db): FIX-1239 — votes-vacuum-analyze weekly at Sat 02:37 UTC; receipts §4 lists it"
+    },
+    {
+      "sha": "fb15a1fe",
+      "subject": "chore(fixes): sync status after FIX-1169, FIX-1184, FIX-1216, FIX-1239"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1216",
+    "FIX-1184",
+    "FIX-1169",
+    "FIX-1239"
+  ],
+  "fixes_filed": [
+    "FIX-1238",
+    "FIX-1239"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260927010000_fix1216_donor_party_cycle_age_22_days.sql",
+    "supabase/migrations/20260927010100_fix1239_votes_vacuum_analyze.sql"
+  ],
+  "prod_writes": "Two migrations, each through session:wait-for-gate:prod --expected-minutes 2 --census stop --then, run from the primary checkout with the worktree as --workdir, behind a dry-run that refused unless the pending list was exactly the one expected file. Each ran under a claimed FIX-950 session: interlock acquired, 17 guarded-pipeline holds written, then cleared and released. (i) 09:09:29.8-09:09:30.4 UTC: 20260927010000, CREATE OR REPLACE PROCEDURE refresh_donor_party_rollup_incremental() (c_cycle_max_age 7 -> 22 days) plus its REVOKE/GRANT restated. Gate ok 09:09:23 (the 09:04 poll had been held by e:live_writers). (ii) 09:12:22.6-09:12:23.2 UTC: 20260927010100, cron.schedule votes-vacuum-analyze (prod jobid 56, 37 2 * * 6, active, VACUUM (ANALYZE) public.votes;, no cron_job_budget row); its placement guard passed on prod. Gate ok 09:12:18. Pushes to main, each a Vercel deploy: 09:10:5x (14812097 + 1c13713b), 09:11:2x (7f4d5c48), 09:11:5x (e44deabe), 09:14:5x (29df00da), 09:15:2x (fb15a1fe), and this report. prod_session_state() read held=false before each: 09:10:31, 09:11:14, 09:11:41, 09:14:34, 09:15:15. No VACUUM, no CALL, no hand-fired job and no ad-hoc SQL write on prod. Every other prod contact was a read: db-query --prod (pg_get_functiondef, pg_proc, pipeline_state, cron.job and cron.job_run_details, fec_emit_runs and fec_emit_keys counts, pg_stat_user_tables, pg_class, check_rebuild_autovacuum_status(), prod_op_gate(), data_sync_log, pg_constraint), the census through the Logs API (1 manual reading at 06:58, plus the gate's own census halves), and gh run view logs for five nightly runs.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2's test commit (test(data): FIX-1184 — resolveEmitRun's four branches) was not made. The prompt conditioned it on 'if not', and read 3 found the test already exists: packages/data/src/scripts/audit-fec-emit-residue.test.ts (ddc5057c, 9 cases, 9 pass today). It covers all four branches, including the wrong-but-green shape (a superseded row with keys > 0 refuses as superseded-prefix). Item 2 is the allow-empty record alone."
+  ]
+}
