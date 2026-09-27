@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { sampleQueryName } from "@civitics/db";
 import { edgeVerdictFor, verdictFor } from "../lib/cancellation-census";
 import type { GatePoll } from "../lib/prod-op-gate";
 import {
@@ -35,8 +36,12 @@ import {
   gateTally,
   isTrip,
   newStopState,
+  outsideCallsLine,
+  outsideCallsRow,
+  outsideCallsVerdict,
   parseRunnerArgs,
   pollLine,
+  preCallCensus,
   preCallFail,
   receiptPaths,
   rendersSummary,
@@ -45,7 +50,9 @@ import {
   vocabularyLine,
   type BudgetRow,
   type CallRow,
+  type CensusJson,
   type CensusRow,
+  type CensusSecond,
 } from "./donor-party-bootstrap-runner";
 
 const row = (status: string, extra: Partial<CallRow> = {}, md: Record<string, unknown> = {}): CallRow => ({
@@ -55,6 +62,45 @@ const row = (status: string, extra: Partial<CallRow> = {}, md: Record<string, un
 const OPTS = { wallTripS: 3.0, tripOnWallMs: null, armed: true };
 
 const sec3 = (startMs: number, events: number, sampleQuery = "get_official_page") => ({ startMs, events, sampleQuery });
+
+// ── FIX-1234 fixtures: the rows cc-162 pulled, and the CALLs and breathers the prod receipts recorded ──
+
+const FIXTURES = path.join(__dirname, "..", "..", "..", "db", "src", "__fixtures__", "census-renders");
+const AUDITS = path.join(__dirname, "..", "..", "..", "..", "docs", "audits");
+
+/** A renders fixture's rows as the census's --json `by_second` carries them. */
+const fixtureSeconds = (win: string): CensusSecond[] => {
+  const f = JSON.parse(fs.readFileSync(path.join(FIXTURES, `${win}.renders.json`), "utf8")) as { answer: { rows: { s: number; n: number; q: string }[] } };
+  return f.answer.rows.map((r) => ({ at: new Date(r.s * 1000).toISOString(), startMs: r.s * 1000, events: r.n, page: sampleQueryName(r.q) }));
+};
+
+/** A committed prod receipt's CALL spans and breathers. started_at is the DB clock's text form. */
+const receipt = (file: string) => {
+  const r = JSON.parse(fs.readFileSync(path.join(AUDITS, file), "utf8")) as {
+    calls: { n: number; started_at: string; returned_at: string }[];
+    breathers: { before_call: number; started_at: string; released_at: string; waited_s: number; released_by: string }[];
+    census: { at: string; minutes: number; phase: string; before_call: number | null; code: number }[];
+    args: { breatherMaxS: number };
+  };
+  const calls = r.calls.map((c) => ({
+    n: c.n, started_ms: Date.parse(c.started_at.replace(" ", "T").replace(/\+00$/, "Z")), returned_ms: Date.parse(c.returned_at),
+  }));
+  return { ...r, spans: calls };
+};
+
+/** A gate-shaped --json reading over [end − minutes, end]: the fixture's seconds in it, both verdicts as the child computes them. */
+const gateReading = (endMs: number, all: readonly CensusSecond[], edge: { requests: number; n5xx: number } | null, minutes = 15): CensusJson => {
+  const startMs = endMs - minutes * 60_000;
+  const secs = all.filter((s) => s.startMs >= startMs && s.startMs < endMs);
+  const v = verdictFor({ renders: secs.map((s) => ({ startMs: s.startMs, events: s.events, sampleQuery: s.page })), minutes, baseline: 0.033 });
+  const ev = edge ? edgeVerdictFor([{ startMs: 0, ...edge }], 0.0023) : null;
+  return {
+    window: { start: new Date(startMs).toISOString(), end: new Date(endMs).toISOString(), minutes },
+    cancellations: { ...v, by_second: secs },
+    ...(ev ? { edge: { note: ev.note, pass: ev.pass } } : {}),
+    pass: v.pass && (ev?.pass ?? true),
+  };
+};
 
 test("caught_up → done, exit 0", () => {
   const v = classifyCallRow(row("complete", {}, { mode: "full", caught_up: true }), 3, 12);
@@ -323,6 +369,133 @@ test("FIX-1232 D3 (ii): a CALL's renders come out of a reading that reaches back
   assert.equal(censusSeconds(only)?.length, 3);
 });
 
+// ── FIX-1234 D2: the pre-CALL reading judges the time OUTSIDE the paced op's CALLs ──
+
+test("FIX-1234 D2 rule 105: cc-151's pre-CALL 6 reading (09:19:11–09:34:11) has all 3 renders inside CALLs 3–5 — 0 outside, PASS on both halves; cc-151 would have gone on to CALL 6", () => {
+  const r = receipt("2026-09-24-fix1212-bootstrap-runner.json");
+  const end = Date.parse(r.census.find((c) => c.phase === "pre_call" && c.before_call === 6)!.at);
+  const j = gateReading(end, fixtureSeconds("cc151"), { requests: 183, n5xx: 2 });
+  // Before: the whole window, 3 renders / 8 events.
+  assert.deepEqual([j.cancellations?.renders, j.cancellations?.events], [3, 8]);
+  const o = outsideCallsVerdict(j, r.spans)!;
+  assert.deepEqual([o.rendersInsideCalls, o.rendersOutside, o.verdict.renders, o.verdict.pass], [3, 0, 0, true]);
+  // CALL 3's tail (73.3 s), CALL 4 (256.4 s) and CALL 5 (256.6 s) overlap the window: 9.8 of its 15 min.
+  assert.ok(Math.abs(o.minutesOutside - 5.23) < 0.01, `minutes outside ${o.minutesOutside}`);
+  assert.equal(outsideCallsLine(o), "renders outside CALLs 0 (inside 3) · minutes outside 5.2 of 15.0 · pass (ratio 0.00, floor 2)");
+  // The whole reading, handed or fresh: no trip. (Before FIX-1233 + FIX-1234 its exit 1 stopped the run.)
+  for (const counted of [true, false]) {
+    const pc = preCallCensus(newStopState(), 0, j, r.spans, counted);
+    assert.equal(pc.trip, null, counted ? "handed" : "fresh");
+  }
+  // Even the pre-FIX-1233 exit code, 1, is re-judged on the reading, not believed.
+  assert.equal(preCallCensus(newStopState(), 1, j, r.spans, true).trip, null);
+});
+
+test("FIX-1234 D2 rule 105: the same three renders moved into cc-151's breathers are 3 renders OUTSIDE the CALLs in 5.2 min — FAIL, and the reason names both halves", () => {
+  const r = receipt("2026-09-24-fix1212-bootstrap-runner.json");
+  const end = Date.parse(r.census.find((c) => c.phase === "pre_call" && c.before_call === 6)!.at);
+  // One second in each breather the window reaches: before CALLs 4, 5 and 6.
+  const moved = ["2026-09-24T09:21:00Z", "2026-09-24T09:27:00Z", "2026-09-24T09:33:00Z"]
+    .map((at) => ({ at, startMs: Date.parse(at), events: 1, page: "get_official_page" }));
+  const j = gateReading(end, moved, { requests: 183, n5xx: 2 });
+  assert.equal(j.cancellations?.pass, true, "judged whole, 3 renders in 15 min is at the floor 3 and passes");
+  const o = outsideCallsVerdict(j, r.spans)!;
+  assert.deepEqual([o.rendersInsideCalls, o.rendersOutside, o.verdict.floor_renders, o.verdict.pass], [0, 3, 2, false]);
+  const pc = preCallCensus(newStopState(), 0, j, r.spans, true);
+  assert.equal(pc.trip?.rule, 3);
+  assert.equal(pc.trip?.reason,
+    "(3) the pre-CALL census failed (57014) — 57014: renders outside CALLs 3 (inside 0) · minutes outside 5.2 of 15.0 · FAIL (ratio 17.38, floor 2); " +
+    "edge: pass (2 of 183 request(s) = 1.09 % > 1 % but <= P99 floor 2 at p0 0.23 %)");
+  // An edge FAIL on a clean 57014 half stops too, and says which half.
+  const edgeFail = gateReading(end, fixtureSeconds("cc151"), { requests: 183, n5xx: 6 });
+  assert.match(preCallCensus(newStopState(), 1, edgeFail, r.spans, true).trip?.reason ?? "",
+    /^\(3\) the pre-CALL census failed \(edge\) — 57014: renders outside CALLs 0 \(inside 3\) .* pass .*; edge: FAIL \(6 of 183/);
+});
+
+test("FIX-1234 D2: with no CALL yet the reading is judged as before — cc-154's pre-claim enrichment_queue second, unchanged", () => {
+  const all = fixtureSeconds("cc154");
+  const end = Date.parse("2026-09-25T00:45:32.225Z");   // cc-154's pre-CALL 1
+  const j = gateReading(end, all, { requests: 300, n5xx: 0 });
+  assert.deepEqual(j.cancellations?.by_second?.map((s) => s.page), ["enrichment_queue"]);
+  const o = outsideCallsVerdict(j, [])!;
+  assert.deepEqual([o.rendersInsideCalls, o.rendersOutside, o.minutesOutside], [0, 1, 15]);
+  const whole = verdictFor({ renders: [{ startMs: all[0]!.startMs, events: 1, sampleQuery: "enrichment_queue" }], minutes: 15, baseline: 0.033 });
+  assert.deepEqual(o.verdict, whole, "no span: the outside verdict IS the whole-window verdict");
+  assert.equal(preCallCensus(newStopState(), 0, j, [], false).trip, null);
+});
+
+test("FIX-1234 D2: a window wholly inside a CALL clamps to 1 minute outside, 0 renders, PASS; a CALL still running has no span", () => {
+  const j = gateReading(Date.parse("2026-09-24T09:30:00Z"), [{ at: "x", startMs: Date.parse("2026-09-24T09:25:00Z"), events: 6, page: "entity_tags" }], { requests: 200, n5xx: 0 });
+  const o = outsideCallsVerdict(j, [{ started_ms: Date.parse("2026-09-24T09:10:00Z"), returned_ms: Date.parse("2026-09-24T09:40:00Z") }])!;
+  assert.deepEqual([o.minutesOutside, o.rendersOutside, o.rendersInsideCalls, o.verdict.pass], [1, 0, 1, true]);
+  const running = outsideCallsVerdict(j, [{ started_ms: Date.parse("2026-09-24T09:10:00Z"), returned_ms: null }])!;
+  assert.deepEqual([running.minutesOutside, running.rendersOutside], [15, 1]);
+});
+
+test("FIX-1234 D2 rule 116: on every pre-CALL window of cc-151's run, outside ⊂ the whole reading by second and inside + outside = renders", () => {
+  const r = receipt("2026-09-24-fix1212-bootstrap-runner.json");
+  const all = fixtureSeconds("cc151");
+  const pre = r.census.filter((c) => c.phase === "pre_call");
+  assert.equal(pre.length, 6);
+  for (const c of pre) {
+    const end = Date.parse(c.at);
+    const j = gateReading(end, all, { requests: 183, n5xx: 2 });
+    const before = r.spans.filter((s) => s.n < c.before_call!);   // the CALLs run by then
+    const o = outsideCallsVerdict(j, before)!;
+    const whole = j.cancellations!.by_second!;
+    assert.equal(o.rendersInsideCalls + o.rendersOutside, whole.length, `pre-CALL ${c.before_call}`);
+    assert.ok(o.verdict.renders <= whole.length);
+    assert.equal(preCallCensus(newStopState(), 0, j, before, true).trip, null, `pre-CALL ${c.before_call}: every render was a CALL's`);
+  }
+});
+
+test("FIX-1234 D2 rule 117: the cumulative-budget shape — two 2-render CALLs, or one 4-render CALL, no longer end the run at the pre-CALL reading", () => {
+  const calls = [
+    { started_ms: Date.parse("2026-09-24T09:10:00Z"), returned_ms: Date.parse("2026-09-24T09:14:00Z") },
+    { started_ms: Date.parse("2026-09-24T09:16:00Z"), returned_ms: Date.parse("2026-09-24T09:20:00Z") },
+  ];
+  const s = (at: string) => ({ at, startMs: Date.parse(at), events: 1, page: "get_official_page" });
+  const end = Date.parse("2026-09-24T09:21:30Z");
+  // Two CALLs of 2: under budget each, 4 in the trailing 15 min.
+  const two = gateReading(end, ["09:11:00", "09:12:00", "09:17:00", "09:18:00"].map((t) => s(`2026-09-24T${t}Z`)), { requests: 200, n5xx: 0 });
+  assert.equal(two.cancellations?.pass, false, "judged whole: 4 renders in 15 min > floor 3 — the old stop");
+  assert.equal(preCallCensus(newStopState(), 1, two, calls, true).trip, null, "judged outside the CALLs: 0 renders");
+  // One CALL of 4: a would_trip on the budget (one observation), and the run goes on to the second look.
+  const st = newStopState();
+  const four = gateReading(end, ["09:16:10", "09:17:10", "09:18:10", "09:19:10"].map((t) => s(`2026-09-24T${t}Z`)), { requests: 200, n5xx: 0 });
+  assert.equal(isTrip(evaluateCallBudget(st, 2, 4, 3, "stop")), false);
+  assert.equal(preCallCensus(st, 1, four, calls, true).trip, null);
+  assert.equal(isTrip(evaluateCallBudget(st, 3, 4, 3, "stop")), true, "the second consecutive CALL over budget is what stops (rule 117)");
+});
+
+test("FIX-1234 D2: a reading the judge cannot parse falls back to the exit code; a fresh dark is counted, a handed one is not; exit 8 never trips", () => {
+  const spans = [{ started_ms: 0, returned_ms: 1000 }];
+  assert.equal(preCallCensus(newStopState(), 1, null, spans, true).trip?.reason, preCallFail(1)?.reason, "unparsed exit 1: the old stop");
+  assert.equal(preCallCensus(newStopState(), 0, null, spans, true).trip, null);
+  const noEdge: CensusJson = { window: { start: "2026-09-24T09:00:00Z", end: "2026-09-24T09:15:00Z", minutes: 15 }, cancellations: { total: 0, ratio: 0, baseline: 0.033, by_second: [] } };
+  assert.equal(preCallCensus(newStopState(), 1, noEdge, spans, true).trip?.rule, 3, "no edge verdict to read: the exit code decides");
+  assert.equal(outsideCallsVerdict({ ...noEdge, cancellations: { total: 0, ratio: 0, by_second: [] } }, spans), null, "no baseline in the reading: not re-judged");
+  const fresh = newStopState();
+  assert.equal(preCallCensus(fresh, 2, null, spans, false).trip, null);
+  assert.equal(fresh.consecutiveCensusDark, 1, "a fresh dark counts");
+  assert.equal(preCallCensus(fresh, 2, null, spans, false).trip?.rule, 3, "two fresh darks trip, as before");
+  const handed = newStopState();
+  assert.equal(preCallCensus(handed, 2, null, spans, true).trip, null);
+  assert.equal(handed.consecutiveCensusDark, 0, "the breather counted it; the pre-CALL step does not count it again");
+  for (const counted of [true, false]) assert.equal(preCallCensus(newStopState(), 8, null, spans, counted).trip, null);
+});
+
+test("FIX-1234 D2: the receipt's pre-CALL line prints renders outside CALLs, inside, and the minutes outside", () => {
+  const r = receipt("2026-09-24-fix1212-bootstrap-runner.json");
+  const end = Date.parse(r.census.find((c) => c.phase === "pre_call" && c.before_call === 6)!.at);
+  const o = outsideCallsVerdict(gateReading(end, fixtureSeconds("cc151"), { requests: 183, n5xx: 2 }), r.spans)!;
+  const row: CensusRow = { at: "t", minutes: 15, code: 0, summary: "pass (…)", phase: "pre_call", before_call: 6, would_trip: false, outside_calls: outsideCallsRow(o) };
+  assert.equal(censusLine(row),
+    "- t (15 min, before CALL 6) exit 0: pass (…) — renders outside CALLs 0 (inside 3) · minutes outside 5.2 of 15.0 · pass (ratio 0.00, floor 2)");
+  assert.equal(outsideCallsLine(row.outside_calls!), outsideCallsLine(o), "one format, from the verdict or from the receipt row");
+  assert.equal(censusLine({ ...row, outside_calls: undefined }), "- t (15 min, before CALL 6) exit 0: pass (…)", "a row without it reads as before");
+});
+
 test("FIX-1232: the receipt's census-mode row says what each mode now decides, and counts the CALLs over budget", () => {
   const row = (phase: CensusRow["phase"], code = 0): CensusRow => ({
     at: "t", minutes: phase === "gate" ? 60 : 15, code, summary: "pass (…)", phase, before_call: phase === "gate" ? null : 2, would_trip: phase === "gate" ? null : false,
@@ -405,12 +578,14 @@ test("cc-152 D1: --census-mode is stop|report, default stop; anything else is re
 test("FIX-1232: every census call site names its phase; the budget is the only thing the mode reaches; the gate half is not rule (3)", () => {
   const src = fs.readFileSync(path.join(__dirname, "donor-party-bootstrap-runner.ts"), "utf8");
   const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-  const sites = (code.match(/evaluateCensus\(stopState, [a-z.]+\.code, "(pre_call|breather|cadence)"\)/g) ?? [])
+  const sites = (code.match(/evaluateCensus\((stopState|state), [a-z.]*code, "(pre_call|breather|cadence)"\)/g) ?? [])
     .map((m) => /"(\w+)"/.exec(m)![1]);
   assert.deepEqual(sites.sort(), ["breather", "cadence", "pre_call"]);
   assert.doesNotMatch(code, /evaluateCensus\([^)]*args\.censusMode/, "the mode no longer reaches a census reading");
   assert.match(code, /evaluateCallBudget\(stopState, rec\.n, got\.renders, args\.rendersPerCallMax, args\.censusMode\)/);
-  assert.match(code, /v = preCallFail\(handed\.code\);/, "the breather's reading is judged once, not re-counted");
+  // FIX-1234 D2: handed or fresh, one judge — and a handed reading's dark is not re-counted.
+  assert.match(code, /const pc = preCallCensus\(stopState, reading\.code, reading\.json, R\.calls, handed !== null\);/);
+  assert.doesNotMatch(code, /v = preCallFail\(handed\.code\);/, "the exit code no longer decides the pre-CALL reading");
   assert.equal((code.match(/phase: "gate", before_call: null, would_trip: null/g) ?? []).length, 1);
 });
 

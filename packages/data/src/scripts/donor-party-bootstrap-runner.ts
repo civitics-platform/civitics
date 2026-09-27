@@ -89,9 +89,12 @@
  *   (3) the front door, in RENDERS (FIX-1232 — a render is a second with at
  *       least one statement timeout; one page's 4–6 fanned-out reads count
  *       once). Three readings, three jobs:
- *         - pre-CALL (15 min): pass=false stops, in BOTH census modes. The
- *           57014 half fails only above the Poisson P99 floor of the baseline
- *           in renders (3 in 15 min at 0.033/min).
+ *         - pre-CALL (15 min): a FAIL stops, in BOTH census modes. The 57014
+ *           half is judged on the minutes OUTSIDE the CALL spans (FIX-1234 D2
+ *           — the trailing 15 min holds ~2.5 CALLs, which the budget below
+ *           already judges) and fails only above the Poisson P99 floor of the
+ *           baseline in renders over those minutes. The edge half fails only
+ *           above 1 % AND the binomial floor at p0 (FIX-1233).
  *         - the CALL window: every 15 min while a CALL runs (its span so far,
  *           one --renders-only read) and once it has returned (its whole
  *           span), renders against --renders-per-call-max. Over budget is a
@@ -146,7 +149,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { isLogsEndpointGone } from "@civitics/db";
-import { CENSUS_EXIT, rendersIn, rendersLine, type RenderSecond } from "../lib/cancellation-census";
+import {
+  CENSUS_EXIT, rendersIn, rendersLine, verdictFor, type CancellationVerdict, type RenderSecond,
+} from "../lib/cancellation-census";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { GateTimeout, waitForProdOpGate, type AlsoReading, type GatePoll, type ProdOpGate } from "../lib/prod-op-gate";
 import { ProdSessionRefused, withProdSession, type ProdSessionState } from "../lib/prod-session";
@@ -481,7 +486,12 @@ export function evaluateWatchdogs(
 /** Where a census reading was taken — it decides what an exit 1 means (FIX-1232). */
 export type CensusPhase = "pre_call" | "breather" | "cadence";
 
-/** The pre-CALL half of rule (3): an exit 1 before a CALL stops, in both modes. */
+/**
+ * The pre-CALL half of rule (3) off the exit code alone: an exit 1 before a
+ * CALL stops, in both modes. Since FIX-1234 the pre-CALL step judges the
+ * reading itself (preCallCensus); this is its fallback for a reading it
+ * cannot parse, and evaluateCensus's for a caller that has only the code.
+ */
 export function preCallFail(exitCode: number): Trip | null {
   return exitCode === CENSUS_EXIT.fail ? { rule: 3, reason: "(3) the pre-CALL census failed (57014 renders or front-door 5xx)" } : null;
 }
@@ -570,6 +580,102 @@ export function callWindowRenders(
   if (!secs || !(from <= Math.floor(startMs / 1000) * 1000)) return null;
   const seconds = rendersIn(secs, startMs, endMs);
   return { renders: seconds.length, events: seconds.reduce((n, s) => n + s.events, 0), seconds };
+}
+
+/** A CALL's span on the DB clock. A CALL still running (returned_ms null) has no span and is skipped. */
+export type CallSpan = Pick<CallRecord, "started_ms" | "returned_ms">;
+
+/** FIX-1234 D2: the pre-CALL reading's 57014 half, judged on the minutes outside every CALL span. */
+export interface OutsideCallsVerdict {
+  verdict: CancellationVerdict;
+  /** Seconds that fell inside a CALL span — the budget's to judge (evaluateCallBudget), not this reading's. */
+  rendersInsideCalls: number;
+  rendersOutside: number;
+  /** The window less its overlap with the CALL spans, clamped >= 1. */
+  minutesOutside: number;
+  /** The whole window, for the line. */
+  minutes: number;
+}
+
+/**
+ * FIX-1234 D2 — the pre-CALL reading judges only the time OUTSIDE the paced
+ * op's CALLs. A trailing 15-min reading holds the CALL that just returned and
+ * its breather, about 2.5 CALLs of history, so judged whole it turned the
+ * per-CALL budget of 3 into a cumulative 3 per 15 min, and one 4-render CALL
+ * stopped the run before rule 117's second look (cc-162 §4.1).
+ *
+ * Every `by_second` row inside a `[started_ms, returned_ms]` span is dropped —
+ * with rendersIn's convention, so a CALL's first second is the CALL's, as in
+ * callWindowRenders — and the rest are judged by verdictFor over the window's
+ * minutes less its overlap with those spans. No render goes unjudged (rule
+ * 176): the dropped ones are exactly the CALLs', and every one of those is
+ * judged by --renders-per-call-max. `rendersInsideCalls + rendersOutside` is
+ * the reading's whole count (rule 116).
+ *
+ * The baselines are the reading's own (what the child gated on);
+ * `baselineRenders` overrides the renders one. null when the reading carries
+ * no seconds, no window or no baseline — the caller falls back to the exit code.
+ */
+export function outsideCallsVerdict(
+  j: CensusJson | null, calls: readonly CallSpan[], baselineRenders?: number,
+): OutsideCallsVerdict | null {
+  const secs = censusSeconds(j);
+  const start = j?.window?.start ? Date.parse(j.window.start) : NaN;
+  const end = j?.window?.end ? Date.parse(j.window.end) : NaN;
+  const baseline = j?.cancellations?.baseline;
+  if (!secs || !(end > start) || baseline === undefined) return null;
+  const spans = calls.filter((c): c is { started_ms: number; returned_ms: number } => c.returned_ms !== null);
+  const inside = (s: CensusSecond) => spans.some((c) => rendersIn([s], c.started_ms, c.returned_ms).length > 0);
+  const kept = secs.filter((s) => !inside(s));
+  const overlapMs = spans.reduce((n, c) => n + Math.max(0, Math.min(c.returned_ms, end) - Math.max(c.started_ms, start)), 0);
+  const minutes = (end - start) / 60_000;
+  const minutesOutside = Math.max(1, minutes - overlapMs / 60_000);
+  const verdict = verdictFor({
+    renders: asRenderSeconds(kept),
+    minutes: minutesOutside,
+    baseline,
+    baselineRenders: baselineRenders ?? j?.cancellations?.baseline_renders ?? baseline,
+  });
+  return { verdict, rendersInsideCalls: secs.length - kept.length, rendersOutside: kept.length, minutesOutside, minutes };
+}
+
+/** `renders outside CALLs n (inside m) · minutes outside k of w · pass|FAIL (ratio r, floor f)` — the pre-CALL line's addition. */
+export function outsideCallsLine(o: OutsideCallsVerdict | NonNullable<CensusRow["outside_calls"]>): string {
+  const r = "verdict" in o ? outsideCallsRow(o) : o;
+  return `renders outside CALLs ${r.renders_outside} (inside ${r.renders_inside}) · minutes outside ${r.minutes_outside.toFixed(1)} of ${r.minutes.toFixed(1)} · ` +
+    `${r.pass ? "pass" : "FAIL"} (ratio ${r.ratio_renders.toFixed(2)}, floor ${r.floor_renders})`;
+}
+
+/**
+ * FIX-1234 D2 — the pre-CALL decision from one reading, fresh or handed on by
+ * the breather. Two halves, both judged here rather than off the child's exit
+ * code: the 57014 half by outsideCallsVerdict, the edge half by the child's own
+ * edge verdict (FIX-1233's floor). Either failing is a rule (3) stop, in both
+ * modes, and the reason names both numbers.
+ *
+ * `counted`: a handed reading's dark was already counted in the breather, so
+ * only a fresh reading goes through evaluateCensus here — for the dark count;
+ * its exit-1 trip is re-judged. A reading this cannot parse (no seconds, no
+ * window, no edge verdict) falls back to the exit code, as before.
+ */
+export function preCallCensus(
+  state: StopState, code: number, j: CensusJson | null, calls: readonly CallSpan[], counted: boolean,
+): { trip: Trip | null; outside: OutsideCallsVerdict | null } {
+  const dark = counted ? null : evaluateCensus(state, code, "pre_call");
+  if (code !== CENSUS_EXIT.pass && code !== CENSUS_EXIT.fail) return { trip: dark, outside: null };
+  const outside = outsideCallsVerdict(j, calls);
+  const edgePass = j?.edge?.pass;
+  if (!outside || typeof edgePass !== "boolean") return { trip: preCallFail(code), outside };
+  if (outside.verdict.pass && edgePass) return { trip: null, outside };
+  const failed = [!outside.verdict.pass ? "57014" : null, !edgePass ? "edge" : null].filter((x) => x !== null).join(" + ");
+  return {
+    trip: {
+      rule: 3,
+      reason: `(3) the pre-CALL census failed (${failed}) — 57014: ${outsideCallsLine(outside)}; ` +
+        `edge: ${edgePass ? "pass" : "FAIL"} (${j?.edge?.note ?? "no note"})`,
+    },
+    outside,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -745,6 +851,8 @@ export interface CensusJson {
     /** FIX-1232: the gated unit, and the seconds behind it. */
     renders?: number; events?: number; ratio_renders?: number; floor_renders?: number;
     by_second?: CensusSecond[];
+    /** The baselines the child gated on — outsideCallsVerdict re-judges at the same ones (FIX-1234). */
+    baseline?: number; baseline_renders?: number;
   };
   /** `--renders-only` (FIX-1232 D3): the seconds and nothing else. */
   renders?: { renders: number; events: number; by_second: CensusSecond[] };
@@ -921,6 +1029,19 @@ export interface CensusRow {
    * the budget's would_trips are `Receipt.budget`. null on a gate row.
    */
   would_trip: boolean | null;
+  /** FIX-1234 D2: on the pre-CALL row, the 57014 half as judged outside the CALL spans. */
+  outside_calls?: {
+    renders_outside: number; renders_inside: number; minutes_outside: number; minutes: number;
+    ratio_renders: number; floor_renders: number; pass: boolean;
+  };
+}
+
+/** The receipt's copy of an OutsideCallsVerdict. */
+export function outsideCallsRow(o: OutsideCallsVerdict): NonNullable<CensusRow["outside_calls"]> {
+  return {
+    renders_outside: o.rendersOutside, renders_inside: o.rendersInsideCalls, minutes_outside: o.minutesOutside, minutes: o.minutes,
+    ratio_renders: o.verdict.ratio_renders, floor_renders: o.verdict.floor_renders, pass: o.verdict.pass,
+  };
 }
 
 /** A census reading the breather took, handed on as the pre-CALL reading (FIX-1232 D3: reordered, not added). */
@@ -1068,7 +1189,8 @@ export function censusLine(c: CensusRow): string {
         : c.phase === "renders" ? `renders read${c.before_call ? ` of CALL ${c.before_call - 1}` : " of the run"}`
           : "during a CALL";
   const minutes = Number.isInteger(c.minutes) ? String(c.minutes) : c.minutes.toFixed(1);
-  return `- ${c.at} (${minutes} min, ${where}) exit ${c.code}: ${c.summary}${c.would_trip ? ` — **would_trip**${WOULD_TRIP_NOTE}` : ""}`;
+  const outside = c.outside_calls ? ` — ${outsideCallsLine(c.outside_calls)}` : "";
+  return `- ${c.at} (${minutes} min, ${where}) exit ${c.code}: ${c.summary}${outside}${c.would_trip ? ` — **would_trip**${WOULD_TRIP_NOTE}` : ""}`;
 }
 
 const asRenderSeconds = (xs: readonly CensusSecond[]): RenderSecond[] =>
@@ -1543,21 +1665,27 @@ async function main(): Promise<number> {
 
       // b. The census before EVERY CALL (prod). From CALL 2 it is the reading the
       //    breather ended on (its dark already counted there); CALL 1, and a
-      //    breather that never got past the walls, read it here.
+      //    breather that never got past the walls, read it here. FIX-1234 D2:
+      //    either way its 57014 half is judged on the minutes OUTSIDE the CALLs
+      //    run so far — the CALLs are the budget's to judge.
       if (target === "prod") {
         while (censusBusy) await sleep(1000);   // a cadence read still in flight
         let reading: { code: number; summary: string; json: CensusJson | null };
-        let v: Trip | null;
+        let row: CensusRow;
         if (handed) {
           reading = handed;
-          v = preCallFail(handed.code);
+          row = handed.row;
         } else {
           reading = await runCensus(15, log);
-          R.census.push({ at: new Date().toISOString(), minutes: 15, code: reading.code, summary: reading.summary, phase: "pre_call", before_call: n, would_trip: false });
-          v = evaluateCensus(stopState, reading.code, "pre_call");
+          row = { at: new Date().toISOString(), minutes: 15, code: reading.code, summary: reading.summary, phase: "pre_call", before_call: n, would_trip: false };
+          R.census.push(row);
         }
+        const pc = preCallCensus(stopState, reading.code, reading.json, R.calls, handed !== null);
+        let v: Trip | null = pc.trip;
+        if (pc.outside) row.outside_calls = outsideCallsRow(pc.outside);
         lastCensusAt = Date.now();
-        log(`[census] pre-CALL ${n} 15 min: ${reading.summary}${handed ? " (the breather's reading)" : ""}`);
+        log(`[census] pre-CALL ${n} 15 min: ${reading.summary}${handed ? " (the breather's reading)" : ""}` +
+          `${pc.outside ? ` — ${outsideCallsLine(pc.outside)}` : ""}`);
         // FIX-1232 D3 (ii): the CALL just finished, judged on its whole span.
         const prev = R.calls[R.calls.length - 1];
         if (prev && (reading.code === CENSUS_EXIT.pass || reading.code === CENSUS_EXIT.fail)) {
