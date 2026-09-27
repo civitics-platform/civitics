@@ -1511,3 +1511,4 @@
 2026-09-27 | FIX-1184 | 7f4d5c48 | prod-only | chore(fixes): record prod verification of FIX-1184
 2026-09-27 | FIX-1216 | 1c13713b | local+prod | feat(db): FIX-1216 — the donor-party full-rebuild cursor lives 22 days (three weekly firings), not 7
 2026-09-27 | FIX-1239 | 29df00da | local-only | feat(db): FIX-1239 — votes-vacuum-analyze weekly at Sat 02:37 UTC; receipts §4 lists it
+2026-09-27 | FIX-918 | 3c37772e | local-only | feat(db): FIX-918 — official_sector_dollars_mv + chord_industry_flows_mv read primary_industry_tag(); the swap runs with the weekly unit's parallel-off settings
