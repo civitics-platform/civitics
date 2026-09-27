@@ -1301,6 +1301,63 @@ export function naicsToIndustry(code: string): string | null {
   );
 }
 
+/**
+ * The NAICS emit loop of tagFinancialEntities, lifted out so it can be pinned
+ * by a test (FIX-919). One `rule` industry row per rollup entity whose code
+ * maps; an unmapped sector (23/56/61/71/72/81) or a key outside the vocabulary
+ * emits nothing.
+ *
+ * Confidence 0.85 sits above both keyword confidences (0.8 for a single match,
+ * 0.7 when a name matches several industries), and that ordering is what lets
+ * primary_industry_tag() rank a contract code over a name match (FIX-918).
+ */
+export function buildNaicsIndustryTags(
+  rollup: ReadonlyArray<{ entity_id: string; naics_code: string | null }>,
+): TagInsert[] {
+  const out: TagInsert[] = [];
+  for (const r of rollup) {
+    if (!r.naics_code) continue;
+    const industry = naicsToIndustry(r.naics_code);
+    if (!industry) continue;
+    const info = industryDisplay(industry);
+    if (!info) continue;
+    out.push({
+      entity_type: "financial_entity",
+      entity_id: r.entity_id,
+      tag: industry,
+      tag_category: "industry",
+      display_label: info.label,
+      display_icon: info.icon,
+      visibility: "primary",
+      confidence: 0.85,
+      generated_by: "rule",
+      pipeline_version: "v1",
+      metadata: { naics_code: r.naics_code },
+    });
+  }
+  return out;
+}
+
+/**
+ * Dedupe by (entity_id, tag, tag_category), first wins — keyword + NAICS can
+ * both emit the same industry for one entity, and the batched upsert (ON
+ * CONFLICT) cannot affect the same row twice in one statement. Keyword tags are
+ * pushed before NAICS, so a same-tag collision keeps the keyword row. A NAICS
+ * tag for a DIFFERENT industry is kept alongside the keyword one: that
+ * two-tag donor is the state primary_industry_tag() ranks (FIX-918).
+ */
+export function dedupeIndustryTags<T extends { entity_id: string; tag: string; tag_category: string }>(
+  tags: readonly T[],
+): T[] {
+  const seen = new Set<string>();
+  return tags.filter((t) => {
+    const k = `${t.entity_id}|${t.tag}|${t.tag_category}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // 3. Financial entity rules (industry — size buckets moved to pg_cron, FIX-716)
 // ---------------------------------------------------------------------------
@@ -1528,38 +1585,9 @@ export async function tagFinancialEntities(db: any): Promise<number> {
   // entities: NAICS is a real contract industry code, not a name guess (and is
   // only ~78 rows). Confidence/visibility unchanged. Source is now the tiny
   // NAICS-only RPC (FIX-443), not the OOM-prone donation rollup.
-  for (const r of naicsRollup) {
-    if (!r.naics_code) continue;
-    const industry = naicsToIndustry(r.naics_code);
-    if (!industry) continue;
-    const info = industryDisplay(industry);
-    if (!info) continue;
-    allTags.push({
-      entity_type: "financial_entity",
-      entity_id: r.entity_id,
-      tag: industry,
-      tag_category: "industry",
-      display_label: info.label,
-      display_icon: info.icon,
-      visibility: "primary",
-      confidence: 0.85,
-      generated_by: "rule",
-      pipeline_version: "v1",
-      metadata: { naics_code: r.naics_code },
-    });
-  }
+  allTags.push(...buildNaicsIndustryTags(naicsRollup));
 
-  // Dedupe by (entity_id, tag, tag_category) — keyword + NAICS can both emit the
-  // same industry for one entity, and the batched upsert (ON CONFLICT) cannot
-  // affect the same row twice in one statement. Keyword tags are pushed before
-  // NAICS, so first-wins preserves the keyword tag.
-  const seen = new Set<string>();
-  const deduped = allTags.filter((t) => {
-    const k = `${t.entity_id}|${t.tag}|${t.tag_category}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  const deduped = dedupeIndustryTags(allTags);
 
   // ── Curated overrides — the last word (FIX-916) ──────────────────────────
   // Runs AFTER the keyword pass and the NAICS pass, over their deduped output:

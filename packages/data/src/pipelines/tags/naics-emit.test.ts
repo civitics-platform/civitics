@@ -1,0 +1,107 @@
+/**
+ * FIX-919 — the NAICS emit loop and the keyword/NAICS dedupe, pinned.
+ *
+ * get_financial_entity_naics() returned [] on both envs until FIX-919 repointed
+ * it at the contractor (to_id) side, so this loop had never emitted a row. The
+ * states that matter once it does:
+ *
+ *   - a mapped code emits exactly one `rule` row at 0.85;
+ *   - an unmapped sector (23/56/61/71/72/81) and a null code emit nothing;
+ *   - a NAICS tag that AGREES with the keyword tag dedupes to ONE row, and the
+ *     keyword row is the one kept (it is pushed first);
+ *   - a NAICS tag that DISAGREES yields TWO rows — the multi-tag donor that
+ *     primary_industry_tag() now ranks (FIX-918) instead of alphabetising.
+ */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { buildNaicsIndustryTags, dedupeIndustryTags } from "./rules";
+import { VALID_INDUSTRIES } from "./topics";
+
+const E_MAPPED   = "11111111-1111-1111-1111-111111111111";
+const E_UNMAPPED = "22222222-2222-2222-2222-222222222222";
+const E_AGREE    = "33333333-3333-3333-3333-333333333333";
+const E_DISAGREE = "44444444-4444-4444-4444-444444444444";
+const E_NULL     = "55555555-5555-5555-5555-555555555555";
+
+/** A keyword-pass row, shaped exactly as tagFinancialEntities pushes it. */
+function keywordTag(entityId: string, tag: string, confidence = 0.8) {
+  return {
+    entity_type: "financial_entity",
+    entity_id: entityId,
+    tag,
+    tag_category: "industry",
+    display_label: tag,
+    display_icon: null,
+    visibility: "primary" as const,
+    generated_by: "rule" as const,
+    confidence,
+    pipeline_version: "v1",
+    metadata: { matched_count: 1 } as Record<string, unknown>,
+  };
+}
+
+test("a mapped NAICS code emits exactly one rule row at 0.85, carrying the code", () => {
+  const rows = buildNaicsIndustryTags([{ entity_id: E_MAPPED, naics_code: "336411" }]);
+  assert.equal(rows.length, 1);
+  const [r] = rows;
+  assert.equal(r!.entity_id, E_MAPPED);
+  assert.equal(r!.tag, "defense");            // 336 override beats the 33 → manufacturing bucket
+  assert.equal(r!.tag_category, "industry");
+  assert.equal(r!.generated_by, "rule");
+  assert.equal(r!.confidence, 0.85);
+  assert.deepEqual(r!.metadata, { naics_code: "336411" });
+});
+
+test("an unmapped sector and a null code emit nothing", () => {
+  const rows = buildNaicsIndustryTags([
+    { entity_id: E_UNMAPPED, naics_code: "236220" },  // 23 — construction, not in the vocabulary
+    { entity_id: E_UNMAPPED, naics_code: "561612" },  // 56 — removed by FIX-909
+    { entity_id: E_NULL, naics_code: null },
+  ]);
+  assert.deepEqual(rows, []);
+});
+
+test("NAICS confidence outranks both keyword confidences (0.8 single, 0.7 ambiguous)", () => {
+  // primary_industry_tag() ranks on confidence after provenance; this ordering is
+  // what makes a contract code beat a name match without a NAICS-specific key.
+  const [n] = buildNaicsIndustryTags([{ entity_id: E_MAPPED, naics_code: "541330" }]);
+  assert.ok(n!.confidence > 0.8);
+  assert.ok(n!.confidence > 0.7);
+});
+
+test("a NAICS tag that AGREES with the keyword tag dedupes to ONE row — the keyword one", () => {
+  const all = [
+    keywordTag(E_AGREE, "defense"),
+    ...buildNaicsIndustryTags([{ entity_id: E_AGREE, naics_code: "336411" }]),
+  ];
+  const out = dedupeIndustryTags(all);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.tag, "defense");
+  assert.equal(out[0]!.confidence, 0.8, "keyword pushed first → keyword kept");
+  assert.deepEqual(out[0]!.metadata, { matched_count: 1 });
+});
+
+test("a NAICS tag that DISAGREES yields TWO rows — the multi-tag state FIX-918 ranks", () => {
+  const all = [
+    keywordTag(E_DISAGREE, "finance"),
+    ...buildNaicsIndustryTags([{ entity_id: E_DISAGREE, naics_code: "541330" }]),  // 541 → tech
+  ];
+  const out = dedupeIndustryTags(all);
+  assert.deepEqual(
+    out.map((t) => [t.tag, t.confidence]).sort(),
+    [["finance", 0.8], ["tech", 0.85]],
+  );
+});
+
+test("every tag the NAICS pass can emit is a vocabulary key", () => {
+  const codes = ["11", "21", "22", "31", "32", "33", "3254", "325", "326", "334", "335", "336",
+                 "42", "44", "45", "48", "49", "51", "52", "53", "54", "541", "5411", "5412",
+                 "5415", "55", "62", "92"];
+  const rows = buildNaicsIndustryTags(codes.map((c, i) => ({
+    entity_id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`,
+    naics_code: c.padEnd(6, "0"),
+  })));
+  assert.equal(rows.length, codes.length);
+  for (const r of rows) assert.ok((VALID_INDUSTRIES as readonly string[]).includes(r.tag), r.tag);
+});
