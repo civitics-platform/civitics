@@ -30,7 +30,8 @@ import {
 } from "./legislator-ids";
 
 // A House→Senate member (the FIX-1187 set-2 shape): H id from the House years,
-// S id for the seat held now.
+// S id for the seat held now. The ids are the design note's §2 EXAMPLE, not
+// Moran's real ones (the dataset lists H6KS01096 / S0KS00091 for him).
 const MORAN: Listing = {
   bioguide: "M000934",
   name: "Jerry Moran",
@@ -129,6 +130,7 @@ test("§4 (d) double_claim: a stub (no bioguide) claims one of this member's ids
   const claims = buildClaimsMap([stub]);
   const c = classifyBinding(row({ live: "H6KS01179" }), MORAN, claims);
   assert.equal(c.action, "double_claim");
+  assert.deepEqual(c.contested, ["S0KS00315"]);
   assert.match(c.reason, /S0KS00315 also claimed by stub \(no bioguide\)/);
 });
 
@@ -297,6 +299,8 @@ test("rule 116: every class present, the classes partition the population, membe
   assert.equal(report.counts.noop, 2);
   assert.equal(report.counts.dataset_lag, 2);
   assert.equal(report.counts.double_claim, 2);
+  // B3's stub holds B3's CURRENT id; B1's 1st row holds B1's PRIOR-office id.
+  assert.deepEqual(report.double_claim_split, { current_id: 1, other_id: 1 });
   // The claimless 2nd B1 row does not turn the 1st into a double claim: a row
   // that claims nothing is not a claimant.
   assert.equal(report.counts.prior_office_live, 1);
@@ -342,4 +346,6 @@ test("reconcileReport names a broken partition rather than passing it", () => {
   const broken = { ...report, counts: { ...report.counts, noop: report.counts.noop + 1 } };
   assert.match(reconcileReport(broken, 1).join(), /classes sum to 2, population is 1/);
   assert.match(reconcileReport(report, 2).join(), /≠ 2 current members/);
+  const badSplit = { ...report, double_claim_split: { current_id: 1, other_id: 0 } };
+  assert.match(reconcileReport(badSplit, 1).join(), /double_claim split sums to 1, class is 0/);
 });

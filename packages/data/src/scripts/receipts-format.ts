@@ -21,6 +21,8 @@
  * enumerates (the FIX-977 / playbook E5 lesson, applied to durations).
  */
 
+import { BINDING_ACTIONS } from "../pipelines/congress/legislator-ids";
+
 /**
  * Verdict vocabulary.
  *
@@ -800,6 +802,172 @@ export function vercelLivenessVerdict(
  */
 export const BURST_THRESHOLD = 3;
 
+// ---------------------------------------------------------------------------
+// FIX-1189 O2 — §10, FEC id divergence
+// ---------------------------------------------------------------------------
+
+/** One `congress_legislator_ids_report` row, as the receipts carry it. */
+export interface LegislatorIdsRun {
+  started_at: string | null;
+  status: string | null;
+  error: string | null;
+  /** The stamp's metadata — `stampMetadata()` in legislator-ids-report.ts. */
+  metadata: Record<string, unknown> | null;
+}
+
+/**
+ * The latest row of any status and the latest `complete` one — the Q_DAILY_RUN
+ * split: a failed night is stated as what happened, and the last real reading
+ * is still carried, labelled with when it was taken.
+ */
+export interface LegislatorIdsSection {
+  latest: LegislatorIdsRun | null;
+  complete: LegislatorIdsRun | null;
+}
+
+/** A report older than this is `missing` — a nightly step that skipped a night. */
+export const LEGISLATOR_IDS_STALE_HOURS = 48;
+
+/** What each class means, in one clause — the counts table's third column. */
+const LEGISLATOR_ID_CLASS_MEANING: Record<string, string> = {
+  noop: "row agrees with the dataset",
+  bindable: "row holds no id; current id determinable — O1 binds (§4 b)",
+  prior_office_live: "live id is a prior-office id — O1 promotes (§4 c)",
+  prior_incomplete: "live is current; listed prior-office ids missing from `prior_fec_candidate_ids`",
+  unlisted_live_id: "row holds an id the dataset does not list — report only (D3)",
+  double_claim: "another row (a stub, or a 2nd row) claims a listed id — a manifest (§4 d)",
+  cross_bioguide_claim: "a listed id is held by ANOTHER member's row — a human (§4 e)",
+  ambiguous_current: "dataset cannot name the current id, and the row needs it",
+  dataset_lag: "dataset lists no id for the member (sworn-in lag)",
+  no_bioguide: "no `congress_gov` key — invisible to O1",
+};
+
+interface LegislatorIdEntry {
+  name?: string;
+  state?: string | null;
+  live?: string | null;
+  current_id?: string | null;
+}
+
+function entriesOf(meta: Record<string, unknown>, cls: string): LegislatorIdEntry[] {
+  const top = (meta["top_20"] ?? {}) as Record<string, unknown>;
+  const list = top[cls];
+  return Array.isArray(list) ? (list as LegislatorIdEntry[]) : [];
+}
+
+/** The numbers of one complete report, rendered. */
+function legislatorIdsReportLines(meta: Record<string, unknown>, classes: readonly string[]): string[] {
+  const out: string[] = [];
+  const counts = (meta["counts"] ?? {}) as Record<string, unknown>;
+  const n = (k: string): number => Number(counts[k] ?? 0);
+  const population = num0(meta["population"]);
+  const sum = classes.reduce((a, k) => a + n(k), 0);
+  out.push(
+    table(
+      ["class", "rows", "meaning"],
+      [
+        ...classes.map((k) => [k === "noop" ? k : "**" + k + "**", n(k), LEGISLATOR_ID_CLASS_MEANING[k] ?? ""]),
+        ["_total_", sum, population === sum ? "= population (" + population + ") — reconciles" : "**≠ population " + population + "**"],
+      ],
+    ),
+  );
+  const split = (meta["double_claim_split"] ?? {}) as Record<string, unknown>;
+  out.push(
+    "`double_claim` split: **" + num0(split["current_id"]) + "** with the member's CURRENT id on another row " +
+      "(the money-on-a-stub shape), **" + num0(split["other_id"]) + "** with a prior-office or other-office id " +
+      "(a separate candidacy row).",
+  );
+  out.push("");
+  const unmatched = (meta["unmatched_dataset_members"] ?? {}) as Record<string, unknown>;
+  const ref = ((meta["dataset_ref"] ?? {}) as Record<string, unknown>)["current"] as Record<string, unknown> | undefined;
+  out.push(
+    "Dataset: **" + num0(meta["dataset_members"]) + "** current members, " + num0(meta["matched_dataset_members"]) +
+      " matched to a row, **" + num0(unmatched["count"]) + "** unmatched; " + num0(meta["dataset_ambiguous_current"]) +
+      " with an ambiguous current id; " + num0(meta["historical_members_count"]) + " historical members (a count, D4). " +
+      "`legislators-current.json` ETag `" + String(ref?.["etag"] ?? "?") + "`, Last-Modified " +
+      String(ref?.["last_modified"] ?? "?") + ".",
+  );
+  out.push("");
+  for (const cls of ["bindable", "prior_office_live"]) {
+    out.push("#### Top 20 `" + cls + "` — what O1 would act on");
+    out.push("");
+    out.push(
+      table(
+        ["name", "state", "live", "current id"],
+        entriesOf(meta, cls).map((e) => [e.name ?? "—", e.state ?? null, e.live ?? null, e.current_id ?? null]),
+      ),
+    );
+  }
+  for (const cls of ["unlisted_live_id", "double_claim", "cross_bioguide_claim"]) {
+    const names = entriesOf(meta, cls)
+      .slice(0, 5)
+      .map((e) => (e.name ?? "—") + (e.state ? " (" + e.state + ")" : ""));
+    out.push(
+      "- `" + cls + "`: **" + n(cls) + "**" + (names.length > 0 ? " — " + names.join(", ") + (n(cls) > 5 ? ", …" : "") : ""),
+    );
+  }
+  out.push("");
+  return out;
+}
+
+function num0(v: unknown): number {
+  const x = Number(v ?? 0);
+  return Number.isFinite(x) ? x : 0;
+}
+
+/**
+ * §10's body. `classes` is the classifier's own list (BINDING_ACTIONS), passed
+ * in so this module keeps no second copy of it.
+ */
+export function legislatorIdsLines(
+  s: LegislatorIdsSection | undefined,
+  asOf: string,
+  classes: readonly string[],
+): string[] {
+  const out: string[] = [];
+  if (s === undefined) {
+    out.push("_Not read — this file predates FIX-1189 O2._");
+    out.push("");
+    return out;
+  }
+  const ref = Date.parse(asOf);
+  const ageH = (at: string | null): number | null => {
+    const t = at === null ? NaN : Date.parse(at);
+    return Number.isNaN(t) || Number.isNaN(ref) ? null : (ref - t) / 3_600_000;
+  };
+  const latest = s.latest;
+  const latestAge = latest === null ? null : ageH(latest.started_at);
+  if (latest === null || latestAge === null || latestAge > LEGISLATOR_IDS_STALE_HOURS) {
+    out.push(
+      "**missing** — no `congress_legislator_ids_report` row in the last " + LEGISLATOR_IDS_STALE_HOURS + " h" +
+        (latest === null ? " (none ever)." : " (latest " + esc(latest.started_at) + ", status " + esc(latest.status) + ")."),
+    );
+    out.push("");
+  } else if (latest.status !== "complete") {
+    out.push(
+      "Latest run " + esc(latest.started_at) + " — **" + esc(latest.status) + "**" +
+        (latest.error ? ": " + esc(latest.error) : "") +
+        ". A failed report stamps `failed`, never an empty `complete`.",
+    );
+    out.push("");
+  } else {
+    out.push("Latest run " + esc(latest.started_at) + " — complete, " + (latestAge ?? 0).toFixed(1) + " h before this file.");
+    out.push("");
+  }
+  const c = s.complete;
+  if (c === null || c.metadata === null) {
+    out.push("_No complete report yet — nothing to count._");
+    out.push("");
+    return out;
+  }
+  if (latest !== null && c.started_at !== latest.started_at) {
+    out.push("> The numbers below are the last COMPLETE report's, taken " + esc(c.started_at) + ".");
+    out.push("");
+  }
+  out.push(...legislatorIdsReportLines(c.metadata, classes));
+  return out;
+}
+
 export interface ReceiptsData {
   nominal_date: string;
   generated_at: string;
@@ -817,6 +985,8 @@ export interface ReceiptsData {
   sld: SldSection;
   /** FIX-1194 — §9, the forker. */
   forker: ForkerSection;
+  /** FIX-1189 O2 — §10. Optional so a pre-O2 JSON still renders. */
+  legislator_ids?: LegislatorIdsSection;
   not_capturable: string[];
   queries: QueryRecord[];
 }
@@ -1328,7 +1498,21 @@ export function renderMarkdown(d: ReceiptsData): string {
   );
 
   // 10 ------------------------------------------------------------------
-  p("## 10. Not capturable here");
+  p("## 10. FEC id divergence (FIX-1189 O2)");
+  p("");
+  p(
+    "The nightly enrichment-light step `congress_legislator_ids_report` compares every federal elected " +
+      "row's FEC candidate ids (`authoritativeClaims()`: live + prior, retired excluded) with " +
+      "`unitedstates/congress-legislators`' `id.fec[]` for that bioguide. **Report-only**: it writes " +
+      "nothing to `officials`. O1, the writer, is gated on a week of these (design D2). `bindable` and " +
+      "`prior_office_live` are the two classes O1 would act on.",
+  );
+  p("");
+  for (const line of legislatorIdsLines(d.legislator_ids, d.generated_at, BINDING_ACTIONS)) p(line);
+  p(queryBlock(d.queries, ["legislator_ids"]));
+
+  // 11 ------------------------------------------------------------------
+  p("## 11. Not capturable here");
   p("");
   p("Named reads that have **no SQL surface**, listed so nobody reads their absence as a clean check.");
   p("");

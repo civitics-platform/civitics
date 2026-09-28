@@ -29,7 +29,7 @@
  * table with hundreds of millions of rows, and every failed statement degrades
  * that section rather than killing the run.
  *
- * WHAT IT CANNOT SEE. Section 9 of the output names the reads with no SQL
+ * WHAT IT CANNOT SEE. Section 11 of the output names the reads with no SQL
  * surface (57014 counts live in `postgres_logs`, which the Logs API serves and
  * SQL does not; GHA job logs age out). They are listed so their absence is
  * never mistaken for a clean check.
@@ -52,6 +52,7 @@ import {
   type JobConclusion,
   type JobFiring,
   type KeyValueRow,
+  type LegislatorIdsRun,
   type PhaseRow,
   type QueryRecord,
   type ReceiptsData,
@@ -452,6 +453,24 @@ UNION ALL
  FROM public.data_sync_log
  WHERE pipeline = 'refresh_derived_mvs'
    AND metadata->>'cadence' IS DISTINCT FROM 'weekly'
+   AND status = 'complete'
+ ORDER BY started_at DESC
+ LIMIT 1)`;
+
+/**
+ * FIX-1189 O2 — §10. The Q_DAILY_RUN split: the latest row of any status says
+ * what happened, the latest `complete` one carries the numbers.
+ */
+const Q_LEGISLATOR_IDS = `
+(SELECT 'latest' AS which, started_at, status, error_message, metadata
+ FROM public.data_sync_log
+ WHERE pipeline = 'congress_legislator_ids_report'
+ ORDER BY started_at DESC
+ LIMIT 1)
+UNION ALL
+(SELECT 'complete' AS which, started_at, status, error_message, metadata
+ FROM public.data_sync_log
+ WHERE pipeline = 'congress_legislator_ids_report'
    AND status = 'complete'
  ORDER BY started_at DESC
  LIMIT 1)`;
@@ -1069,6 +1088,19 @@ async function main(): Promise<void> {
       (err: unknown): MemDay => ({ available: false, reason: err instanceof Error ? err.message : String(err) }),
     );
 
+    // FIX-1189 O2 — §10.
+    const legRows = await r.run<Record<string, unknown>>("legislator_ids", Q_LEGISLATOR_IDS);
+    const legRun = (which: string): LegislatorIdsRun | null => {
+      const row = legRows.find((x) => x["which"] === which);
+      if (row === undefined) return null;
+      return {
+        started_at: iso(row["started_at"]),
+        status: str(row["status"]),
+        error: str(row["error_message"]),
+        metadata: (row["metadata"] ?? null) as Record<string, unknown> | null,
+      };
+    };
+
     const total = num(sldRows[0]?.["total"]);
     const linked = num(sldRows[0]?.["linked"]);
 
@@ -1187,6 +1219,7 @@ async function main(): Promise<void> {
         box_health_mem: boxBy.get("box_health_mem") ?? null,
         mem_day: memDay,
       },
+      legislator_ids: { latest: legRun("latest"), complete: legRun("complete") },
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
     };

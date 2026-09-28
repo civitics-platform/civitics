@@ -64,9 +64,11 @@ never a claim without its instrument.
 | 6 | Interlock footprint | `prod_session_state()` now, and every `skipped` row in the last 24 h with its reason (FIX-950) |
 | 7 | Canary conditions | the last `canary_check` run's keyed conditions, tier and unchanged-run counter (FIX-1036) |
 | 8 | SLD linkage | total / linked / residual, and the residual by state and chamber (FIX-913 / FIX-859 / FIX-914) |
-| 9 | Not capturable here | the named reads with **no SQL surface**, listed so their absence is never read as a clean check |
+| 9 | The forker (FIX-1194) | startup timeouts by hour and by day, who was running in each burst hour, budget cancels and which path acted, box health |
+| 10 | FEC id divergence (FIX-1189 O2) | the latest `congress_legislator_ids_report` row: counts per class (reconciled to the population), the `double_claim` split, the top 20 `bindable` / `prior_office_live` (O1's targets), one line each for `unlisted_live_id` / `double_claim` / `cross_bioguide_claim`; **missing** when no row in 48 h |
+| 11 | Not capturable here | the named reads with **no SQL surface**, listed so their absence is never read as a clean check |
 
-Section 9 is not filler. `57014` cancellation counts live in `postgres_logs`,
+Section 11 is not filler. `57014` cancellation counts live in `postgres_logs`,
 which the Supabase Logs API serves and SQL cannot reach; GHA step logs age out.
 Saying so is the difference between "checked and clean" and "not checked".
 

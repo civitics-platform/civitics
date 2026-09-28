@@ -24,6 +24,7 @@
     "data:fec:resume-status:prod": "tsx --env-file=../../.env.local.prod src/scripts/investigate-fec-resume-state.ts --allow-prod",
     "data:votes": "tsx --env-file=../../.env.local src/pipelines/congress/votes.ts",
     "data:committees": "tsx --env-file=../../.env.local src/pipelines/congress/committees.ts",
+    "data:legislator-ids-report": "tsx --env-file=../../.env.local src/pipelines/congress/legislator-ids-report.ts",
     "data:jurisdictions": "tsx --env-file=../../.env.local src/jurisdictions/us-states.ts",
     "data:sync": "tsx --env-file=../../.env.local src/pipelines/index.ts",
     "data:status": "tsx --env-file=../../.env.local src/pipelines/index.ts status",

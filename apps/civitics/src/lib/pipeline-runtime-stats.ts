@@ -218,6 +218,8 @@ export const PIPELINE_BUDGET_REFS: Record<string, PipelineBudgetRef> = {
   congress_officials: { runner: "github_actions", ghaWorkflow: "nightly.yml" },
   congress_votes: { runner: "github_actions", ghaWorkflow: "nightly.yml" },
   congress_committees: { runner: "github_actions", ghaWorkflow: "nightly.yml" },
+  // FIX-1189 O2 — read-only, every night in enrichment-light.
+  congress_legislator_ids_report: { runner: "github_actions", ghaWorkflow: "nightly.yml" },
   regulations: { runner: "github_actions", ghaWorkflow: "nightly.yml" },
   openstates: { runner: "github_actions", ghaWorkflow: "nightly.yml" },
   openstates_bulk_people: { runner: "github_actions", ghaWorkflow: "nightly.yml" },

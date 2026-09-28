@@ -37,6 +37,7 @@ import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
 import { runBulkPeoplePipeline } from "./openstates-bulk/people";
 import { runOfficialsPipeline, runVotesPipeline, runCommitteesPipeline } from "./congress";
+import { runLegislatorIdReport } from "./congress/legislator-ids-report";
 import { runExecutiveSeed } from "./executive/seed";
 import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
@@ -371,6 +372,7 @@ export interface NightlySyncResults {
     plum_book?: NightlyPipelineResult;
     elections?: NightlyPipelineResult;
     congress_committees?: NightlyPipelineResult;
+    congress_legislator_ids_report?: NightlyPipelineResult; // FIX-1189 O2 (read-only)
     agency_leadership?: NightlyPipelineResult;
     agency_enrichment?: NightlyPipelineResult;
     entity_connections_rebuild?: NightlyPipelineResult;
@@ -842,6 +844,28 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         `cycle=${probe.cycle} remote=${probe.remote_last_modified ?? "(none)"} ` +
         `watermark=${probe.watermark_last_modified ?? "(none)"} (FIX-1163)`,
     );
+  }
+
+  // FIX-1189 O2 — the congress-legislators FEC-id divergence REPORT. Every
+  // night, in enrichment-light for the same reason as the probe above: that job
+  // always runs, and this sits OUTSIDE the weekly block so it is a daily series
+  // (the receipts render it; O1's go/no-go is a week of it, design D2).
+  //
+  // Hold-INDEPENDENT on purpose, like the probe: it reads ~540 elected rows and
+  // the few hundred rows claiming their ids, and its only write is its own
+  // data_sync_log stamp. A report taken during a supervised landing is exactly
+  // the reading one would want after it. It never writes `officials`.
+  //
+  // Non-fatal: a failure stamps `failed` (never an empty `complete`) and is
+  // recorded here, but does not turn the phase `partial` — the freshness census
+  // counts only `complete` rows, so a failing report goes stale on its own.
+  if (runEnrichmentLight) {
+    const t0 = Date.now();
+    const r = await runLegislatorIdReport();
+    results.pipelines.congress_legislator_ids_report =
+      r.status === "complete"
+        ? { status: "complete", rows_added: 0, duration_ms: Date.now() - t0 }
+        : { status: "failed", error: r.error };
   }
 
   // 2. Weekly pipelines (Sunday only) — IRS 990, USASpending, CourtListener, OpenStates

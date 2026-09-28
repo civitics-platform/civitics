@@ -130,6 +130,8 @@ export interface Classification {
   prior?: string[];
   /** The dataset's current-office id, when determinable. */
   current_id: string | null;
+  /** double_claim only: the listed ids another row also claims. */
+  contested?: string[];
   reason: string;
 }
 
@@ -296,12 +298,14 @@ export function classifyBinding(
   // Other rows claiming a listed id, split by whose they are.
   const cross: string[] = [];
   const doubles: string[] = [];
+  const contested = new Set<string>();
   for (const id of sorted(listing.fec)) {
     for (const c of claims.get(id) ?? []) {
       if (c.official_id === row.official_id) continue;
       if (c.bioguide !== null && c.bioguide !== row.bioguide) {
         cross.push(`${id} held by ${c.official_id} (bioguide ${c.bioguide})`);
       } else {
+        contested.add(id);
         doubles.push(`${id} also claimed by ${c.official_id}${c.bioguide === null ? " (no bioguide)" : " (same bioguide)"}`);
       }
     }
@@ -322,7 +326,7 @@ export function classifyBinding(
   }
 
   if (doubles.length > 0) {
-    return { action: "double_claim", current_id: currentId, reason: doubles.join("; ") };
+    return { action: "double_claim", current_id: currentId, contested: sorted(contested), reason: doubles.join("; ") };
   }
 
   // From here every id the row claims is listed and nobody else claims one.
@@ -405,6 +409,15 @@ export interface ReportEntry {
 export interface LegislatorIdReport {
   population: number;
   counts: Record<BindingAction, number>;
+  /**
+   * double_claim, split by WHICH id the other row holds. `current_id`: the
+   * member's current-office id sits on another row — the money-on-a-stub shape
+   * FIX-1187 cleaned up and the cn{yy} stage re-creates. `other_id`: another
+   * row holds a prior-office id, or a live run for a DIFFERENT office (a
+   * sitting Representative's Senate campaign) — a separate candidacy row, which
+   * O1 must not treat as the same defect. Sums to counts.double_claim.
+   */
+  double_claim_split: { current_id: number; other_id: number };
   /** Top 20 per non-noop class, by name then official_id. */
   top_20: Partial<Record<BindingAction, ReportEntry[]>>;
   dataset_members: number;
@@ -442,6 +455,7 @@ export function buildReport(
   const entries: Partial<Record<BindingAction, ReportEntry[]>> = {};
   /** bioguide → rows matched to it through the CURRENT file. */
   const matched = new Map<string, number>();
+  const doubleSplit = { current_id: 0, other_id: 0 };
   let viaHistorical = 0;
 
   for (const row of rows) {
@@ -456,6 +470,10 @@ export function buildReport(
     }
     const c = classifyBinding(row, listing, claims);
     counts[c.action]++;
+    if (c.action === "double_claim") {
+      if (c.current_id !== null && (c.contested ?? []).includes(c.current_id)) doubleSplit.current_id++;
+      else doubleSplit.other_id++;
+    }
     if (c.action === "noop") continue;
     (entries[c.action] ??= []).push({
       bioguide: row.bioguide,
@@ -480,6 +498,7 @@ export function buildReport(
   return {
     population: rows.length,
     counts,
+    double_claim_split: doubleSplit,
     top_20,
     dataset_members: current.length,
     matched_dataset_members: matched.size,
@@ -507,6 +526,8 @@ export function reconcileReport(r: LegislatorIdReport, currentMembers: number): 
   const out: string[] = [];
   const sum = BINDING_ACTIONS.reduce((a, k) => a + r.counts[k], 0);
   if (sum !== r.population) out.push(`classes sum to ${sum}, population is ${r.population}`);
+  const split = r.double_claim_split.current_id + r.double_claim_split.other_id;
+  if (split !== r.counts.double_claim) out.push(`double_claim split sums to ${split}, class is ${r.counts.double_claim}`);
   for (const [action, list] of Object.entries(r.top_20) as Array<[BindingAction, ReportEntry[]]>) {
     if (list.length > r.counts[action]) out.push(`${action}: ${list.length} listed > ${r.counts[action]} counted`);
   }

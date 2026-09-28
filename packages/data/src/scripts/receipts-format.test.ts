@@ -38,6 +38,9 @@ import {
   BOX_HEALTH_PROBE_STALE_MIN,
   boxHealthLines,
   stampLivenessVerdict,
+  legislatorIdsLines,
+  LEGISLATOR_IDS_STALE_HOURS,
+  type LegislatorIdsSection,
 } from "./receipts-format";
 
 const BAND: Band = { lo_s: 0, hi_s: 140, source: "test" };
@@ -457,7 +460,7 @@ function fixture(): ReceiptsData {
   };
 }
 
-test("renderMarkdown: all ten sections are present, in order", () => {
+test("renderMarkdown: all eleven sections are present, in order", () => {
   const md = renderMarkdown(fixture());
   const headings = md.split("\n").filter((l) => l.startsWith("## "));
   assert.deepEqual(headings, [
@@ -470,7 +473,8 @@ test("renderMarkdown: all ten sections are present, in order", () => {
     "## 7. Canary conditions",
     "## 8. SLD district linkage",
     "## 9. The forker (FIX-1194) — job startup timeouts and who was running",
-    "## 10. Not capturable here",
+    "## 10. FEC id divergence (FIX-1189 O2)",
+    "## 11. Not capturable here",
     "## Instrument cost",
   ]);
 });
@@ -894,4 +898,96 @@ test("renderMarkdown: §9 carries the Box health subsection and its query", () =
   const old = renderMarkdown(fixture());
   assert.match(old.slice(old.indexOf("## 9."), old.indexOf("## 10.")), /Probe .* last stamped \*\*never\*\*/);
   assert.match(old, /Day's memory series \(off-box ring\): not read\./);
+});
+
+// ── FIX-1189 O2 — §10, FEC id divergence ─────────────────────────────────────
+
+const LEG_CLASSES = [
+  "noop", "bindable", "prior_office_live", "prior_incomplete", "unlisted_live_id",
+  "double_claim", "cross_bioguide_claim", "ambiguous_current", "dataset_lag", "no_bioguide",
+];
+
+/** The prod dry run of 2026-09-28, trimmed. */
+function legMeta(): Record<string, unknown> {
+  return {
+    population: 539,
+    counts: {
+      noop: 444, bindable: 0, prior_office_live: 2, prior_incomplete: 29, unlisted_live_id: 3,
+      double_claim: 59, cross_bioguide_claim: 0, ambiguous_current: 0, dataset_lag: 2, no_bioguide: 0,
+    },
+    double_claim_split: { current_id: 30, other_id: 29 },
+    top_20: {
+      prior_office_live: [
+        { name: "Bill Foster", state: "IL-11", live: "H8IL14067", current_id: "H2IL11124" },
+        { name: "Lois Frankel", state: "FL-22", live: "H2FL14053", current_id: "H2FL22080" },
+      ],
+      unlisted_live_id: [
+        { name: "Ed Case", state: "HI-1", live: "H8HI01234" },
+        { name: "Nick LaLota", state: "NY-1", live: "H0NY02200" },
+        { name: "Robert Menendez", state: "NJ-8", live: "H2NJ08232" },
+      ],
+    },
+    dataset_members: 539,
+    matched_dataset_members: 539,
+    dataset_ambiguous_current: 9,
+    historical_members_count: 12231,
+    unmatched_dataset_members: { count: 0, first_20: [] },
+    dataset_ref: { current: { etag: 'W/"6ab4f9aa-166a83"', last_modified: "Thu, 24 Sep 2026 10:21:30 GMT" } },
+  };
+}
+
+const LEG_AS_OF = "2026-09-29T00:10:00Z";
+
+test("FIX-1189 §10: a fresh complete report renders counts that reconcile, the O1 tables, and the report-only lines", () => {
+  const run = { started_at: "2026-09-28T23:05:00Z", status: "complete", error: null, metadata: legMeta() };
+  const md = legislatorIdsLines({ latest: run, complete: run }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(md, /Latest run 2026-09-28T23:05:00Z — complete, 1\.1 h before this file/);
+  assert.match(md, /\| _total_ \| 539 \| = population \(539\) — reconciles \|/);
+  assert.match(md, /\| \*\*double_claim\*\* \| 59 \|/);
+  assert.match(md, /\*\*30\*\* with the member's CURRENT id on another row/);
+  assert.match(md, /#### Top 20 `bindable`[\s\S]*_\(no rows\)_/);
+  assert.match(md, /\| Bill Foster \| IL-11 \| H8IL14067 \| H2IL11124 \|/);
+  assert.match(md, /- `unlisted_live_id`: \*\*3\*\* — Ed Case \(HI-1\), Nick LaLota \(NY-1\), Robert Menendez \(NJ-8\)$/m);
+  assert.match(md, /- `cross_bioguide_claim`: \*\*0\*\*$/m);
+  assert.doesNotMatch(md, /\*\*missing\*\*/);
+});
+
+test("FIX-1189 §10: no row in 48 h is `missing`, and so is no row ever", () => {
+  const old = { started_at: "2026-09-26T23:00:00Z", status: "complete", error: null, metadata: legMeta() };
+  const stale = legislatorIdsLines({ latest: old, complete: old }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.ok(
+    stale.includes(
+      "**missing** — no `congress_legislator_ids_report` row in the last " +
+        LEGISLATOR_IDS_STALE_HOURS +
+        " h (latest 2026-09-26T23:00:00Z",
+    ),
+    stale,
+  );
+  const never = legislatorIdsLines({ latest: null, complete: null }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(never, /\*\*missing\*\*.*\(none ever\)/);
+  assert.match(never, /No complete report yet/);
+});
+
+test("FIX-1189 §10: a failed latest run says so and still carries the last COMPLETE numbers, labelled", () => {
+  const failed = { started_at: "2026-09-28T23:05:00Z", status: "failed", error: "Failed to fetch …: 503", metadata: null };
+  const prev = { started_at: "2026-09-27T23:04:00Z", status: "complete", error: null, metadata: legMeta() };
+  const md = legislatorIdsLines({ latest: failed, complete: prev }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(md, /\*\*failed\*\*: Failed to fetch …: 503/);
+  assert.match(md, /last COMPLETE report's, taken 2026-09-27T23:04:00Z/);
+  assert.match(md, /= population \(539\) — reconciles/);
+});
+
+test("FIX-1189 §10: a report whose classes do not sum to the population is flagged, not passed", () => {
+  const meta = legMeta();
+  (meta["counts"] as Record<string, number>)["noop"] = 400;
+  const run = { started_at: "2026-09-28T23:05:00Z", status: "complete", error: null, metadata: meta };
+  const md = legislatorIdsLines({ latest: run, complete: run }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(md, /\*\*≠ population 539\*\*/);
+});
+
+test("FIX-1189 §10: a pre-O2 file (no section data) renders a stated absence", () => {
+  const s: LegislatorIdsSection | undefined = undefined;
+  assert.match(legislatorIdsLines(s, LEG_AS_OF, LEG_CLASSES).join("\n"), /predates FIX-1189 O2/);
+  const md = renderMarkdown(fixture());
+  assert.match(md.slice(md.indexOf("## 10."), md.indexOf("## 11.")), /predates FIX-1189 O2/);
 });
