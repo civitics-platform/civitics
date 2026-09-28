@@ -574,11 +574,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       }
       // Stable palette index per donor — collisions across entities produce
       // matching colors automatically.
-      function donorPaletteIndex(donor_id: string): number {
+      const donorPaletteIndex = (donor_id: string): number => {
         let h = 0;
         for (let i = 0; i < donor_id.length; i++) h = (h * 31 + donor_id.charCodeAt(i)) | 0;
         return Math.abs(h);
-      }
+      };
       root = {
         name: "root",
         children: compareEntries.map((entry, idx) => ({

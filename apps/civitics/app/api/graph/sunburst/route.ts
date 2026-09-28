@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const supabase = createAdminClient({ fetch: noStoreFetch });
 
     // ── Helper: resolve names for a list of to_ids ─────────────────────────
-    async function buildNameMap(allToIds: string[]): Promise<Map<string, { name: string; entityType: string; party?: string }>> {
+    const buildNameMap = async (allToIds: string[]): Promise<Map<string, { name: string; entityType: string; party?: string }>> => {
       const nameMap = new Map<string, { name: string; entityType: string; party?: string }>();
       if (allToIds.length === 0) return nameMap;
 
@@ -76,10 +76,10 @@ export async function GET(req: NextRequest) {
       }
 
       return nameMap;
-    }
+    };
 
     // ── Helper: sort ring2 children by the selected mode ──────────────────
-    function sortByRing2<T extends { value?: number; strength?: number }>(items: T[]): T[] {
+    const sortByRing2 = <T extends { value?: number; strength?: number }>(items: T[]): T[] => {
       switch (ring2) {
         case 'by_amount':
           return [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
@@ -90,13 +90,13 @@ export async function GET(req: NextRequest) {
         default:
           return [...items].sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0));
       }
-    }
+    };
 
     // ── Helper: build children hierarchy from connections ──────────────────
-    function buildChildren(
+    const buildChildren = (
       connections: Array<{ connection_type: string | null; to_id: string; strength: number; amount_cents: number | null }>,
       nameMap: Map<string, { name: string; entityType: string; party?: string }>
-    ) {
+    ) => {
       const byType = new Map<string, typeof connections>();
       for (const conn of connections) {
         const type = conn.connection_type ?? "other";
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
           const bTotal = b.children.reduce((s, c) => s + (c.value ?? 0), 0);
           return bTotal - aTotal;
         });
-    }
+    };
 
     // ── Group mode ─────────────────────────────────────────────────────────
     if (groupId && groupFilterRaw) {

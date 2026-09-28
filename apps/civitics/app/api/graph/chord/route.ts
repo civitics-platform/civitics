@@ -505,7 +505,7 @@ export async function GET(req: NextRequest) {
 
       type DonorRow = { id: string; label: string; icon: string; total_cents: number; pac_count: number; industry?: string };
 
-      async function fetchDonorsFor(officialId: string): Promise<DonorRow[]> {
+      const fetchDonorsFor = async (officialId: string): Promise<DonorRow[]> => {
         if (granularity === 'top-pacs') {
           // Fetch a wider per-official batch (2× the requested limit, capped
           // at 100) so the union has enough candidates to surface PACs that
@@ -556,7 +556,7 @@ export async function GET(req: NextRequest) {
                 icon: 'corporation', total_cents: Number(r.total_cents),
                 pac_count: r.donor_count,
               });
-      }
+      };
 
       const [{ data: officialsData }, ...perOfficialDonors] = await Promise.all([
         officialsPromise,

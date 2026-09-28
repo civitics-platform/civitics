@@ -691,7 +691,7 @@ export default async function OfficialProfilePage({
           pct: totalDonations > 0 ? Math.round((cents / totalDonations) * 100) : 0,
         }));
 
-      function aggregateOutsideSpenders(rows: typeof enriched): { rows: OutsideSpenderRow[]; total: number } {
+      const aggregateOutsideSpenders = (rows: typeof enriched): { rows: OutsideSpenderRow[]; total: number } => {
         const map = new Map<string, OutsideSpenderRow>();
         let total = 0;
         for (const r of rows) {
@@ -712,7 +712,7 @@ export default async function OfficialProfilePage({
         }
         const aggregated = [...map.values()].sort((a, b) => b.total_cents - a.total_cents).slice(0, 50);
         return { rows: aggregated, total };
-      }
+      };
       ieSupport = aggregateOutsideSpenders(enriched.filter((r) => r.relationship_type === "ie_support"));
       ieOppose  = aggregateOutsideSpenders(enriched.filter((r) => r.relationship_type === "ie_oppose"));
     }
