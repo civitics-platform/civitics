@@ -1514,3 +1514,6 @@
 2026-09-27 | FIX-918 | 3c37772e | local-only | feat(db): FIX-918 — official_sector_dollars_mv + chord_industry_flows_mv read primary_industry_tag(); the swap runs with the weekly unit's parallel-off settings
 2026-09-27 | FIX-918 | fd1bfcca | prod-only | chore(fixes): record prod verification of FIX-918
 2026-09-27 | FIX-919 | 4879310f | prod-only | chore(fixes): FIX-919 prod receipt — the first NAICS tags
+2026-09-27 | FIX-1228 | 73725c87 | prod-only | chore(fixes): record prod verification of FIX-1228
+2026-09-27 | FIX-1228 | ebea2c7e | local-only | feat(app): FIX-1228 — the donor page reads donor_outbound_summary; Recipients is the exact distinct count
+2026-09-27 | FIX-460 | 66bf3ece | local-only | ci(lint): FIX-460 — warn rules promoted to error; --max-warnings 0 on every lint script
