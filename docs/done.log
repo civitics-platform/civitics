@@ -1517,3 +1517,4 @@
 2026-09-27 | FIX-1228 | 73725c87 | prod-only | chore(fixes): record prod verification of FIX-1228
 2026-09-27 | FIX-1228 | ebea2c7e | local-only | feat(app): FIX-1228 — the donor page reads donor_outbound_summary; Recipients is the exact distinct count
 2026-09-27 | FIX-460 | 66bf3ece | local-only | ci(lint): FIX-460 — warn rules promoted to error; --max-warnings 0 on every lint script
+2026-09-27 | FIX-1242 | 7f0fd51e | local-only | feat(cc): FIX-1242 — pnpm board renders the lane board (projects · week · lanes) from the tree; board.local.json for the supervised windows
