@@ -1,0 +1,31 @@
+{
+  "cc": "170",
+  "prompt": "cc-prompt-170-fix1189-o2-congress-legislators-fec-id-divergence-report.md",
+  "started_at": "2026-09-28T02:55:42Z",
+  "finished_at": "2026-09-28T03:41:09Z",
+  "head_before": "79d6aa8d",
+  "head_after": "685dc084",
+  "commits": [
+    {
+      "sha": "4d74e491",
+      "subject": "feat(data): FIX-1189 — classifyBinding(): the congress-legislators id.fec[] conflict table as a pure function, with the design's §4 fixtures"
+    },
+    {
+      "sha": "5f87f4de",
+      "subject": "feat(data): FIX-1189 — the nightly light phase reports FEC-id divergence read-only (congress_legislator_ids_report); receipts section"
+    },
+    {
+      "sha": "685dc084",
+      "subject": "docs(fixes): FIX-1189 — O2 shipped; dry-run counts; O1 gated on a week of reports"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "No database write. Three pushes to main, each a Vercel deploy: 4d74e491 (committed 03:10:35, pushed right after the 03:10:21 held=false read), 5f87f4de (pushed 03:31:43, after the 03:31:06 read: held=false, live_writers = one pg_cron ec-crawl unit entity_connections_rebuild, 67 s old, no claim), 685dc084 (pushed 03:35:04, after the 03:34:42 read: held=false, live_writers []). This report is a fourth. From tonight's nightly on, enrichment-light writes ONE data_sync_log row per night (pipeline congress_legislator_ids_report, rows_inserted 0) and nothing else. Every prod contact this session was a read. db-query --prod ran the population 2x2, officials indexes and size, the federal chamber governing_bodies, congress_committees history and prod_session_state x4. Through PostgREST (service role, --allow-prod), there were two --dry-run runs of the report at 03:13 and 03:32 (neither calls startSync, so no stamp), one scratch read of the id-less rows and the double_claim claimants' tiers, and the read-3 pull of the 539 rows to a scratchpad file.",
+  "ci": "green",
+  "stopped_items": [
+    "D2's 'register the pipeline in cron-job-pipelines.ts with a daily cadence': the tree contradicts the premise. cron-job-pipelines.ts has no registration shape; it DERIVES the pg_cron job-to-pipeline map from cron.job and pg_proc, and a GHA step is in neither. The GHA-side registry, PIPELINE_BUDGET_REFS in apps/civitics/src/lib/pipeline-runtime-stats.ts, got the entry. The freshness census (FIX-1011) lists any data_sync_log pipeline by derivation, so it needed no change. A DECLARED daily cadence would be a rollup_watch_overrides row, which is a migration, and this prompt is code-only. So none was declared. Until the census has 4 closures it reads cadence_source default (168 h) and never escalates. Receipts §10's 48 h 'missing' line is the interim watch."
+  ]
+}
