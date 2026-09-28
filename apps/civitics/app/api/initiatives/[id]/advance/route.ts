@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient, createAdminClient } from "@civitics/db";
+import { createServerClient, createAdminClient, type Database } from "@civitics/db";
 import { computeGate } from "../../_lib/gate";
 
 export const dynamic = "force-dynamic";
+
+// The embedded initiative_details row, typed from the schema. The select's
+// FK-hinted embed comes back from supabase-js as an untyped value, so the shape
+// is stated here rather than inferred as any.
+type InitiativeDetailsEmbed = Pick<
+  Database["public"]["Tables"]["initiative_details"]["Row"],
+  "stage" | "primary_author_id" | "mobilise_started_at" | "scope"
+>;
 
 // ─── POST /api/initiatives/[id]/advance ──────────────────────────────────────
 // Advance an initiative to the next stage. Two valid transitions:
@@ -41,10 +49,13 @@ export async function POST(
     }
 
     // Supabase returns a single related row as an object because proposal_id is unique on initiative_details.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const details = Array.isArray(proposal.initiative_details)
-      ? (proposal.initiative_details[0] as any)
-      : (proposal.initiative_details as any);
+    const embedded = proposal.initiative_details as unknown as
+      | InitiativeDetailsEmbed
+      | InitiativeDetailsEmbed[];
+    const details = Array.isArray(embedded) ? embedded[0] : embedded;
+    if (!details) {
+      return NextResponse.json({ error: "Initiative not found" }, { status: 404 });
+    }
 
     if (details.primary_author_id !== user.id) {
       return NextResponse.json({ error: "Only the author can advance this initiative" }, { status: 403 });

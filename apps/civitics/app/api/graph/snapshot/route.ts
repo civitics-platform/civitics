@@ -493,9 +493,8 @@ async function buildForceData(
   let path: string[] | undefined;
   if (resolvedId && resolvedId2) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pathResult = await withDbTimeout<{ data: unknown; error: { message: string } | null }>(
-        (supabase as any).rpc("find_entity_path", {
+        supabase.rpc("find_entity_path", {
           p_from_id: resolvedId,
           p_to_id: resolvedId2,
           p_max_hops: 4,
@@ -593,9 +592,8 @@ async function buildChordData(
     donor_count: number;
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chordResult = await withDbTimeout<{ data: FlowRow[] | null; error: unknown }>(
-    (supabase as any).rpc("chord_industry_flows")
+    supabase.rpc("chord_industry_flows")
   );
   const { data, error } = chordResult;
   const queries = 1;
@@ -708,9 +706,8 @@ async function buildTreemapData(
   max_value_entity: string;
   queries: number;
 }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await withDbTimeout<{ data: Array<{ official_id: string; official_name: string; party: string; state: string; chamber: string; total_donated_cents: number }> | null; error: unknown }>(
-    (supabase as any).rpc("treemap_officials_by_donations", {
+    supabase.rpc("treemap_officials_by_donations", {
       lim: Math.min(limit, 200),
     })
   );

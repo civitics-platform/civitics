@@ -39,12 +39,16 @@ type Answer = {
 // Q&A v2 PR-1 (FIX-627): a sourced, from-the-record response by any signed-in user.
 // NOT the official's voice — rendered below the official answer in neutral chrome,
 // ranked by bridge_score, two-axis rateable + flaggable.
+// entity_comments.rating_summary is jsonb rebuilt by a trigger; its counters are
+// read defensively (Number(...) || 0), so unknown values are the honest type.
+type RatingSummary = Record<string, unknown>;
+
 type CommunityNote = {
   id: string;
   body: string;
   created_at: string;
   bridge_score: number | null;
-  rating_summary: any;
+  rating_summary: RatingSummary | null;
   is_constituent: boolean;
   author_name: string;
   author_is_synthetic?: boolean;
@@ -177,16 +181,16 @@ function NoteRatingControls({
   signInNext,
 }: {
   noteId: string;
-  initialSummary: any;
+  initialSummary: RatingSummary | null;
   myRating?: ViewerRating;
   signInNext: string;
 }) {
-  const net = (s: any, key: "agree" | "valuable") =>
+  const net = (s: RatingSummary, key: "agree" | "valuable") =>
     (Number(s?.[`${key}_up`]) || 0) -
     (Number(s?.[`${key}_down`]) || 0) +
     (key === "valuable" ? Number(s?.legacy_upvotes) || 0 : 0);
 
-  const [summary, setSummary] = useState<any>(initialSummary ?? {});
+  const [summary, setSummary] = useState<RatingSummary>(initialSummary ?? {});
   const [myAgree, setMyAgree] = useState(0);
   const [myValuable, setMyValuable] = useState(0);
   const [busy, setBusy] = useState(false);

@@ -14,6 +14,7 @@ import {
   topScore,
   hasRecordLink,
   type CommentPayload,
+  type RawComment,
 } from "./_lib";
 import { getSlowMode } from "@/lib/slow-mode";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
@@ -160,7 +161,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ comments: tree, nextCursor: null });
     }
 
-    let roots: any[];
+    let roots: RawComment[];
     let nextCursor: string | null = null;
 
     if (sort === "bridge") {
@@ -207,7 +208,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (roots.length === limit) {
-        const last = roots[roots.length - 1];
+        const last = roots[roots.length - 1]!; // length === limit ≥ 1
         nextCursor = encodeBridgeCursor(
           last.bridge_score != null
             ? { region: 1, score: String(last.bridge_score), createdAt: last.created_at, id: last.id }
@@ -245,7 +246,7 @@ export async function GET(request: NextRequest) {
       if (error) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
       roots = data ?? [];
       if (roots.length === limit) {
-        const last = roots[roots.length - 1];
+        const last = roots[roots.length - 1]!; // length === limit ≥ 1
         nextCursor = encodeCursor(last.created_at, last.id);
       }
     }
@@ -255,7 +256,7 @@ export async function GET(request: NextRequest) {
     // max 50. Note the DESCENDANT read this feeds is NOT bounded — its author
     // list is chunked in fetchAuthorMeta — FIX-902
     const rootIds = roots.map((r) => r.id);
-    let descendants: any[] = [];
+    let descendants: RawComment[] = [];
     if (rootIds.length > 0) {
       const { data: desc } = await admin
         .from("entity_comments")

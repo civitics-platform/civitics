@@ -13,6 +13,7 @@ import nextDynamic from "next/dynamic";
 import {
   createPublicClient,
   fetchAttributionForEntity,
+  type Database,
 } from "@civitics/db";
 import { createClient } from "@supabase/supabase-js";
 import { AgencyHierarchyTree } from "../../agencies/[slug]/components/AgencyHierarchyTree";
@@ -226,20 +227,19 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   if (!UUID_RE.test(id)) return { title: "Institution" };
 
-  const supabase = createClient(
+  const supabase = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = (await withDbTimeout(
-    (supabase as any)
+  const { data } = await withDbTimeout(
+    supabase
       .from("institutions")
       .select("name, acronym")
       .eq("id", id)
       .maybeSingle(),
     3000,
     "institutions:metadata"
-  )) as any;
+  );
 
   if (!data) return { title: "Institution" };
   const label = data.acronym ? `${data.acronym} — ${data.name}` : data.name;
@@ -273,9 +273,8 @@ export default async function InstitutionPage({
     permanentRedirect(`/institutions/${slugRow.id}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const instRes = (await withDbTimeout(
-    (supabase as any)
+  const instRes = await withDbTimeout(
+    supabase
       .from("institutions")
       .select(
         "id, jurisdiction_id, type, name, short_name, website_url, contact_email, is_active, slug, source_table, acronym, usaspending_agency_id, usaspending_subtier_id, parent_id, primary_source, primary_source_url, primary_source_last_seen_at, metadata, is_synthetic"
@@ -284,7 +283,7 @@ export default async function InstitutionPage({
       .maybeSingle(),
     3000,
     "institutions:detail"
-  )) as any;
+  );
 
   const institution = instRes.data as InstitutionRow | null;
   // FIX-1227: the page's own reads have settled (each view checks its own).

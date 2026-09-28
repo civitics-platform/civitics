@@ -154,10 +154,10 @@ export async function GET(req: NextRequest) {
         data: Array<{ id: string }> | null;
         error: { message: string } | null;
       }>(
-        (supabase as any).rpc("get_officials_by_filter", {
-          p_chamber: groupFilter.chamber ?? null,
-          p_party:   groupFilter.party   ?? null,
-          p_state:   groupFilter.state   ?? null,
+        supabase.rpc("get_officials_by_filter", {
+          p_chamber: groupFilter.chamber ?? undefined,
+          p_party:   groupFilter.party   ?? undefined,
+          p_state:   groupFilter.state   ?? undefined,
         })
       );
 
@@ -170,9 +170,8 @@ export async function GET(req: NextRequest) {
 
       // ── Group mode: donation_industries ─────────────────────────────────────
       if (ring1 === "donation_industries") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: sectorData, error: sectorError } = await withDbTimeout<{ data: Array<{ sector: string; total_usd: number }> | null; error: unknown }>(
-          (supabase as any).rpc("get_group_sector_totals", {
+          supabase.rpc("get_group_sector_totals", {
             p_member_ids: memberIds,
             p_min_usd: 0,
           })
@@ -208,7 +207,7 @@ export async function GET(req: NextRequest) {
         data: Array<{ connection_type: string | null; to_id: string; strength: number; amount_cents: number | null; from_id: string }> | null;
         error: { message: string } | null;
       }>(
-        (supabase as any).rpc("get_group_connections", {
+        supabase.rpc("get_group_connections", {
           p_member_ids: memberIds,
           p_limit: 500,
         })

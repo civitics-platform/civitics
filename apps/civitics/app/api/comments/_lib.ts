@@ -7,12 +7,12 @@
 // status/lens in the query — never lean on RLS for visibility here.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { kindLabel, MAX_THREAD_DEPTH, type EntityCommentType } from "@civitics/db";
+import { kindLabel, MAX_THREAD_DEPTH, type Database, type EntityCommentType } from "@civitics/db";
 import { fetchChunkedByIds } from "@/lib/paginate";
 
-// Loosely-typed admin client alias — the generated Database type is threaded
-// through createAdminClient already; this keeps the helper signatures readable.
-type Admin = SupabaseClient<any, "public", any>;
+// The admin client as createAdminClient() returns it — the generated Database
+// type, so a helper's reads are checked against the schema they run on.
+type Admin = SupabaseClient<Database>;
 
 export type CommentPayload = {
   id: string;
@@ -48,7 +48,7 @@ export type CommentPayload = {
   replies: CommentPayload[];
 };
 
-type RawComment = {
+export type RawComment = {
   id: string;
   entity_type: string;
   entity_id: string;
@@ -223,7 +223,12 @@ export async function resolveEntityJurisdiction(
     : entityType === "institution" ? "institutions"
     : null;
   if (!table) return null; // financial_entity / district → no badge
-  const { data } = await admin.from(table).select("jurisdiction_id").eq("id", entityId).maybeSingle();
+  // `institutions` is a view and the other two are tables; `.from()` takes a
+  // relation name from one of those sets per call, so the view reads alone.
+  const { data } =
+    table === "institutions"
+      ? await admin.from(table).select("jurisdiction_id").eq("id", entityId).maybeSingle()
+      : await admin.from(table).select("jurisdiction_id").eq("id", entityId).maybeSingle();
   return (data as { jurisdiction_id: string | null } | null)?.jurisdiction_id ?? null;
 }
 

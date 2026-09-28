@@ -127,12 +127,11 @@ export async function GET(req: NextRequest) {
   // ── Helper: resolve official member IDs for a GroupFilter ─────────────────
   async function getMemberIds(filter: GroupFilter): Promise<string[]> {
     console.log('[getMemberIds] filter:', JSON.stringify(filter));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await withDbTimeout<{ data: Array<{ id: string }> | null; error: unknown }>(
-      (supabase as any).rpc('get_officials_by_filter', {
-        p_chamber: filter.chamber ?? null,
-        p_party:   filter.party   ?? null,
-        p_state:   filter.state   ?? null,
+      supabase.rpc('get_officials_by_filter', {
+        p_chamber: filter.chamber ?? undefined,
+        p_party:   filter.party   ?? undefined,
+        p_state:   filter.state   ?? undefined,
       })
     );
     console.log('[getMemberIds] count:', data?.length ?? 0);
@@ -159,9 +158,8 @@ export async function GET(req: NextRequest) {
         return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' }));
       }
       const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await withDbTimeout<{ data: Array<{ sector: string; display_label: string; display_icon: string; vote_outcome: string; total_usd: number; vote_count: number }> | null; error: unknown }>(
-        (supabase as any).rpc('chord_sector_vote_for_officials', { p_official_ids: cohortIds, p_min_usd: minFlowParam })
+        supabase.rpc('chord_sector_vote_for_officials', { p_official_ids: cohortIds, p_min_usd: minFlowParam })
       );
       if (error) {
         console.error('[chord/sector-vote] rpc error:', error);
@@ -219,9 +217,8 @@ export async function GET(req: NextRequest) {
   if (dataMode === 'subject-party') {
     try {
       const cohortIds = await resolveCohortIds();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await withDbTimeout<{ data: Array<{ subject: string; display_label: string; display_icon: string; party_chamber: string; vote_count: number }> | null; error: unknown }>(
-        (supabase as any).rpc('chord_subject_party_flows', { p_official_ids: cohortIds.length ? cohortIds : null })
+        supabase.rpc('chord_subject_party_flows', { p_official_ids: cohortIds.length ? cohortIds : undefined })
       );
       if (error) {
         console.error('[chord/subject-party] rpc error:', error);
@@ -276,9 +273,8 @@ export async function GET(req: NextRequest) {
   if (dataMode === 'donor-type-party') {
     try {
       const cohortIds = await resolveCohortIds();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await withDbTimeout<{ data: Array<{ donor_type: string; party_chamber: string; total_usd: number }> | null; error: unknown }>(
-        (supabase as any).rpc('chord_donor_type_party_flows', { p_official_ids: cohortIds.length ? cohortIds : null })
+        supabase.rpc('chord_donor_type_party_flows', { p_official_ids: cohortIds.length ? cohortIds : undefined })
       );
       if (error) {
         console.error('[chord/donor-type-party] rpc error:', error);
@@ -329,9 +325,8 @@ export async function GET(req: NextRequest) {
   // Mode: state-party — donor home state × recipient party_chamber.
   if (dataMode === 'state-party') {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await withDbTimeout<{ data: Array<{ donor_state: string; party_chamber: string; total_usd: number }> | null; error: unknown }>(
-        (supabase as any).rpc('chord_donor_state_party_flows', { p_official_id: entityId ?? null })
+        supabase.rpc('chord_donor_state_party_flows', { p_official_id: entityId ?? undefined })
       );
       if (error) {
         console.error('[chord/state-party] rpc error:', error);
@@ -392,9 +387,8 @@ export async function GET(req: NextRequest) {
         return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'cross-group' }));
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: sectorData, error: sectorError } = await withDbTimeout<{ data: Array<{ sector: string; group1_usd: number; group2_usd: number }> | null; error: unknown }>(
-        (supabase as any).rpc(
+        supabase.rpc(
           'get_crossgroup_sector_totals',
           { p_group1_ids: group1Ids, p_group2_ids: group2Ids }
         )
@@ -443,9 +437,8 @@ export async function GET(req: NextRequest) {
 
       const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: sectorData, error: sectorError } = await withDbTimeout<{ data: Array<{ sector: string; total_usd: number }> | null; error: unknown }>(
-        (supabase as any).rpc(
+        supabase.rpc(
           'get_group_sector_totals',
           { p_member_ids: memberIds, p_min_usd: minFlowParam }
         )
@@ -515,10 +508,9 @@ export async function GET(req: NextRequest) {
 
       // Fetch official names + per-official donor breakdowns in parallel.
       const officialsPromise = withDbTimeout<{ data: Array<{ id: string; full_name: string }> | null; error: unknown }>(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         // .in() bounded: entityIds is UUID-validated and `.slice(0, 12)`d at
         // parse time (FIX-503), max 12 — FIX-902
-        (supabase as any).from('officials').select('id, full_name').in('id', entityIds)
+        supabase.from('officials').select('id, full_name').in('id', entityIds)
       );
 
       type DonorRow = { id: string; label: string; icon: string; total_cents: number; pac_count: number; industry?: string };

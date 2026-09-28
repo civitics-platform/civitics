@@ -8,10 +8,10 @@
 // Used by the detail-page SSR loaders to pass `slowMode` to the client, and by
 // the comments POST path to detect the off→on transition (rescore-on-trip).
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, type Database } from "@civitics/db";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-type AnyClient = SupabaseClient<any, "public", any>;
+type AnyClient = SupabaseClient<Database>;
 
 export async function getSlowMode(
   entityType: string,

@@ -8,9 +8,9 @@
 // the right to post and never already-posted content.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { NEW_ACCOUNT_AGE_HOURS, NEW_ACCOUNT_MIN_ACTIONS } from "@civitics/db";
+import { NEW_ACCOUNT_AGE_HOURS, NEW_ACCOUNT_MIN_ACTIONS, type Database } from "@civitics/db";
 
-type AnyClient = SupabaseClient<any, "public", any>;
+type AnyClient = SupabaseClient<Database>;
 
 const SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";

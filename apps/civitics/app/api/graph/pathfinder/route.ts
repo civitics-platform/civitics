@@ -21,9 +21,8 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
 
     // BFS via recursive CTE
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await withDbTimeout(
-      (supabase as any).rpc("find_entity_path", {
+      supabase.rpc("find_entity_path", {
         p_from_id: from_id,
         p_to_id: to_id,
         p_max_hops: Math.min(max_hops, 4),
