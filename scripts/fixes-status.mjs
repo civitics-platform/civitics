@@ -29,7 +29,7 @@ import { execSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
+import { parseDoneLog, deriveStatus, buildUniverse } from "./lib/fix-status.mjs";
 import { walkFixBullets, titleOf, ID_MARKER_RE } from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
@@ -82,14 +82,9 @@ export function buildTitleIndex({ fixesText = "", archiveText = "" } = {}) {
   return { titles, sources };
 }
 
-/** Every id the repo knows about, from all three files. */
-export function buildUniverse({ statusMap, fixesText = "", archiveText = "" }) {
-  const ids = new Set(statusMap.keys());
-  for (const text of [fixesText, archiveText]) {
-    for (const m of String(text).matchAll(new RegExp(ID_MARKER_RE.source, "g"))) ids.add(m[1]);
-  }
-  return [...ids].sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)));
-}
+// buildUniverse lives in lib/fix-status.mjs so `pnpm board` can import the
+// open count without importing this CLI (FIX-1242); re-exported unchanged.
+export { buildUniverse };
 
 export function buildItems({ universe, statusMap, titles, sources, ids, opts }) {
   const wanted = ids.length ? new Set(ids) : null;

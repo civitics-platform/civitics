@@ -117,3 +117,17 @@ export function statusFromDoneLog(text) {
 export function statusOf(map, id) {
   return map.get(id)?.status ?? "open";
 }
+
+/**
+ * Every id the repo knows about: done.log's ids plus every `<!--id:FIX-NNN-->`
+ * marker in FIXES.md and the archive, sorted numerically. `fixes:status`'s open
+ * count is `universe.filter(id => statusOf(map, id) === "open").length`.
+ * (Moved here from scripts/fixes-status.mjs, which re-exports it — FIX-1242.)
+ */
+export function buildUniverse({ statusMap, fixesText = "", archiveText = "" }) {
+  const ids = new Set(statusMap.keys());
+  for (const text of [fixesText, archiveText]) {
+    for (const m of String(text).matchAll(/<!--\s*id:\s*(FIX-\d+)\s*-->/g)) ids.add(m[1]);
+  }
+  return [...ids].sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)));
+}

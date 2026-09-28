@@ -1,0 +1,20 @@
+{
+  "nominal_date": "2026-09-20",
+  "generated_at": "2026-09-19T23:00:00Z",
+  "interlock": {
+    "prod_session": [
+      {
+        "key": "held",
+        "value": "false"
+      }
+    ],
+    "skips_24h": []
+  },
+  "cron_jobs": [],
+  "nightly": {
+    "created_at": "2026-09-27T21:00:12Z",
+    "run_id": 1,
+    "conclusion": "success",
+    "jobs": []
+  }
+}

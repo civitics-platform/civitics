@@ -1,0 +1,127 @@
+{
+  "nominal_date": "2026-09-28",
+  "generated_at": "2026-09-27T23:31:31.143Z",
+  "interlock": {
+    "prod_session": [
+      {
+        "key": "pid",
+        "value": "4242"
+      },
+      {
+        "key": "held",
+        "value": "true"
+      },
+      {
+        "key": "defer",
+        "value": "false"
+      },
+      {
+        "key": "reason",
+        "value": "cc-902 fixture hold"
+      },
+      {
+        "key": "claimant",
+        "value": "cc-902"
+      },
+      {
+        "key": "claimed_at",
+        "value": "2026-09-27T20:00:00Z"
+      },
+      {
+        "key": "expected_minutes",
+        "value": "30"
+      },
+      {
+        "key": "live_writers",
+        "value": "[]"
+      }
+    ],
+    "skips_24h": []
+  },
+  "cron_jobs": [
+    {
+      "jobname": "daily-vacuum",
+      "jobid": 3,
+      "schedule": "0 3 * * *",
+      "active": true,
+      "pipeline": "",
+      "last_start": "",
+      "last_end": "",
+      "duration_s": 0,
+      "cron_status": "succeeded",
+      "band": "",
+      "verdict": "ok"
+    },
+    {
+      "jobname": "donor-party-rollup-refresh",
+      "jobid": 17,
+      "schedule": "0 15 * * 2",
+      "active": true,
+      "pipeline": "",
+      "last_start": "",
+      "last_end": "",
+      "duration_s": 0,
+      "cron_status": "succeeded",
+      "band": "",
+      "verdict": "ok"
+    },
+    {
+      "jobname": "monthly-first",
+      "jobid": 23,
+      "schedule": "30 11 1 * *",
+      "active": true,
+      "pipeline": "",
+      "last_start": "",
+      "last_end": "",
+      "duration_s": 0,
+      "cron_status": "succeeded",
+      "band": "",
+      "verdict": "ok"
+    },
+    {
+      "jobname": "monthly-fifteenth",
+      "jobid": 24,
+      "schedule": "0 12 15 * *",
+      "active": true,
+      "pipeline": "",
+      "last_start": "",
+      "last_end": "",
+      "duration_s": 0,
+      "cron_status": "succeeded",
+      "band": "",
+      "verdict": "ok"
+    },
+    {
+      "jobname": "inactive-weekly",
+      "jobid": 2,
+      "schedule": "0 8 * * 3",
+      "active": false,
+      "pipeline": "",
+      "last_start": "",
+      "last_end": "",
+      "duration_s": 0,
+      "cron_status": "succeeded",
+      "band": "",
+      "verdict": "ok"
+    },
+    {
+      "jobname": "every-quarter-hour-mondays",
+      "jobid": 8,
+      "schedule": "*/15 * * * 1",
+      "active": true,
+      "pipeline": "",
+      "last_start": "",
+      "last_end": "",
+      "duration_s": 0,
+      "cron_status": "succeeded",
+      "band": "",
+      "verdict": "ok"
+    }
+  ],
+  "nightly": {
+    "created_at": "2026-09-27T21:00:12Z",
+    "run_id": 1,
+    "conclusion": "success",
+    "jobs": []
+  }
+}

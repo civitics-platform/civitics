@@ -28,6 +28,10 @@ default). Read by `scripts/lib/cc-config.mjs`:
 | `boardDir` | `../Claude/civitics/board` | the **primary checkout** (FIX-1242) |
 | `lanes` | `ops, fec, app, hygiene, design` | — the closed list a `lane:` may name |
 
+`boardDir` is written by `pnpm board`. `CIVITICS_CC_BOARD_DIR` overrides it.
+The supervised-window footer reads `.claude/board.local.json` from the primary
+checkout, if that file exists (shape: `docs/cc/board.local.example.json`).
+
 The split matters. Prompts live outside the repo, so a path relative to
 `git rev-parse --show-toplevel` breaks the moment you are in
 `../civitics-worktrees/fix-NNN` — which is the normal case, because agents never
@@ -206,11 +210,17 @@ Docs-only, so `tests.yml` skips it via `paths-ignore` and `fixes-integrity.yml`
 still runs. Print the same report text into the chat as well — Craig may still
 read it there; the file is the record.
 
-Once the report commit is pushed, clear the in-flight marker:
+Once the report commit is pushed, clear the in-flight marker and re-render the
+board:
 
 ```bash
 pnpm cc:prompt <n> --done       # removes <promptsDir>/cc-<n>.running
+pnpm board                      # writes <boardDir>/board.json + index.html
 ```
+
+`pnpm board` prints one badge line (interlock as of the latest receipt, verify
+FAILs, receipts owed, in flight, open count). Put that line in the chat. The
+board writes outside the repo and is never committed.
 
 ---
 

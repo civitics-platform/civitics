@@ -50,6 +50,22 @@ the checklist below.
    `steps:` — a block list of
    `{id, kind: cc|design|receipt|op|decision, ref, title, after?, done?}` —
    then free prose. A prompt joins a project by naming it in `project:`.
+
+   **The board.** `pnpm board` renders all of the above — a projects strip, an
+   8-column UTC week and the lanes — into `<boardDir>/board.json` and
+   `index.html` beside the prompts, from the tree alone. Prod state comes from
+   the latest committed `docs/receipts/<day>.json`, labelled with the time it
+   describes; the board never opens a connection. `/cc` runs it at the end of
+   Step 4. It is never committed, because it writes outside the repo.
+
+   **Supervised windows are local.** The week's per-day footer, meaning the
+   hours someone is at the keyboard to supervise a landing, comes from
+   `.claude/board.local.json` in the primary checkout. That file is untracked by
+   construction (`.gitignore` excludes `.claude/*`), and
+   `docs/cc/board.local.example.json` shows its shape with placeholder times.
+   It stays out of the repo for two reasons. Someone's working hours are not
+   project state, and a committed copy would be stale the first week they
+   changed. Without the file, the board simply draws no footer row.
 1. **Header** — what it is, when it runs, what it must not run concurrently
    with, and the one-line posture: code-only, or which prod contact is
    sanctioned.
@@ -239,9 +255,10 @@ passing, and both failures the clock rather than the data.
   through `withDbTimeout` without calling `assertRenderNotDegraded()`
   (FIX-1227).
 - The `scripts/test-*.mjs` suites are fast and dependency-free — run them
-  (`fixes:test`, `fix:add:test`, `cc:verify:test`, `session:worktree:test`,
-  `drain:test`, `check:proconfig:test`, `check:no-store-routes:test`,
-  `check:render-timeouts:test`).
+  (`fixes:test`, `fix:add:test`, `cc:verify:test`, `board:test`,
+  `session:worktree:test`, `drain:test`, `check:proconfig:test`,
+  `check:no-store-routes:test`, `check:render-timeouts:test`). `cc:verify:test`
+  also covers `cc:prompt`; `board:test` rides `fixes:test`'s chain.
 - `pnpm fixes:check` after each commit.
 - **A GHA-workflow FIX's receipt is the next run AT ITS SLOT — dispatched or
   scheduled** (rule 71, rewritten by FIX-1218). `nightly.yml`,

@@ -1,0 +1,7 @@
+{
+  "tz": "America/Los_Angeles",
+  "supervised": {
+    "mon": [["16:15", "20:30"]],
+    "sat": "variable"
+  }
+}

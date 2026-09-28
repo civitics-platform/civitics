@@ -1,0 +1,25 @@
+{
+  "$comment": [
+    "FIX-1242 — the SHAPE of .claude/board.local.json, with no real times.",
+    "Copy it to .claude/board.local.json in the PRIMARY checkout and fill it in.",
+    "That path is untracked by construction (.gitignore excludes .claude/*), and",
+    "it is meant to be: the supervised windows are when a person is at the",
+    "keyboard, which is nobody else's business and is not repo state.",
+    "",
+    "tz is an IANA zone. Each weekday maps to a list of [start, end] local times",
+    "(24 h, HH:MM; an end at or before its start runs past midnight) or to a",
+    "string such as \"variable\". An absent weekday draws no footer. pnpm board",
+    "converts each window to UTC for that calendar date, so DST is handled per",
+    "day, and renders the footer row only when the file exists."
+  ],
+  "tz": "America/Los_Angeles",
+  "supervised": {
+    "mon": [["HH:MM", "HH:MM"]],
+    "tue": [["HH:MM", "HH:MM"]],
+    "wed": [["HH:MM", "HH:MM"]],
+    "thu": [["HH:MM", "HH:MM"]],
+    "fri": [["HH:MM", "HH:MM"]],
+    "sat": "variable",
+    "sun": "variable"
+  }
+}

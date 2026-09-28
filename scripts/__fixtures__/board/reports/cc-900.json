@@ -1,0 +1,36 @@
+{
+  "cc": "900",
+  "prompt": "cc-prompt-900-demo-landed.md",
+  "started_at": "2026-09-27T08:00:00Z",
+  "finished_at": "2026-09-27T10:00:00Z",
+  "head_before": "0000aaaa",
+  "head_after": "aaaaaaa1",
+  "commits": [
+    {
+      "sha": "aaaaaaa1",
+      "subject": "feat(demo): FIX-40 — the landed fixture"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-40"
+  ],
+  "fixes_filed": [
+    "FIX-50"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "one item stopped on purpose"
+  ],
+  "lane": "ops",
+  "project": "demo",
+  "owed": [
+    {
+      "fix": "FIX-50",
+      "what": "the Wednesday receipt",
+      "after": "2026-09-30T15:00Z"
+    }
+  ]
+}
