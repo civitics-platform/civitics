@@ -6819,6 +6819,10 @@ export type Database = {
           signals: Json
         }[]
       }
+      donor_outbound_summary: {
+        Args: { p_donor_id: string; p_top?: number }
+        Returns: Json
+      }
       donor_party_rollup_rebuild_donors: {
         Args: { p_donors: string[] }
         Returns: number
