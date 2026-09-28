@@ -179,9 +179,9 @@ export function isGaugeMetric(m: Pick<PlatformMetric, "billing_cycle">): boolean
 
 /**
  * The payload-provided projection for a row, or null. NEVER re-derived here:
- * FIX-1089 deliberately left the Vercel projection on its trailing-window basis
- * because it feeds tuned alert rows, and re-basing it client-side would put a
- * different number on the card than the one the alerts fire on.
+ * the Vercel projection's basis is chosen server-side (VERCEL_ALERT_BASIS,
+ * FIX-1099) because it feeds tuned alert rows, and re-deriving it client-side
+ * would put a different number on the card than the one the alerts fire on.
  *
  * `value` IS the projection (that is what the bands are evaluated against);
  * `metadata.raw_window_value` is the un-projected truth, which is what the bar

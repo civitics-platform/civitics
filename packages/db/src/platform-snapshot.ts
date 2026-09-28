@@ -94,7 +94,41 @@ import {
   REVERT_AFTER_HOURS,
   type MitigationRunResult,
 } from "./cf-mitigation-loop";
-import { computeVercelBilling, VERCEL_PRO_INCLUDED_USD, type VercelBilling } from "./vercel-billing";
+import {
+  chargesWindowStartsAt,
+  computeVercelBilling,
+  stampVercelBilling,
+  vercelBillingCycle,
+  VERCEL_PRO_INCLUDED_USD,
+  type VercelBilling,
+  type VercelBillingBasis,
+  type VercelBillingBasisStamp,
+  type VercelBillingStamped,
+} from "./vercel-billing";
+
+/**
+ * FIX-1099 — which cycle the Vercel ALERT rows are projected onto.
+ *
+ * The vendor's billing.period is the cycle Vercel bills on, and every tick now
+ * computes the billing picture on BOTH bases: this one drives
+ * vercel.included_usage_usd, vercel.billable_overage_usd and
+ * vercel.overage_present (and the cost roll-up); the other rides beside it as
+ * `vercel_billing_shadow`.
+ *
+ * It stays "calendar" because FIX-1099 ships only with its alert-verification
+ * pass, and that pass FLIPPED. Replayed over prod's 31 retained snapshot-days
+ * (2026-08-28 → 09-28), included_usage_usd changes state on 15 of them under
+ * the vendor basis — Aug 28–31 warning → critical, Sep 1–10 healthy → warning,
+ * Sep 15 healthy → critical — while billable_overage_usd and overage_present
+ * change on none. Two causes, both structural: the Aug 14–16 crawl sat at the
+ * START of the vendor cycle, where the calendar month had diluted it with
+ * thirteen quiet days; and day 1 of every vendor cycle carries the
+ * once-per-cycle Speed Insights charge, projected x30 ($0.78 x 30 = $23.26 on
+ * Sep 14). docs/audits/2026-09-28-fix1099-alert-replay.md has the table. Flip
+ * this only together with the re-tune — the bands, not this constant, are the
+ * decision.
+ */
+export const VERCEL_ALERT_BASIS: VercelBillingBasis = "calendar";
 import { evaluateBurnRate, readBurnRateSeries, type BurnRateVerdict } from "./burn-rate";
 import { isKillSwitchEnabled } from "./kill-switches";
 
@@ -261,7 +295,13 @@ export type PlatformUsagePayload = {
   // FIX-1046: the corrected Vercel billing picture. `monthly_spend_usd` in
   // `metrics` remains the GROSS list value (the leading indicator); everything
   // billable lives here.
-  vercel_billing?: VercelBilling;
+  vercel_billing?: VercelBilling & Partial<VercelBillingBasisStamp>;
+  /**
+   * FIX-1099: the billing picture on the basis the alert rows do NOT read — so
+   * the two can be compared on live data before the basis is flipped. An
+   * `error` means that basis could not be computed this tick, and says why.
+   */
+  vercel_billing_shadow?: VercelBillingStamped | { basis: VercelBillingBasis; error: string };
   // FIX-1044 D2: day-over-day consumption deltas vs the trailing median.
   burn_rate?: BurnRateVerdict;
 
@@ -830,7 +870,13 @@ export async function computePlatformUsagePayload(
   // breakdown is projected the same way for the card + leading fluid alert.
   let vercelUsage: VercelUsage | null = null;
   let vercelBreakdown: PlatformUsagePayload["vercel_breakdown"] = undefined;
-  let vercelBilling: VercelBilling | undefined = undefined;
+  let vercelBilling: VercelBillingStamped | undefined = undefined;
+  let vercelBillingShadow: PlatformUsagePayload["vercel_billing_shadow"] = undefined;
+  // Read once, up front: the billing math below needs the vendor's period, and
+  // the FIX-1089 contract block further down reuses this same read.
+  const vercelAcctRead = await getVercelAccount().catch((err: unknown) => ({
+    error: err instanceof Error ? err.message : String(err),
+  }));
   try {
     const v = await getVercelUsage();
     if (!("error" in v)) {
@@ -938,13 +984,83 @@ export async function computePlatformUsagePayload(
           ? creditRow.data.included_limit
           : VERCEL_PRO_INCLUDED_USD;
 
-      vercelBilling = computeVercelBilling({
+      // FIX-1099 — both bases, every tick. The calendar one is exactly the
+      // pre-FIX-1099 computation (same window, same divisor).
+      const calendarBilling = computeVercelBilling({
         effectiveMtdUsd: v.effective_cost_usd,
         planBaseMtdUsd: v.plan_base_usd,
         windowDays: v.window_days,
         daysInCycle: daysInMonth,
         includedCreditUsd,
       });
+      const calendarCycle = {
+        start_ms: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+        end_ms: new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime(),
+        days_in_cycle: daysInMonth,
+      };
+
+      // The vendor basis: the charges read FROM the cycle start is the
+      // cycle-to-date (the endpoint is month-to-date and honours `from` —
+      // FIX-1041), checked against the window the vendor actually returned.
+      // Its own try: nothing on this path may cost the calendar numbers.
+      let vendorBilling: VercelBillingStamped | null = null;
+      let vendorError = "";
+      try {
+        const cycle = vercelBillingCycle(
+          "error" in vercelAcctRead ? null : vercelAcctRead.period_start_ms,
+          "error" in vercelAcctRead ? null : vercelAcctRead.period_end_ms,
+          now,
+        );
+        if (cycle.basis !== "vendor") {
+          vendorError =
+            "error" in vercelAcctRead
+              ? `vendor billing.period unavailable: ${vercelAcctRead.error}`
+              : (cycle.fallback_reason ?? "vendor cycle unavailable");
+        } else {
+          const vc = await getVercelUsage({ fromMs: cycle.start_ms });
+          if ("error" in vc) {
+            vendorError = `charges from the cycle start failed: ${vc.error}`;
+          } else if (vc.source !== "charges") {
+            vendorError = "charges unavailable; the quantity-only fallback carries no dollars";
+          } else if (!chargesWindowStartsAt(vc.window_start, vc.window_days, cycle.start_ms)) {
+            vendorError =
+              `the vendor did not honour from=${new Date(cycle.start_ms).toISOString()}: ` +
+              `the window it returned starts ${vc.window_start}`;
+          } else {
+            vendorBilling = stampVercelBilling(
+              computeVercelBilling({
+                effectiveMtdUsd: vc.effective_cost_usd,
+                planBaseMtdUsd: vc.plan_base_usd,
+                windowDays: vc.window_days,
+                daysInCycle: cycle.days_in_cycle,
+                includedCreditUsd,
+              }),
+              cycle,
+              vc.window_days,
+            );
+          }
+        }
+      } catch (err) {
+        vendorError = `vendor basis: ${err instanceof Error ? err.message : String(err)}`;
+      }
+
+      const useVendor = VERCEL_ALERT_BASIS === "vendor" && vendorBilling !== null;
+      const calendarStamped = stampVercelBilling(
+        calendarBilling,
+        {
+          basis: "calendar",
+          ...calendarCycle,
+          fallback_reason:
+            VERCEL_ALERT_BASIS === "calendar"
+              ? "held on the calendar month: VERCEL_ALERT_BASIS (FIX-1099 — the alert bands are tuned on this basis; the vendor-basis replay flipped them)"
+              : vendorError || null,
+        },
+        v.window_days,
+      );
+      vercelBilling = useVendor && vendorBilling ? vendorBilling : calendarStamped;
+      vercelBillingShadow = useVendor
+        ? calendarStamped
+        : (vendorBilling ?? { basis: "vendor", error: vendorError });
 
       await Promise.all([
         // source='api': both are exact arithmetic over measured charge lines,
@@ -1001,16 +1117,14 @@ export async function computePlatformUsagePayload(
   // in the charges API discriminates between" the calendar month and the
   // Aug 14 – Sep 14 cycle the usage page shows. Still true of the charges API —
   // but this endpoint states the period outright, and it matches the usage
-  // page. The projection basis is deliberately NOT re-based here: it feeds
-  // billable_overage_usd and overage_present, both alerting rows with tuned
-  // bands, and moving the divisor would silently move every threshold. The
-  // cycle is surfaced so the card stops implying a calendar month; re-basing
-  // the projection is its own change with its own verification.
+  // page. FIX-1099 now reads it up front (vercelAcctRead) and computes the
+  // billing picture on this cycle too; which basis the alert rows read is
+  // VERCEL_ALERT_BASIS, held on the calendar month until the re-tune.
   let vercelAccount: PlatformUsagePayload["vercel_account"] = undefined;
   let vercelPeriodStartMs: number | null = null;
   let vercelPeriodEndMs: number | null = null;
   try {
-    const acct = await getVercelAccount();
+    const acct = vercelAcctRead;
     if (!("error" in acct)) {
       vercelPeriodStartMs = acct.period_start_ms;
       vercelPeriodEndMs = acct.period_end_ms;
@@ -1470,11 +1584,11 @@ export async function computePlatformUsagePayload(
       vercelPeriodStartMs,
       vercelPeriodEndMs,
       cycleNow,
-      "Stated by the vendor: GET /v2/teams/{id} billing.period. Note the " +
-        "quantities on the Vercel rows are still PROJECTED from a trailing " +
-        "~7-day charges window onto a calendar month — the cycle shown here is " +
-        "the real billing window, and re-basing the projection onto it is " +
-        "deliberately a separate change (it would move the tuned alert bands).",
+      "Stated by the vendor: GET /v2/teams/{id} billing.period — the cycle " +
+        "Vercel bills on. The quantity rows are projected from the charges " +
+        "window onto the calendar month; the billing rows say their own basis " +
+        "in vercel_billing.basis (FIX-1099), with the other basis alongside in " +
+        "vercel_billing_shadow.",
     );
     cycles["vercel"] =
       vercelCycle ??
@@ -1553,6 +1667,7 @@ export async function computePlatformUsagePayload(
     ...(cloudflareEdge ? { cloudflare_edge: cloudflareEdge } : {}),
     ...(cfMitigation ? { cf_mitigation: cfMitigation } : {}),
     ...(vercelBilling ? { vercel_billing: vercelBilling } : {}),
+    ...(vercelBillingShadow ? { vercel_billing_shadow: vercelBillingShadow } : {}),
     ...(burnRate ? { burn_rate: burnRate } : {}),
     // FIX-1089 / FIX-1090 — all additive; every pre-R4a field above is
     // untouched so the dashboard keeps rendering correctly off an OLD snapshot

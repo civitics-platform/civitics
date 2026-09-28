@@ -187,12 +187,13 @@ type AllMetrics = Omit<VercelUsage, "source" | "fetched_at" | WindowFields>;
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
 
-let cached: VercelUsage | null = null;
-let cacheExpiresAt = 0;
+// Keyed by the requested `from`: FIX-1099 reads the same endpoint from the
+// calendar-month start AND from the vendor cycle start in one tick, and the two
+// windows must never answer for each other.
+const cache = new Map<string, { value: VercelUsage; expiresAt: number }>();
 
 export function clearVercelUsageCache(): void {
-  cached = null;
-  cacheExpiresAt = 0;
+  cache.clear();
 }
 
 // ── Empty metric template ─────────────────────────────────────────────────────
@@ -467,17 +468,28 @@ function flattenNumeric(
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> {
-  if (cached && Date.now() < cacheExpiresAt) {
-    return cached;
+/**
+ * @param opts.fromMs  start of the window, epoch ms. Defaults to the first of
+ *   the current calendar month — the window every quantity row is built on.
+ *   FIX-1099 passes the vendor's billing.period start to read cycle-to-date
+ *   dollars; the caller checks `window_start` to confirm the vendor honoured it.
+ */
+export async function getVercelUsage(
+  opts: { fromMs?: number } = {},
+): Promise<VercelUsage | VercelUsageError> {
+  const now = new Date();
+  const from = new Date(
+    opts.fromMs ?? new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+  ).toISOString();
+  const hit = cache.get(from);
+  if (hit && Date.now() < hit.expiresAt) {
+    return hit.value;
   }
 
   const token = process.env["VERCEL_API_TOKEN"];
   if (!token) return { error: "VERCEL_API_TOKEN not set" };
 
   const teamId = process.env["VERCEL_TEAM_ID"];
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const to = now.toISOString();
 
   const headers = {
@@ -514,8 +526,7 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
         source: "charges",
         fetched_at: new Date().toISOString(),
       };
-      cached = result;
-      cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+      cache.set(from, { value: result, expiresAt: Date.now() + CACHE_TTL_MS });
       return result;
     }
     const body = await res.text().catch(() => res.statusText);
@@ -557,8 +568,7 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
         source: "usage",
         fetched_at: new Date().toISOString(),
       };
-      cached = result;
-      cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+      cache.set(from, { value: result, expiresAt: Date.now() + CACHE_TTL_MS });
       return result;
     }
   } catch {

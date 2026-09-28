@@ -19,12 +19,10 @@
  * Read 2026-08-22. So the cycle is knowable after all, and the calendar-month
  * projection basis is an approximation rather than the only option.
  *
- * This module deliberately does NOT change that projection. `computeVercelBilling`
- * feeds `billable_overage_usd` and `overage_present`, both of which are alerting
- * rows with tuned bands; re-basing the divisor would silently move every one of
- * those thresholds. It is surfaced as `cycle` so the card can be honest about
- * the window, and re-basing the projection is its own change with its own
- * verification.
+ * This module does not choose the projection basis. FIX-1099 computes the
+ * billing picture on this period as well as on the calendar month; which one
+ * the alert rows (`included_usage_usd`, `billable_overage_usd`,
+ * `overage_present`) read is VERCEL_ALERT_BASIS in platform-snapshot.ts.
  *
  * ── THE RATE TABLE ───────────────────────────────────────────────────────────
  *

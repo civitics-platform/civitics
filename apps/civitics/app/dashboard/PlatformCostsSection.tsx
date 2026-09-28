@@ -681,7 +681,10 @@ export function PlatformCostsSection({
                   ) : service === "upstash" && platformUsage.upstash ? (
                     <UpstashDetailPanel upstash={platformUsage.upstash} />
                   ) : service === "vercel" && platformUsage.vercel_billing ? (
-                    <VercelBillingPanel billing={platformUsage.vercel_billing} />
+                    <VercelBillingPanel
+                      billing={platformUsage.vercel_billing}
+                      shadow={platformUsage.vercel_billing_shadow}
+                    />
                   ) : service === "supabase" && view.supabase_account?.compute_addon ? (
                     <SupabaseAddonPanel addon={view.supabase_account.compute_addon} />
                   ) : undefined
@@ -721,10 +724,19 @@ export function PlatformCostsSection({
 
 // ── Small provider panels ─────────────────────────────────────────────────────
 
+const BASIS_LABEL = { vendor: "Vercel's billing period", calendar: "the calendar month" } as const;
+
+/** "Sep 14" — UTC, matching billing-cycles.ts labels (a 07:00Z bound is that day). */
+function fmtDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 function VercelBillingPanel({
   billing,
+  shadow,
 }: {
   billing: NonNullable<PlatformUsageResponse["vercel_billing"]>;
+  shadow: PlatformUsageResponse["vercel_billing_shadow"];
 }) {
   return (
     <div className="space-y-1 text-xs text-ink-soft">
@@ -739,12 +751,29 @@ function VercelBillingPanel({
         credit unspent ({Math.round(billing.credit_used_pct)}% used).
         {!billing.projectable && " No daily granularity this tick — not projected."}
       </div>
-      <div className="text-ink-soft/70">
-        Vercel row quantities are projected from a calendar-month window while the billing cycle runs
-        mid-month, so those meters carry a projection marker and no pace tick. Re-basing the
-        projection would move the tuned alert bands and is deliberately a separate change
-        (FIX-1089).
-      </div>
+      {billing.basis && billing.billing_period_start && billing.billing_period_end ? (
+        <div className="text-ink-soft/70">
+          Projected onto {BASIS_LABEL[billing.basis]} ({fmtDay(billing.billing_period_start)} –{" "}
+          {fmtDay(billing.billing_period_end)}, {billing.window_days} of {billing.days_in_cycle} days
+          measured).
+          {billing.basis === "calendar" &&
+            " The alert rows stay on this basis until their bands are re-tuned for Vercel's billing period (FIX-1099)."}
+          {shadow && "error" in shadow
+            ? ` ${BASIS_LABEL[shadow.basis]}: not computed this tick — ${shadow.error}.`
+            : shadow
+              ? ` On ${BASIS_LABEL[shadow.basis]} (${fmtDay(shadow.billing_period_start)} – ${fmtDay(
+                  shadow.billing_period_end,
+                )}, ${shadow.window_days} of ${shadow.days_in_cycle} days) the projection reads ${fmtUsd(
+                  shadow.projected_usage_usd,
+                )} of usage, ${fmtUsd(shadow.projected_billable_overage_usd)} billable.`
+              : null}
+        </div>
+      ) : (
+        <div className="text-ink-soft/70">
+          Vercel row quantities are projected from a calendar-month window while the billing cycle
+          runs mid-month, so those meters carry a projection marker and no pace tick.
+        </div>
+      )}
     </div>
   );
 }

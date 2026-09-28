@@ -249,7 +249,27 @@ export type PlatformUsageResponse = {
     projected_total_bill_usd: number;
     projected_gross_usd: number;
     projectable: boolean;
+    // FIX-1099 — which cycle the projection divides by. Absent on payloads
+    // written before it, so every reader treats these as optional.
+    basis?: "vendor" | "calendar";
+    billing_period_start?: string;
+    billing_period_end?: string;
+    days_in_cycle?: number;
+    window_days?: number;
+    fallback_reason?: string | null;
   };
+  // FIX-1099: the same picture on the basis the alert rows do not read.
+  vercel_billing_shadow?:
+    | {
+        basis: "vendor" | "calendar";
+        projected_usage_usd: number;
+        projected_billable_overage_usd: number;
+        billing_period_start: string;
+        billing_period_end: string;
+        days_in_cycle: number;
+        window_days: number;
+      }
+    | { basis: "vendor" | "calendar"; error: string };
   burn_rate?: {
     latest_delta_usd: number | null;
     latest_mtd_day: number | null;

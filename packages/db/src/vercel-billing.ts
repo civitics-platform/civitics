@@ -42,6 +42,11 @@
  * rewrite. The credit is treated as a whole-cycle $20 and is NOT prorated —
  * Vercel grants it per cycle, not per day.
  *
+ * FIX-1099 — the paragraph above is history. The vendor's cycle IS knowable
+ * (vercelBillingCycle below) and is the one Vercel bills on. Which basis the
+ * ALERT rows read is chosen at the call site, VERCEL_ALERT_BASIS in
+ * platform-snapshot.ts, and every payload now says which one it used.
+ *
  * Pure functions only: no network, no DB, no clock. That is what makes the
  * table-driven tests in vercel-billing.test.ts meaningful.
  */
@@ -147,6 +152,161 @@ export function computeVercelBilling(input: VercelBillingInput): VercelBilling {
     projected_total_bill_usd: round4(projectedBase + projectedBillable),
     projected_gross_usd: round4(projectedBase + projectedUsage),
     projectable,
+  };
+}
+
+// ── FIX-1099: which cycle the projection extrapolates onto ──────────────────
+//
+// The header above says the basis is "a one-line change at the call site".
+// FIX-1089 then found the vendor states the cycle outright (/v2/teams/{id} →
+// billing.period, 07:00Z = Pacific midnight, e.g. Sep 14 → Oct 14), and prod
+// confirms it is the cycle Vercel bills on: the `Pro` line's daily accrual
+// switched from $20/31 to $20/30 on Sep 14 PDT, the first day of the new
+// vendor cycle, not on Sep 1 — and the once-per-cycle `Speed Insights Plus
+// Events` $0.65 lands on that same day.
+//
+// This function states the cycle the projection should divide by. It does NOT
+// decide which basis the alert rows read — that is VERCEL_ALERT_BASIS in
+// platform-snapshot.ts, and it stays on the calendar month until the alert
+// bands are re-tuned against the vendor basis (the 2026-09-28 replay found a
+// flip; see docs/audits/2026-09-28-fix1099-alert-replay.md).
+
+export type VercelBillingBasis = "vendor" | "calendar";
+
+/**
+ * How the cycle-to-date dollars were obtained. Only one method exists: the
+ * design anticipated summing snapshot deltas because it believed
+ * /v1/billing/charges returns ~7 trailing days, but FIX-1041 measured it as
+ * true month-to-date that honours `from` (window_days climbed 1…31 through
+ * August and reset on 09-01). A charges read from the cycle start is the
+ * cycle-to-date.
+ */
+export type VercelMtdBasis = "charges";
+
+export type VercelBillingCycle = {
+  basis: VercelBillingBasis;
+  /** Inclusive start / exclusive end, epoch ms. */
+  start_ms: number;
+  end_ms: number;
+  /**
+   * Whole days in the cycle. Vercel's boundaries sit on Pacific midnight, so a
+   * cycle that spans a DST change is 30 or 31 days ± 1 hour; rounding removes
+   * the hour rather than projecting onto 30.04 days.
+   */
+  days_in_cycle: number;
+  /** 1-based day of the cycle that `now` falls on. */
+  day_of_cycle: number;
+  /** Why the vendor's cycle was not used. Null on the vendor basis. */
+  fallback_reason: string | null;
+};
+
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * The cycle to project onto: the vendor's billing.period when it is usable,
+ * otherwise the UTC calendar month — with the reason stated, so a reader never
+ * mistakes the fallback for the vendor's word.
+ *
+ * "Usable" means finite, ordered, and CURRENT: a period that ended before
+ * `now` (the vendor had not rolled it yet) is not this cycle, and projecting
+ * onto it would divide by a window that is over.
+ */
+export function vercelBillingCycle(
+  periodStartMs: number | null | undefined,
+  periodEndMs: number | null | undefined,
+  now: Date,
+): VercelBillingCycle {
+  const t = now.getTime();
+  let reason: string | null = null;
+  if (typeof periodStartMs !== "number" || typeof periodEndMs !== "number") {
+    reason = "the vendor returned no billing.period this tick";
+  } else if (!Number.isFinite(periodStartMs) || !Number.isFinite(periodEndMs)) {
+    reason = "billing.period was not finite";
+  } else if (periodEndMs <= periodStartMs) {
+    reason = "billing.period end is not after its start";
+  } else if (t < periodStartMs || t >= periodEndMs) {
+    reason = "billing.period does not contain now (the vendor has not rolled it)";
+  } else {
+    const days = Math.round((periodEndMs - periodStartMs) / MS_PER_DAY);
+    return {
+      basis: "vendor",
+      start_ms: periodStartMs,
+      end_ms: periodEndMs,
+      days_in_cycle: days,
+      day_of_cycle: Math.min(days, Math.floor((t - periodStartMs) / MS_PER_DAY) + 1),
+      fallback_reason: null,
+    };
+  }
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const start = Date.UTC(y, m, 1);
+  const end = Date.UTC(y, m + 1, 1);
+  return {
+    basis: "calendar",
+    start_ms: start,
+    end_ms: end,
+    days_in_cycle: Math.round((end - start) / MS_PER_DAY),
+    day_of_cycle: Math.floor((t - start) / MS_PER_DAY) + 1,
+    fallback_reason: reason,
+  };
+}
+
+/**
+ * Did a charges read requested `from` the cycle start actually START there?
+ *
+ * The earliest ChargePeriodStart must sit within a day of the requested start:
+ * later means the vendor truncated the window (the trailing-7-day behaviour
+ * FIX-648 once saw), earlier means it ignored `from` and returned more than the
+ * cycle. Either way the dollars are not cycle-to-date. A day of tolerance
+ * covers the label convention (a Pacific day may be labelled at its 07:00Z
+ * start or at UTC midnight) without admitting a second day. An empty window —
+ * the first hours of a cycle, before any day has closed — has nothing to check
+ * and is accepted: it is a true zero.
+ */
+export function chargesWindowStartsAt(
+  windowStart: string | null,
+  windowDays: number,
+  cycleStartMs: number,
+): boolean {
+  if (windowDays === 0 || windowStart === null) return true;
+  const ws = Date.parse(windowStart);
+  if (!Number.isFinite(ws)) return false;
+  return Math.abs(ws - cycleStartMs) < MS_PER_DAY;
+}
+
+/**
+ * What the snapshot writes beside the numbers, so a reader always knows which
+ * cycle they were projected onto (rule 8: the reader must see which). Absent on
+ * payloads written before FIX-1099, so every consumer treats it as optional.
+ */
+export type VercelBillingBasisStamp = {
+  basis: VercelBillingBasis;
+  mtd_basis: VercelMtdBasis;
+  /** ISO bounds of the cycle the projection divides by. */
+  billing_period_start: string;
+  billing_period_end: string;
+  days_in_cycle: number;
+  /** Charge days observed inside the cycle — the projection's divisor. */
+  window_days: number;
+  fallback_reason: string | null;
+};
+
+export type VercelBillingStamped = VercelBilling & VercelBillingBasisStamp;
+
+export function stampVercelBilling(
+  billing: VercelBilling,
+  cycle: Pick<VercelBillingCycle, "basis" | "start_ms" | "end_ms" | "days_in_cycle" | "fallback_reason">,
+  windowDays: number,
+): VercelBillingStamped {
+  return {
+    ...billing,
+    basis: cycle.basis,
+    mtd_basis: "charges",
+    billing_period_start: new Date(cycle.start_ms).toISOString(),
+    billing_period_end: new Date(cycle.end_ms).toISOString(),
+    days_in_cycle: cycle.days_in_cycle,
+    window_days: windowDays,
+    fallback_reason: cycle.fallback_reason,
   };
 }
 
