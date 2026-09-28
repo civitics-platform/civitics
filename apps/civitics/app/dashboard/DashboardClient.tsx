@@ -50,11 +50,6 @@ import { classifySnapshotAge } from "@/lib/snapshot-freshness";
 import { isMetricAvailable, metricValue } from "@/lib/section-failures";
 import dynamic from "next/dynamic";
 
-const AnthropicCard = dynamic(
-  () => import("./components/AnthropicCard").then((m) => ({ default: m.AnthropicCard })),
-  { ssr: false },
-);
-
 const PlatformCostsSection = dynamic(
   () => import("./PlatformCostsSection").then((m) => ({ default: m.PlatformCostsSection })),
   { ssr: false },
@@ -1192,7 +1187,6 @@ function computeRowVerdict(
 function DataHealthRow({
   def,
   history,
-  perAlias,
   verdict,
   database,
   quality,
@@ -2442,7 +2436,6 @@ export function DashboardClient({
   initialStatus,
 }: DashboardClientProps) {
   const { data, error, refresh } = useDashboardData(initialStatus);
-  const [_secondsAgo] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 

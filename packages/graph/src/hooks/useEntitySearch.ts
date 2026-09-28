@@ -44,7 +44,7 @@ export function useEntitySearch() {
             connectionCount: (e.connectionCount as number) ?? 0,
           }))
         );
-      } catch (err) {
+      } catch {
         setError('Search failed');
       } finally {
         setLoading(false);

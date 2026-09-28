@@ -18,7 +18,7 @@ module.exports = {
     // FIX-459: warn (not error) so the lint gate goes green now. This is the
     // highest-volume finding and grows with the codebase; driving the backlog
     // to zero + `--max-warnings 0` is the ratchet follow-up (see docs/FIXES.md).
-    "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
     "@typescript-eslint/no-explicit-any": "warn",
     "no-console": ["warn", { allow: ["warn", "error"] }],
     // Minor recommended rules that fire on intentional patterns (empty catch

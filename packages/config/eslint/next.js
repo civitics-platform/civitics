@@ -11,7 +11,7 @@ module.exports = {
   // follow-up tracked in docs/FIXES.md.
   rules: {
     "@next/next/no-html-link-for-pages": "off",
-    "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
     "@typescript-eslint/no-explicit-any": "warn",
     "react/no-unescaped-entities": "warn",
     "react/no-children-prop": "warn",

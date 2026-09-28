@@ -88,7 +88,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
   const [status, setStatus] = useState<"idle" | "loading" | "empty" | "error" | "ok">("idle");
   const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
-  const [centerMeta, setCenterMeta] = useState<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
+  const [, setCenterMeta] = useState<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
   const rootRef        = useRef<D3HierarchyNode | null>(null);
   const currentRootRef = useRef<D3HierarchyNode | null>(null);
 

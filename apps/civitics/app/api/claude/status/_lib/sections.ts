@@ -1595,15 +1595,10 @@ type DailyCountsRow = {
   donation_flow_usd: number | null;
 };
 
-const DAILY_METRICS = [
-  "officials",
-  "open_proposals",
-  "votes",
-  "donation_flow_usd",
-] as const;
+type DailyMetric = "officials" | "open_proposals" | "votes" | "donation_flow_usd";
 
 /** Build one metric's series, dropping days where that metric was not measured. */
-function seriesFor(rows: DailyCountsRow[], key: (typeof DAILY_METRICS)[number]): DailyCountsSeries {
+function seriesFor(rows: DailyCountsRow[], key: DailyMetric): DailyCountsSeries {
   const days: string[] = [];
   const values: number[] = [];
   for (const row of rows) {

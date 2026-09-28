@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   SharedConnectionsBar,
-  AiNarrative,
   useGraphView,
   useGraphData,
   GraphHeader,

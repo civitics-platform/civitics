@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { FocusEntity, FocusGroup, FocusItem, GraphView, GraphViewPreset, VizType } from '../types';
+import type { FocusEntity, FocusGroup, GraphView, GraphViewPreset, VizType } from '../types';
 import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
 import {
   DEFAULT_GRAPH_VIEW,

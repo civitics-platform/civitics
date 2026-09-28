@@ -11,7 +11,6 @@
 import { useState } from 'react';
 import type { GraphView } from '../types';
 import type { ConnectionTypeDefinition } from '../types';
-import { TreeNode } from './TreeNode';
 import { toHexColor } from '../tokens';
 import { Icon, hasIcon } from '../icons';
 

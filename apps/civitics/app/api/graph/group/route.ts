@@ -6,7 +6,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 // sector resolution moved into get_cohort_top_donors(), and no other branch used it.
 import { createAdminClient, noStoreFetch, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, fetchAllKeyset, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
-import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
+import { ID_CHUNK_SIZE } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
 // FIX-886/887 — hand-picked cohort parsing + live-path admission rules, kept
 // pure in @/lib so they carry unit tests the route itself can't.

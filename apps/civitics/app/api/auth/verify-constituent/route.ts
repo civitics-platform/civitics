@@ -17,7 +17,6 @@ const NAME_MAX = 120;
 const ADDRESS_MAX = 300;
 const RATE_LIMIT_PER_HOUR = 5;
 const MAPBOX_TIMEOUT_MS = 5000;
-const GRANT_DURATION = "2 years";
 
 type MapboxFeature = {
   geometry?: { coordinates?: [number, number] };

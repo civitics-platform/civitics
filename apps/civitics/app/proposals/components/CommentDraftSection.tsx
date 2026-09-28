@@ -111,7 +111,7 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
 
         {/* Tab bar */}
         <div className="flex gap-1 bg-paper-2 p-1 mb-3 w-fit">
-          {(["write", "template"] as const).map((t) => (
+          {TABS.map((t) => (
             <button
               key={t}
               onClick={() => {

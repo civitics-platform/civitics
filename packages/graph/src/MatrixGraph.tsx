@@ -247,12 +247,6 @@ export function MatrixGraph({
       .scaleSequential<string>(d3.piecewise(d3.interpolateRgb, [T.accent, T.panel, T.greenInk]))
       .domain([-1, 1]);
 
-    function cellValue(i: number, j: number): number | null {
-      const c = cells[i]?.[j];
-      if (!c) return null;
-      return metric === "kappa" ? c.kappa : c.agreement;
-    }
-
     function fillFor(value: number | null, shared: number): string {
       if (value === null || shared === 0) return T.panel;
       return metric === "kappa" ? colorKappa(value) : colorAgreement(value);

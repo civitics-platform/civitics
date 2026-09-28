@@ -92,10 +92,6 @@ function focusedOfficialCount(focus: GraphView['focus']): number {
   return n
 }
 
-function donationCount(graphMeta?: VizApplicabilityMeta): number {
-  return graphMeta?.connectionTypes['donation']?.count ?? 0
-}
-
 export const VIZ_REGISTRY: VizRegistryEntry[] = [
   {
     id: 'force',
