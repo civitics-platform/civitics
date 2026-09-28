@@ -10,7 +10,7 @@
     "./server-storage": "./src/storage-server.ts"
   },
   "scripts": {
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "node run-tests.mjs",
     "clean": "rm -rf dist",

@@ -15,20 +15,21 @@ module.exports = {
     // Core `no-unused-vars` (from eslint:recommended) double-reports and
     // ignores the `argsIgnorePattern` below — defer to the TS-aware version.
     "no-unused-vars": "off",
-    // FIX-459: warn (not error) so the lint gate goes green now. This is the
-    // highest-volume finding and grows with the codebase; driving the backlog
-    // to zero + `--max-warnings 0` is the ratchet follow-up (see docs/FIXES.md).
-    "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
-    "@typescript-eslint/no-explicit-any": "warn",
-    // FIX-460: the allow-list is the policy. console.log is debug debris and
-    // is banned; console.info is DELIBERATE operator output (a cron receipt,
-    // a CLI's report) — the same stdout stream as .log, so moving a real line
-    // to .info changes nothing at runtime; warn/error are diagnostics.
-    "no-console": ["warn", { allow: ["info", "warn", "error"] }],
-    // Minor recommended rules that fire on intentional patterns (empty catch
-    // blocks, hoisted helpers). Warn now; ratchet to error later (FIX-459).
-    "no-empty": ["warn", { allowEmptyCatch: true }],
-    "no-inner-declarations": "warn",
+    // FIX-460: every rule FIX-459 downgraded to warn is back at error, and
+    // every lint script runs with --max-warnings 0, so a warning inherited
+    // from an upstream config fails the gate too. An exception is a
+    // `// eslint-disable-next-line <rule> -- <reason>` at the line, never a
+    // rule turned down here. (packages/data alone still overrides three rules
+    // to warn in its own .eslintrc.cjs — FIX-1241.)
+    "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
+    "@typescript-eslint/no-explicit-any": "error",
+    // The allow-list is the policy. console.log is debug debris and is banned;
+    // console.info is DELIBERATE operator output (a cron receipt, a CLI's
+    // report) — the same stdout stream as .log, so moving a real line to .info
+    // changes nothing at runtime; warn/error are diagnostics.
+    "no-console": ["error", { allow: ["info", "warn", "error"] }],
+    "no-empty": ["error", { allowEmptyCatch: true }],
+    "no-inner-declarations": "error",
     // `while (true) { … break; }` is the paging-loop idiom across the
     // pipelines (nine sites in packages/data). ESLint 9 made loops exempt by
     // default for exactly this; on 8 the option is checkLoops. Constant

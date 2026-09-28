@@ -9,7 +9,7 @@
     "./industries": "./src/industries.ts"
   },
   "scripts": {
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

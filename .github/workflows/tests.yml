@@ -83,11 +83,10 @@ jobs:
       - name: Typecheck
         run: pnpm turbo run typecheck
 
-      # Blocking (FIX-459). The eslint toolchain is now wired: @civitics/config
-      # exports the base + next presets, every package/app has an .eslintrc that
-      # extends them, and `turbo run lint` is GREEN across all 9 (0 errors). A
-      # backlog of ~76 warnings remains — allowed for now; driving them to zero
-      # and adding `--max-warnings 0` is the ratchet follow-up (FIX-460).
+      # Blocking (FIX-459). @civitics/config exports the base + next presets and
+      # every package/app has an .eslintrc that extends them. Warnings fail the
+      # gate (FIX-460): every lint script runs with --max-warnings 0, except
+      # packages/data, whose never-linted backlog is still at warn (FIX-1241).
       - name: Lint
         run: pnpm turbo run lint
 
