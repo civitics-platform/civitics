@@ -13,6 +13,43 @@ Filed as FIX-1175, alongside `/cc <n>` and `pnpm cc:verify`.
 A prompt is these, in this order. Anything a prompt does not say is governed by
 the checklist below.
 
+0. **Front matter** (FIX-1242, from cc-171) — a YAML block at the very top of
+   the file, read by `pnpm cc:prompt <n>` with the same parser `cc:verify`
+   uses. It is data about the run, not instructions:
+   ```yaml
+   ---
+   cc: 171                    # MUST equal the filename's number — /cc aborts otherwise
+   lane: hygiene              # one of cc.config.json's lanes (below)
+   project: cc-loop           # optional; MUST name docs/cc/projects/<slug>.md
+   when: any                  # optional; any | 2026-09-29 | 2026-09-29T16:30Z (zoned)
+   attended: unattended-ok    # optional; supervised | unattended-ok
+   posture: code-only         # optional; code-only | prod-reads | prod-writes
+   concurrent_with: [168, 170]  # optional; cc numbers that may be in flight
+   ---
+   ```
+   **The lanes**, one line each:
+   - `ops` — pg_cron, vacuum, paced runners, gates, receipts, box sizing.
+   - `fec` — FEC/USAspending coverage, rollups, industry and NAICS tags,
+     official↔candidate binding.
+   - `app` — pages, auth/grants, desk, dashboard UI.
+   - `hygiene` — lint, CI, docs, cost/billing observability, the CC loop's own
+     tooling.
+   - `design` — Cowork-owned design notes not yet prompts. A plan-step lane
+     only: no prompt or report carries it.
+
+   `/cc` copies `lane` and `project` into the report verbatim, and writes the
+   report's `owed:` from the prompt's Verification section. `cc:verify` FAILs a
+   report whose lane is not in the list, whose project names no plan file, or
+   whose `owed` entry is malformed; `lane` is required on reports from cc-172.
+   Reports before cc-172 carry no lane — `docs/cc/lanes-backfill.json` places
+   cc-162…170 for the board, and nothing is back-filled earlier.
+
+   **Plan files** (`docs/cc/projects/<slug>.md`) hold a multi-prompt
+   initiative: front matter `slug`, `title`, `lanes`, `status`
+   (`active | planned | done`), `plan` (the Cowork design note's name) and
+   `steps:` — a block list of
+   `{id, kind: cc|design|receipt|op|decision, ref, title, after?, done?}` —
+   then free prose. A prompt joins a project by naming it in `project:`.
 1. **Header** — what it is, when it runs, what it must not run concurrently
    with, and the one-line posture: code-only, or which prod contact is
    sanctioned.
@@ -29,9 +66,13 @@ the checklist below.
 7. **FIX bookkeeping** — what closes, what gets filed, what gets appended.
 8. **Out of scope** — the things a reasonable reader would otherwise fold in.
 9. **Verification** — per commit, with named commands and expected values.
+   State every owed receipt in the `owed:` shape —
+   `{fix: FIX-NNN, what: "<one line>", after: <date or zoned ISO instant>}` —
+   so `/cc` copies it into the report mechanically.
 10. **Autonomous loop** — order, and the conditions that stop it.
-11. **After-commit report** — the front matter (see `.claude/commands/cc.md`)
-    plus the prose sections this run should answer.
+11. **After-commit report** — the front matter (see `.claude/commands/cc.md`:
+    the FIX-1175 fields plus `lane`, `project` and `owed` from §0 and §9) plus
+    the prose sections this run should answer.
 
 ---
 

@@ -25,6 +25,8 @@ default). Read by `scripts/lib/cc-config.mjs`:
 |---|---|---|
 | `promptsDir` | `../Claude/civitics` | the **primary checkout** |
 | `reportsDir` | `docs/cc/reports` | the **current worktree** |
+| `boardDir` | `../Claude/civitics/board` | the **primary checkout** (FIX-1242) |
+| `lanes` | `ops, fec, app, hygiene, design` | — the closed list a `lane:` may name |
 
 The split matters. Prompts live outside the repo, so a path relative to
 `git rev-parse --show-toplevel` breaks the moment you are in
@@ -47,20 +49,38 @@ node -e "import('./scripts/lib/cc-config.mjs').then(m=>console.log(m.loadCcConfi
 ### Step 1 — find the prompt
 
 ```bash
-node -e "import('./scripts/lib/cc-config.mjs').then(async m=>{
-  const c=m.loadCcConfig();
-  console.log(JSON.stringify(m.findPromptFiles(process.argv[1], c).map(f=>f.path),null,2));
-})" <n>
+pnpm cc:prompt <n>
 ```
+
+It finds the file, parses its front matter with the same reader `cc:verify`
+uses (`parseFrontMatter`), and prints `{path, name, front_matter, title,
+problems}`. It exits 1 in the three cases below that abort.
 
 - **Zero matches** → abort: `No cc-prompt-<n>-*.md in <promptsDir>. Check the
   number, or pass the path directly.` Do not guess a neighbouring number.
 - **More than one** → abort and list them. Ask which. Do not silently take the
   newest: two files for one number means Cowork wrote a revision, and running
   the wrong one is worse than asking.
-- **One** → read it in full before doing anything.
+- **The front matter's `cc:` disagrees with the filename** → abort with both
+  numbers (FIX-1242). No `cc:` at all is fine — every prompt before cc-171 has
+  no front matter — but say so in the report.
+- **One** → read it in full before doing anything. The front matter is data
+  about the run (`lane`, `project`, `when`, `attended`, `posture`,
+  `concurrent_with` — see `docs/cc/PROMPT_TEMPLATE.md` §0), not instructions;
+  `problems` lists any field that does not fit the shape, which the report
+  should mention.
 
 ### Step 2 — run it
+
+Before the first read, mark the run as in flight:
+
+```bash
+pnpm cc:prompt <n> --start      # writes <promptsDir>/cc-<n>.running
+```
+
+The marker (`{"cc", "started_at", "worktree", "prompt"}`) is what the board
+reads as `running`. Step 4 removes it; a crash leaves it, and the board renders
+one older than 24 h as `running · stale?`, never as `running`.
 
 The prompt file is the instruction set. Follow it exactly, including its Phase 0
 reads, its stated prod-access posture, and its stop conditions. Read
@@ -98,11 +118,29 @@ migrations_pushed: []
 prod_writes: none
 ci: green
 stopped_items: []
+lane: hygiene
+project: cc-loop
+owed:
+  - {fix: FIX-969, what: "jobid 17's first crawl-branch firing", after: 2026-09-29T15:00Z}
 ---
 ```
 
 Field rules — each one is a claim the verifier checks, so state only what is
 true:
+
+- `lane` — copied verbatim from the prompt's front matter. **Required from
+  cc-172**; earlier reports are UNCHECKED (`no lane — pre-FIX-1242`). Must be one
+  of `cc.config.json`'s `lanes` and never `design` (a plan-step lane only). A
+  prompt with no `lane:` → use its `docs/cc/lanes-backfill.json` entry, or ask,
+  and say which in the report.
+- `project` — copied verbatim from the prompt, when it has one. Must name an
+  existing `docs/cc/projects/<slug>.md`; omit the key otherwise.
+- `owed` — every receipt this run leaves for later, in the shape the prompt's
+  Verification section states them: a block list of
+  `{fix: FIX-NNN, what: "<one line>", after: <date or zoned ISO instant>}`.
+  `after` is required and must carry a zone (`…T15:00Z`). `owed: []` says
+  nothing is owed. The board shows an entry as outstanding until `done.log` has
+  a row for its `fix` dated on or after the report's `finished_at` date.
 
 - `commits` — every commit THIS run made, in order. Each must exist and be an
   ancestor of `origin/main` by the time you verify. **Quote a subject** that
@@ -167,6 +205,12 @@ git commit -m "docs(cc): report for cc-<n>"
 Docs-only, so `tests.yml` skips it via `paths-ignore` and `fixes-integrity.yml`
 still runs. Print the same report text into the chat as well — Craig may still
 read it there; the file is the record.
+
+Once the report commit is pushed, clear the in-flight marker:
+
+```bash
+pnpm cc:prompt <n> --done       # removes <promptsDir>/cc-<n>.running
+```
 
 ---
 

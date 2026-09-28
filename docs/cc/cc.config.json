@@ -14,8 +14,16 @@
     "worktree too, so its parent is a stable anchor for a path that points",
     "OUTSIDE the repo. promptsDir uses that anchor; reportsDir is committed and",
     "so uses the current worktree. An absolute path is taken verbatim.",
-    "See scripts/lib/cc-config.mjs."
+    "See scripts/lib/cc-config.mjs.",
+    "",
+    "FIX-1242: `lanes` is the closed list a prompt's or report's `lane:` must",
+    "name (cc:verify FAILs any other; `design` is a plan-step lane only, never a",
+    "report's). `boardDir` is where `pnpm board` writes board.json + index.html;",
+    "it is outside the repo, so it anchors on the primary checkout like",
+    "promptsDir. CIVITICS_CC_BOARD_DIR overrides it."
   ],
   "promptsDir": "../Claude/civitics",
-  "reportsDir": "docs/cc/reports"
+  "reportsDir": "docs/cc/reports",
+  "boardDir": "../Claude/civitics/board",
+  "lanes": ["ops", "fec", "app", "hygiene", "design"]
 }

@@ -15,6 +15,7 @@
 
 import { parseFrontMatter, verifyReport, loadReportFrontMatter, PASS, FAIL, UNCHECKED } from "./cc-verify.mjs";
 import { renderSidecar } from "./cc-report-json.mjs";
+import { readPrompt, markerBody } from "./cc-prompt.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
 
 const failures = [];
@@ -283,6 +284,152 @@ assertTrue("unparseable sidecar → reported as drift", String(brokenLoad.drift)
 
 // (e) the generator's output is exactly what the loader expects to agree with.
 assertEq("renderSidecar round-trips through the loader", renderSidecar(FM_TEXT).trim(), agreeing.trim());
+
+// -- 5. lane / project / owed (FIX-1242) --------------------------------------
+// Each field is exercised with the shape that should PASS and the wrong-but-
+// green shapes a report could plausibly carry (rule 105): a lane the config
+// does not list, a project with no plan file, an owed entry that looks like a
+// claim and checks nothing.
+console.log("\nlane / project / owed (FIX-1242):");
+
+const PLANS = new Set(["paced-ops", "cc-loop"]);
+const laneCtx = { ...ctx, lanes: ["ops", "fec", "app", "hygiene", "design"], projectExists: (s) => PLANS.has(s) };
+const withFm = (lines, base = FM_TEXT) => parseFrontMatter(base.replace("ci: green", ["ci: green", ...lines].join("\n")));
+
+// The parser carries the owed shape unchanged — a colon inside `after`'s
+// instant does not split the pair (splitMapPairs keys on `, word:`, and a
+// pair splits on its FIRST colon).
+const owedFm = withFm([
+  "lane: hygiene",
+  "project: cc-loop",
+  "owed:",
+  '  - {fix: FIX-969, after: 2026-09-29T15:00Z, what: "jobid 17 crawl, then: a colon"}',
+  "  - {fix: FIX-1189, what: a week of rows, after: 2026-10-06}",
+]);
+assertEq("owed inline map — after survives its colons", owedFm.owed[0].after, "2026-09-29T15:00Z");
+assertEq("owed inline map — a quoted what keeps its comma and colon", owedFm.owed[0].what, "jobid 17 crawl, then: a colon");
+assertEq("owed inline map — key order does not matter", owedFm.owed[1].after, "2026-10-06");
+
+const good5 = verifyReport(owedFm, laneCtx);
+assertEq("a well-formed lane/project/owed report has no FAILs", good5.filter((r) => r.verdict === FAIL).map((r) => r.claim), []);
+assertEq("lane: hygiene passes", verdictFor(good5, "lane: hygiene"), PASS);
+assertEq("project naming a plan file passes", verdictFor(good5, "project cc-loop names a plan file"), PASS);
+assertEq("owed[0] passes", verdictFor(good5, "owed[0] FIX-969"), PASS);
+
+assertEq(
+  "a lane the config does not list FAILs (lane: fec2)",
+  verdictFor(verifyReport(withFm(["lane: fec2"]), laneCtx), "is a report lane"),
+  FAIL,
+);
+assertEq(
+  "a report in the plan-only design lane FAILs",
+  verdictFor(verifyReport(withFm(["lane: design"]), laneCtx), "is a report lane"),
+  FAIL,
+);
+assertEq(
+  "a project with no plan file FAILs",
+  verdictFor(verifyReport(withFm(["lane: ops", "project: nope"]), laneCtx), "project nope names a plan file"),
+  FAIL,
+);
+assertEq(
+  "a project that is not a slug FAILs",
+  verdictFor(verifyReport(withFm(["lane: ops", "project: ../../etc"]), laneCtx), "names a plan file"),
+  FAIL,
+);
+assertEq(
+  "a project with no lookup available is UNCHECKED, never a silent pass",
+  verdictFor(verifyReport(withFm(["lane: ops", "project: paced-ops"]), { ...laneCtx, projectExists: undefined }), "names a plan file"),
+  UNCHECKED,
+);
+assertEq(
+  "owed entry with a fix that is not FIX-NNN FAILs",
+  verdictFor(verifyReport(withFm(["lane: ops", "owed:", "  - {fix: 969, after: 2026-09-29, what: x}"]), laneCtx), "owed[0] is well-formed"),
+  FAIL,
+);
+assertEq(
+  "owed entry whose after is not a date FAILs",
+  verdictFor(verifyReport(withFm(["lane: ops", "owed:", "  - {fix: FIX-969, after: Tuesday, what: x}"]), laneCtx), "owed[0] is well-formed"),
+  FAIL,
+);
+assertEq(
+  "owed entry with a zoneless instant FAILs (it would shift by the writer's offset)",
+  verdictFor(verifyReport(withFm(["lane: ops", "owed:", "  - {fix: FIX-969, after: 2026-09-29T15:00, what: x}"]), laneCtx), "owed[0] is well-formed"),
+  FAIL,
+);
+assertEq(
+  "owed entry with no after FAILs",
+  verdictFor(verifyReport(withFm(["lane: ops", "owed:", "  - {fix: FIX-969, what: x}"]), laneCtx), "owed[0] is well-formed"),
+  FAIL,
+);
+assertEq(
+  "owed as a scalar (owed: none) FAILs",
+  verdictFor(verifyReport(withFm(["lane: ops", "owed: none"]), laneCtx), "owed is a list"),
+  FAIL,
+);
+assertEq("owed: [] passes", verdictFor(verifyReport(withFm(["lane: ops", "owed: []"]), laneCtx), "nothing owed"), PASS);
+assertEq(
+  "pre-172 report with no lane is UNCHECKED (no lane — pre-FIX-1242)",
+  verdictFor(verifyReport(fm, laneCtx), "lane stated"),
+  UNCHECKED,
+);
+assertTrue(
+  "…and says why",
+  /pre-FIX-1242/.test(verifyReport(fm, laneCtx).find((r) => r.claim === "lane stated")?.detail ?? ""),
+);
+assertEq(
+  "cc-172 with no lane FAILs",
+  verdictFor(verifyReport(parseFrontMatter(FM_TEXT.replace("cc: 122", "cc: 172")), laneCtx), "lane stated"),
+  FAIL,
+);
+
+// -- 6. the prompt reader (`pnpm cc:prompt`, /cc Step 1) -----------------------
+console.log("\nreadPrompt (cc:prompt):");
+const PROMPT_FM = [
+  "---",
+  "cc: 171",
+  "lane: hygiene",
+  "project: cc-loop",
+  "when: any",
+  "attended: unattended-ok",
+  "posture: code-only",
+  "concurrent_with: [168, 170]",
+  "---",
+  "",
+  "# cc-171 — the lane board",
+  "",
+  "body",
+].join("\n");
+const pOpts = { n: 171, lanes: laneCtx.lanes, projectExists: (s) => PLANS.has(s) };
+const p1 = readPrompt(PROMPT_FM, pOpts);
+assertEq("prompt front matter parses with the one reader", p1.front_matter?.lane, "hygiene");
+assertEq("concurrent_with parses as a list (of strings)", p1.front_matter?.concurrent_with, ["168", "170"]);
+assertEq("a well-formed prompt has no problems", p1.problems, []);
+assertEq("…and no abort", p1.abort, null);
+assertEq("title is the first heading after the front matter, cc prefix dropped", p1.title, "the lane board");
+assertTrue(
+  "a cc: that disagrees with the filename aborts, naming both numbers",
+  /cc: 171.*172/.test(readPrompt(PROMPT_FM, { ...pOpts, n: 172 }).abort ?? ""),
+);
+const legacy = readPrompt("# cc-120 — an old prompt\n\nbody\n", pOpts);
+assertEq("a prompt with no front matter reads (null), it does not throw", legacy.front_matter, null);
+assertEq("…and does not abort", legacy.abort, null);
+assertTrue("…and says why", /no front matter/.test(legacy.problems.join(" ")));
+assertEq("…title still found", legacy.title, "an old prompt");
+const badPrompt = readPrompt(
+  PROMPT_FM.replace("lane: hygiene", "lane: fec2").replace("when: any", "when: Tuesday").replace("posture: code-only", "posture: yolo"),
+  pOpts,
+);
+assertEq("prompt problems: lane, when, posture", badPrompt.problems.length, 3);
+assertEq("prompt problems do not abort", badPrompt.abort, null);
+assertTrue(
+  "a long title is trimmed to 160 chars",
+  readPrompt(`# ${"x".repeat(400)}\n`, pOpts).title.length === 160,
+);
+assertEq(
+  "marker body is the D4 shape",
+  JSON.parse(markerBody({ n: "171", startedAt: "2026-09-28T03:43:00Z", worktree: "/w", prompt: "p.md" })),
+  { cc: 171, started_at: "2026-09-28T03:43:00Z", worktree: "/w", prompt: "p.md" },
+);
 
 if (failures.length) {
   console.error(`\n${failures.length} failure(s):\n${failures.join("\n")}`);

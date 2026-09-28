@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "FIX-1242 — lanes for reports written before prompts and reports carried a",
+    "`lane:` (cc-171 is the first). The board reads an entry ONLY for a report",
+    "whose front matter has no lane; a report's own `lane:` always wins, and",
+    "shipped reports are never edited to add one. Deliberately short: reports",
+    "older than cc-162 are not back-filled (cc-171's out-of-scope list), and",
+    "render in the board's `no lane` strip."
+  ],
+  "162": "ops",
+  "163": "app",
+  "164": "ops",
+  "165": "app",
+  "166": "fec",
+  "167": "ops",
+  "168": "hygiene",
+  "169": "ops",
+  "170": "fec"
+}

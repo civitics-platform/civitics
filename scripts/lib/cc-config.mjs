@@ -22,10 +22,16 @@
 //
 // Absolute paths in the config are taken verbatim. The env vars
 // CIVITICS_CC_PROMPTS_DIR / CIVITICS_CC_REPORTS_DIR override either.
+//
+// FIX-1242 adds `lanes` (the five lanes a prompt or report may name) and
+// `boardDir` (where `pnpm board` writes board.json + index.html). boardDir is
+// OUTSIDE the repo like promptsDir, so it takes the same primary-checkout
+// anchor; CIVITICS_CC_BOARD_DIR overrides it.
 
 import { execSync } from "node:child_process";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
+import { DEFAULT_LANES } from "./cc-front-matter.mjs";
 
 function git(args) {
   try {
@@ -80,6 +86,11 @@ export function loadCcConfig() {
   }
   const promptsRaw = process.env.CIVITICS_CC_PROMPTS_DIR || cfg.promptsDir || "../Claude/civitics";
   const reportsRaw = process.env.CIVITICS_CC_REPORTS_DIR || cfg.reportsDir || "docs/cc/reports";
+  const boardRaw = process.env.CIVITICS_CC_BOARD_DIR || cfg.boardDir || "../Claude/civitics/board";
+  const lanes =
+    Array.isArray(cfg.lanes) && cfg.lanes.length && cfg.lanes.every((l) => typeof l === "string" && l)
+      ? cfg.lanes
+      : DEFAULT_LANES;
   return {
     repoRoot: root,
     mainCheckoutRoot: main,
@@ -88,6 +99,11 @@ export function loadCcConfig() {
     promptsDir: isAbsolute(promptsRaw) ? promptsRaw : resolve(main, promptsRaw),
     // Reports are committed → anchor on this worktree.
     reportsDir: isAbsolute(reportsRaw) ? reportsRaw : resolve(root, reportsRaw),
+    // The board is written outside the repo too → the same anchor as prompts.
+    boardDir: isAbsolute(boardRaw) ? boardRaw : resolve(main, boardRaw),
+    // Plan files are committed → this worktree.
+    projectsDir: resolve(root, "docs/cc/projects"),
+    lanes,
   };
 }
 
@@ -111,6 +127,34 @@ export function findPromptFiles(n, { promptsDir } = loadCcConfig()) {
       return { name: d.name, path: full, mtime };
     })
     .sort((a, b) => b.mtime - a.mtime);
+}
+
+/**
+ * Every numbered prompt in promptsDir — `cc-prompt-<n>-*.md` — sorted by
+ * number, then name. Name order, not mtime, breaks a tie: the board's output
+ * must be a function of the tree, and mtimes are not part of it.
+ */
+export function listPromptFiles({ promptsDir } = loadCcConfig()) {
+  if (!existsSync(promptsDir)) return [];
+  const re = /^cc-prompt-0*(\d+)-.*\.md$/i;
+  return readdirSync(promptsDir, { withFileTypes: true })
+    .filter((d) => d.isFile() && re.test(d.name))
+    .map((d) => ({ n: Number(re.exec(d.name)[1]), name: d.name, path: resolve(promptsDir, d.name) }))
+    .sort((a, b) => a.n - b.n || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/**
+ * `<promptsDir>/cc-<n>.running` — written by `/cc` Step 2 before the first
+ * read, removed by Step 4 after the report commit is pushed (FIX-1242). A crash
+ * leaves it behind; the board renders one older than 24 h as `running · stale?`.
+ */
+export function runningMarkerPath(n, { promptsDir } = loadCcConfig()) {
+  return resolve(promptsDir, `cc-${Number(n)}.running`);
+}
+
+/** A plan file's path. The slug is validated by the caller (SLUG_RE). */
+export function projectPath(slug, { projectsDir } = loadCcConfig()) {
+  return resolve(projectsDir, `${slug}.md`);
 }
 
 /** The report path for a run number. */

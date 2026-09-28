@@ -27,7 +27,15 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
 import { ID_MARKER_RE } from "./lib/fixes-md.mjs";
-import { loadCcConfig, reportPath, reportJsonPath, findPromptFiles } from "./lib/cc-config.mjs";
+import { loadCcConfig, reportPath, reportJsonPath, findPromptFiles, projectPath } from "./lib/cc-config.mjs";
+import {
+  DEFAULT_LANES,
+  LANE_REQUIRED_FROM,
+  LANE_FIX,
+  SLUG_RE,
+  laneProblem,
+  owedProblem,
+} from "./lib/cc-front-matter.mjs";
 
 const PASS = "PASS";
 const FAIL = "FAIL";
@@ -353,7 +361,152 @@ export function verifyReport(fm, ctx) {
     else add(FAIL, "ci: green", `latest tests.yml run on main is ${ghCi.conclusion}`);
   } else add(UNCHECKED, `ci: ${ci}`, "not a green claim — read it");
 
+  // 10. lane / project / owed (FIX-1242). `lane` is required from cc-172 on;
+  //     earlier reports predate the field and are UNCHECKED, never FAILed —
+  //     docs/cc/lanes-backfill.json is how the board places them, and shipped
+  //     reports are not edited. An unknown lane FAILs at any number: a lane the
+  //     config does not list would render in no column at all.
+  const lanes = ctx.lanes ?? DEFAULT_LANES;
+  const ccNum = Number(fm.cc);
+  if (missing(fm.lane)) {
+    if (Number.isFinite(ccNum) && ccNum >= LANE_REQUIRED_FROM) {
+      add(FAIL, "lane stated", `missing — required from cc-${LANE_REQUIRED_FROM} (${LANE_FIX})`);
+    } else {
+      add(UNCHECKED, "lane stated", `no lane — pre-${LANE_FIX}`);
+    }
+  } else {
+    const why = laneProblem(fm.lane, lanes);
+    if (why) add(FAIL, `lane ${JSON.stringify(fm.lane)} is a report lane`, why);
+    else add(PASS, `lane: ${fm.lane}`);
+  }
+
+  if (!missing(fm.project)) {
+    const slug = String(fm.project);
+    if (typeof fm.project !== "string" || !SLUG_RE.test(slug)) {
+      add(FAIL, `project ${JSON.stringify(fm.project)} names a plan file`, "not a slug");
+    } else if (!ctx.projectExists) {
+      add(UNCHECKED, `project ${slug} names a plan file`, "no plan-file lookup in this context");
+    } else if (ctx.projectExists(slug)) {
+      add(PASS, `project ${slug} names a plan file`, `docs/cc/projects/${slug}.md`);
+    } else {
+      add(FAIL, `project ${slug} names a plan file`, `no docs/cc/projects/${slug}.md`);
+    }
+  }
+
+  // `owed:` absent is fine (pre-FIX-1242, or nothing to say); `owed: []` is the
+  // explicit "nothing owed". A scalar (`owed: none`) is malformed — it reads
+  // like a claim and checks nothing.
+  if (fm.owed !== undefined) {
+    if (!Array.isArray(fm.owed)) {
+      add(FAIL, "owed is a list", `got ${JSON.stringify(fm.owed)} — write owed: [] or a block list of maps`);
+    } else if (fm.owed.length === 0) {
+      add(PASS, "owed: [] — nothing owed");
+    } else {
+      fm.owed.forEach((entry, i) => {
+        const why = owedProblem(entry);
+        if (why) add(FAIL, `owed[${i}] is well-formed`, why);
+        else add(PASS, `owed[${i}] ${entry.fix} after ${entry.after}`, String(entry.what ?? "").slice(0, 60));
+      });
+    }
+  }
+
   return results;
+}
+
+// ── the tree, as verifyReport's context ─────────────────────────────────────
+
+/**
+ * Everything verifyReport() reads from the tree, for the real repo.
+ *
+ *   fetch  — `git fetch origin` first so trunk is current. Offline degrades to
+ *            the cached ref rather than failing, and every ancestry answer then
+ *            carries that caveat implicitly.
+ *   gh     — cross-check `ci: green` against the latest tests.yml run. Off →
+ *            UNCHECKED, never FAIL.
+ *   batch  — answer ancestry and file-on-trunk from ONE `git rev-list` and ONE
+ *            `git ls-tree` instead of a git spawn per claim. Same answers (a
+ *            commit is an ancestor of trunk iff rev-list trunk lists it); it is
+ *            what lets `pnpm board` verify forty reports in a second instead of
+ *            forty seconds on Windows.
+ */
+export function buildVerifyContext(cfg = loadCcConfig(), { fetch = true, gh = true, batch = false } = {}) {
+  if (fetch) git("fetch origin --quiet");
+  const trunkRef =
+    ["origin/main", "refs/remotes/origin/main", "main"].find((r) => git(`rev-parse --verify --quiet ${r}`).ok) ??
+    "HEAD";
+
+  const root = cfg.repoRoot;
+  const readIf = (p) => (existsSync(resolve(root, p)) ? readFileSync(resolve(root, p), "utf8") : "");
+  const statusMap = deriveStatus(parseDoneLog(readIf("docs/done.log")));
+
+  let ghCi = null;
+  if (gh) {
+    try {
+      const out = execSync(
+        `gh run list --workflow tests.yml --branch main --limit 1 --json status,conclusion,displayTitle,headSha`,
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 },
+      );
+      ghCi = JSON.parse(out)[0] ?? null;
+    } catch {
+      ghCi = null; // gh absent / unauthenticated / offline → UNCHECKED, never FAIL
+    }
+  }
+
+  const revParse = (sha) => {
+    const r = git(`rev-parse --verify --quiet ${sha}`);
+    return r.ok && r.out ? r.out : null;
+  };
+  let resolveSha = revParse;
+  let isAncestor = (sha) => git(`merge-base --is-ancestor ${sha} ${trunkRef}`).ok;
+  let fileOnTrunk = (rel) => git(`cat-file -e ${trunkRef}:${rel}`).ok;
+
+  if (batch) {
+    const big = (args) => {
+      try {
+        return execSync(`git ${args}`, {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          maxBuffer: 256 * 1024 * 1024,
+        });
+      } catch {
+        return null;
+      }
+    };
+    const revs = big(`rev-list ${trunkRef}`);
+    const files = big(`ls-tree -r --name-only ${trunkRef}`);
+    if (revs !== null && files !== null) {
+      const trunk = revs.split("\n").filter(Boolean);
+      const trunkSet = new Set(trunk);
+      const byPrefix = new Map();
+      for (const full of trunk) {
+        const k = full.slice(0, 7);
+        (byPrefix.get(k) ?? byPrefix.set(k, []).get(k)).push(full);
+      }
+      const fileSet = new Set(files.split("\n").filter(Boolean));
+      resolveSha = (sha) => {
+        const s = String(sha).toLowerCase();
+        const hits = s.length >= 7 ? (byPrefix.get(s.slice(0, 7)) ?? []).filter((f) => f.startsWith(s)) : [];
+        // Exactly one trunk match is the answer; none (off-trunk or absent) or
+        // an ambiguous prefix falls back to git, which decides both properly.
+        return hits.length === 1 ? hits[0] : revParse(sha);
+      };
+      isAncestor = (full) => trunkSet.has(full);
+      fileOnTrunk = (rel) => fileSet.has(rel);
+    }
+  }
+
+  return {
+    statusMap,
+    fixesText: readIf("docs/FIXES.md"),
+    archiveText: readIf("docs/archive/fixes-archive.md"),
+    trunkRef,
+    resolveSha,
+    isAncestor,
+    fileOnTrunk,
+    ghCi,
+    lanes: cfg.lanes,
+    projectExists: (slug) => existsSync(projectPath(slug, cfg)),
+  };
 }
 
 // ── main ────────────────────────────────────────────────────────────────────
@@ -397,42 +550,12 @@ function main() {
   }
   const fm = loaded.fm;
 
-  // Fetch so trunk is current; offline degrades to the cached ref rather than
-  // failing, and every ancestry answer then carries that caveat implicitly.
-  git("fetch origin --quiet");
-  const trunkRef =
-    ["origin/main", "refs/remotes/origin/main", "main"].find((r) => git(`rev-parse --verify --quiet ${r}`).ok) ??
-    "HEAD";
-
-  const root = cfg.repoRoot;
-  const readIf = (p) => (existsSync(resolve(root, p)) ? readFileSync(resolve(root, p), "utf8") : "");
-  const statusMap = deriveStatus(parseDoneLog(readIf("docs/done.log")));
-
-  let ghCi = null;
-  try {
-    const out = execSync(
-      `gh run list --workflow tests.yml --branch main --limit 1 --json status,conclusion,displayTitle,headSha`,
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 },
-    );
-    ghCi = JSON.parse(out)[0] ?? null;
-  } catch {
-    ghCi = null; // gh absent / unauthenticated / offline → UNCHECKED, never FAIL
-  }
-
+  const vctx = buildVerifyContext(cfg);
+  const { trunkRef } = vctx;
   const results = verifyReport(fm, {
+    ...vctx,
     frontMatterSource: loaded.source,
     frontMatterDrift: loaded.drift,
-    statusMap,
-    fixesText: readIf("docs/FIXES.md"),
-    archiveText: readIf("docs/archive/fixes-archive.md"),
-    trunkRef,
-    resolveSha: (sha) => {
-      const r = git(`rev-parse --verify --quiet ${sha}`);
-      return r.ok && r.out ? r.out : null;
-    },
-    isAncestor: (sha) => git(`merge-base --is-ancestor ${sha} ${trunkRef}`).ok,
-    fileOnTrunk: (rel) => git(`cat-file -e ${trunkRef}:${rel}`).ok,
-    ghCi,
   });
 
   const counts = {
@@ -461,6 +584,6 @@ function main() {
   process.exit(counts.fail > 0 ? 1 : 0);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
 
 export { PASS, FAIL, UNCHECKED, findPromptFiles, ID_MARKER_RE };
