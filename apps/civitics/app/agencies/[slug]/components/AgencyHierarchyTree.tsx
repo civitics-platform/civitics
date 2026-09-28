@@ -38,11 +38,11 @@ function Chip({ agency, isCurrent }: { agency: AgencyRef; isCurrent?: boolean })
 export function AgencyHierarchyTree({
   parent,
   current,
-  children,
+  subAgencies,
 }: {
   parent: AgencyRef | null;
   current: AgencyRef;
-  children: AgencyRef[];
+  subAgencies: AgencyRef[];
 }) {
   return (
     <div className="border border-rule bg-card p-4">
@@ -72,13 +72,13 @@ export function AgencyHierarchyTree({
         </div>
 
         {/* Child rows — indented under current */}
-        {children.length > 0 && (
+        {subAgencies.length > 0 && (
           <div className="flex gap-2">
             <div className="flex w-5 shrink-0 flex-col items-center">
               <div className="mt-0 w-px flex-1 bg-rule/40" />
             </div>
             <div className="flex-1 space-y-1.5">
-              {children.map((child) => (
+              {subAgencies.map((child) => (
                 <div key={child.id} className="flex gap-2">
                   <div className="flex w-4 shrink-0 flex-col items-center">
                     <div className="mt-0 w-px flex-1 bg-rule/40" />
@@ -94,9 +94,9 @@ export function AgencyHierarchyTree({
         )}
       </div>
 
-      {children.length > 0 && (
+      {subAgencies.length > 0 && (
         <p className="mt-2 text-[11px] text-ink-soft/70">
-          {children.length} sub-{children.length === 1 ? "agency" : "agencies"}
+          {subAgencies.length} sub-{subAgencies.length === 1 ? "agency" : "agencies"}
         </p>
       )}
     </div>

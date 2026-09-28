@@ -645,7 +645,7 @@ async function AgencyView({
             <AgencyHierarchyTree
               parent={parentAgency}
               current={{ id: agency.id, name: agency.name, acronym: agency.acronym ?? null }}
-              children={childAgencies}
+              subAgencies={childAgencies}
             />
           </div>
         )}

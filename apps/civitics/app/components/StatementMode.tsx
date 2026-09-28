@@ -314,7 +314,7 @@ export function StatementMode({
     } finally {
       setLoading(false);
     }
-  }, [entityType, entityId, lens]);
+  }, [entityType, entityId, lens, hydrateMyVotes]);
 
   useEffect(() => { void load(); }, [load]);
 

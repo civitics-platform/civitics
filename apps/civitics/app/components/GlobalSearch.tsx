@@ -105,9 +105,12 @@ function OfficialResult({ o, selected }: { o: SearchOfficial; selected: boolean 
   return (
     <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rule bg-paper-2 text-xs font-semibold text-ink-soft">
-        {o.photo_url
-          ? <img src={o.photo_url} alt={o.full_name} width={32} height={32} loading="lazy" decoding="async" className="h-8 w-8 rounded-full object-cover" />
-          : initials(o.full_name)}
+        {o.photo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- FIX-460: official photos come from hosts beyond images.remotePatterns; every photo site uses <img> (six siblings)
+          <img src={o.photo_url} alt={o.full_name} width={32} height={32} loading="lazy" decoding="async" className="h-8 w-8 rounded-full object-cover" />
+        ) : (
+          initials(o.full_name)
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <p className={`truncate text-sm font-medium ${selected ? "text-accent" : "text-ink"}`}>{o.full_name}</p>

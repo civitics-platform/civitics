@@ -128,6 +128,10 @@ const PRESET_DEFAULT_GROUP: Record<string, string> = {
   'follow-the-money': 'group-full-senate',
 };
 
+// Module scope: one regex, not one per render — the focus memos below read it,
+// and a per-render literal in their dependency lists would defeat the memo.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface GraphPageProps {
   initialCode?: string;
   /** Serialized snapshot state (old arch or v2 JSON). Stage 2: restore full GraphView. */
@@ -955,7 +959,6 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const primaryGroup    = pinnedGroup  ?? focusGroupList[focusGroupList.length  - 1] ?? null;
   const focusGroups     = focusGroupList;
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const sunburstEntityId = primaryEntity?.id && UUID_RE.test(primaryEntity.id)
     ? primaryEntity.id
     : null;
