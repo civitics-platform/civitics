@@ -125,7 +125,7 @@ function cellText(el: HTMLElement | null | undefined): string {
 
 // 2-4 capitalized words; each must contain at least one lowercase letter so
 // "EXECUTIVE OFFICERS"-style all-caps section captions are rejected.
-const NAME_LINE_RE = /^([A-Z][a-z][A-Za-z'.\-]*(?:\s+(?:[A-Z]\.?|[A-Z][a-z][A-Za-z'.\-]*)){1,4}(?:\s+(?:Jr|Sr|II|III|IV)\.?)?)$/;
+const NAME_LINE_RE = /^([A-Z][a-z][A-Za-z'.-]*(?:\s+(?:[A-Z]\.?|[A-Z][a-z][A-Za-z'.-]*)){1,4}(?:\s+(?:Jr|Sr|II|III|IV)\.?)?)$/;
 
 function nameContainsBlocklisted(name: string): boolean {
   for (const w of name.toUpperCase().split(/\s+/)) {

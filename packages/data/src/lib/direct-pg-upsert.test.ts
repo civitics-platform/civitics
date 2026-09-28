@@ -356,7 +356,7 @@ test("FIX-1008 skipUnchangedRows adds a WHERE over EXACTLY the SET columns", () 
     if (["relationship_type", "from_id", "to_id", "cycle_year"].includes(c)) continue;
     assert.match(
       sql,
-      new RegExp(`"financial_relationships"\."${c}" IS DISTINCT FROM EXCLUDED\."${c}"`),
+      new RegExp(`"financial_relationships"\\."${c}" IS DISTINCT FROM EXCLUDED\\."${c}"`),
       `${c} must be covered — a SET column outside the predicate can change silently`,
     );
   }

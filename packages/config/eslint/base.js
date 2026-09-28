@@ -29,6 +29,11 @@ module.exports = {
     // blocks, hoisted helpers). Warn now; ratchet to error later (FIX-459).
     "no-empty": ["warn", { allowEmptyCatch: true }],
     "no-inner-declarations": "warn",
+    // `while (true) { … break; }` is the paging-loop idiom across the
+    // pipelines (nine sites in packages/data). ESLint 9 made loops exempt by
+    // default for exactly this; on 8 the option is checkLoops. Constant
+    // conditions in if/ternary/&& are still errors.
+    "no-constant-condition": ["error", { checkLoops: false }],
     // TypeScript's compiler already errors on genuinely-undefined identifiers
     // (typecheck is a separate green gate), and `eslint:recommended`'s core
     // `no-undef` misfires on ambient TS globals like `RequestInit`/`NodeJS`.
