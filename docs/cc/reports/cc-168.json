@@ -1,0 +1,82 @@
+{
+  "cc": "168",
+  "prompt": "cc-prompt-168-fix460-eslint-ratchet-fix1099-vercel-billing-period-fix1228-donor-recipients-exact.md",
+  "started_at": "2026-09-28T00:27:19Z",
+  "finished_at": "2026-09-28T01:52:41Z",
+  "head_before": "ff97b4fd",
+  "head_after": "bfbd7be1",
+  "commits": [
+    {
+      "sha": "fcb1e22f",
+      "subject": "chore(lint): FIX-460 — no-unused-vars to zero (graph, apps/civitics)"
+    },
+    {
+      "sha": "ce266986",
+      "subject": "chore(lint): FIX-460 — no-explicit-any to zero (apps/civitics)"
+    },
+    {
+      "sha": "314706f2",
+      "subject": "chore(lint): FIX-460 — no-console to zero (ai, graph, apps/civitics)"
+    },
+    {
+      "sha": "85bbe52b",
+      "subject": "chore(lint): FIX-460 — no-inner-declarations to zero (graph, apps/civitics)"
+    },
+    {
+      "sha": "ba6b1496",
+      "subject": "chore(lint): FIX-460 — react rules to zero (children-prop, exhaustive-deps, img)"
+    },
+    {
+      "sha": "03b9bf7e",
+      "subject": "feat(lint): FIX-460 — packages/data + packages/config linted"
+    },
+    {
+      "sha": "66bf3ece",
+      "subject": "ci(lint): FIX-460 — warn rules promoted to error; --max-warnings 0 on every lint script"
+    },
+    {
+      "sha": "022c6345",
+      "subject": "feat(db): FIX-1099 — Vercel billing math on the vendor's billing period (calendar fallback stated); cycle fixtures"
+    },
+    {
+      "sha": "d213e033",
+      "subject": "docs(audits): FIX-1099 — the alert replay flips included_usage_usd on 15 of 31 days"
+    },
+    {
+      "sha": "faffecb0",
+      "subject": "feat(db): FIX-1228 — donor_outbound_summary(): exact recipients and top-N by sum for one donor"
+    },
+    {
+      "sha": "ebea2c7e",
+      "subject": "feat(app): FIX-1228 — the donor page reads donor_outbound_summary; Recipients is the exact distinct count"
+    },
+    {
+      "sha": "73725c87",
+      "subject": "chore(fixes): record prod verification of FIX-1228"
+    },
+    {
+      "sha": "bfbd7be1",
+      "subject": "chore(fixes): sync status after FIX-460, FIX-1228"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-460",
+    "FIX-1228"
+  ],
+  "fixes_filed": [
+    "FIX-1241"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20260928000000_fix1228_donor_outbound_summary.sql"
+  ],
+  "prod_writes": "One migration on Pro: 20260928000000_fix1228_donor_outbound_summary.sql (CREATE FUNCTION + COMMENT + GRANT, metadata DDL), applied 01:42:36-37 UTC with db-push-prod.mjs after session:wait-for-gate:prod --expected-minutes 2 --census stop opened at 01:42:17 (census pass: 2 renders / 2 events in 60 min, floor 6; edge 0 of 327 = 0.00 %) and prod_op_gate(120) re-read ok with held=false at 01:42:33. No session was claimed. The dry run listed exactly one pending migration. No data set, no rebuild, no VACUUM. Six pushes to main, each a Vercel deploy: 01:07:40 (FIX-460, 7 commits), 01:23:54 (FIX-1099, 2), 01:30:30 (faffecb0), 01:46:02 (ebea2c7e), 01:49:09 (73725c87), 01:49:27 (bfbd7be1), plus this report. The FIX-1099 deploy changed what the platform-snapshot cron writes: from the 01:30 tick onward it makes one extra read-only Vercel /v1/billing/charges GET per tick (from = the vendor cycle start) and writes vercel_billing.{basis, mtd_basis, billing_period_start, billing_period_end, days_in_cycle, window_days, fallback_reason} plus a new vercel_billing_shadow block into each platform_usage_snapshot row. The alert-row values are unchanged (calendar basis, $8.042 before and after). Every other prod contact was a read: db-query --prod (platform_usage_snapshot history, platform_limits, pipeline_state, pg_proc, pg_roles, prod_op_gate, prod_session_state, an index-seek recount of 12 donors, the exact-vs-sample aggregate for 3 donors, plain EXPLAIN, one call of donor_outbound_summary for 3 donors after the landing), gh, three anon PostgREST RPC calls, and five HTTPS GETs of /donors/<id> on the Vercel origin. One read of mine was cancelled by my own statement_timeout: the whole-index outbound-row aggregate at 00:37:40, after 150 s.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1099, the wiring (D2 ii): STOPPED as designed. The alert replay flipped: on the vendor basis vercel.included_usage_usd changes state on 15 of 31 replayed days. billable_overage_usd and overage_present change on none. VERCEL_ALERT_BASIS stays 'calendar', and the math, fixtures and a live vendor-basis shadow shipped. FIX-1099 stays OPEN; the re-tune is Craig's (options in docs/audits/2026-09-28-fix1099-alert-replay.md §4). No platform_limits row was touched. The allow-empty FIX-1099 prod record was not made, because nothing it would record happened.",
+    "FIX-460, packages/data (D1 iv): not ratcheted to zero; this is the designed branch. Read 2 counted 2,445 warnings + 13 errors, past the 150 budget. The package landed with an .eslintrc.cjs, a lint script, its 13 errors fixed, and three rules at WARN for that package only. FIX-1241 was filed to finish it.",
+    "FIX-1099 read 3: the replay covers 30 days, not 35. platform_usage_snapshot retains 30 (min fetched_at 2026-08-28 11:35:55). The vendor period was taken from each snapshot's stored cycles.vercel (that tick's own getVercelAccount() read, source api), not from a separate /v2/teams GET. The Aug-cycle rows needed one anchor older than retention: Aug MTD usage through Aug 13 PDT = $4.2988, taken from docs/audits/2026-08-15-traffic-cost-spike.md, ±$0.01, which changes no state.",
+    "FIX-1228 read 5: prod's top 3 by outbound rows were NOT found by a whole-index GROUP BY on prod. That read hit my own 150 s statement_timeout (cold cache) and was not retried with a longer one. They were found as the clone's top 12 re-counted on prod by index seek. The top one is 2,074 rows, the bullet's measured prod max; a prod donor outside the clone's top 12 cannot be ruled out.",
+    "FIX-1228 receipt, render < 3 s: met for 2 of 3 donors (1,579 ms, 1,732 ms). NAR PAC read 3,685 ms on the first request to the fresh deployment (x-vercel-cache MISS). The page rendered fully, so no read degraded. The RPC itself, as anon through prod PostgREST, took 748 ms including connection setup (then 70 and 58 ms for the other two). A second MISS could not be forced: the ISR cache ignores the query string, and repeat GETs were HIT at 403-932 ms."
+  ]
+}
