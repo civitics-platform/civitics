@@ -80,6 +80,23 @@ type RecipientRow = {
   href: string | null;
 };
 
+// FIX-1228: donor_outbound_summary() — one donor's outbound donations, exact.
+// It replaced a top-1,000-rows-by-amount sample summed here in JS, which made
+// the Recipients stat and the top-50 wrong for every donor over 1,000 rows.
+type OutboundSummary = {
+  distinct_recipients: number;
+  rows: number;
+  total_cents: number;
+  cycles: number[];
+  top: Array<{
+    to_type: string;
+    to_id: string;
+    total_cents: number;
+    tx_count: number;
+    cycles: number[];
+  }>;
+};
+
 // FIX-668: one aggregated row per (target official × support|oppose direction).
 type IeTargetRow = {
   id: string;
@@ -239,18 +256,17 @@ export default async function DonorProfilePage({
 
   // Parallel fetches: outbound donations, the inbound rollup and its totals,
   // contracts/grants received, AI summary, industry tag, parent entity name.
-  const [outboundRes, inboundRes, inboundTotals, spendingRes, aiSummaryRes, recipientCountRes, ieRes] =
+  const [outboundRes, inboundRes, inboundTotals, spendingRes, aiSummaryRes, ieRes] =
     (await Promise.all([
+      // FIX-1228: the exact outbound picture in one read — distinct recipients,
+      // row count, cycles and the top 50 recipients by sum. It replaced a
+      // top-1,000-rows-by-amount sample (summed here) plus a separate exact row
+      // count. Seeks financial_relationships_donation_size_rollup on from_id
+      // and reads ≤ 2,074 heap rows on prod (no whale class).
       withDbTimeout(
-        sb.from("financial_relationships")
-          .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
-          .eq("from_type", "financial_entity")
-          .eq("from_id", entity.id)
-          .eq("relationship_type", "donation")
-          .order("amount_cents", { ascending: false })
-          .limit(1000),
+        sb.rpc("donor_outbound_summary", { p_donor_id: entity.id, p_top: 50 }),
         3000,
-        "donors:outbound"
+        "donors:outbound-summary"
       ),
       // FIX-1217 / FIX-1225: the true top 50 donors by sum, from the rollup —
       // an O(50) PK range read. It replaced a top-1,000-rows-by-amount sample
@@ -289,15 +305,6 @@ export default async function DonorProfilePage({
         3000,
         "donors:ai-summary"
       ),
-      withDbTimeout(
-        sb.from("financial_relationships")
-          .select("to_id", { count: "exact", head: true })
-          .eq("from_type", "financial_entity")
-          .eq("from_id", entity.id)
-          .eq("relationship_type", "donation"),
-        3000,
-        "donors:recipient-count"
-      ),
       // FIX-666/FIX-668: outbound Schedule E independent expenditures. IE rows
       // are from_type='financial_entity' → to_type='official' with
       // relationship_type ie_support / ie_oppose. One combined fetch (mirrors
@@ -313,9 +320,10 @@ export default async function DonorProfilePage({
         3000,
         "donors:ie"
       ),
-    ])) as [DbRes, DbRes, InboundTotals | null, DbRes, DbRes, DbRes, DbRes];
+    ])) as [DbRes, DbRes, InboundTotals | null, DbRes, DbRes, DbRes];
 
-  const outbound = (outboundRes.data ?? []) as Relationship[];
+  const outbound = (outboundRes.data ?? null) as OutboundSummary | null;
+  const outboundTop = outbound?.top ?? [];
   const inbound = (inboundRes.data ?? []) as InboundRollupRow[];
   const spending = (spendingRes.data ?? []) as Relationship[];
   const ieRows = (ieRes.data ?? []) as Relationship[];
@@ -343,10 +351,10 @@ export default async function DonorProfilePage({
   // IE targets are also officials — fold their ids into the same lookup so the
   // ie support/oppose section (below) resolves names from one officials fetch.
   const officialIds = [...new Set([
-    ...outbound.filter((r) => r.to_type === "official").map((r) => r.to_id),
+    ...outboundTop.filter((r) => r.to_type === "official").map((r) => r.to_id),
     ...ieRows.filter((r) => r.to_type === "official").map((r) => r.to_id),
   ])];
-  const recipientEntityIds = [...new Set(outbound.filter((r) => r.to_type === "financial_entity").map((r) => r.to_id))];
+  const recipientEntityIds = [...new Set(outboundTop.filter((r) => r.to_type === "financial_entity").map((r) => r.to_id))];
 
   const officialInfo = new Map<string, { full_name: string; role_title: string; party: string | null }>();
   if (officialIds.length > 0) {
@@ -393,51 +401,41 @@ export default async function DonorProfilePage({
     }
   }
 
-  // Aggregate recipients by to_id.
-  const recipientMap = new Map<string, RecipientRow>();
-  for (const r of outbound) {
-    const key = r.to_id;
-    const existing = recipientMap.get(key);
-    if (existing) {
-      existing.total_cents += r.amount_cents ?? 0;
-      existing.count += 1;
-      if (r.cycle_year) existing.cycles.add(r.cycle_year);
-    } else {
-      let name = "Unknown";
-      let subtitle: string | null = null;
-      let party: string | null = null;
-      let href: string | null = null;
-      if (r.to_type === "official") {
-        const info = officialInfo.get(r.to_id);
-        if (info) {
-          name = info.full_name;
-          subtitle = info.role_title;
-          party = info.party;
-          href = `/officials/${r.to_id}`;
-        }
-      } else if (r.to_type === "financial_entity") {
-        const info = recipientEntityInfo.get(r.to_id);
-        if (info) {
-          name = info.display_name;
-          subtitle = ENTITY_TYPE_LABEL[info.entity_type] ?? info.entity_type;
-          href = `/donors/${r.to_id}`;
-        }
+  // The top 50 recipients arrive aggregated and ordered (FIX-1228); only the
+  // names are resolved here.
+  const topRecipients: RecipientRow[] = outboundTop.map((r) => {
+    let name = "Unknown";
+    let subtitle: string | null = null;
+    let party: string | null = null;
+    let href: string | null = null;
+    if (r.to_type === "official") {
+      const info = officialInfo.get(r.to_id);
+      if (info) {
+        name = info.full_name;
+        subtitle = info.role_title;
+        party = info.party;
+        href = `/officials/${r.to_id}`;
       }
-      recipientMap.set(key, {
-        id: r.to_id,
-        to_type: r.to_type,
-        name,
-        subtitle,
-        party,
-        total_cents: r.amount_cents ?? 0,
-        count: 1,
-        cycles: new Set(r.cycle_year ? [r.cycle_year] : []),
-        href,
-      });
+    } else if (r.to_type === "financial_entity") {
+      const info = recipientEntityInfo.get(r.to_id);
+      if (info) {
+        name = info.display_name;
+        subtitle = ENTITY_TYPE_LABEL[info.entity_type] ?? info.entity_type;
+        href = `/donors/${r.to_id}`;
+      }
     }
-  }
-  const recipients = [...recipientMap.values()].sort((a, b) => b.total_cents - a.total_cents);
-  const topRecipients = recipients.slice(0, 50);
+    return {
+      id: r.to_id,
+      to_type: r.to_type,
+      name,
+      subtitle,
+      party,
+      total_cents: r.total_cents,
+      count: r.tx_count,
+      cycles: new Set(r.cycles),
+      href,
+    };
+  });
 
   // ── Aggregate independent expenditures by (target × direction) (FIX-668) ──
   const ieTargetMap = new Map<string, IeTargetRow>();
@@ -531,9 +529,7 @@ export default async function DonorProfilePage({
   // ── Aggregates for the header stat grid ────────────────────────────────────
   // Outbound only: the cycle count renders in the Donors note only when
   // donorTxCount is 0, i.e. when there are no inbound rows to take cycles from.
-  const cycleSet = new Set<number>();
-  for (const r of outbound) if (r.cycle_year) cycleSet.add(r.cycle_year);
-  const cyclesActive = cycleSet.size;
+  const cyclesActive = outbound?.cycles.length ?? 0;
 
   const totalSpendingCents = (entity.total_contract_cents ?? 0) + (entity.total_grant_cents ?? 0);
   // FIX-668: materialized Schedule E totals drive the stat cell + section gate.
@@ -541,10 +537,10 @@ export default async function DonorProfilePage({
   const ieOpposeCents  = entity.total_ie_oppose_cents ?? 0;
   const totalIeCents   = ieSupportCents + ieOpposeCents;
   const showIe         = totalIeCents > 0;
-  const recipientTxCount = recipientCountRes.count ?? 0;
+  const recipientTxCount = outbound?.rows ?? 0;
   const { uniqueDonors, donorTxCount } = inboundStats(inboundTotals);
   const receivedCents = totalReceivedCents(inboundTotals, entity.total_received_cents);
-  const uniqueRecipients = recipients.length;
+  const uniqueRecipients = outbound?.distinct_recipients ?? 0;
   const cachedAiSummary: string | null = aiSummaryRes?.data?.summary_text ?? null;
 
   const typeLabel = ENTITY_TYPE_LABEL[entity.entity_type] ?? entity.entity_type;
@@ -697,9 +693,9 @@ export default async function DonorProfilePage({
                 Where this {typeLabel.toLowerCase()}&apos;s donations went
               </p>
             </div>
-            {recipients.length > topRecipients.length && (
+            {uniqueRecipients > topRecipients.length && (
               <span className="text-[10px] text-ink-soft/70">
-                Showing top {topRecipients.length} of {recipients.length} unique
+                Showing top {topRecipients.length} of {uniqueRecipients.toLocaleString()} unique
               </span>
             )}
           </div>
