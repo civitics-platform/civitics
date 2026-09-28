@@ -113,7 +113,7 @@ export async function GET(
 
   const line = dispatchLogLine(target, outcome, dbAt);
   if (outcome.status === "dispatched" && stampError === null) {
-    console.log(line);
+    console.info(line);
   } else {
     console.error(stampError === null ? line : `${line} stamp_error=${JSON.stringify(stampError)}`);
   }

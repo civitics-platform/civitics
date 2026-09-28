@@ -78,4 +78,4 @@ approx(scaledRadius(BASE, 999, 'sqrt', 0), scaledRadius(BASE, 999, 'sqrt', 12345
 ok(scaledRadius(BASE, 1e12, 'sqrt', 0) === MAX_NODE_RADIUS, 'sqrt: huge magnitude clamps at cap');
 ok(scaledRadius(BASE, 1e12, 'log', 0) <= MAX_NODE_RADIUS, 'log: never exceeds cap');
 
-console.log(`nodeSize.test — all ${passed} checks passed`);
+console.info(`nodeSize.test — all ${passed} checks passed`);

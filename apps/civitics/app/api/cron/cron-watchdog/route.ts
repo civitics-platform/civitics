@@ -124,7 +124,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const verdict = decideCronWatchdogVerdict(data, { elapsedMs: rpcMs });
     if (verdict.ok) {
-      console.log(verdict.line);
+      console.info(verdict.line);
     } else {
       console.error(verdict.line);
     }

@@ -96,7 +96,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    if (result.ok) console.log(result.line);
+    if (result.ok) console.info(result.line);
     else console.error(result.line);
 
     return NextResponse.json({

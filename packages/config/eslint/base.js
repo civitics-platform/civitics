@@ -20,7 +20,11 @@ module.exports = {
     // to zero + `--max-warnings 0` is the ratchet follow-up (see docs/FIXES.md).
     "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
     "@typescript-eslint/no-explicit-any": "warn",
-    "no-console": ["warn", { allow: ["warn", "error"] }],
+    // FIX-460: the allow-list is the policy. console.log is debug debris and
+    // is banned; console.info is DELIBERATE operator output (a cron receipt,
+    // a CLI's report) — the same stdout stream as .log, so moving a real line
+    // to .info changes nothing at runtime; warn/error are diagnostics.
+    "no-console": ["warn", { allow: ["info", "warn", "error"] }],
     // Minor recommended rules that fire on intentional patterns (empty catch
     // blocks, hoisted helpers). Warn now; ratchet to error later (FIX-459).
     "no-empty": ["warn", { allowEmptyCatch: true }],

@@ -112,7 +112,7 @@ export class CostGate {
     sampleFn: () => Promise<{ usage: { input_tokens: number; output_tokens: number }; model: string }>,
     sampleSize: number = COST_CONFIG.estimate_sample_size
   ): Promise<SampleResult[]> {
-    console.log(`\n📊 Sampling ${sampleSize} real API calls to estimate cost...\n`);
+    console.info(`\n📊 Sampling ${sampleSize} real API calls to estimate cost...\n`);
 
     const results: SampleResult[] = [];
 
@@ -128,7 +128,7 @@ export class CostGate {
         output_tokens: response.usage.output_tokens,
         cost_usd:      cost,
       });
-      console.log(
+      console.info(
         `  Sample ${i + 1}/${sampleSize}: ` +
         `${response.usage.input_tokens} in / ${response.usage.output_tokens} out ` +
         `($${cost.toFixed(6)})`
@@ -243,7 +243,7 @@ export class CostGate {
         `║  ⚠  EXCEEDS PER-RUN LIMIT ($${estimate.run_limit_usd.toFixed(2).padEnd(8)})║\n`
       : "";
 
-    console.log(`
+    console.info(`
 ╔═══════════════════════════════════════╗
 ║  💰 Cost Estimate — ${estimate.pipeline.slice(0, 17).padEnd(17)}║
 ╠═══════════════════════════════════════╣
@@ -287,7 +287,7 @@ ${budgetExceedBlock}${runLimitBlock}╚═════════════�
       );
 
       this.displayEstimate(estimate);
-      console.log(`
+      console.info(`
 🚫 BUDGET WOULD BE EXCEEDED
 
 Options:
@@ -305,7 +305,7 @@ Choice [1/2]: `);
 
     // AUTO-APPROVE: tiny cost, no prompt needed
     if (estimate.estimated_total_usd < COST_CONFIG.auto_approve_under_usd) {
-      console.log(
+      console.info(
         `\n✅ Auto-approved — under $${COST_CONFIG.auto_approve_under_usd} threshold\n`
       );
       return { approved: true, auto_approved: true };
@@ -313,7 +313,7 @@ Choice [1/2]: `);
 
     // MANUAL APPROVAL REQUIRED
     this.displayEstimate(estimate);
-    console.log("\nProceed? [Y/n]: ");
+    console.info("\nProceed? [Y/n]: ");
     const answer = await this.prompt();
     const approved = answer.trim().toLowerCase() !== "n";
     return { approved, auto_approved: false };
@@ -407,7 +407,7 @@ Choice [1/2]: `);
     }
 
     // All checks passed — auto-approve
-    console.log(
+    console.info(
       `\n✅ Autonomous approval: ${pipelineName}\n` +
       `   Estimated: $${estimate.estimated_total_usd.toFixed(4)}\n` +
       `   Entities: ${estimate.entity_count}\n` +
@@ -541,7 +541,7 @@ Choice [1/2]: `);
 
     // Autonomous skip: log and return early
     if (!approval.approved && autonomous) {
-      console.log(
+      console.info(
         `\n⏭ Pipeline skipped (autonomous):\n   ${approval.skip_reason}\n`
       );
       await this.logSkip(
@@ -558,7 +558,7 @@ Choice [1/2]: `);
     }
 
     if (!approval.approved) {
-      console.log("\n❌ Pipeline cancelled\n");
+      console.info("\n❌ Pipeline cancelled\n");
       return { ...approval, estimate };
     }
 
@@ -573,7 +573,7 @@ Choice [1/2]: `);
       approval.auto_approved
     );
 
-    console.log(`\n▶ Pipeline approved — run ID: ${runId}\n`);
+    console.info(`\n▶ Pipeline approved — run ID: ${runId}\n`);
 
     return { ...approval, run_id: runId, estimate };
   }
@@ -613,7 +613,7 @@ Choice [1/2]: `);
         ? `║  Variance:  ${((variance > 1 ? "+" : "") + ((variance - 1) * 100).toFixed(1) + "%").padEnd(26)}║`
         : "";
 
-    console.log(`
+    console.info(`
 ╔═══════════════════════════════════════╗
 ║  ✅ Pipeline Complete — Cost Report   ║
 ╠═══════════════════════════════════════╣

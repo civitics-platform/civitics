@@ -217,7 +217,6 @@ export async function GET(req: NextRequest) {
         console.error("[sunburst] group conns error:", (connsError as { message?: string }).message ?? connsError);
         return withPublicCdnCache(NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } }));
       }
-      console.log("[sunburst] group conns:", groupConns?.length ?? 0);
 
       // ── Group mode: vote_categories ──────────────────────────────────────────
       if (ring1 === "vote_categories") {

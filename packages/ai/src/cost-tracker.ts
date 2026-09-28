@@ -223,7 +223,7 @@ export class CostTracker {
   ): Promise<void> {
     if (COST_CONFIG.alerts.console) {
       const prefix = { info: "💡", warning: "⚠️ ", urgent: "🚨", blocked: "🚫" }[level];
-      console.log(`\n${prefix} COST ALERT [${level.toUpperCase()}]\n${message}\n`);
+      console.warn(`\n${prefix} COST ALERT [${level.toUpperCase()}]\n${message}\n`);
     }
 
     if (COST_CONFIG.alerts.supabase) {

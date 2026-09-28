@@ -81,15 +81,12 @@ export async function GET(req: NextRequest) {
 
   try {
     if (groupFilterRaw) {
-      console.log('[chord] groupFilterRaw:', groupFilterRaw);
       try {
         const decoded = decodeURIComponent(groupFilterRaw);
-        console.log('[chord] decoded:', decoded);
         groupFilter = JSON.parse(decoded) as GroupFilter;
       } catch {
         groupFilter = JSON.parse(groupFilterRaw) as GroupFilter;
       }
-      console.log('[chord] groupFilter:', groupFilter);
     }
     if (secondaryFilterRaw) {
       try {
@@ -118,7 +115,6 @@ export async function GET(req: NextRequest) {
         ...(state && { state }),
         ...(industry && { industry }),
       };
-      console.log('[chord] reconstructed groupFilter:', groupFilter);
     }
   }
 
@@ -126,7 +122,6 @@ export async function GET(req: NextRequest) {
 
   // ── Helper: resolve official member IDs for a GroupFilter ─────────────────
   async function getMemberIds(filter: GroupFilter): Promise<string[]> {
-    console.log('[getMemberIds] filter:', JSON.stringify(filter));
     const { data, error } = await withDbTimeout<{ data: Array<{ id: string }> | null; error: unknown }>(
       supabase.rpc('get_officials_by_filter', {
         p_chamber: filter.chamber ?? undefined,
@@ -134,8 +129,7 @@ export async function GET(req: NextRequest) {
         p_state:   filter.state   ?? undefined,
       })
     );
-    console.log('[getMemberIds] count:', data?.length ?? 0);
-    console.log('[getMemberIds] error:', error);
+    if (error) console.error('[getMemberIds] rpc error:', error);
     return (data ?? []).map((m: { id: string }) => m.id);
   }
 
@@ -398,8 +392,6 @@ export async function GET(req: NextRequest) {
         console.error('[chord/cross-group] sector error:', sectorError);
       }
 
-      console.log('[chord/cross-group] sectors:', sectorData?.length ?? 0);
-
       const sortedSectors = sectorData ?? [];
 
       const groups = sortedSectors.map((row, i) => ({
@@ -447,8 +439,6 @@ export async function GET(req: NextRequest) {
       if (sectorError) {
         console.error('[chord/group] sector error:', sectorError);
       }
-
-      console.log('[chord/group] sectors:', sectorData?.length ?? 0);
 
       const groups = (sectorData ?? []).map((row, i) => ({
         id: `sector-${i}`,
