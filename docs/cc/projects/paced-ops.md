@@ -4,6 +4,7 @@ title: Paced ops — the census, the runner, the weekly merge
 lanes: [ops, design]
 status: active
 plan: design-paced-op-census-2026-09-26 §7
+goal: "P1 · Infrastructure"
 steps:
   - {id: s1, kind: cc, ref: "cc-162", title: "renders census + cancellation lens"}
   - {id: s2, kind: cc, ref: "cc-164", title: "paced runner: budget 3/CALL, breather census, edge floor p0 0.23 %"}

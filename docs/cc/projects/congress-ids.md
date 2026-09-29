@@ -4,6 +4,7 @@ title: Congress-legislators FEC ids — report first, then write
 lanes: [fec]
 status: active
 plan: design-fix1189-congress-legislators-fec-ids-2026-09-19
+goal: "P1 · Data Quality"
 steps:
   - {id: s1, kind: design, ref: "FIX-1189", title: "design note; D1–D5 ratified 2026-09-20", done: 2026-09-20}
   - {id: s2, kind: cc, ref: "cc-170", title: "O2 — classifyBinding() + nightly report step, no writes"}

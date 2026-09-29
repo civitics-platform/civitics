@@ -8,11 +8,19 @@
 //              cc-880 (older than the window; a plan step reads it)
 //   prompts/   900 · 901 (no front matter, inside the report range) · 902
 //              (marker 3 days old) · 903 · 904 (when: Thu 16:30Z) · 905
-//              (fresh marker) · 950 (no front matter, past every report)
-//   projects/  demo.md — one step of every kind, one naming a FAILing report
+//              (fresh marker) · 906 (when: after Tue 16:30Z) · 907 (a
+//              prod-writes window Thu 23:15–03:30) · 908 (prod-writes, Thu) ·
+//              950 (no front matter, past every report)
+//   projects/  demo.md — one step of every kind, one naming a FAILing report;
+//              all-done.md (every step done, file says active); archived.md;
+//              loose.md (no goal)
 //   receipts/  2026-09-28.json (held=true; daily, weekly, two monthly, one
 //              inactive and one */15 job), an older day, and bands.json
-//   lanes-backfill.json · done.log · FIXES.md · board.local.json
+//   receipts-history/  fifteen days: a weekly job carried seven files at a
+//              time, a failed firing, a mid-window re-schedule, weekday /
+//              Saturday / Sunday nightlies, and a newest file 32 h stale
+//   lanes-backfill.json · done.log · FIXES.md (a fec-marked bullet under
+//   BUGS) · board.local.json · PHASE_GOALS.md
 //
 // Run:   pnpm board:test
 // Exit:  0 on pass, 1 on fail.
@@ -36,10 +44,14 @@ import {
   latestReceiptName,
   supervisedLine,
   escapeHtml,
+  windowPill,
+  whenDays,
+  cronHistory,
+  historyReceiptNames,
 } from "./board.mjs";
 import { verifyReport } from "./cc-verify.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
-import { DEFAULT_LANES } from "./lib/cc-front-matter.mjs";
+import { DEFAULT_LANES, parseWhen, checkPromptFrontMatter } from "./lib/cc-front-matter.mjs";
 
 const failures = [];
 function assertEq(label, actual, expected) {
@@ -67,7 +79,9 @@ const pathsFor = (boardDir) => ({
   receiptsDir: resolve(F, "receipts"),
   doneLogPath: resolve(F, "done.log"),
   fixesPath: resolve(F, "FIXES.md"),
+  fixesLinkPath: resolve(F, "FIXES.md"),
   archivePath: resolve(F, "no-archive.md"),
+  phaseGoalsPath: resolve(F, "PHASE_GOALS.md"),
   localPath: resolve(F, "board.local.json"),
   reportLinkDir: resolve(F, "reports"),
 });
@@ -91,7 +105,14 @@ const verifierFor = (doneLogText) => {
   return (fm, loaded) => verifyReport(fm, { ...vctx, frontMatterSource: loaded.source, frontMatterDrift: loaded.drift });
 };
 const verify = verifierFor(readFileSync(paths.doneLogPath, "utf8"));
-const opts = { nowMs: NOW_MS, verify, lanes: DEFAULT_LANES, head: "fixture0", paths };
+// The section → lane map, as docs/cc/cc.config.json carries it — minus HOMEPAGE,
+// so FIX-87 has a section the map does not name.
+const SECTION_LANES = {
+  "BUGS — Fix These First": "bugs",
+  "GENERAL / CROSS-CUTTING": "hygiene",
+  "INFRASTRUCTURE & PERFORMANCE": "ops",
+};
+const opts = { nowMs: NOW_MS, verify, lanes: DEFAULT_LANES, head: "fixture0", paths, sectionLanes: SECTION_LANES };
 
 const inputs = loadBoardInputs(paths);
 const board = buildBoard(inputs, opts);
@@ -105,7 +126,7 @@ const day = (date) => board.week.days.find((d) => d.date === date);
 console.log("inputs:");
 assertEq("latest receipt is the max DATED filename, never bands.json", inputs.receipt?.name, "2026-09-28.json");
 assertEq("latestReceiptName ignores non-day files", latestReceiptName(["2026-09-20.json", "bands.json", "README.md", "2026-09-28.json", "2026-09-28.md"]), "2026-09-28.json");
-assertEq("every numbered prompt is listed", inputs.prompts.map((p) => p.n), [900, 901, 902, 903, 904, 905, 950]);
+assertEq("every numbered prompt is listed", inputs.prompts.map((p) => p.n), [900, 901, 902, 903, 904, 905, 906, 907, 908, 950]);
 assertEq("both markers read", inputs.markers.map((m) => m.n).sort(), [902, 905]);
 
 // -- 2. card states -----------------------------------------------------------
@@ -155,15 +176,15 @@ assertEq(
 // -- 3. reconciliation (rule 116) ---------------------------------------------
 console.log("\nreconciliation:");
 const r = board.reconciliation;
-assertEq("2 reports in the window + 4 in-flight prompts = 6 cards", [r.window_reports, r.prompt_cards, r.cards], [2, 4, 6]);
-assertEq("every card placed exactly once", [r.placed, r.ok], [6, true]);
+assertEq("2 reports in the window + 7 in-flight prompts = 9 cards", [r.window_reports, r.prompt_cards, r.cards], [2, 7, 9]);
+assertEq("every card placed exactly once", [r.placed, r.ok], [9, true]);
 for (const l of [...board.lanes, board.unlaned]) {
   assertEq(`${l.name ?? "no lane"}: in flight + landed + verified = count`, l.in_flight + l.landed + l.verified, l.count);
 }
 assertEq(
   "lane counts",
   board.lanes.map((l) => [l.name, l.count, l.in_flight, l.landed, l.verified]),
-  [["ops", 1, 0, 0, 1], ["fec", 0, 0, 0, 0], ["app", 2, 2, 0, 0], ["hygiene", 2, 2, 0, 0], ["design", 0, 0, 0, 0]],
+  [["ops", 3, 2, 0, 1], ["fec", 0, 0, 0, 0], ["app", 3, 3, 0, 0], ["hygiene", 2, 2, 0, 0], ["design", 0, 0, 0, 0]],
 );
 assertEq("no-lane strip", [board.unlaned.count, board.unlaned.landed], [1, 1]);
 const allCc = [...board.lanes.flatMap((l) => l.cards), ...board.unlaned.cards].map((c) => c.cc);
@@ -179,9 +200,10 @@ assertEq(
 assertEq("receipt_as_of", board.receipt_as_of, "2026-09-27T23:31:31.143Z");
 assertEq("verify FAILs count", board.badges.verify_fails, 1);
 assertEq("owed: one receipt in one report", board.badges.owed, { receipts: 1, reports: 1 });
-assertEq("in flight: 1 running, 1 stale, 2 drafted", board.badges.in_flight, { running: 1, stale: 1, drafted: 2 });
-assertEq("open count from done.log + FIXES.md (50, 60, 61)", board.badges.open_count, 3);
-assertTrue("the badge line names the interlock and counts", /held by cc-902/.test(board.badge_line) && /3 open/.test(board.badge_line), board.badge_line);
+assertEq("in flight: 1 running, 1 stale, 5 drafted", board.badges.in_flight, { running: 1, stale: 1, drafted: 5 });
+assertEq("open count from done.log + FIXES.md (50, 60, 61, 80–87)", board.badges.open_count, 11);
+assertEq("the open badge carries the priority counts (D2c)", board.badges.open_text, "11 open · 🔴 2 · 🟠 4 · 🟡 3 · 🟢 1 · ⬜ 1");
+assertTrue("the badge line names the interlock and counts", /held by cc-902/.test(board.badge_line) && /11 open · 🔴 2/.test(board.badge_line), board.badge_line);
 
 // -- 5. the projects strip ----------------------------------------------------
 console.log("\nprojects:");
@@ -199,9 +221,9 @@ assertEq("s9 names a report whose verify FAILs → landed · verify FAILs, never
 assertEq("3 of 9 done, current = the first not-done step", [demo?.done_count, demo?.total, demo?.current], [3, 9, "s4"]);
 assertEq("the plan file has no shape problems", demo?.problems, []);
 assertEq(
-  "queue: plan steps not done and not already a card",
+  "queue: plan steps not done and not already a card (an archived plan queues nothing)",
   [...board.lanes.flatMap((l) => l.queue.map((q) => `${l.name}:${q.step}`))].sort(),
-  ["design:s7", "ops:s5", "ops:s6", "ops:s8"],
+  ["app:s1", "design:s7", "ops:s5", "ops:s6", "ops:s8"],
 );
 
 // -- 6. the week --------------------------------------------------------------
@@ -242,6 +264,133 @@ assertEq(
   "supervised 00:15–04:30 UTC (16:15–20:30 PST)",
 );
 
+// -- 6b. the backlog (FIX-1243 D2) --------------------------------------------
+console.log("\nbacklog:");
+const row = (lane) => board.backlog.rows.find((x) => x.lane === lane);
+const shownIds = (lane) => row(lane)?.shown.map((i) => i.id);
+// Rule 105: a bullet UNDER BUGS carrying <!--lane:fec--> is fec's, not a bug.
+// A reader that consulted the section first would put it in the bugs row and
+// every count would still add up.
+assertEq("a fec-marked bullet under BUGS lands in fec", shownIds("fec"), ["FIX-80"]);
+assertEq("…and not in the bugs row", shownIds("bugs"), ["FIX-81"]);
+assertEq(
+  "ops: 🔴 first, then size S→XL; the archived plan's FIX-83 is NOT hidden; the prompt-named 🟠 FIX-86 is",
+  shownIds("ops"),
+  ["FIX-85", "FIX-83", "FIX-82"],
+);
+assertEq("a 🔴 a plan step names is shown, labelled ◆ project", row("ops")?.shown[0]?.named, "◆ loose");
+assertEq("the hidden 🟠 is counted, not dropped", row("ops")?.named_hidden, 1);
+assertEq("the 🟢 is in `+ N more`", [row("ops")?.more_count, row("ops")?.more.quick], [1, 1]);
+assertEq("a backlog item reads `FIX-NNN · emoji size · title`", [row("ops")?.shown[1]?.emoji, row("ops")?.shown[1]?.size, row("ops")?.shown[1]?.title.slice(0, 15)], ["🟠", "S", "infra high, sma"]);
+assertEq("hygiene: three 🟡, all in `+ N more`", [row("hygiene")?.open, row("hygiene")?.shown.length, row("hygiene")?.more.medium], [3, 0, 3]);
+assertEq("a section the map does not name → unmapped", shownIds("unmapped"), []);
+assertEq("…counted there", [row("unmapped")?.open, row("unmapped")?.more.future], [1, 1]);
+const br = board.backlog.reconciliation;
+assertEq(
+  "rule 116: Σ lanes + bugs + unmapped = open_count",
+  [br.rows_sum, br.open_count, br.ok, br.by_row],
+  [11, 11, true, { ops: 5, fec: 1, app: 0, hygiene: 3, design: 0, bugs: 1, unmapped: 1 }],
+);
+assertTrue("every row sums: shown + named_hidden + more = open", br.rows_add_up);
+assertTrue("the backlog rows render, linking FIXES.md", html.includes('<span class="fid">FIX-85</span>') && html.includes("◆ loose"));
+assertTrue("the bugs row renders full width", /Bugs — FIXES\.md § BUGS/.test(html));
+assertTrue("`+ N more` renders with its emoji split", html.includes("+ 1 more (🟢 1)") && html.includes("+ 3 more (🟡 3)"));
+
+// -- 6c. phases, done and archived projects (D3, D4) --------------------------
+console.log("\nphases and done projects:");
+const proj = (slug) => board.projects.find((p) => p.slug === slug);
+assertEq(
+  "tiles group under the phase their goal names, `no phase` last",
+  board.project_groups.map((g) => [g.header, g.projects]),
+  [["Phase 1 — MVP · ~42%", ["demo"]], ["no phase", ["loose"]]],
+);
+assertTrue("the phase header's token is PHASE_GOALS.md's own", html.includes("Phase 1 — MVP · ~42%"));
+// Rule 105: status says active, every step is done — collapse AND lint.
+assertEq("an all-done plan is done whatever its status says", proj("all-done")?.derived_status, "done");
+assertTrue(
+  "…with a lint line naming the disagreement",
+  proj("all-done")?.problems.some((x) => /status: active, but all 2 steps are done/.test(x)),
+  JSON.stringify(proj("all-done")?.problems),
+);
+assertTrue("a goal group PHASE_GOALS.md lacks is a lint line", proj("all-done")?.problems.some((x) => /no `### Not A Group` under Phase 2/.test(x)));
+assertEq("done projects collapse into one row, finish date = the latest step's", board.done_row_text, "done: all-done ✓ 2/2 (2026-09-27)");
+assertTrue("…which is not also a tile", !board.project_groups.some((g) => g.projects.includes("all-done")));
+assertEq("archived: hidden entirely, a count remains", [board.archived_projects, board.projects.find((p) => p.slug === "archived")?.derived_status], [{ count: 1, slugs: ["archived"] }, "archived"]);
+assertTrue("…and it is not rendered as a tile", !html.includes("An archived plan"));
+const allBoard = buildBoard(inputs, { ...opts, projectsView: "all" });
+assertEq("--projects all: no collapsed row", allBoard.done_row_text, "");
+assertTrue("--projects all: the done plan is a tile", allBoard.project_groups.some((g) => g.projects.includes("all-done")));
+assertTrue("--projects all: archived stays hidden", !allBoard.project_groups.some((g) => g.projects.includes("archived")));
+
+// -- 6d. run windows and the prod-day collision (D5) --------------------------
+console.log("\nrun windows:");
+assertEq("parseWhen: after", [parseWhen("after 2026-09-29T16:30Z").kind, parseWhen("after 2026-09-29T16:30Z").start], ["after", "2026-09-29T16:30Z"]);
+assertEq("parseWhen: window", parseWhen("2026-10-01T23:15Z..2026-10-02T03:30Z").kind, "window");
+assertEq("parseWhen: a zoneless after is invalid", parseWhen("after 2026-09-29T16:30").kind, "invalid");
+assertEq("parseWhen: a window that ends before it starts is invalid", parseWhen("2026-10-02T00:00Z..2026-10-01T00:00Z").kind, "invalid");
+assertEq("parseWhen: any / absent", [parseWhen("any").kind, parseWhen(undefined).kind], ["any", "none"]);
+assertEq("cc-906's pill, with board.local.json's zone", card(906)?.window_pill, "runs after Tue 09-29 16:30 UTC · 09:30 PDT");
+assertEq("…and without a local file", windowPill(parseWhen("after 2026-09-29T16:30Z"), null), "runs after Tue 09-29 16:30 UTC");
+assertEq("cc-907's pill is the bounded window", card(907)?.window_pill, "window Thu 10-01 23:15–03:30 UTC · 16:15–20:30 PDT");
+assertEq("cc-904 (an instant) → runs …", card(904)?.window_pill, "runs Thu 10-01 16:30 UTC · 09:30 PDT");
+assertEq("`when: any` → any time", windowPill(parseWhen("any"), null), "any time");
+assertTrue("cc-906 sits on Tuesday at its instant", (day("2026-09-29")?.events ?? []).some((e) => e.kind === "run" && e.time === "16:30" && e.display_time === "after 16:30" && /cc-906/.test(e.label)));
+assertTrue("cc-907 is a span label on its start day", (day("2026-10-01")?.events ?? []).some((e) => e.kind === "run" && e.display_time === "23:15–03:30" && /cc-907/.test(e.label)));
+assertEq("the two prod-writes prompts on Thursday flag each other", [card(907)?.collisions, card(908)?.collisions], [[{ cc: 908, days: ["2026-10-01"] }], [{ cc: 907, days: ["2026-10-01"] }]]);
+assertEq("a prod-reads prompt on the same day does not", card(904)?.collisions ?? [], []);
+assertEq("the header counts the colliding cards", board.badges.prod_day_collisions, 2);
+assertEq(
+  "prod-writes → needs a supervised slot, and the next window after its own start",
+  card(908)?.needs_slot,
+  "needs a supervised slot · next supervised Mon 10-05 23:15 UTC (16:15 PDT)",
+);
+assertTrue("the collision renders on the card", html.includes("⚠ shares a prod day with cc-908 (10-01)"));
+assertEq("whenDays: a window crossing midnight touches both days", whenDays(parseWhen("2026-10-01T23:15Z..2026-10-02T03:30Z")), ["2026-10-01", "2026-10-02"]);
+assertEq("whenDays: ending exactly at midnight does not touch the next", whenDays(parseWhen("2026-10-01T20:00Z..2026-10-02T00:00Z")), ["2026-10-01"]);
+// cc:prompt / cc:verify accept the new forms (one reader, one check).
+assertEq("checkPromptFrontMatter accepts `after …`", checkPromptFrontMatter({ cc: "1", lane: "ops", when: "after 2026-09-29T16:30Z" }, { n: 1 }).problems, []);
+assertEq("…and a window", checkPromptFrontMatter({ cc: "1", lane: "ops", when: "2026-10-01T23:15Z..2026-10-02T03:30Z" }, { n: 1 }).problems, []);
+assertTrue("…and refuses a zoneless one", /when:/.test(checkPromptFrontMatter({ cc: "1", lane: "ops", when: "after 2026-09-29T16:30" }, { n: 1 }).problems.join(" ")));
+
+// -- 6e. cron and nightly history (D6) ----------------------------------------
+console.log("\nreceipts history:");
+const histPaths = { ...paths, receiptsDir: resolve(F, "receipts-history") };
+const histInputs = loadBoardInputs(histPaths);
+assertEq("the newest 14 dated files are read, oldest first", [histInputs.history.length, histInputs.history[0].name, histInputs.history[13].name], [14, "2026-09-15.json", "2026-09-28.json"]);
+assertEq("historyReceiptNames skips bands.json", historyReceiptNames(["2026-09-01.json", "bands.json", "2026-09-02.json"]), ["2026-09-01.json", "2026-09-02.json"]);
+const hb = buildBoard(histInputs, { ...opts, paths: histPaths });
+const hist = (name) => hb.cron_history.find((h) => h.jobname === name);
+// The weekly job sits in seven files with one last_start, then seven with the
+// next: two firings. Counting file rows would say fourteen.
+assertEq("a weekly job carried seven files at a time is TWO firings", hist("weekly-job")?.firings, 2);
+assertEq("…median / max / last over the firings, not the files", [hist("weekly-job")?.median_s, hist("weekly-job")?.max_s, hist("weekly-job")?.last_s], [200, 300, 300]);
+assertEq("…the 15th (oldest) file's 9999 s firing is outside the window", hist("weekly-job")?.max_s < 9999, true);
+assertEq("…its band, from bands.json", hist("weekly-job")?.band, { lo_s: 50, hi_s: 250 });
+assertEq("…its last verdict, from the newest file", hist("weekly-job")?.last_verdict, "above");
+assertEq("a failed firing counts, with no duration", [hist("failing-weekly")?.firings, hist("failing-weekly")?.with_duration, hist("failing-weekly")?.median_s], [1, 0, undefined]);
+assertEq("a mid-window re-schedule is visible", hist("resched-job")?.schedules_seen, ["0 3 * * *", "0 1 * * 1"]);
+assertEq("cronHistory dedupes by (jobname, last_start)", cronHistory([
+  { name: "a", json: { cron_jobs: [{ jobname: "j", last_start: "t1", duration_s: 5 }] } },
+  { name: "b", json: { cron_jobs: [{ jobname: "j", last_start: "t1", duration_s: 5 }] } },
+]).map((h) => h.firings), [1]);
+assertEq(
+  "nightly walls by class: weekday / Sat / Sun",
+  ["weekday", "sat", "sun"].map((k) => [hb.nightly_history[k].runs, hb.nightly_history[k].fec_median_s]),
+  [[10, 300], [2, 300], [2, 5760]],
+);
+const hday = (date) => hb.week.days.find((d) => d.date === date);
+const nightlyOn = (date) => hday(date)?.events.find((e) => e.kind === "nightly")?.label;
+assertEq("Sunday's nightly label is Sunday's median", nightlyOn("2026-10-04"), "nightly dispatch (gha-dispatch) · Sun ~103 min, fec ~96 min (median of 2)");
+assertEq("a weekday's label is the weekday median", nightlyOn("2026-09-29"), "nightly dispatch (gha-dispatch) · weekday ~12 min, fec ~5 min (median of 10)");
+const weeklyEv = hday("2026-09-29")?.events.find((e) => e.kind === "cron" && /weekly-job/.test(e.label));
+assertEq("the Tuesday cron event carries its size and last verdict", [weeklyEv?.size, weeklyEv?.verdict], ["~3 min · last 5 min · band 50s–4 min · 2 firings", "above"]);
+assertTrue("…coloured by it", hb && renderHtml(hb).includes('class="ev v-above"'));
+// Staleness: the history's newest file was generated 32 h before --now.
+assertEq("a receipts file > 30 h old raises the banner", hb.receipts_stale, { stale: true, text: "receipts stale: last 2026-09-26 20:00 UTC" });
+assertTrue("…at the top of the page", renderHtml(hb).indexOf('class="stale"') < renderHtml(hb).indexOf('class="hdr"'));
+assertEq("the fixture's own receipts (4.5 h old) do not", board.receipts_stale.stale, false);
+assertTrue("history board: no undefined / null / NaN", !/\bundefined\b|\bnull\b|\bNaN\b/.test(renderBoardJson(hb)) && !/\bundefined\b|\bnull\b|\bNaN\b/.test(renderHtml(hb)));
+
 // -- 7. the output ------------------------------------------------------------
 console.log("\noutput:");
 const FORBIDDEN = /\bundefined\b|\bnull\b|\bNaN\b|\[object Object\]/;
@@ -269,7 +418,7 @@ const sink = () => {
 const runWith = (argv, boardDir) => {
   const out = sink();
   const err = sink();
-  const code = run(argv, { paths: pathsFor(boardDir), lanes: DEFAULT_LANES, head: "fixture0", verify, stdout: out, stderr: err });
+  const code = run(argv, { paths: pathsFor(boardDir), lanes: DEFAULT_LANES, sectionLanes: SECTION_LANES, head: "fixture0", verify, stdout: out, stderr: err });
   return { code, out: out.text, err: err.text };
 };
 const dryDir = resolve(tmpRoot, "dry");

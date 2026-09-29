@@ -30,7 +30,12 @@ export const FIX_ID_RE = /^FIX-\d+$/;
 export const ATTENDED = new Set(["supervised", "unattended-ok"]);
 export const POSTURES = new Set(["code-only", "prod-reads", "prod-writes"]);
 export const STEP_KINDS = new Set(["cc", "design", "receipt", "op", "decision"]);
-export const PROJECT_STATUSES = new Set(["active", "planned", "done"]);
+/**
+ * A plan file's stated status. `archived` (FIX-1243 D4) hides the plan from the
+ * board entirely; `done` is also DERIVED — a plan whose steps are all done
+ * renders as done whatever it says, with a lint line when the two disagree.
+ */
+export const PROJECT_STATUSES = new Set(["active", "planned", "done", "archived"]);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -57,6 +62,41 @@ export function dateishMs(v) {
 
 /** Whether a dateish value carries a time of day (vs a bare date). */
 export const hasTime = (v) => typeof v === "string" && v.includes("T");
+
+/**
+ * A prompt's `when:` (FIX-1243 D5). Five forms:
+ *   any                              → {kind: "any"}
+ *   2026-09-29 | 2026-09-29T16:30Z   → {kind: "at", start}
+ *   after 2026-09-29T16:30Z          → {kind: "after", start}   (a date works too)
+ *   2026-10-01T23:15Z..2026-10-02T03:30Z → {kind: "window", start, end}
+ *   (absent)                         → {kind: "none"}
+ * anything else → {kind: "invalid", reason}. Every instant must carry a zone
+ * (isDateish): a local time would shift by the writer's offset. `start`/`end`
+ * are the raw strings; `startMs`/`endMs` their epoch ms (a bare date is 00:00
+ * UTC, and a bare-date window END is the end of that day).
+ */
+export function parseWhen(v) {
+  if (v === undefined || v === null || v === "") return { kind: "none" };
+  if (typeof v !== "string") return { kind: "invalid", reason: "not a string" };
+  const s = v.trim();
+  if (s === "any") return { kind: "any" };
+  if (isDateish(s)) return { kind: "at", start: s, startMs: dateishMs(s), timed: hasTime(s) };
+  const after = /^after\s+(\S+)$/.exec(s);
+  if (after) {
+    if (!isDateish(after[1])) return { kind: "invalid", reason: `after \`${after[1]}\` is not a date or a zoned ISO instant` };
+    return { kind: "after", start: after[1], startMs: dateishMs(after[1]), timed: hasTime(after[1]) };
+  }
+  const win = /^(\S+)\s*\.\.\s*(\S+)$/.exec(s);
+  if (win) {
+    const [, a, b] = win;
+    if (!isDateish(a) || !isDateish(b)) return { kind: "invalid", reason: "a window's ends must be dates or zoned ISO instants" };
+    const startMs = dateishMs(a);
+    const endMs = hasTime(b) ? dateishMs(b) : dateishMs(b) + 86_400_000;
+    if (!(endMs > startMs)) return { kind: "invalid", reason: "a window must end after it starts" };
+    return { kind: "window", start: a, end: b, startMs, endMs, timed: hasTime(a) };
+  }
+  return { kind: "invalid", reason: "not `any`, a date, a zoned instant, `after <ISO>` or `<ISO>..<ISO>`" };
+}
 
 const isBlank = (v) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
 
@@ -145,8 +185,9 @@ export function checkPromptFrontMatter(fm, { n, lanes = DEFAULT_LANES, projectEx
     else if (projectExists && !projectExists(slug)) problems.push(`project: no docs/cc/projects/${slug}.md`);
   }
 
-  if (!isBlank(fm.when) && fm.when !== "any" && !isDateish(fm.when)) {
-    problems.push(`when: \`${fm.when}\` is not \`any\`, a date, or a zoned ISO instant`);
+  if (!isBlank(fm.when)) {
+    const w = parseWhen(fm.when);
+    if (w.kind === "invalid") problems.push(`when: \`${fm.when}\` — ${w.reason}`);
   }
   if (!isBlank(fm.attended) && !ATTENDED.has(fm.attended)) {
     problems.push(`attended: \`${fm.attended}\` is not one of ${[...ATTENDED].join(" | ")}`);

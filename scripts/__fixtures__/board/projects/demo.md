@@ -4,6 +4,7 @@ title: The fixture project — one step of every kind
 lanes: [ops, design]
 status: active
 plan: fixture-plan §1
+goal: "P1 · Infrastructure"
 steps:
   - {id: s1, kind: cc, ref: "cc-880", title: "an older run, verified"}
   - {id: s2, kind: op, ref: "FIX-40", title: "an op with a done.log row"}

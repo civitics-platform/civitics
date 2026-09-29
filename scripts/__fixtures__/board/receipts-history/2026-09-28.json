@@ -1,0 +1,73 @@
+{
+  "nominal_date": "2026-09-28",
+  "generated_at": "2026-09-26T20:00:00.000Z",
+  "interlock": {
+    "prod_session": [
+      {
+        "key": "held",
+        "value": "false"
+      }
+    ],
+    "skips_24h": []
+  },
+  "cron_jobs": [
+    {
+      "jobname": "weekly-job",
+      "jobid": 17,
+      "schedule": "0 15 * * 2",
+      "active": true,
+      "last_start": "2026-09-22T15:00:00Z",
+      "duration_s": 300,
+      "verdict": "above"
+    },
+    {
+      "jobname": "failing-weekly",
+      "jobid": 12,
+      "schedule": "0 16 * * 2",
+      "active": true,
+      "last_start": "2026-09-22T16:00:00Z",
+      "duration_s": null,
+      "verdict": "failed"
+    },
+    {
+      "jobname": "resched-job",
+      "jobid": 38,
+      "schedule": "0 1 * * 1",
+      "active": true,
+      "last_start": "2026-09-27T03:00:00Z",
+      "duration_s": 24,
+      "verdict": "no-band"
+    }
+  ],
+  "nightly": {
+    "created_at": "2026-09-27T21:00:00Z",
+    "run_id": 1014,
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "fec-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-27T21:00:10Z",
+        "completed_at": "2026-09-27T22:36:10Z"
+      },
+      {
+        "name": "enrichment-heavy-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-27T22:36:13Z",
+        "completed_at": "2026-09-27T22:36:53Z"
+      },
+      {
+        "name": "enrichment-tail-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-27T22:36:56Z",
+        "completed_at": "2026-09-27T22:42:56Z"
+      },
+      {
+        "name": "receipts",
+        "conclusion": null,
+        "started_at": "2026-09-27T22:43:30Z",
+        "completed_at": "0001-01-01T00:00:00Z"
+      }
+    ]
+  }
+}

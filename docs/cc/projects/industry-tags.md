@@ -4,6 +4,7 @@ title: Industry tag remediation
 lanes: [fec]
 status: active
 plan: project_industry_tag_remediation
+goal: "P2 · Accountability Tools"
 steps:
   - {id: s1, kind: op, ref: "FIX-910", title: "PR1 908–910 vocabulary 17 keys", done: 2026-07-27}
   - {id: s2, kind: op, ref: "FIX-917", title: "PR2 916–917 curated overrides", done: 2026-07-27}

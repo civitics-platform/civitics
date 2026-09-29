@@ -1,0 +1,10 @@
+{
+  "$comment": [
+    "fixture bands"
+  ],
+  "weekly-job": {
+    "lo_s": 50,
+    "hi_s": 250,
+    "source": "fixture"
+  }
+}
