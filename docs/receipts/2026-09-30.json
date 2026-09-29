@@ -1,0 +1,2969 @@
+{
+  "nominal_date": "2026-09-30",
+  "generated_at": "2026-09-29T21:12:57.510Z",
+  "target": "PROD (Supabase Pro)",
+  "target_host": "aws-0-us-west-2.pooler.supabase.com:5432",
+  "nightly": {
+    "created_at": "2026-09-29T21:00:12Z",
+    "run_id": 36630299596,
+    "conclusion": "",
+    "jobs": [
+      {
+        "name": "fec-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-29T21:00:18Z",
+        "completed_at": "2026-09-29T21:04:27Z"
+      },
+      {
+        "name": "enrichment-heavy-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-29T21:04:30Z",
+        "completed_at": "2026-09-29T21:05:09Z"
+      },
+      {
+        "name": "enrichment-light-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-29T21:05:12Z",
+        "completed_at": "2026-09-29T21:05:55Z"
+      },
+      {
+        "name": "enrichment-tail-phase",
+        "conclusion": "success",
+        "started_at": "2026-09-29T21:05:58Z",
+        "completed_at": "2026-09-29T21:12:33Z"
+      },
+      {
+        "name": "receipts",
+        "conclusion": null,
+        "started_at": "2026-09-29T21:12:36Z",
+        "completed_at": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "slot_utc": "21:00",
+    "offset_hours": 0.0033333333333333335,
+    "nominal_date": "2026-09-30",
+    "slot_offset_hours": 3,
+    "is_weekly": false,
+    "phases": [
+      {
+        "phase": "fec",
+        "status": "complete",
+        "started_at": "2026-09-29T21:00:45.877Z",
+        "duration_s": 215.596,
+        "peak_rss_mb": 189,
+        "skip_reason": null,
+        "is_weekly": false
+      },
+      {
+        "phase": "enrichment-heavy",
+        "status": "complete",
+        "started_at": "2026-09-29T21:04:55.170Z",
+        "duration_s": 9.027,
+        "peak_rss_mb": 157,
+        "skip_reason": null,
+        "is_weekly": false
+      },
+      {
+        "phase": "enrichment-light",
+        "status": "complete",
+        "started_at": "2026-09-29T21:05:38.560Z",
+        "duration_s": 11.861,
+        "peak_rss_mb": 192,
+        "skip_reason": null,
+        "is_weekly": false
+      },
+      {
+        "phase": "enrichment-tail",
+        "status": "complete",
+        "started_at": "2026-09-29T21:06:18.125Z",
+        "duration_s": 370.965,
+        "peak_rss_mb": 190,
+        "skip_reason": null,
+        "is_weekly": false
+      }
+    ],
+    "gha_note": null,
+    "runs": [
+      {
+        "run_id": 36630299596,
+        "event": "workflow_dispatch",
+        "dispatched_by": "vercel-cron",
+        "created_at": "2026-09-29T21:00:12Z",
+        "offset_hours": 0.0033333333333333335,
+        "conclusion": null,
+        "already_ran": false
+      }
+    ],
+    "dispatcher": {
+      "at": "2026-09-29T21:00:13.180467+00:00",
+      "status": "dispatched",
+      "http_status": 204,
+      "run_id": null,
+      "detail": null,
+      "last_dispatched_at": "2026-09-29T21:00:13.180467+00:00"
+    }
+  },
+  "cron_jobs": [
+    {
+      "jobname": "abuse-events-retention",
+      "jobid": 29,
+      "schedule": "15 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T04:15:00.094Z",
+      "last_end": "2026-09-29T04:15:00.141Z",
+      "duration_s": 0.046449,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "agency-staffing-rollup-refresh",
+      "jobid": 25,
+      "schedule": "5 0 * * 2",
+      "active": true,
+      "pipeline": "agency_staffing_rollup_refresh",
+      "last_start": "2026-09-29T00:05:00.051Z",
+      "last_end": "2026-09-29T00:05:40.033Z",
+      "duration_s": 39.982035,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "box-health-probe",
+      "jobid": 53,
+      "schedule": "* * * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T21:13:00.058Z",
+      "last_end": "2026-09-29T21:13:00.107Z",
+      "duration_s": 0.048842,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "contract-flow-rollups-refresh",
+      "jobid": 28,
+      "schedule": "0 14 * * 4",
+      "active": true,
+      "pipeline": "contract_flow_rollups_rebuild",
+      "last_start": "2026-09-24T14:00:00.062Z",
+      "last_end": "2026-09-24T14:31:29.521Z",
+      "duration_s": 1889.458727,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "cron-job-budget-watchdog",
+      "jobid": 44,
+      "schedule": "*/2 * * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T21:12:00.295Z",
+      "last_end": "2026-09-29T21:12:01.836Z",
+      "duration_s": 1.541188,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "cron-job-run-details-retention",
+      "jobid": 54,
+      "schedule": "51 1 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T01:51:00.063Z",
+      "last_end": "2026-09-29T01:51:00.131Z",
+      "duration_s": 0.06789,
+      "cron_status": "succeeded",
+      "return_message": "DELETE 761",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "derived-mvs-unit-watchdog",
+      "jobid": 40,
+      "schedule": "*/2 * * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T21:12:00.306Z",
+      "last_end": "2026-09-29T21:12:00.337Z",
+      "duration_s": 0.031599,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "donation-edge-orphan-sweep",
+      "jobid": 23,
+      "schedule": "30 11 1 * *",
+      "active": true,
+      "pipeline": "donation_edge_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "donor-party-rollup-orphan-sweep",
+      "jobid": 18,
+      "schedule": "0 13 1 * *",
+      "active": true,
+      "pipeline": "donor_party_rollup_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "donor-party-rollup-refresh",
+      "jobid": 17,
+      "schedule": "0 15 * * 2",
+      "active": true,
+      "pipeline": "donor_party_rollup_refresh",
+      "last_start": "2026-09-29T15:00:00.099Z",
+      "last_end": "2026-09-29T15:01:07.980Z",
+      "duration_s": 67.881222,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "donor-rollup-orphan-sweep",
+      "jobid": 15,
+      "schedule": "30 12 1 * *",
+      "active": true,
+      "pipeline": "donor_rollup_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "donor-rollup-refresh",
+      "jobid": 24,
+      "schedule": "0 9,12 * * *",
+      "active": true,
+      "pipeline": "donor_rollup_refresh",
+      "last_start": "2026-09-29T12:00:00.183Z",
+      "last_end": "2026-09-29T12:00:00.287Z",
+      "duration_s": 0.104268,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": "caught up at the FIX-983 horizon — 2026-09-27 22:37:07.473216+00 is at or before the watermark 2026-09-27 22:37:07.473216+00",
+      "phase_seconds": null,
+      "band": {
+        "lo_s": 0,
+        "hi_s": 400,
+        "source": "cc-prompt-123 D3 (09:00 firing <= 400 / 12:00 firing ~ 0). THE SCHEMA CANNOT EXPRESS THE SECOND HALF: bands are keyed by job name only, and this job's two daily firings have different expected costs, so the looser ceiling is used and the 12:00 firing is trivially in-band. See docs/receipts/README.md."
+      },
+      "verdict": "in-band",
+      "detail": null
+    },
+    {
+      "jobname": "dpr-vacuum-analyze",
+      "jobid": 31,
+      "schedule": "0 2 * * 0,3",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-27T02:00:00.059Z",
+      "last_end": "2026-09-27T02:00:01.348Z",
+      "duration_s": 1.288347,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "ec-crawl",
+      "jobid": 45,
+      "schedule": "*/15 * * * *",
+      "active": true,
+      "pipeline": "entity_connections_rebuild",
+      "last_start": "2026-09-29T21:00:00.124Z",
+      "last_end": "2026-09-29T21:00:00.326Z",
+      "duration_s": 0.202665,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "jobid": 6,
+      "schedule": "30 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T04:30:00.201Z",
+      "last_end": "2026-09-29T04:32:17.067Z",
+      "duration_s": 136.865674,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": {
+        "lo_s": 0,
+        "hi_s": 140,
+        "source": "cc-prompt-123 D3 (<= 140 quiet-day). Consistent with cc-prompt-117 Phase 0 read 4, which made a quiet-day EC run > 120 s the trigger for the pg_class-keyed gate, and with FIX-1169's series (124 s / 133 s over its first points, cc-prompt-118 Item 5)."
+      },
+      "verdict": "in-band",
+      "detail": null
+    },
+    {
+      "jobname": "ecs-vacuum-analyze",
+      "jobid": 47,
+      "schedule": "20 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:20:00.233Z",
+      "last_end": "2026-09-29T17:20:02.350Z",
+      "duration_s": 2.117626,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "entity-connection-stats-orphan-sweep",
+      "jobid": 19,
+      "schedule": "30 13 1 * *",
+      "active": true,
+      "pipeline": "entity_connection_stats_orphan_sweep",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "entity-connection-stats-rebuild",
+      "jobid": 16,
+      "schedule": "0 16 * * 1,3",
+      "active": false,
+      "pipeline": "entity_connection_stats_rebuild",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 16 * * 1,3"
+    },
+    {
+      "jobname": "fe-crawl",
+      "jobid": 46,
+      "schedule": "*/30 * * * *",
+      "active": true,
+      "pipeline": "financial_entity_totals_refresh",
+      "last_start": "2026-09-29T21:00:00.093Z",
+      "last_end": "2026-09-29T21:00:00.329Z",
+      "duration_s": 0.23627,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "fe-inbound-rollup-refresh",
+      "jobid": 55,
+      "schedule": "13 2 * * *",
+      "active": true,
+      "pipeline": "financial_entity_inbound_rollup",
+      "last_start": "2026-09-29T02:13:00.052Z",
+      "last_end": "2026-09-29T02:13:00.163Z",
+      "duration_s": 0.111168,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "jobid": 30,
+      "schedule": "50 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T04:50:00.099Z",
+      "last_end": "2026-09-29T04:50:11.032Z",
+      "duration_s": 10.933366,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": {
+        "lo_s": 0,
+        "hi_s": 140,
+        "source": "BORROWED, not independently derived: FIX-1169's series reports ec- and fe-vacuum-analyze together (124 s / 133 s, cc-prompt-118 Item 5) and cc-prompt-123 D3 names only the EC ceiling. Re-derive from this job's own series once the receipts file has collected one."
+      },
+      "verdict": "in-band",
+      "detail": null
+    },
+    {
+      "jobname": "financial-entity-totals-incremental",
+      "jobid": 13,
+      "schedule": "0 10 * * 2",
+      "active": false,
+      "pipeline": "financial_entity_totals_refresh",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 10 * * 2"
+    },
+    {
+      "jobname": "financial-entity-totals-reconcile",
+      "jobid": 14,
+      "schedule": "0 12 1 * *",
+      "active": true,
+      "pipeline": "financial_entity_totals_reconcile",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "jobid": 38,
+      "schedule": "0 3 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T03:00:00.186Z",
+      "last_end": "2026-09-29T03:00:09.982Z",
+      "duration_s": 9.796263,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "group-donor-rollup-refresh",
+      "jobid": 49,
+      "schedule": "10 3 * * 3",
+      "active": true,
+      "pipeline": "group_donor_rollup_refresh",
+      "last_start": "2026-09-23T03:10:00.030Z",
+      "last_end": "2026-09-23T03:11:41.433Z",
+      "duration_s": 101.403039,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "odbt-vacuum-analyze",
+      "jobid": 37,
+      "schedule": "18 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:18:00.135Z",
+      "last_end": "2026-09-29T17:18:00.263Z",
+      "duration_s": 0.128105,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "odr-mv-vacuum-analyze",
+      "jobid": 32,
+      "schedule": "5 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:05:00.316Z",
+      "last_end": "2026-09-29T17:05:01.938Z",
+      "duration_s": 1.622173,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "odt-vacuum-analyze",
+      "jobid": 34,
+      "schedule": "12 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:12:00.146Z",
+      "last_end": "2026-09-29T17:12:00.223Z",
+      "duration_s": 0.076777,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "officials-vacuum-analyze",
+      "jobid": 39,
+      "schedule": "30 1 * * 1",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-28T01:30:00.048Z",
+      "last_end": "2026-09-28T01:30:01.884Z",
+      "duration_s": 1.836409,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "osar-vacuum-analyze",
+      "jobid": 36,
+      "schedule": "16 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:16:00.185Z",
+      "last_end": "2026-09-29T17:16:00.349Z",
+      "duration_s": 0.164047,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "osdr-vacuum-analyze",
+      "jobid": 35,
+      "schedule": "14 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:14:00.202Z",
+      "last_end": "2026-09-29T17:14:00.319Z",
+      "duration_s": 0.11643,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "platform-counts-daily",
+      "jobid": 48,
+      "schedule": "53 3 * * *",
+      "active": true,
+      "pipeline": "platform_counts_daily",
+      "last_start": "2026-09-29T03:53:00.062Z",
+      "last_end": "2026-09-29T03:54:01.158Z",
+      "duration_s": 61.096028,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "rebuild-ec-incremental",
+      "jobid": 2,
+      "schedule": "0 8 * * 3",
+      "active": false,
+      "pipeline": "entity_connections_rebuild",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 8 * * 3"
+    },
+    {
+      "jobname": "rebuild-ec-incremental-mon",
+      "jobid": 22,
+      "schedule": "0 8 * * 1",
+      "active": false,
+      "pipeline": "entity_connections_rebuild",
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "inactive",
+      "detail": "job is disabled (active = false); schedule would be 0 8 * * 1"
+    },
+    {
+      "jobname": "refresh-derived-mvs-daily",
+      "jobid": 9,
+      "schedule": "0 6 * * *",
+      "active": true,
+      "pipeline": "refresh_derived_mvs",
+      "last_start": "2026-09-29T06:00:00.193Z",
+      "last_end": "2026-09-29T06:05:37.602Z",
+      "duration_s": 337.408316,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "refresh-derived-mvs-weekly",
+      "jobid": 10,
+      "schedule": "47 0 * * 2",
+      "active": true,
+      "pipeline": "refresh_derived_mvs",
+      "last_start": "2026-09-29T00:47:00.036Z",
+      "last_end": "2026-09-29T01:13:33.210Z",
+      "duration_s": 1593.174283,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "rule-taggers-daily",
+      "jobid": 11,
+      "schedule": "30 6 * * *",
+      "active": true,
+      "pipeline": "run_rule_taggers",
+      "last_start": "2026-09-29T06:30:00.140Z",
+      "last_end": "2026-09-29T06:33:23.428Z",
+      "duration_s": 203.288273,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": "{\"scan\": 168.9, \"delete\": 26.6, \"insert\": 7.6}",
+      "band": {
+        "lo_s": 713,
+        "hi_s": 858,
+        "source": "cc-prompt-117 Phase 0 read 6 and cc-prompt-118 Item 5, both stating the band as 713-858 s. Wed 2026-09-09 read 899.5 s (above); cc-118 made a second consecutive above-band run a filing trigger."
+      },
+      "verdict": "below",
+      "detail": "203.3 s (3m 23s) < 713 s"
+    },
+    {
+      "jobname": "rule-taggers-weekly",
+      "jobid": 12,
+      "schedule": "0 16 * * 2",
+      "active": true,
+      "pipeline": "run_rule_taggers",
+      "last_start": "2026-09-29T16:00:00.139Z",
+      "last_end": "2026-09-29T17:24:23.008Z",
+      "duration_s": 5062.868973,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": "complete",
+      "skip_reason": null,
+      "phase_seconds": "{\"delete\": 49.6, \"insert\": 4974.3}",
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "treemap-individuals-global-refresh",
+      "jobid": 26,
+      "schedule": "0 14 * * 2",
+      "active": true,
+      "pipeline": "treemap_individuals_global_refresh",
+      "last_start": "2026-09-29T14:00:00.126Z",
+      "last_end": "2026-09-29T14:15:07.611Z",
+      "duration_s": 907.485265,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "treemap-individuals-vacuum-analyze",
+      "jobid": 33,
+      "schedule": "10 11,17 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T17:10:00.160Z",
+      "last_end": "2026-09-29T17:10:00.748Z",
+      "duration_s": 0.588705,
+      "cron_status": "succeeded",
+      "return_message": "VACUUM",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vm-probe-pre-ec",
+      "jobid": 51,
+      "schedule": "25 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T04:25:00.067Z",
+      "last_end": "2026-09-29T04:25:00.143Z",
+      "duration_s": 0.075063,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vm-probe-pre-fe",
+      "jobid": 52,
+      "schedule": "45 4 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T04:45:00.106Z",
+      "last_end": "2026-09-29T04:45:00.175Z",
+      "duration_s": 0.069002,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vm-probe-pre-fr",
+      "jobid": 50,
+      "schedule": "55 2 * * *",
+      "active": true,
+      "pipeline": null,
+      "last_start": "2026-09-29T02:55:00.072Z",
+      "last_end": "2026-09-29T02:55:00.143Z",
+      "duration_s": 0.070998,
+      "cron_status": "succeeded",
+      "return_message": "1 row",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "vote-stats-refresh",
+      "jobid": 27,
+      "schedule": "30 3 * * *",
+      "active": true,
+      "pipeline": "official_vote_stats_rebuild",
+      "last_start": "2026-09-29T03:30:00.157Z",
+      "last_end": "2026-09-29T03:30:30.165Z",
+      "duration_s": 30.008116,
+      "cron_status": "succeeded",
+      "return_message": "CALL",
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "no-band",
+      "detail": "no band in docs/receipts/bands.json"
+    },
+    {
+      "jobname": "votes-vacuum-analyze",
+      "jobid": 56,
+      "schedule": "37 2 * * 6",
+      "active": true,
+      "pipeline": null,
+      "last_start": null,
+      "last_end": null,
+      "duration_s": null,
+      "cron_status": null,
+      "return_message": null,
+      "sync_status": null,
+      "skip_reason": null,
+      "phase_seconds": null,
+      "band": null,
+      "verdict": "missing",
+      "detail": "no firing in the lookback window"
+    }
+  ],
+  "daily": {
+    "run_started_at": "2026-09-29T06:00:00.194Z",
+    "run_status": "complete",
+    "run_skip_reason": null,
+    "measured_at": "2026-09-29T06:00:00.194Z",
+    "units": 13,
+    "units_ok": 13,
+    "elapsed_seconds": 337.3,
+    "search_unit_seconds": 229.6,
+    "search_unit_band": {
+      "lo_s": 0,
+      "hi_s": 300,
+      "source": "cc-prompt-123 D3 and cc-prompt-117 Phase 0 read 5 (FIX-1152's receipt: < 300 s expected; Mon 2026-09-07 was 236.0 s at 88.8% EC all-visible; the failure mode was 1,017 s at 79%). A UNIT band, not a job band — section 3 reports it from the run row's unit_seconds."
+    },
+    "search_unit_verdict": "in-band",
+    "search_unit_detail": null,
+    "unit_seconds": [
+      {
+        "unit": "rebuild_entity_search_index",
+        "seconds": 229.6
+      },
+      {
+        "unit": "official_homepage_stats_mv",
+        "seconds": 55.1
+      },
+      {
+        "unit": "rebuild_all_primary_sources",
+        "seconds": 30.3
+      },
+      {
+        "unit": "homepage_stats_mv",
+        "seconds": 14.1
+      },
+      {
+        "unit": "proposal_trending_24h",
+        "seconds": 6.7
+      },
+      {
+        "unit": "pipeline_runtime_stats_mv",
+        "seconds": 0.8
+      },
+      {
+        "unit": "homepage_agency_counts_mv",
+        "seconds": 0.2
+      },
+      {
+        "unit": "prune_status_snapshot",
+        "seconds": 0.1
+      },
+      {
+        "unit": "prune_platform_usage_snapshot",
+        "seconds": 0.1
+      },
+      {
+        "unit": "commons_active_threads",
+        "seconds": 0
+      },
+      {
+        "unit": "proposal_popularity_24h",
+        "seconds": 0
+      },
+      {
+        "unit": "prune_kill_switch_events",
+        "seconds": 0
+      },
+      {
+        "unit": "entity_engagement_rollup_mv",
+        "seconds": 0
+      }
+    ],
+    "vm_before": [
+      {
+        "relation": "entity_connections",
+        "pct_all_visible": 100,
+        "n_dead_tup": 0,
+        "relpages": 373641
+      },
+      {
+        "relation": "financial_entities",
+        "pct_all_visible": 100,
+        "n_dead_tup": 0,
+        "relpages": 245569
+      }
+    ],
+    "vm_now": [
+      {
+        "relation": "entity_connections",
+        "pct_all_visible": 100,
+        "n_dead_tup": 0,
+        "relpages": 373641
+      },
+      {
+        "relation": "financial_entities",
+        "pct_all_visible": 100,
+        "n_dead_tup": 0,
+        "relpages": 245569
+      },
+      {
+        "relation": "financial_relationships",
+        "pct_all_visible": 100,
+        "n_dead_tup": 0,
+        "relpages": 631265
+      }
+    ],
+    "weekly_started_at": "2026-09-29T00:47:00.036Z",
+    "weekly_status": "succeeded",
+    "weekly_elapsed_seconds": 1593.174283
+  },
+  "vacuums": [
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-29T04:50:00.099Z",
+      "duration_s": 10.933366,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-29T04:30:00.201Z",
+      "duration_s": 136.865674,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-29T03:00:00.186Z",
+      "duration_s": 9.796263,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-28T04:50:00.080Z",
+      "duration_s": 91.709937,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-28T04:30:00.072Z",
+      "duration_s": 87.40802,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-28T03:00:00.046Z",
+      "duration_s": 176.3789,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-27T04:50:00.041Z",
+      "duration_s": 30.76478,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-27T04:30:00.071Z",
+      "duration_s": 9.125619,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-27T03:00:00.050Z",
+      "duration_s": 11.436516,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-26T04:50:00.037Z",
+      "duration_s": 11.591573,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-26T04:30:00.068Z",
+      "duration_s": 9.13519,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-26T03:00:00.039Z",
+      "duration_s": 9.891289,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-25T04:50:00.040Z",
+      "duration_s": 11.558663,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-25T04:30:00.069Z",
+      "duration_s": 9.341019,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-25T03:00:00.056Z",
+      "duration_s": 10.278613,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-24T04:50:00.028Z",
+      "duration_s": 11.495056,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-24T04:30:00.065Z",
+      "duration_s": 9.208036,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-24T03:00:00.047Z",
+      "duration_s": 9.816608,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-23T04:50:00.024Z",
+      "duration_s": 19.88402,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-23T04:30:00.056Z",
+      "duration_s": 9.385799,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-23T03:00:00.037Z",
+      "duration_s": 9.88857,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fe-vacuum-analyze",
+      "start_time": "2026-09-22T04:50:00.104Z",
+      "duration_s": 12.705658,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "ec-vacuum-analyze",
+      "start_time": "2026-09-22T04:30:00.377Z",
+      "duration_s": 143.492203,
+      "status": "succeeded"
+    },
+    {
+      "jobname": "fr-vacuum-analyze",
+      "start_time": "2026-09-22T03:00:00.154Z",
+      "duration_s": 9.653673,
+      "status": "succeeded"
+    }
+  ],
+  "vm_probes": [
+    {
+      "label": "pre-ec",
+      "at": "2026-09-29T04:25:00.140846+00:00",
+      "relation": "entity_connections",
+      "pct_all_visible": 67.5,
+      "n_dead_tup": 391219,
+      "relpages": 373641
+    },
+    {
+      "label": "pre-ec",
+      "at": "2026-09-29T04:25:00.140846+00:00",
+      "relation": "votes",
+      "pct_all_visible": 82.6,
+      "n_dead_tup": 30793,
+      "relpages": 73085
+    },
+    {
+      "label": "pre-fe",
+      "at": "2026-09-29T04:45:00.166764+00:00",
+      "relation": "financial_entities",
+      "pct_all_visible": 100,
+      "n_dead_tup": 8,
+      "relpages": 245569
+    },
+    {
+      "label": "pre-fr",
+      "at": "2026-09-29T02:55:00.140886+00:00",
+      "relation": "financial_relationships",
+      "pct_all_visible": 100,
+      "n_dead_tup": 0,
+      "relpages": 631265
+    }
+  ],
+  "fec": {
+    "drop_probe": [
+      {
+        "key": "cycle",
+        "value": "2026"
+      },
+      {
+        "key": "phase",
+        "value": "enrichment-light"
+      },
+      {
+        "key": "recent",
+        "value": "[{\"probed_at\":\"2026-09-29T21:05:47.081Z\",\"remote_last_modified\":\"Sun, 27 Sep 2026 16:01:24 GMT\"},{\"probed_at\":\"2026-09-28T21:07:37.981Z\",\"remote_last_modified\":\"Sun, 27 Sep 2026 16:01:24 GMT\"},{\"probed_at\":\"2026-09-27T22:41:16.782Z\",\"remote_last_modified\":\"Sun, 27 Sep 2026 16:01:24 GMT\"}]"
+      },
+      {
+        "key": "pending",
+        "value": "false"
+      },
+      {
+        "key": "probed_at",
+        "value": "2026-09-29T21:05:47.081Z"
+      },
+      {
+        "key": "remote_last_modified",
+        "value": "Sun, 27 Sep 2026 16:01:24 GMT"
+      },
+      {
+        "key": "watermark_last_modified",
+        "value": "Sun, 27 Sep 2026 16:01:24 GMT"
+      }
+    ],
+    "indiv_watermark": [
+      {
+        "key": "2020",
+        "value": "Sun, 29 Dec 2024 22:08:04 GMT"
+      },
+      {
+        "key": "2022",
+        "value": "Sun, 02 Aug 2026 15:59:09 GMT"
+      },
+      {
+        "key": "2024",
+        "value": "Sun, 08 Mar 2026 21:45:42 GMT"
+      },
+      {
+        "key": "2026",
+        "value": "Sun, 27 Sep 2026 16:01:24 GMT"
+      }
+    ],
+    "bulk_run_state": null,
+    "emit_runs": [
+      {
+        "key": "2026 / fec_bulk_indiv",
+        "value": "keys=1013709, started 2026-09-27T21:28:00.131Z, complete 2026-09-27T22:39:00.189Z"
+      },
+      {
+        "key": "2026 / fec_bulk_indiv_to_committee",
+        "value": "keys=1067633, started 2026-09-27T21:52:36.853Z, complete 2026-09-27T22:39:11.793Z"
+      },
+      {
+        "key": "2026 / fec_bulk_pac",
+        "value": "keys=113994, started 2026-09-27T21:06:23.405Z, complete 2026-09-27T21:07:18.269Z"
+      },
+      {
+        "key": "2024 / fec_bulk_pac",
+        "value": "keys=135358, started 2026-09-27T21:05:11.251Z, complete 2026-09-27T21:05:51.752Z"
+      }
+    ],
+    "emit_keys_note": "`fec_emit_keys` population (planner estimate, `pg_class.reltuples`): **4720096**. An exact `count(*)` is a full scan of that table and is deliberately not taken — the per-run key counts above come from `fec_emit_runs.keys`, stamped at completion."
+  },
+  "interlock": {
+    "prod_session": [
+      {
+        "key": "pid",
+        "value": "—"
+      },
+      {
+        "key": "held",
+        "value": "false"
+      },
+      {
+        "key": "defer",
+        "value": "false"
+      },
+      {
+        "key": "reason",
+        "value": "—"
+      },
+      {
+        "key": "claimant",
+        "value": "—"
+      },
+      {
+        "key": "claimed_at",
+        "value": "—"
+      },
+      {
+        "key": "claimed_by",
+        "value": "—"
+      },
+      {
+        "key": "age_seconds",
+        "value": "—"
+      },
+      {
+        "key": "label_stale",
+        "value": "false"
+      },
+      {
+        "key": "reason_text",
+        "value": "clear"
+      },
+      {
+        "key": "live_writers",
+        "value": "[]"
+      },
+      {
+        "key": "label_present",
+        "value": "false"
+      },
+      {
+        "key": "claimant_bypass",
+        "value": "false"
+      },
+      {
+        "key": "expected_minutes",
+        "value": "—"
+      },
+      {
+        "key": "live_writer_detail",
+        "value": "[]"
+      }
+    ],
+    "skips_24h": [
+      {
+        "pipeline": "edgar_daily",
+        "started_at": "2026-09-29T21:04:20.607Z",
+        "skip_reason": "no_filings",
+        "source": null
+      }
+    ]
+  },
+  "canary": {
+    "run_started_at": "2026-09-29T10:57:11.707Z",
+    "conditions": [
+      {
+        "key": "orphan:official_vote_stats_rebuild",
+        "tier": "report",
+        "severity": 1,
+        "unchangedRuns": 9,
+        "detail": "orphaned watch entry official_vote_stats_rebuild (no active pg_cron job, no override row)"
+      },
+      {
+        "key": "rollup:donor_party_rollup_orphan_sweep",
+        "tier": "report",
+        "severity": 1413.91,
+        "unchangedRuns": 9,
+        "detail": "rollup donor_party_rollup_orphan_sweep last complete 2026-08-01T13:02:42.036675+00:00 (1413.91h ago, cadence 730h from cron_schedule, report past 1095h)"
+      },
+      {
+        "key": "rollup:donor_rollup_bulk",
+        "tier": "report",
+        "severity": 1280.46,
+        "unchangedRuns": 9,
+        "detail": "rollup donor_rollup_bulk last complete 2026-08-07T02:29:37.390179+00:00 (1280.46h ago, cadence 168h from default, report past 252h)"
+      },
+      {
+        "key": "rollup:legistar",
+        "tier": "report",
+        "severity": 1785.47,
+        "unchangedRuns": 9,
+        "detail": "rollup legistar last complete 2026-07-17T01:29:16.402+00:00 (1785.47h ago, cadence 168h from default, report past 252h)"
+      },
+      {
+        "key": "rollup:sector_affinity_rollup_backfill",
+        "tier": "report",
+        "severity": 1395.78,
+        "unchangedRuns": 9,
+        "detail": "rollup sector_affinity_rollup_backfill last complete 2026-08-02T07:10:44.000929+00:00 (1395.78h ago, cadence 73.74h from observed_median, report past 110.6h)"
+      },
+      {
+        "key": "rollup:small_dollar_rollup_backfill",
+        "tier": "report",
+        "severity": 1808.69,
+        "unchangedRuns": 9,
+        "detail": "rollup small_dollar_rollup_backfill last complete 2026-07-16T02:16:02.680073+00:00 (1808.69h ago, cadence 168h from default, report past 252h)"
+      },
+      {
+        "key": "rollup:treemap_individuals_focused_backfill",
+        "tier": "report",
+        "severity": 1803.99,
+        "unchangedRuns": 9,
+        "detail": "rollup treemap_individuals_focused_backfill last complete 2026-07-16T06:57:35.752229+00:00 (1803.99h ago, cadence 168h from default, report past 252h)"
+      }
+    ]
+  },
+  "sld": {
+    "total": 7389,
+    "linked": 7387,
+    "residual": 2,
+    "by_state": [
+      {
+        "state": "Maine",
+        "chamber": "legislature_lower",
+        "unlinked": 2
+      }
+    ]
+  },
+  "forker": {
+    "by_hour_24h": [],
+    "by_day_7d": [
+      {
+        "bucket": "2026-09-27",
+        "failures": 1,
+        "jobs_affected": 1
+      },
+      {
+        "bucket": "2026-09-22",
+        "failures": 20,
+        "jobs_affected": 2
+      }
+    ],
+    "running_in_bursts": [],
+    "cancels_7d": [],
+    "vercel_liveness_at": "2026-09-29T21:12:19.102403+00:00",
+    "box_health": {
+      "at": "2026-09-29T21:13:00.060721+00:00",
+      "backends": {
+        "active": 1,
+        "client": 16,
+        "idle_in_txn": 0,
+        "lock_waiting": 0,
+        "max_connections": 60,
+        "longest_active_s": null
+      },
+      "probe_ms": 39.6,
+      "oldest_running_s": null,
+      "watchdog_runs_10m": {
+        "unit": 5,
+        "budget": 5
+      },
+      "running_over_budget": 0,
+      "startup_timeouts_10m": 0,
+      "startup_timeouts_60m": 0,
+      "running_budgeted_jobs": 0,
+      "watchdog_max_wall_10m": {
+        "unit": 0.937,
+        "budget": 1.541
+      }
+    },
+    "box_health_mem": {
+      "at": "2026-09-29T21:12:23.457297+00:00",
+      "load1": 1.54,
+      "pswpin": 58812746,
+      "pswpout": 59362245,
+      "oom_kill": 0,
+      "route_at": "2026-09-29T21:12:22.329Z",
+      "scrape_ms": 831,
+      "pgmajfault": 34506198,
+      "mem_total_bytes": 948195328,
+      "swap_free_bytes": 338038784,
+      "swap_total_bytes": 1073737728,
+      "mem_available_bytes": 322543616
+    },
+    "mem_day": {
+      "available": false,
+      "reason": "UPSTASH_REDIS_REST_URL / _TOKEN are not in this runner's environment (the nightly receipts job has no Upstash secret)"
+    }
+  },
+  "legislator_ids": {
+    "latest": {
+      "started_at": "2026-09-29T21:05:47.941Z",
+      "status": "complete",
+      "error": null,
+      "metadata": {
+        "counts": {
+          "noop": 444,
+          "bindable": 0,
+          "dataset_lag": 2,
+          "no_bioguide": 0,
+          "double_claim": 59,
+          "prior_incomplete": 29,
+          "unlisted_live_id": 3,
+          "ambiguous_current": 0,
+          "prior_office_live": 2,
+          "cross_bioguide_claim": 0
+        },
+        "top_20": {
+          "dataset_lag": [
+            {
+              "live": null,
+              "name": "Alan Armstrong",
+              "state": "OK",
+              "reason": "dataset lists no FEC id for A000383",
+              "bioguide": "A000383",
+              "current_id": null,
+              "dataset_ids": [],
+              "official_id": "dceef4b4-6358-45e9-a35f-e27fc8f52670"
+            },
+            {
+              "live": "S6SC04437",
+              "name": "Darline Graham",
+              "state": "SC",
+              "reason": "dataset lists no FEC id for G000608; row holds S6SC04437",
+              "bioguide": "G000608",
+              "current_id": null,
+              "dataset_ids": [],
+              "official_id": "842f162f-0563-46fd-9701-aa4c39b72f2c"
+            }
+          ],
+          "double_claim": [
+            {
+              "live": "H0KY06104",
+              "name": "Andy Barr",
+              "state": "KY-6",
+              "reason": "S6KY00286 also claimed by 339c8d60-7de7-459a-ae43-05108275c83b (no bioguide)",
+              "bioguide": "B001282",
+              "current_id": "H0KY06104",
+              "dataset_ids": [
+                "H0KY06104",
+                "S6KY00286"
+              ],
+              "official_id": "1f984c1a-01ea-41be-bbe2-e49ccb6d0554"
+            },
+            {
+              "live": "S4NJ00466",
+              "name": "Andy Kim",
+              "state": "NJ",
+              "reason": "H8NJ03206 also claimed by 44c85a80-4585-4611-95a6-a6b195940fc1 (no bioguide)",
+              "bioguide": "K000394",
+              "current_id": "S4NJ00466",
+              "dataset_ids": [
+                "H8NJ03206",
+                "S4NJ00466"
+              ],
+              "official_id": "526e530f-ea39-4a01-bc24-33f02bf0a22a"
+            },
+            {
+              "live": "H6MN02131",
+              "name": "Angie Craig",
+              "state": "MN-2",
+              "reason": "S6MN00499 also claimed by 378629ab-b12f-476b-8a24-e0b6fe871b01 (no bioguide)",
+              "bioguide": "C001119",
+              "current_id": "H6MN02131",
+              "dataset_ids": [
+                "H6MN02131",
+                "S6MN00499"
+              ],
+              "official_id": "fb83472a-2d41-4988-8ed0-dd19cf6e0946"
+            },
+            {
+              "live": null,
+              "name": "April McClain Delaney",
+              "state": "MD-6",
+              "reason": "H4MD06340 also claimed by 8ab73c89-3703-43f3-9ed4-1023bf465527 (no bioguide)",
+              "bioguide": "M001232",
+              "current_id": "H4MD06340",
+              "dataset_ids": [
+                "H4MD06340"
+              ],
+              "official_id": "3ba56de6-f313-4f1f-afbe-c4e360f459db"
+            },
+            {
+              "live": null,
+              "name": "Ashley Hinson",
+              "state": "IA-2",
+              "reason": "H0IA01174 also claimed by 369bd6b6-2e5c-409d-82fd-bb426b7a66aa (no bioguide)",
+              "bioguide": "H001091",
+              "current_id": "H0IA01174",
+              "dataset_ids": [
+                "H0IA01174"
+              ],
+              "official_id": "1fcd4ca1-8598-476e-a469-d0abdf604863"
+            },
+            {
+              "live": null,
+              "name": "Aumua Amata Coleman Radewagen",
+              "state": "AS-0",
+              "reason": "H4AS00036 also claimed by 439f33bb-0ed0-4a27-aedd-3d1e1c8fa8a2 (no bioguide)",
+              "bioguide": "R000600",
+              "current_id": "H4AS00036",
+              "dataset_ids": [
+                "H4AS00036"
+              ],
+              "official_id": "e1824501-eb21-4c20-8596-b8a86b543ccd"
+            },
+            {
+              "live": null,
+              "name": "Austin Scott",
+              "state": "GA-8",
+              "reason": "H0GA08099 also claimed by 893a581e-4fc0-4190-b43f-6afafc7aa917 (no bioguide)",
+              "bioguide": "S001189",
+              "current_id": "H0GA08099",
+              "dataset_ids": [
+                "H0GA08099"
+              ],
+              "official_id": "88b9e155-0d06-48f3-94e5-bec952869441"
+            },
+            {
+              "live": "H8AL02171",
+              "name": "Barry Moore",
+              "state": "AL-1",
+              "reason": "S6AL00476 also claimed by d7442ef3-14aa-4241-8d92-ef3f5c726cb7 (no bioguide)",
+              "bioguide": "M001212",
+              "current_id": "H8AL02171",
+              "dataset_ids": [
+                "H8AL02171",
+                "S6AL00476"
+              ],
+              "official_id": "8a916c94-dfa8-4971-90f8-2d005e0b7b56"
+            },
+            {
+              "live": null,
+              "name": "Ben Ray Luján",
+              "state": "NM",
+              "reason": "H8NM03196 also claimed by 6dc78f88-fe6f-4ff5-8a75-bd242e07d0ec (no bioguide); S0NM00058 also claimed by 93a6040f-402c-4f85-8d0d-55cf1b0350b2 (no bioguide)",
+              "bioguide": "L000570",
+              "current_id": "S0NM00058",
+              "dataset_ids": [
+                "H8NM03196",
+                "S0NM00058"
+              ],
+              "official_id": "eadbf1fd-e245-44ff-91ec-794407411f69"
+            },
+            {
+              "live": "S4LA00107",
+              "name": "Bill Cassidy",
+              "state": "LA",
+              "reason": "H8LA00017 also claimed by 03d38fae-b058-4c98-8933-1750a4cfdfad (no bioguide)",
+              "bioguide": "C001075",
+              "current_id": "S4LA00107",
+              "dataset_ids": [
+                "H8LA00017",
+                "S4LA00107"
+              ],
+              "official_id": "fa237ff5-a496-4f4a-97cb-fed07a08efd0"
+            },
+            {
+              "live": null,
+              "name": "Bonnie Watson Coleman",
+              "state": "NJ-12",
+              "reason": "H4NJ12149 also claimed by eb6e7f4c-dc9c-47c5-a016-5d499dccd0ac (no bioguide)",
+              "bioguide": "W000822",
+              "current_id": "H4NJ12149",
+              "dataset_ids": [
+                "H4NJ12149"
+              ],
+              "official_id": "6a01a39b-8283-40a8-9017-a1eb5d6a340c"
+            },
+            {
+              "live": "H8NH01210",
+              "name": "Chris Pappas",
+              "state": "NH-1",
+              "reason": "S6NH00141 also claimed by 2450fd78-13e4-4635-b142-d9014380bad4 (no bioguide)",
+              "bioguide": "P000614",
+              "current_id": "H8NH01210",
+              "dataset_ids": [
+                "H8NH01210",
+                "S6NH00141"
+              ],
+              "official_id": "7f62648d-9697-4d97-98fa-59d7b4999f02"
+            },
+            {
+              "live": "S6MD03441",
+              "name": "Chris Van Hollen",
+              "state": "MD",
+              "reason": "H2MD08126 also claimed by a3b33a19-697c-414a-902b-c8bfe7e8d2b1 (no bioguide)",
+              "bioguide": "V000128",
+              "current_id": "S6MD03441",
+              "dataset_ids": [
+                "H2MD08126",
+                "S6MD03441"
+              ],
+              "official_id": "82cb033e-efe6-4f33-a12c-46afedc073cc"
+            },
+            {
+              "live": "H0FL08208",
+              "name": "Daniel Webster",
+              "state": "FL-11",
+              "reason": "S4FL00256 also claimed by 9f07bc0d-0a47-4d2b-baa6-e67632f37782 (no bioguide)",
+              "bioguide": "W000806",
+              "current_id": "H0FL08208",
+              "dataset_ids": [
+                "H0FL08208",
+                "S4FL00256"
+              ],
+              "official_id": "8f4e4de5-d4f9-44d5-946e-2e24ba44f94e"
+            },
+            {
+              "live": "H4GA01039",
+              "name": "Earl L. \"Buddy\" Carter",
+              "state": "GA-1",
+              "reason": "S6GA00374 also claimed by 52b04f5f-b4b9-4f08-a66c-81bc7db1756c (no bioguide)",
+              "bioguide": "C001103",
+              "current_id": "H4GA01039",
+              "dataset_ids": [
+                "H4GA01039",
+                "S6GA00374"
+              ],
+              "official_id": "5cc3a04d-7a24-4472-9e32-ac5e07c9c532"
+            },
+            {
+              "live": "S4MA00028",
+              "name": "Edward J. Markey",
+              "state": "MA",
+              "reason": "H6MA07101 also claimed by 3a0a8ed8-e36c-4b90-bfca-0e35cc7885ad (no bioguide)",
+              "bioguide": "M000133",
+              "current_id": "S4MA00028",
+              "dataset_ids": [
+                "H6MA07101",
+                "S4MA00028"
+              ],
+              "official_id": "bb23212c-9844-4ffa-8172-d92655440dd1"
+            },
+            {
+              "live": "S4MI00470",
+              "name": "Elissa Slotkin",
+              "state": "MI",
+              "reason": "H8MI08102 also claimed by 6eb02baf-1234-4312-bcba-8508b1fc95a1 (no bioguide)",
+              "bioguide": "S001208",
+              "current_id": "S4MI00470",
+              "dataset_ids": [
+                "H8MI08102",
+                "S4MI00470"
+              ],
+              "official_id": "dfd9dd3c-8d53-4bf3-8609-a5aebd73f5dd"
+            },
+            {
+              "live": "H8CA39174",
+              "name": "Gilbert Ray Cisneros",
+              "state": "CA-31",
+              "reason": "H4CA31170 also claimed by a1766a0b-a4ee-4117-afb6-6aec28a1af18 (no bioguide)",
+              "bioguide": "C001123",
+              "current_id": "H4CA31170",
+              "dataset_ids": [
+                "H4CA31170",
+                "H8CA39174"
+              ],
+              "official_id": "1f0fcc25-c88d-4112-9e90-e873d106d32d"
+            },
+            {
+              "live": "H2MD04232",
+              "name": "Glenn Ivey",
+              "state": "MD-4",
+              "reason": "H2MD04315 also claimed by 62165949-8118-4305-b0e2-10a20f2f75f8 (no bioguide)",
+              "bioguide": "I000058",
+              "current_id": null,
+              "dataset_ids": [
+                "H2MD04232",
+                "H2MD04315"
+              ],
+              "official_id": "fed7caaa-0d38-45a8-a7f9-20ea8cfe4fb9"
+            },
+            {
+              "live": "H8MI11254",
+              "name": "Haley M. Stevens",
+              "state": "MI-11",
+              "reason": "S6MI00426 also claimed by 2f4dd5a4-20f4-4c65-9a73-0479c432670d (no bioguide)",
+              "bioguide": "S001215",
+              "current_id": "H8MI11254",
+              "dataset_ids": [
+                "H8MI11254",
+                "S6MI00426"
+              ],
+              "official_id": "9e8dbddd-74d1-4d04-90b2-4682db860b6d"
+            }
+          ],
+          "prior_incomplete": [
+            {
+              "live": "S4VT00033",
+              "name": "Bernard Sanders",
+              "state": "VT",
+              "reason": "prior lacks H8VT01016",
+              "bioguide": "S000033",
+              "current_id": "S4VT00033",
+              "dataset_ids": [
+                "H8VT01016",
+                "S4VT00033"
+              ],
+              "official_id": "83a86ecb-0064-413e-b131-19a122f218f3"
+            },
+            {
+              "live": "S4HI00136",
+              "name": "Brian Schatz",
+              "state": "HI",
+              "reason": "prior lacks H6HI02244",
+              "bioguide": "S001194",
+              "current_id": "S4HI00136",
+              "dataset_ids": [
+                "H6HI02244",
+                "S4HI00136"
+              ],
+              "official_id": "f697a9e5-080a-4b9a-9240-211ad695a192"
+            },
+            {
+              "live": "S8NY00082",
+              "name": "Charles E. Schumer",
+              "state": "NY",
+              "reason": "prior lacks H0NY16010",
+              "bioguide": "S000148",
+              "current_id": "S8NY00082",
+              "dataset_ids": [
+                "H0NY16010",
+                "S8NY00082"
+              ],
+              "official_id": "1e6efe79-ed26-416d-aa75-908d6f9a1ff4"
+            },
+            {
+              "live": "H8ME01120",
+              "name": "Chellie Pingree",
+              "state": "ME-1",
+              "reason": "prior lacks S0ME00038",
+              "bioguide": "P000597",
+              "current_id": "H8ME01120",
+              "dataset_ids": [
+                "H8ME01120",
+                "S0ME00038"
+              ],
+              "official_id": "b6711b52-e68a-4dc9-94e9-0b4183adfe98"
+            },
+            {
+              "live": "S2CT00132",
+              "name": "Christopher Murphy",
+              "state": "CT",
+              "reason": "prior lacks H6CT05124",
+              "bioguide": "M001169",
+              "current_id": "S2CT00132",
+              "dataset_ids": [
+                "H6CT05124",
+                "S2CT00132"
+              ],
+              "official_id": "742abc8e-9320-42b7-a9d4-e7c06e935907"
+            },
+            {
+              "live": "H0CA48024",
+              "name": "Darrell Issa",
+              "state": "CA-48",
+              "reason": "prior lacks S8CA00135",
+              "bioguide": "I000056",
+              "current_id": "H0CA48024",
+              "dataset_ids": [
+                "H0CA48024",
+                "S8CA00135"
+              ],
+              "official_id": "8ef56d07-0717-4983-9f63-912be7663be2"
+            },
+            {
+              "live": "H4AZ06045",
+              "name": "David Schweikert",
+              "state": "AZ-1",
+              "reason": "prior lacks H8AZ05097",
+              "bioguide": "S001183",
+              "current_id": "H4AZ06045",
+              "dataset_ids": [
+                "H4AZ06045",
+                "H8AZ05097"
+              ],
+              "official_id": "86795144-301f-43b0-8552-0b6fe8706382"
+            },
+            {
+              "live": "H8NJ03073",
+              "name": "Frank Pallone",
+              "state": "NJ-6",
+              "reason": "prior lacks S6NJ00263",
+              "bioguide": "P000034",
+              "current_id": "H8NJ03073",
+              "dataset_ids": [
+                "H8NJ03073",
+                "S6NJ00263"
+              ],
+              "official_id": "cb978fa2-77e9-46d7-b937-ef897fae7817"
+            },
+            {
+              "live": "S6RI00163",
+              "name": "Jack Reed",
+              "state": "RI",
+              "reason": "prior lacks H0RI02071",
+              "bioguide": "R000122",
+              "current_id": "S6RI00163",
+              "dataset_ids": [
+                "H0RI02071",
+                "S6RI00163"
+              ],
+              "official_id": "52bce3fa-b134-4e85-abb5-299318fb9d48"
+            },
+            {
+              "live": "S0KS00091",
+              "name": "Jerry Moran",
+              "state": "KS",
+              "reason": "prior lacks H6KS01096",
+              "bioguide": "M000934",
+              "current_id": "S0KS00091",
+              "dataset_ids": [
+                "H6KS01096",
+                "S0KS00091"
+              ],
+              "official_id": "38308099-457d-488d-8794-3fd3aabf44ce"
+            },
+            {
+              "live": "S0AR00150",
+              "name": "John Boozman",
+              "state": "AR",
+              "reason": "prior lacks H2AR03176",
+              "bioguide": "B001236",
+              "current_id": "S0AR00150",
+              "dataset_ids": [
+                "H2AR03176",
+                "S0AR00150"
+              ],
+              "official_id": "0dda6984-32b7-4d6e-88ec-d883763d63aa"
+            },
+            {
+              "live": "S2SD00068",
+              "name": "John Thune",
+              "state": "SD",
+              "reason": "prior lacks H6SD00085",
+              "bioguide": "T000250",
+              "current_id": "S2SD00068",
+              "dataset_ids": [
+                "H6SD00085",
+                "S2SD00068"
+              ],
+              "official_id": "d0ac116d-2f62-4dd3-8589-53e4756882bc"
+            },
+            {
+              "live": "H6FL11126",
+              "name": "Kathy Castor",
+              "state": "FL-14",
+              "reason": "prior lacks H6FL11134",
+              "bioguide": "C001066",
+              "current_id": "H6FL11126",
+              "dataset_ids": [
+                "H6FL11126",
+                "H6FL11134"
+              ],
+              "official_id": "41ba4cf5-8011-46e7-92cb-b17d2e4a38a4"
+            },
+            {
+              "live": "S0NY00410",
+              "name": "Kirsten E. Gillibrand",
+              "state": "NY",
+              "reason": "prior lacks H6NY20167",
+              "bioguide": "G000555",
+              "current_id": "S0NY00410",
+              "dataset_ids": [
+                "H6NY20167",
+                "S0NY00410"
+              ],
+              "official_id": "248a39e9-ac14-4d3b-8657-f3a821fcf3e5"
+            },
+            {
+              "live": "H6MD07020",
+              "name": "Kweisi Mfume",
+              "state": "MD-7",
+              "reason": "prior lacks H0MD07114, S6MD03185",
+              "bioguide": "M000687",
+              "current_id": "H6MD07020",
+              "dataset_ids": [
+                "H0MD07114",
+                "H6MD07020",
+                "S6MD03185"
+              ],
+              "official_id": "7c3fe0b0-7ddc-4efd-965e-ee4053d3ee40"
+            },
+            {
+              "live": "H2NV02395",
+              "name": "Mark E. Amodei",
+              "state": "NV-2",
+              "reason": "prior lacks H1NV02017, S0NV00237",
+              "bioguide": "A000369",
+              "current_id": "H2NV02395",
+              "dataset_ids": [
+                "H1NV02017",
+                "H2NV02395",
+                "S0NV00237"
+              ],
+              "official_id": "cdc760ec-68a6-4548-9aa1-5d44691b2feb"
+            },
+            {
+              "live": "H0IN03198",
+              "name": "Marlin A. Stutzman",
+              "state": "IN-3",
+              "reason": "prior lacks S0IN00095",
+              "bioguide": "S001188",
+              "current_id": "H0IN03198",
+              "dataset_ids": [
+                "H0IN03198",
+                "S0IN00095"
+              ],
+              "official_id": "dc64474f-4f82-4e5b-b2c8-7c5b18579db8"
+            },
+            {
+              "live": "S2HI00106",
+              "name": "Mazie K. Hirono",
+              "state": "HI",
+              "reason": "prior lacks H6HI02251",
+              "bioguide": "H001042",
+              "current_id": "S2HI00106",
+              "dataset_ids": [
+                "H6HI02251",
+                "S2HI00106"
+              ],
+              "official_id": "b077712a-90d1-43db-a6c9-d057ae821844"
+            },
+            {
+              "live": "H2OH03067",
+              "name": "Michael R. Turner",
+              "state": "OH-10",
+              "reason": "prior lacks H2OH03091",
+              "bioguide": "T000463",
+              "current_id": "H2OH03067",
+              "dataset_ids": [
+                "H2OH03067",
+                "H2OH03091"
+              ],
+              "official_id": "74349a45-3cad-4f5a-9638-fb850bbec59d"
+            },
+            {
+              "live": "S8ID00027",
+              "name": "Mike Crapo",
+              "state": "ID",
+              "reason": "prior lacks H2ID02034",
+              "bioguide": "C000880",
+              "current_id": "S8ID00027",
+              "dataset_ids": [
+                "H2ID02034",
+                "S8ID00027"
+              ],
+              "official_id": "6f0aabbc-6365-4e59-ac1b-4efad1f71fcb"
+            }
+          ],
+          "unlisted_live_id": [
+            {
+              "live": "H8HI01234",
+              "name": "Ed Case",
+              "state": "HI-1",
+              "reason": "live H8HI01234 not listed for C001055",
+              "bioguide": "C001055",
+              "current_id": "H2HI02128",
+              "dataset_ids": [
+                "H2HI02128"
+              ],
+              "official_id": "47d96e85-fa6b-4705-a8b5-eb8094225d48"
+            },
+            {
+              "live": "H0NY02200",
+              "name": "Nick LaLota",
+              "state": "NY-1",
+              "reason": "live H0NY02200 not listed for L000598",
+              "bioguide": "L000598",
+              "current_id": "H2NY01190",
+              "dataset_ids": [
+                "H2NY01190"
+              ],
+              "official_id": "61087125-2853-42af-9d0c-c82e73812411"
+            },
+            {
+              "live": "H2NJ08232",
+              "name": "Robert Menendez",
+              "state": "NJ-8",
+              "reason": "prior H2NJ13075 not listed for M001226",
+              "bioguide": "M001226",
+              "current_id": "H2NJ08232",
+              "dataset_ids": [
+                "H2NJ08232"
+              ],
+              "official_id": "747c96d0-962a-4448-a405-e055dbce8f69"
+            }
+          ],
+          "prior_office_live": [
+            {
+              "live": "H8IL14067",
+              "name": "Bill Foster",
+              "state": "IL-11",
+              "reason": "live H8IL14067 is a prior-office id; current is H2IL11124",
+              "bioguide": "F000454",
+              "current_id": "H2IL11124",
+              "dataset_ids": [
+                "H2IL11124",
+                "H8IL14067"
+              ],
+              "official_id": "fa995d54-5789-4cd0-988e-0c3881cabfa7"
+            },
+            {
+              "live": "H2FL14053",
+              "name": "Lois Frankel",
+              "state": "FL-22",
+              "reason": "live H2FL14053 is a prior-office id; current is H2FL22080",
+              "bioguide": "F000462",
+              "current_id": "H2FL22080",
+              "dataset_ids": [
+                "H2FL14053",
+                "H2FL22080"
+              ],
+              "official_id": "66435227-c92c-4d68-838c-29cf8b288e12"
+            }
+          ]
+        },
+        "read_at": "2026-09-29T21:05:48.043Z",
+        "population": 539,
+        "dataset_ref": {
+          "current": {
+            "url": "https://unitedstates.github.io/congress-legislators/legislators-current.json",
+            "etag": "W/\"6ab4f9aa-166a83\"",
+            "last_modified": "Thu, 24 Sep 2026 10:21:30 GMT"
+          },
+          "historical": {
+            "url": "https://unitedstates.github.io/congress-legislators/legislators-historical.json",
+            "etag": "W/\"6ab4f9aa-cdbc1f\"",
+            "last_modified": "Thu, 24 Sep 2026 10:21:30 GMT"
+          }
+        },
+        "peak_rss_mb": 191,
+        "github_run_id": "36630299596",
+        "dataset_members": 539,
+        "github_workflow": "nightly-sync",
+        "claimant_rows_read": 586,
+        "double_claim_split": {
+          "other_id": 46,
+          "current_id": 13
+        },
+        "github_run_attempt": "1",
+        "population_predicate": "tier = 'elected' AND governing_body_id IN (SELECT id FROM governing_bodies WHERE (name, type) IN (('United States Senate','legislature_upper'),('United States House of Representatives','legislature_lower')))",
+        "matched_via_historical": 0,
+        "matched_dataset_members": 539,
+        "historical_members_count": 12231,
+        "dataset_ambiguous_current": 9,
+        "unmatched_dataset_members": {
+          "count": 0,
+          "first_20": []
+        },
+        "members_with_multiple_rows": 0,
+        "historical_members_with_fec": 995
+      }
+    },
+    "complete": {
+      "started_at": "2026-09-29T21:05:47.941Z",
+      "status": "complete",
+      "error": null,
+      "metadata": {
+        "counts": {
+          "noop": 444,
+          "bindable": 0,
+          "dataset_lag": 2,
+          "no_bioguide": 0,
+          "double_claim": 59,
+          "prior_incomplete": 29,
+          "unlisted_live_id": 3,
+          "ambiguous_current": 0,
+          "prior_office_live": 2,
+          "cross_bioguide_claim": 0
+        },
+        "top_20": {
+          "dataset_lag": [
+            {
+              "live": null,
+              "name": "Alan Armstrong",
+              "state": "OK",
+              "reason": "dataset lists no FEC id for A000383",
+              "bioguide": "A000383",
+              "current_id": null,
+              "dataset_ids": [],
+              "official_id": "dceef4b4-6358-45e9-a35f-e27fc8f52670"
+            },
+            {
+              "live": "S6SC04437",
+              "name": "Darline Graham",
+              "state": "SC",
+              "reason": "dataset lists no FEC id for G000608; row holds S6SC04437",
+              "bioguide": "G000608",
+              "current_id": null,
+              "dataset_ids": [],
+              "official_id": "842f162f-0563-46fd-9701-aa4c39b72f2c"
+            }
+          ],
+          "double_claim": [
+            {
+              "live": "H0KY06104",
+              "name": "Andy Barr",
+              "state": "KY-6",
+              "reason": "S6KY00286 also claimed by 339c8d60-7de7-459a-ae43-05108275c83b (no bioguide)",
+              "bioguide": "B001282",
+              "current_id": "H0KY06104",
+              "dataset_ids": [
+                "H0KY06104",
+                "S6KY00286"
+              ],
+              "official_id": "1f984c1a-01ea-41be-bbe2-e49ccb6d0554"
+            },
+            {
+              "live": "S4NJ00466",
+              "name": "Andy Kim",
+              "state": "NJ",
+              "reason": "H8NJ03206 also claimed by 44c85a80-4585-4611-95a6-a6b195940fc1 (no bioguide)",
+              "bioguide": "K000394",
+              "current_id": "S4NJ00466",
+              "dataset_ids": [
+                "H8NJ03206",
+                "S4NJ00466"
+              ],
+              "official_id": "526e530f-ea39-4a01-bc24-33f02bf0a22a"
+            },
+            {
+              "live": "H6MN02131",
+              "name": "Angie Craig",
+              "state": "MN-2",
+              "reason": "S6MN00499 also claimed by 378629ab-b12f-476b-8a24-e0b6fe871b01 (no bioguide)",
+              "bioguide": "C001119",
+              "current_id": "H6MN02131",
+              "dataset_ids": [
+                "H6MN02131",
+                "S6MN00499"
+              ],
+              "official_id": "fb83472a-2d41-4988-8ed0-dd19cf6e0946"
+            },
+            {
+              "live": null,
+              "name": "April McClain Delaney",
+              "state": "MD-6",
+              "reason": "H4MD06340 also claimed by 8ab73c89-3703-43f3-9ed4-1023bf465527 (no bioguide)",
+              "bioguide": "M001232",
+              "current_id": "H4MD06340",
+              "dataset_ids": [
+                "H4MD06340"
+              ],
+              "official_id": "3ba56de6-f313-4f1f-afbe-c4e360f459db"
+            },
+            {
+              "live": null,
+              "name": "Ashley Hinson",
+              "state": "IA-2",
+              "reason": "H0IA01174 also claimed by 369bd6b6-2e5c-409d-82fd-bb426b7a66aa (no bioguide)",
+              "bioguide": "H001091",
+              "current_id": "H0IA01174",
+              "dataset_ids": [
+                "H0IA01174"
+              ],
+              "official_id": "1fcd4ca1-8598-476e-a469-d0abdf604863"
+            },
+            {
+              "live": null,
+              "name": "Aumua Amata Coleman Radewagen",
+              "state": "AS-0",
+              "reason": "H4AS00036 also claimed by 439f33bb-0ed0-4a27-aedd-3d1e1c8fa8a2 (no bioguide)",
+              "bioguide": "R000600",
+              "current_id": "H4AS00036",
+              "dataset_ids": [
+                "H4AS00036"
+              ],
+              "official_id": "e1824501-eb21-4c20-8596-b8a86b543ccd"
+            },
+            {
+              "live": null,
+              "name": "Austin Scott",
+              "state": "GA-8",
+              "reason": "H0GA08099 also claimed by 893a581e-4fc0-4190-b43f-6afafc7aa917 (no bioguide)",
+              "bioguide": "S001189",
+              "current_id": "H0GA08099",
+              "dataset_ids": [
+                "H0GA08099"
+              ],
+              "official_id": "88b9e155-0d06-48f3-94e5-bec952869441"
+            },
+            {
+              "live": "H8AL02171",
+              "name": "Barry Moore",
+              "state": "AL-1",
+              "reason": "S6AL00476 also claimed by d7442ef3-14aa-4241-8d92-ef3f5c726cb7 (no bioguide)",
+              "bioguide": "M001212",
+              "current_id": "H8AL02171",
+              "dataset_ids": [
+                "H8AL02171",
+                "S6AL00476"
+              ],
+              "official_id": "8a916c94-dfa8-4971-90f8-2d005e0b7b56"
+            },
+            {
+              "live": null,
+              "name": "Ben Ray Luján",
+              "state": "NM",
+              "reason": "H8NM03196 also claimed by 6dc78f88-fe6f-4ff5-8a75-bd242e07d0ec (no bioguide); S0NM00058 also claimed by 93a6040f-402c-4f85-8d0d-55cf1b0350b2 (no bioguide)",
+              "bioguide": "L000570",
+              "current_id": "S0NM00058",
+              "dataset_ids": [
+                "H8NM03196",
+                "S0NM00058"
+              ],
+              "official_id": "eadbf1fd-e245-44ff-91ec-794407411f69"
+            },
+            {
+              "live": "S4LA00107",
+              "name": "Bill Cassidy",
+              "state": "LA",
+              "reason": "H8LA00017 also claimed by 03d38fae-b058-4c98-8933-1750a4cfdfad (no bioguide)",
+              "bioguide": "C001075",
+              "current_id": "S4LA00107",
+              "dataset_ids": [
+                "H8LA00017",
+                "S4LA00107"
+              ],
+              "official_id": "fa237ff5-a496-4f4a-97cb-fed07a08efd0"
+            },
+            {
+              "live": null,
+              "name": "Bonnie Watson Coleman",
+              "state": "NJ-12",
+              "reason": "H4NJ12149 also claimed by eb6e7f4c-dc9c-47c5-a016-5d499dccd0ac (no bioguide)",
+              "bioguide": "W000822",
+              "current_id": "H4NJ12149",
+              "dataset_ids": [
+                "H4NJ12149"
+              ],
+              "official_id": "6a01a39b-8283-40a8-9017-a1eb5d6a340c"
+            },
+            {
+              "live": "H8NH01210",
+              "name": "Chris Pappas",
+              "state": "NH-1",
+              "reason": "S6NH00141 also claimed by 2450fd78-13e4-4635-b142-d9014380bad4 (no bioguide)",
+              "bioguide": "P000614",
+              "current_id": "H8NH01210",
+              "dataset_ids": [
+                "H8NH01210",
+                "S6NH00141"
+              ],
+              "official_id": "7f62648d-9697-4d97-98fa-59d7b4999f02"
+            },
+            {
+              "live": "S6MD03441",
+              "name": "Chris Van Hollen",
+              "state": "MD",
+              "reason": "H2MD08126 also claimed by a3b33a19-697c-414a-902b-c8bfe7e8d2b1 (no bioguide)",
+              "bioguide": "V000128",
+              "current_id": "S6MD03441",
+              "dataset_ids": [
+                "H2MD08126",
+                "S6MD03441"
+              ],
+              "official_id": "82cb033e-efe6-4f33-a12c-46afedc073cc"
+            },
+            {
+              "live": "H0FL08208",
+              "name": "Daniel Webster",
+              "state": "FL-11",
+              "reason": "S4FL00256 also claimed by 9f07bc0d-0a47-4d2b-baa6-e67632f37782 (no bioguide)",
+              "bioguide": "W000806",
+              "current_id": "H0FL08208",
+              "dataset_ids": [
+                "H0FL08208",
+                "S4FL00256"
+              ],
+              "official_id": "8f4e4de5-d4f9-44d5-946e-2e24ba44f94e"
+            },
+            {
+              "live": "H4GA01039",
+              "name": "Earl L. \"Buddy\" Carter",
+              "state": "GA-1",
+              "reason": "S6GA00374 also claimed by 52b04f5f-b4b9-4f08-a66c-81bc7db1756c (no bioguide)",
+              "bioguide": "C001103",
+              "current_id": "H4GA01039",
+              "dataset_ids": [
+                "H4GA01039",
+                "S6GA00374"
+              ],
+              "official_id": "5cc3a04d-7a24-4472-9e32-ac5e07c9c532"
+            },
+            {
+              "live": "S4MA00028",
+              "name": "Edward J. Markey",
+              "state": "MA",
+              "reason": "H6MA07101 also claimed by 3a0a8ed8-e36c-4b90-bfca-0e35cc7885ad (no bioguide)",
+              "bioguide": "M000133",
+              "current_id": "S4MA00028",
+              "dataset_ids": [
+                "H6MA07101",
+                "S4MA00028"
+              ],
+              "official_id": "bb23212c-9844-4ffa-8172-d92655440dd1"
+            },
+            {
+              "live": "S4MI00470",
+              "name": "Elissa Slotkin",
+              "state": "MI",
+              "reason": "H8MI08102 also claimed by 6eb02baf-1234-4312-bcba-8508b1fc95a1 (no bioguide)",
+              "bioguide": "S001208",
+              "current_id": "S4MI00470",
+              "dataset_ids": [
+                "H8MI08102",
+                "S4MI00470"
+              ],
+              "official_id": "dfd9dd3c-8d53-4bf3-8609-a5aebd73f5dd"
+            },
+            {
+              "live": "H8CA39174",
+              "name": "Gilbert Ray Cisneros",
+              "state": "CA-31",
+              "reason": "H4CA31170 also claimed by a1766a0b-a4ee-4117-afb6-6aec28a1af18 (no bioguide)",
+              "bioguide": "C001123",
+              "current_id": "H4CA31170",
+              "dataset_ids": [
+                "H4CA31170",
+                "H8CA39174"
+              ],
+              "official_id": "1f0fcc25-c88d-4112-9e90-e873d106d32d"
+            },
+            {
+              "live": "H2MD04232",
+              "name": "Glenn Ivey",
+              "state": "MD-4",
+              "reason": "H2MD04315 also claimed by 62165949-8118-4305-b0e2-10a20f2f75f8 (no bioguide)",
+              "bioguide": "I000058",
+              "current_id": null,
+              "dataset_ids": [
+                "H2MD04232",
+                "H2MD04315"
+              ],
+              "official_id": "fed7caaa-0d38-45a8-a7f9-20ea8cfe4fb9"
+            },
+            {
+              "live": "H8MI11254",
+              "name": "Haley M. Stevens",
+              "state": "MI-11",
+              "reason": "S6MI00426 also claimed by 2f4dd5a4-20f4-4c65-9a73-0479c432670d (no bioguide)",
+              "bioguide": "S001215",
+              "current_id": "H8MI11254",
+              "dataset_ids": [
+                "H8MI11254",
+                "S6MI00426"
+              ],
+              "official_id": "9e8dbddd-74d1-4d04-90b2-4682db860b6d"
+            }
+          ],
+          "prior_incomplete": [
+            {
+              "live": "S4VT00033",
+              "name": "Bernard Sanders",
+              "state": "VT",
+              "reason": "prior lacks H8VT01016",
+              "bioguide": "S000033",
+              "current_id": "S4VT00033",
+              "dataset_ids": [
+                "H8VT01016",
+                "S4VT00033"
+              ],
+              "official_id": "83a86ecb-0064-413e-b131-19a122f218f3"
+            },
+            {
+              "live": "S4HI00136",
+              "name": "Brian Schatz",
+              "state": "HI",
+              "reason": "prior lacks H6HI02244",
+              "bioguide": "S001194",
+              "current_id": "S4HI00136",
+              "dataset_ids": [
+                "H6HI02244",
+                "S4HI00136"
+              ],
+              "official_id": "f697a9e5-080a-4b9a-9240-211ad695a192"
+            },
+            {
+              "live": "S8NY00082",
+              "name": "Charles E. Schumer",
+              "state": "NY",
+              "reason": "prior lacks H0NY16010",
+              "bioguide": "S000148",
+              "current_id": "S8NY00082",
+              "dataset_ids": [
+                "H0NY16010",
+                "S8NY00082"
+              ],
+              "official_id": "1e6efe79-ed26-416d-aa75-908d6f9a1ff4"
+            },
+            {
+              "live": "H8ME01120",
+              "name": "Chellie Pingree",
+              "state": "ME-1",
+              "reason": "prior lacks S0ME00038",
+              "bioguide": "P000597",
+              "current_id": "H8ME01120",
+              "dataset_ids": [
+                "H8ME01120",
+                "S0ME00038"
+              ],
+              "official_id": "b6711b52-e68a-4dc9-94e9-0b4183adfe98"
+            },
+            {
+              "live": "S2CT00132",
+              "name": "Christopher Murphy",
+              "state": "CT",
+              "reason": "prior lacks H6CT05124",
+              "bioguide": "M001169",
+              "current_id": "S2CT00132",
+              "dataset_ids": [
+                "H6CT05124",
+                "S2CT00132"
+              ],
+              "official_id": "742abc8e-9320-42b7-a9d4-e7c06e935907"
+            },
+            {
+              "live": "H0CA48024",
+              "name": "Darrell Issa",
+              "state": "CA-48",
+              "reason": "prior lacks S8CA00135",
+              "bioguide": "I000056",
+              "current_id": "H0CA48024",
+              "dataset_ids": [
+                "H0CA48024",
+                "S8CA00135"
+              ],
+              "official_id": "8ef56d07-0717-4983-9f63-912be7663be2"
+            },
+            {
+              "live": "H4AZ06045",
+              "name": "David Schweikert",
+              "state": "AZ-1",
+              "reason": "prior lacks H8AZ05097",
+              "bioguide": "S001183",
+              "current_id": "H4AZ06045",
+              "dataset_ids": [
+                "H4AZ06045",
+                "H8AZ05097"
+              ],
+              "official_id": "86795144-301f-43b0-8552-0b6fe8706382"
+            },
+            {
+              "live": "H8NJ03073",
+              "name": "Frank Pallone",
+              "state": "NJ-6",
+              "reason": "prior lacks S6NJ00263",
+              "bioguide": "P000034",
+              "current_id": "H8NJ03073",
+              "dataset_ids": [
+                "H8NJ03073",
+                "S6NJ00263"
+              ],
+              "official_id": "cb978fa2-77e9-46d7-b937-ef897fae7817"
+            },
+            {
+              "live": "S6RI00163",
+              "name": "Jack Reed",
+              "state": "RI",
+              "reason": "prior lacks H0RI02071",
+              "bioguide": "R000122",
+              "current_id": "S6RI00163",
+              "dataset_ids": [
+                "H0RI02071",
+                "S6RI00163"
+              ],
+              "official_id": "52bce3fa-b134-4e85-abb5-299318fb9d48"
+            },
+            {
+              "live": "S0KS00091",
+              "name": "Jerry Moran",
+              "state": "KS",
+              "reason": "prior lacks H6KS01096",
+              "bioguide": "M000934",
+              "current_id": "S0KS00091",
+              "dataset_ids": [
+                "H6KS01096",
+                "S0KS00091"
+              ],
+              "official_id": "38308099-457d-488d-8794-3fd3aabf44ce"
+            },
+            {
+              "live": "S0AR00150",
+              "name": "John Boozman",
+              "state": "AR",
+              "reason": "prior lacks H2AR03176",
+              "bioguide": "B001236",
+              "current_id": "S0AR00150",
+              "dataset_ids": [
+                "H2AR03176",
+                "S0AR00150"
+              ],
+              "official_id": "0dda6984-32b7-4d6e-88ec-d883763d63aa"
+            },
+            {
+              "live": "S2SD00068",
+              "name": "John Thune",
+              "state": "SD",
+              "reason": "prior lacks H6SD00085",
+              "bioguide": "T000250",
+              "current_id": "S2SD00068",
+              "dataset_ids": [
+                "H6SD00085",
+                "S2SD00068"
+              ],
+              "official_id": "d0ac116d-2f62-4dd3-8589-53e4756882bc"
+            },
+            {
+              "live": "H6FL11126",
+              "name": "Kathy Castor",
+              "state": "FL-14",
+              "reason": "prior lacks H6FL11134",
+              "bioguide": "C001066",
+              "current_id": "H6FL11126",
+              "dataset_ids": [
+                "H6FL11126",
+                "H6FL11134"
+              ],
+              "official_id": "41ba4cf5-8011-46e7-92cb-b17d2e4a38a4"
+            },
+            {
+              "live": "S0NY00410",
+              "name": "Kirsten E. Gillibrand",
+              "state": "NY",
+              "reason": "prior lacks H6NY20167",
+              "bioguide": "G000555",
+              "current_id": "S0NY00410",
+              "dataset_ids": [
+                "H6NY20167",
+                "S0NY00410"
+              ],
+              "official_id": "248a39e9-ac14-4d3b-8657-f3a821fcf3e5"
+            },
+            {
+              "live": "H6MD07020",
+              "name": "Kweisi Mfume",
+              "state": "MD-7",
+              "reason": "prior lacks H0MD07114, S6MD03185",
+              "bioguide": "M000687",
+              "current_id": "H6MD07020",
+              "dataset_ids": [
+                "H0MD07114",
+                "H6MD07020",
+                "S6MD03185"
+              ],
+              "official_id": "7c3fe0b0-7ddc-4efd-965e-ee4053d3ee40"
+            },
+            {
+              "live": "H2NV02395",
+              "name": "Mark E. Amodei",
+              "state": "NV-2",
+              "reason": "prior lacks H1NV02017, S0NV00237",
+              "bioguide": "A000369",
+              "current_id": "H2NV02395",
+              "dataset_ids": [
+                "H1NV02017",
+                "H2NV02395",
+                "S0NV00237"
+              ],
+              "official_id": "cdc760ec-68a6-4548-9aa1-5d44691b2feb"
+            },
+            {
+              "live": "H0IN03198",
+              "name": "Marlin A. Stutzman",
+              "state": "IN-3",
+              "reason": "prior lacks S0IN00095",
+              "bioguide": "S001188",
+              "current_id": "H0IN03198",
+              "dataset_ids": [
+                "H0IN03198",
+                "S0IN00095"
+              ],
+              "official_id": "dc64474f-4f82-4e5b-b2c8-7c5b18579db8"
+            },
+            {
+              "live": "S2HI00106",
+              "name": "Mazie K. Hirono",
+              "state": "HI",
+              "reason": "prior lacks H6HI02251",
+              "bioguide": "H001042",
+              "current_id": "S2HI00106",
+              "dataset_ids": [
+                "H6HI02251",
+                "S2HI00106"
+              ],
+              "official_id": "b077712a-90d1-43db-a6c9-d057ae821844"
+            },
+            {
+              "live": "H2OH03067",
+              "name": "Michael R. Turner",
+              "state": "OH-10",
+              "reason": "prior lacks H2OH03091",
+              "bioguide": "T000463",
+              "current_id": "H2OH03067",
+              "dataset_ids": [
+                "H2OH03067",
+                "H2OH03091"
+              ],
+              "official_id": "74349a45-3cad-4f5a-9638-fb850bbec59d"
+            },
+            {
+              "live": "S8ID00027",
+              "name": "Mike Crapo",
+              "state": "ID",
+              "reason": "prior lacks H2ID02034",
+              "bioguide": "C000880",
+              "current_id": "S8ID00027",
+              "dataset_ids": [
+                "H2ID02034",
+                "S8ID00027"
+              ],
+              "official_id": "6f0aabbc-6365-4e59-ac1b-4efad1f71fcb"
+            }
+          ],
+          "unlisted_live_id": [
+            {
+              "live": "H8HI01234",
+              "name": "Ed Case",
+              "state": "HI-1",
+              "reason": "live H8HI01234 not listed for C001055",
+              "bioguide": "C001055",
+              "current_id": "H2HI02128",
+              "dataset_ids": [
+                "H2HI02128"
+              ],
+              "official_id": "47d96e85-fa6b-4705-a8b5-eb8094225d48"
+            },
+            {
+              "live": "H0NY02200",
+              "name": "Nick LaLota",
+              "state": "NY-1",
+              "reason": "live H0NY02200 not listed for L000598",
+              "bioguide": "L000598",
+              "current_id": "H2NY01190",
+              "dataset_ids": [
+                "H2NY01190"
+              ],
+              "official_id": "61087125-2853-42af-9d0c-c82e73812411"
+            },
+            {
+              "live": "H2NJ08232",
+              "name": "Robert Menendez",
+              "state": "NJ-8",
+              "reason": "prior H2NJ13075 not listed for M001226",
+              "bioguide": "M001226",
+              "current_id": "H2NJ08232",
+              "dataset_ids": [
+                "H2NJ08232"
+              ],
+              "official_id": "747c96d0-962a-4448-a405-e055dbce8f69"
+            }
+          ],
+          "prior_office_live": [
+            {
+              "live": "H8IL14067",
+              "name": "Bill Foster",
+              "state": "IL-11",
+              "reason": "live H8IL14067 is a prior-office id; current is H2IL11124",
+              "bioguide": "F000454",
+              "current_id": "H2IL11124",
+              "dataset_ids": [
+                "H2IL11124",
+                "H8IL14067"
+              ],
+              "official_id": "fa995d54-5789-4cd0-988e-0c3881cabfa7"
+            },
+            {
+              "live": "H2FL14053",
+              "name": "Lois Frankel",
+              "state": "FL-22",
+              "reason": "live H2FL14053 is a prior-office id; current is H2FL22080",
+              "bioguide": "F000462",
+              "current_id": "H2FL22080",
+              "dataset_ids": [
+                "H2FL14053",
+                "H2FL22080"
+              ],
+              "official_id": "66435227-c92c-4d68-838c-29cf8b288e12"
+            }
+          ]
+        },
+        "read_at": "2026-09-29T21:05:48.043Z",
+        "population": 539,
+        "dataset_ref": {
+          "current": {
+            "url": "https://unitedstates.github.io/congress-legislators/legislators-current.json",
+            "etag": "W/\"6ab4f9aa-166a83\"",
+            "last_modified": "Thu, 24 Sep 2026 10:21:30 GMT"
+          },
+          "historical": {
+            "url": "https://unitedstates.github.io/congress-legislators/legislators-historical.json",
+            "etag": "W/\"6ab4f9aa-cdbc1f\"",
+            "last_modified": "Thu, 24 Sep 2026 10:21:30 GMT"
+          }
+        },
+        "peak_rss_mb": 191,
+        "github_run_id": "36630299596",
+        "dataset_members": 539,
+        "github_workflow": "nightly-sync",
+        "claimant_rows_read": 586,
+        "double_claim_split": {
+          "other_id": 46,
+          "current_id": 13
+        },
+        "github_run_attempt": "1",
+        "population_predicate": "tier = 'elected' AND governing_body_id IN (SELECT id FROM governing_bodies WHERE (name, type) IN (('United States Senate','legislature_upper'),('United States House of Representatives','legislature_lower')))",
+        "matched_via_historical": 0,
+        "matched_dataset_members": 539,
+        "historical_members_count": 12231,
+        "dataset_ambiguous_current": 9,
+        "unmatched_dataset_members": {
+          "count": 0,
+          "first_20": []
+        },
+        "members_with_multiple_rows": 0,
+        "historical_members_with_fec": 995
+      }
+    }
+  },
+  "not_capturable": [
+    "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase Management API's `logs` endpoint serves and SQL does not reach at all — so they are not capturable from HERE, which is a Postgres session. They ARE capturable: `pnpm --filter @civitics/data data:census:cancellations:prod` reads them (and the front-door 5xx rate) through the Logs API and prints both against the cc-131 read 7 (f) gates, exiting non-zero when either fails. A paced prod op's front-door cost — renders lost per CALL and per breather against `--renders-per-call-max`, and the run total — is in its runner receipt, `docs/audits/<day>-fix1212-bootstrap-runner*.md` (FIX-1232); this job runs no census of its own.",
+    "**GHA step logs and per-step timings.** `gh run view --log` only, and they age out. This file carries the run's `createdAt`/`conclusion` from the API, not its logs.",
+    "**Vercel edge / CDN volume.** Cloudflare analytics only — see `scripts/cf-analytics.mjs`.",
+    "**`peak_rss_mb` for a phase that was KILLED.** The value is stamped by the phase's own completion path, so a job the runner OOM-killed leaves no reading; the `nightly_killed` row records the gap, not the heap."
+  ],
+  "queries": [
+    {
+      "key": "nightly_phases",
+      "sql": "\nSELECT started_at, status,\n       metadata->>'phase'                        AS phase,\n       (metadata->>'duration_ms')::numeric/1000  AS duration_s,\n       (metadata->>'peak_rss_mb')::numeric       AS peak_rss_mb,\n       metadata->>'skip_reason'                  AS skip_reason,\n       (metadata->>'is_weekly')::boolean         AS is_weekly,\n       metadata->>'github_run_id'                AS github_run_id,\n       metadata->>'dispatched_by'                AS dispatched_by\nFROM public.data_sync_log\nWHERE pipeline IN ('nightly_cron','nightly_killed')\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at",
+      "elapsed_ms": 87,
+      "error": null
+    },
+    {
+      "key": "gha_dispatch_nightly",
+      "sql": "\nSELECT value\nFROM public.pipeline_state\nWHERE key = 'gha_dispatch_nightly'",
+      "elapsed_ms": 86,
+      "error": null
+    },
+    {
+      "key": "cron_jobs",
+      "sql": "\nWITH jp AS (\n\nWITH job AS (\n  SELECT j.jobid, j.jobname, j.active, j.schedule,\n         (regexp_match(j.command, '(?:CALL|SELECT)\\s+(?:public\\.)?([a-z_0-9]+)\\s*\\(', 'i'))[1] AS proc\n  FROM cron.job j\n), src AS (\n  SELECT job.*,\n         -- Comment-only lines removed; inline trailing comments left alone,\n         -- since a live literal can sit on a line that ends in one.\n         regexp_replace(pr.prosrc, '(?n)^[ \\t]*--[^\\n]*$', '', 'g') AS body,\n         pr.prosrc AS raw\n  FROM job\n  LEFT JOIN pg_proc pr\n         ON pr.proname = job.proc\n        AND pr.pronamespace = 'public'::regnamespace\n)\nSELECT jobid, jobname, active, schedule, proc,\n       COALESCE(\n         (regexp_match(body, 'data_sync_log\\s*\\([^)]*\\)\\s*VALUES\\s*\\(\\s*''([a-z_0-9]+)''', 'i'))[1],\n         (regexp_match(body, 'c_pipeline\\s+text\\s*:=\\s*''([a-z_0-9]+)''', 'i'))[1]\n       )                                                                AS pipeline,\n       COALESCE(raw ILIKE '%INSERT INTO public.data_sync_log%', false)  AS writes_dsl,\n       COALESCE(raw ILIKE '%prod_session_state%', false)                AS guarded\nFROM src\nORDER BY jobname\n), last_run AS (\n  SELECT DISTINCT ON (d.jobid)\n         d.jobid, d.status, d.return_message, d.start_time, d.end_time\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - make_interval(days => $1::int)\n  ORDER BY d.jobid, d.start_time DESC\n)\nSELECT j.jobid, j.jobname, j.schedule, j.active,\n       jp.pipeline,\n       r.start_time, r.end_time,\n       r.status                                                   AS cron_status,\n       r.return_message,\n       EXTRACT(epoch FROM (r.end_time - r.start_time))::numeric   AS duration_s,\n       s.status                                                   AS sync_status,\n       s.metadata->>'skip_reason'                                 AS skip_reason,\n       -- FIX-1178 (d) — the daily rule-tagger's delete/insert split, when the\n       -- run stamped one. Absent for every other job and for a cadence that\n       -- timed nothing, which renders as an em dash rather than a zero.\n       s.metadata->>'phase_seconds'                               AS phase_seconds\nFROM cron.job j\nJOIN jp ON jp.jobid = j.jobid\nLEFT JOIN last_run r ON r.jobid = j.jobid\nLEFT JOIN LATERAL (\n  SELECT l.status, l.metadata\n  FROM public.data_sync_log l\n  WHERE r.start_time IS NOT NULL\n    AND jp.pipeline IS NOT NULL\n    AND l.pipeline = jp.pipeline\n    AND l.metadata->>'source' LIKE 'pg_cron%'\n    AND l.started_at BETWEEN r.start_time - interval '90 seconds'\n                         AND COALESCE(r.end_time, r.start_time) + interval '90 seconds'\n  ORDER BY abs(EXTRACT(epoch FROM (l.started_at - r.start_time))) ASC\n  LIMIT 1\n) s ON true\nORDER BY j.jobname",
+      "elapsed_ms": 222,
+      "error": null
+    },
+    {
+      "key": "daily_run",
+      "sql": "\n(SELECT 'latest' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)",
+      "elapsed_ms": 81,
+      "error": null
+    },
+    {
+      "key": "vm_now",
+      "sql": "\nSELECT c.relname                                                       AS relation,\n       CASE WHEN c.relpages = 0 THEN NULL\n            ELSE ROUND(100.0 * c.relallvisible / c.relpages, 1) END    AS pct_all_visible,\n       s.n_dead_tup,\n       c.relpages\nFROM pg_class c\nLEFT JOIN pg_stat_user_tables s ON s.relid = c.oid\nWHERE c.oid IN ('public.entity_connections'::regclass,\n                'public.financial_entities'::regclass,\n                'public.financial_relationships'::regclass)\nORDER BY c.relname",
+      "elapsed_ms": 97,
+      "error": null
+    },
+    {
+      "key": "weekly_run",
+      "sql": "\nSELECT d.start_time AS started_at, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS elapsed_seconds\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = 'refresh-derived-mvs-weekly'\nORDER BY d.start_time DESC\nLIMIT 1",
+      "elapsed_ms": 90,
+      "error": null
+    },
+    {
+      "key": "vacuums",
+      "sql": "\nSELECT j.jobname, d.start_time, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS duration_s\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = ANY($1::text[])\n  AND d.start_time >= now() - make_interval(days => $2::int)\nORDER BY d.start_time DESC\nLIMIT 24",
+      "elapsed_ms": 105,
+      "error": null
+    },
+    {
+      "key": "vm_probes",
+      "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key LIKE 'vm_probe:%'\nORDER BY key",
+      "elapsed_ms": 87,
+      "error": null
+    },
+    {
+      "key": "fec_state",
+      "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('fec_drop_probe','fec_indiv_watermark','fec_bulk_run_state')",
+      "elapsed_ms": 80,
+      "error": null
+    },
+    {
+      "key": "fec_emit",
+      "sql": "\nSELECT DISTINCT ON (cycle_year, source)\n       cycle_year, source, run_id, started_at, complete_at, keys\nFROM public.fec_emit_runs\nORDER BY cycle_year DESC, source, started_at DESC",
+      "elapsed_ms": 83,
+      "error": null
+    },
+    {
+      "key": "fec_emit_keys_est",
+      "sql": "\nSELECT reltuples::bigint AS est FROM pg_class WHERE oid = 'public.fec_emit_keys'::regclass",
+      "elapsed_ms": 80,
+      "error": null
+    },
+    {
+      "key": "prod_session",
+      "sql": "SELECT public.prod_session_state() AS state",
+      "elapsed_ms": 94,
+      "error": null
+    },
+    {
+      "key": "skips_24h",
+      "sql": "\nSELECT pipeline, started_at,\n       metadata->>'skip_reason' AS skip_reason,\n       metadata->>'source'      AS source\nFROM public.data_sync_log\nWHERE status = 'skipped'\n  AND started_at >= now() - interval '24 hours'\nORDER BY started_at DESC\nLIMIT 100",
+      "elapsed_ms": 80,
+      "error": null
+    },
+    {
+      "key": "canary",
+      "sql": "\nSELECT started_at, metadata->'conditions' AS conditions\nFROM public.data_sync_log\nWHERE pipeline = 'canary_check'\nORDER BY started_at DESC\nLIMIT 1",
+      "elapsed_ms": 86,
+      "error": null
+    },
+    {
+      "key": "sld_coverage",
+      "sql": "\nSELECT count(*) AS total,\n       count(*) FILTER (WHERE o.metadata->>'district_jurisdiction_id' IS NOT NULL) AS linked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)",
+      "elapsed_ms": 144,
+      "error": null
+    },
+    {
+      "key": "sld_residual",
+      "sql": "\nSELECT p.name AS state, gb.type AS chamber, count(*) AS unlinked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)\n  AND o.metadata->>'district_jurisdiction_id' IS NULL\nGROUP BY p.name, gb.type\nORDER BY count(*) DESC, p.name",
+      "elapsed_ms": 92,
+      "error": null
+    },
+    {
+      "key": "forker_24h",
+      "sql": "\nSELECT to_char(date_trunc('hour', d.start_time), 'YYYY-MM-DD HH24:00') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '24 hours'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
+      "elapsed_ms": 172,
+      "error": null
+    },
+    {
+      "key": "forker_7d",
+      "sql": "\nSELECT to_char(date_trunc('day', d.start_time), 'YYYY-MM-DD') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '7 days'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
+      "elapsed_ms": 178,
+      "error": null
+    },
+    {
+      "key": "forker_running",
+      "sql": "\nWITH bursts AS (\n  SELECT date_trunc('hour', d.start_time) AS bucket, count(*) AS failures\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - interval '24 hours'\n    AND d.status = 'failed'\n    AND d.return_message ILIKE '%startup timeout%'\n  GROUP BY 1\n  HAVING count(*) >= $1::int\n)\nSELECT to_char(b.bucket, 'YYYY-MM-DD HH24:00') AS bucket,\n       x.jobname,\n       x.start_time,\n       x.wall_s,\n       x.status\nFROM bursts b\nLEFT JOIN LATERAL (\n  SELECT COALESCE(j.jobname, '(unscheduled jobid ' || d.jobid || ')') AS jobname,\n         d.start_time,\n         EXTRACT(epoch FROM (COALESCE(d.end_time, now()) - d.start_time))::numeric AS wall_s,\n         d.status\n  FROM cron.job_run_details d\n  LEFT JOIN cron.job j ON j.jobid = d.jobid\n  WHERE d.start_time <= b.bucket + interval '1 hour'\n    AND COALESCE(d.end_time, now()) >= b.bucket\n    AND NOT (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%')\n  ORDER BY (COALESCE(d.end_time, now()) - d.start_time) DESC\n  LIMIT 1\n) x ON true\nORDER BY b.bucket DESC",
+      "elapsed_ms": 174,
+      "error": null
+    },
+    {
+      "key": "forker_cancels",
+      "sql": "\nSELECT acted_at, jobname, age_seconds, budget_seconds, acted_via\nFROM public.cron_job_budget_action\nWHERE acted_at >= now() - interval '7 days'\nORDER BY acted_at DESC\nLIMIT 50",
+      "elapsed_ms": 82,
+      "error": null
+    },
+    {
+      "key": "forker_vercel_liveness",
+      "sql": "\nSELECT value->>'at' AS at\nFROM public.pipeline_state\nWHERE key = 'cron_watchdog_vercel'",
+      "elapsed_ms": 80,
+      "error": null
+    },
+    {
+      "key": "box_health",
+      "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('box_health', 'box_health_mem')",
+      "elapsed_ms": 81,
+      "error": null
+    },
+    {
+      "key": "legislator_ids",
+      "sql": "\n(SELECT 'latest' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_report'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_report'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)",
+      "elapsed_ms": 161,
+      "error": null
+    }
+  ]
+}
