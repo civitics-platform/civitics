@@ -1,0 +1,52 @@
+{
+  "cc": "169",
+  "prompt": "cc-prompt-169-tuesday-receipts-fix969-fix1138-fix993-fix1178-bands.md",
+  "started_at": "2026-09-29T23:11:21Z",
+  "finished_at": "2026-09-29T23:27:00Z",
+  "head_before": "799488f0",
+  "head_after": "50705c63",
+  "commits": [
+    {
+      "sha": "38d091f6",
+      "subject": "docs(audits): 2026-09-29 Tuesday receipts — jobid 17's first crawl-branch firing, the three weekly legs, the daily merge series"
+    },
+    {
+      "sha": "044d4f10",
+      "subject": "chore(fixes): record prod verification of FIX-969"
+    },
+    {
+      "sha": "c584ab14",
+      "subject": "chore(fixes): record prod verification of FIX-1138"
+    },
+    {
+      "sha": "f4ccdc85",
+      "subject": "chore(fixes): record prod verification of FIX-993"
+    },
+    {
+      "sha": "863b820f",
+      "subject": "chore(fixes): record prod verification of FIX-1178"
+    },
+    {
+      "sha": "63948c00",
+      "subject": "docs(receipts): FIX-1178 — rule-taggers-daily band re-based on the merge regime (09-23 →)"
+    },
+    {
+      "sha": "50705c63",
+      "subject": "chore(fixes): sync status after FIX-969, FIX-1138, FIX-993, FIX-1178"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-969",
+    "FIX-1138",
+    "FIX-993",
+    "FIX-1178"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none. Every prod contact was a read through db-query --prod (SET TRANSACTION READ ONLY), 23:11-23:26 UTC. There were four pushes to main, all docs-only or allow-empty commits. prod_session_state() read held=false at 23:18:28, 23:21:40, 23:22:39, 23:24:06 and 23:25:38 UTC. Push 1 (38d091f6, ~23:21:2x) did have a read chained in front of it, but my output filter cut the value; 23:18:28 before it and 23:21:40 after it are the readable bracket. Push 4 (50705c63, ~23:25:0x) had no read of its own; 23:24:06 and 23:25:38 bracket it, both false with live_writers [].",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "owed": []
+}
