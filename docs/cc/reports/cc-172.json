@@ -1,0 +1,54 @@
+{
+  "cc": "172",
+  "prompt": "cc-prompt-172-board-backlog-goals-cron-history-docs-archive.md",
+  "started_at": "2026-09-28T22:53:21Z",
+  "finished_at": "2026-09-29T00:59:00Z",
+  "head_before": "d208bdb9",
+  "head_after": "9fd3b4b7",
+  "commits": [
+    {
+      "sha": "3acf3c8a",
+      "subject": "docs(fixes): file FIX-1243 — the board reads the backlog, projects carry a phase goal, prompts carry a run window; docs/ archive pass"
+    },
+    {
+      "sha": "26cbcc3f",
+      "subject": "feat(fixes,cc): FIX-1243 — fix:add --lane, the lane marker, section→lane map; fixes-status --json carries priority/size/section/lane"
+    },
+    {
+      "sha": "81bddb0b",
+      "subject": "feat(cc): FIX-1243 — the board renders the backlog per lane + bugs, phase headers on the projects strip, done/archived projects collapsed, run-window pills and the prod-day collision check, cron/nightly walls from receipts history, the staleness banner"
+    },
+    {
+      "sha": "db9696ad",
+      "subject": "chore(docs): FIX-1243 — archive ten dead documents; every reference rewritten; check:doc-links"
+    },
+    {
+      "sha": "6ad77477",
+      "subject": "chore(ci,docs): FIX-1243 — board:test + check:doc-links in fixes-integrity; docs/cc/README.md; template §0 when-forms + --lane"
+    },
+    {
+      "sha": "9fd3b4b7",
+      "subject": "chore(fixes): sync status after FIX-1243"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1243"
+  ],
+  "fixes_filed": [
+    "FIX-1243",
+    "FIX-1244"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "No database write. Six pushes to main, each a Vercel deploy, each after a prod_session_state() read of held=false: 3acf3c8a (read 23:00:41 UTC, live_writers [entity_connections_rebuild], pushed 23:01:01), 26cbcc3f (00:30:48, [], pushed 00:31:06), 81bddb0b (00:45:35, [], pushed 00:45:50), db9696ad (00:51:52, [refresh_derived_mvs], pushed 00:52:10), 6ad77477 (00:53:59, [refresh_derived_mvs], pushed 00:54:19), 9fd3b4b7 (00:54:41, [refresh_derived_mvs], pushed 00:54:57). This report is a seventh. Every prod contact was a read of prod_session_state() through db-query --prod from the primary checkout. The first, at 23:00:09, was a trial of the read. One more attempt, from the worktree, printed usage and never connected, because the worktree's .env.local.prod is a stub. The board opens no connection; it reads prod state from docs/receipts/.",
+  "ci": "green",
+  "stopped_items": [
+    "read 4 STOP: Tier-A STAGE_1_SCHEMA_DESIGN.md has two code references, supabase/migrations/20260421000000_stage1_01_shadow_init.sql:9 (a comment) and :16 (a COMMENT ON string that is in the database). Left in docs/, per the STOP.",
+    "Tier B: CROSS_SOURCE_RESOLUTION_INVESTIGATION.md failed its test. Migrations 20260514000000:4 and 20260514000001:4 cite its §5.2/§5.4. Left in docs/.",
+    "read 3 STOP condition fired: five non-daily jobs dedupe to 0 firings. The field shape is the one cc-171 read. Four are inactive (jobids 16, 13, 2, 22) and votes-vacuum-analyze (37 2 * * 6) first appears in the 09-28 receipts and has not fired yet. D6 was built on the other 14; these render `no firing in 14 receipts`.",
+    "permission prompt: one compound command was denied — git commit -q -F <scratch>/msg2.txt && git log --oneline -1 && T=<scratch>/clean-export && rm -rf $T && mkdir -p $T && git archive HEAD scripts apps/civitics/app/api/phases docs/PHASE_GOALS.md | tar -x -C $T && cd $T && git init -q . && node scripts/test-board.mjs … — probably for the rm -rf. That command was stopped. I re-ran it as a bare commit, then an export into a fresh directory with no rm."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": []
+}
