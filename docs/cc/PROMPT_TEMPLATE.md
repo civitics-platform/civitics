@@ -21,12 +21,31 @@ the checklist below.
    cc: 171                    # MUST equal the filename's number — /cc aborts otherwise
    lane: hygiene              # one of cc.config.json's lanes (below)
    project: cc-loop           # optional; MUST name docs/cc/projects/<slug>.md
-   when: any                  # optional; any | 2026-09-29 | 2026-09-29T16:30Z (zoned)
+   when: any                  # optional; see "when:" below
    attended: unattended-ok    # optional; supervised | unattended-ok
    posture: code-only         # optional; code-only | prod-reads | prod-writes
    concurrent_with: [168, 170]  # optional; cc numbers that may be in flight
    ---
    ```
+   **`when:`** has five forms. Every instant must carry a zone (`Z` or
+   `±HH:MM`); a zoneless one is refused, because it would shift by the
+   writer's offset.
+
+   | form | meaning | card pill |
+   |---|---|---|
+   | `any` | no constraint | `any time` |
+   | `2026-10-01` or `2026-10-01T16:30Z` | runs then | `runs Thu 10-01 16:30 UTC` |
+   | `after 2026-09-29T16:30Z` | not before this; open-ended after it (FIX-1243) | `runs after Tue 09-29 16:30 UTC` |
+   | `2026-10-01T23:15Z..2026-10-02T03:30Z` | a bounded window (FIX-1243) | `window Thu 10-01 23:15–03:30 UTC` |
+   | (absent) | nothing drawn | — |
+
+   When `.claude/board.local.json` names a `tz`, the pill adds the local time.
+   A `posture: prod-writes` card also reads "needs a supervised slot" and
+   names the next supervised window. When two prod-writes prompts' windows
+   share a UTC day, both cards carry a ⚠ chip and the header counts them. One
+   prod-writing session at a time is still a human rule (rule 180); the board
+   only shows the overlap.
+
    **The lanes**, one line each:
    - `ops` — pg_cron, vacuum, paced runners, gates, receipts, box sizing.
    - `fec` — FEC/USAspending coverage, rollups, industry and NAICS tags,
@@ -45,18 +64,34 @@ the checklist below.
    cc-162…170 for the board, and nothing is back-filled earlier.
 
    **Plan files** (`docs/cc/projects/<slug>.md`) hold a multi-prompt
-   initiative: front matter `slug`, `title`, `lanes`, `status`
-   (`active | planned | done`), `plan` (the Cowork design note's name) and
-   `steps:` — a block list of
-   `{id, kind: cc|design|receipt|op|decision, ref, title, after?, done?}` —
-   then free prose. A prompt joins a project by naming it in `project:`.
+   initiative. Their front matter is `slug`, `title`, `lanes`, `status`
+   (`active | planned | done | archived`), `plan` (the name of Cowork's
+   design note), an optional `goal:` and `steps:`, followed by free prose.
+   `steps:` is a block list of
+   `{id, kind: cc|design|receipt|op|decision, ref, title, after?, done?}`.
+   A prompt joins a project by naming it in `project:`. Three rules (FIX-1243):
+   - `goal: "P1 · Infrastructure"` puts the tile under that phase's
+     PHASE_GOALS.md header, together with the header's own `~NN%`. The text
+     after `P<N> · ` must be a `### ` group under that phase, or the tile gets
+     a lint line. Nothing derives checkbox state.
+   - A plan whose steps are all done counts as **done**, whatever `status:`
+     says; a lint line flags the disagreement. It collapses into the one
+     `done:` row, which `pnpm board --projects all` expands.
+   - `status: archived` hides the plan, and the board keeps a count.
 
-   **The board.** `pnpm board` renders all of the above — a projects strip, an
-   8-column UTC week and the lanes — into `<boardDir>/board.json` and
-   `index.html` beside the prompts, from the tree alone. Prod state comes from
-   the latest committed `docs/receipts/<day>.json`, labelled with the time it
-   describes; the board never opens a connection. `/cc` runs it at the end of
-   Step 4. It is never committed, because it writes outside the repo.
+   **The board.** `pnpm board` renders all of the above from the tree alone,
+   into `<boardDir>/board.json` and `index.html` beside the prompts. The page
+   has a projects strip grouped by phase, an 8-column UTC week and the lanes.
+   Each lane ends with its **backlog row**: the open 🔴/🟠 FIXes in that lane
+   that no plan step or in-window card already names. A full-width **bugs**
+   row follows the lanes.
+   - Prod state comes from the latest committed `docs/receipts/<day>.json`,
+     labelled with the time it describes. The board never opens a connection.
+   - Cron and nightly sizes come from the newest 14 receipts files, and a
+     banner flags one older than 30 h.
+   - `/cc` runs the board at the end of Step 4. It is never committed, because
+     it writes outside the repo.
+   - `docs/cc/README.md` lists every file in the loop.
 
    **Supervised windows are local.** The week's per-day footer, meaning the
    hours someone is at the keyboard to supervise a landing, comes from
@@ -116,6 +151,13 @@ CC reads this before starting. Each line is a rule that has cost a real session.
 - **Real ids at filing time.** Allocate with `pnpm fix:add`, which prints the id;
   use the printed id in the trailer immediately. Never a `FIX-<letter>`
   placeholder in a diff.
+- **Every filing names its lane.** `pnpm fix:add … --lane <lane>` is required
+  (FIX-1243). The lane is one of `cc.config.json`'s `lanes`, and it is written
+  as a `<!--lane:X-->` marker after the id marker, on the same line. It is
+  usually the prompt's own lane. A bullet with no marker is placed by its
+  `## ` section through `sectionLanes`; the BUGS section maps to the board's
+  `bugs` row. Never retrofit a marker onto someone else's bullet; Craig may
+  hand-add one.
 - **One line per bullet.** `fix:add --body` takes a single line — a newline
   truncates it, and bash eats backticks.
 - **`fixes:sync` runs only AFTER the fix commits are on `origin/main`.** Running
@@ -257,8 +299,14 @@ passing, and both failures the clock rather than the data.
 - The `scripts/test-*.mjs` suites are fast and dependency-free — run them
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `board:test`,
   `session:worktree:test`, `drain:test`, `check:proconfig:test`,
-  `check:no-store-routes:test`, `check:render-timeouts:test`). `cc:verify:test`
-  also covers `cc:prompt`; `board:test` rides `fixes:test`'s chain.
+  `check:no-store-routes:test`, `check:render-timeouts:test`,
+  `check:doc-links:test`). `cc:verify:test` also covers `cc:prompt`.
+  `board:test` (which also runs the phase-goals pin) and `pnpm check:doc-links`
+  run in `fixes-integrity.yml` on every push (FIX-1243).
+- **Moving a doc** goes through `pnpm check:doc-links --archive <name>.md
+  --dry-run`. The dry run lists every `git mv` and every rewrite; without
+  `--dry-run` it performs them. It refuses a doc that code or a migration
+  cites by path. Add a line to `docs/archive/README.md`.
 - `pnpm fixes:check` after each commit.
 - **A GHA-workflow FIX's receipt is the next run AT ITS SLOT — dispatched or
   scheduled** (rule 71, rewritten by FIX-1218). `nightly.yml`,

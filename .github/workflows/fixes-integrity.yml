@@ -95,3 +95,19 @@ jobs:
       # filed id with no marker. Context is injected, so no scratch repo.
       - name: cc:verify report-claim unit tests
         run: node scripts/test-cc-verify.mjs
+
+      # FIX-1243: the lane board (FIX-1242) ran in no workflow, so its suite
+      # was local-only. Its fixture done.log was gitignored by `*.log`, and the
+      # suite had only ever passed in the worktree that wrote it. The phase-goal
+      # test pins the board's copy of the /api/phases header regex to
+      # route.ts. Both pure Node, fixture-driven, ~1s.
+      - name: board + phase-goals unit tests
+        run: node scripts/test-board.mjs && node scripts/test-phase-goals.mjs
+
+      # FIX-1243: every relative .md link and backtick `docs/X.md` path in
+      # docs/, both CLAUDE.mds and README.md resolves. Breaks that predate the
+      # check are listed in scripts/doc-links-known-breaks.json (FIX-1244); a
+      # new one fails the push. This is what stops a moved doc from leaving a
+      # dangling reference behind.
+      - name: doc-link check + its unit tests
+        run: node scripts/test-check-doc-links.mjs && node scripts/check-doc-links.mjs
