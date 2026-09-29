@@ -2,9 +2,9 @@
   "$comment": "FIX-1176 — hand-edited duration bands for pnpm receipts:daily. The script NEVER writes this file. Keys are pg_cron job NAMES (jobids are not portable between prod and the clone — CLAUDE.md, FIX-946); the one key with a colon is a job:unit band, read from that run row's unit_seconds rather than from the job's wall time. A job with no key here gets verdict `no-band`, never `in-band`. Every entry carries a `source` — an unsourced band is folklore. SEEDED ONLY FROM NUMBERS STATED AS BANDS in cc-prompt-117/118/123 and nightly.yml's cron header; nothing here was measured by this commit, per cc-123's Out of scope. Add a band by writing lo_s, hi_s and a source that says where the numbers came from and over how many runs.",
 
   "rule-taggers-daily": {
-    "lo_s": 713,
-    "hi_s": 858,
-    "source": "cc-prompt-117 Phase 0 read 6 and cc-prompt-118 Item 5, both stating the band as 713-858 s. Wed 2026-09-09 read 899.5 s (above); cc-118 made a second consecutive above-band run a filing trigger."
+    "lo_s": 183,
+    "hi_s": 260,
+    "source": "cc-169 (FIX-1178), RE-BASED on the merge regime: prod cron.job_run_details walls 2026-09-23..2026-09-29, n=7, 203.3-225.7 s; P10 204.14 / P90 225.31 (percentile_cont); band = [P10 - 10%, P90 + 15%] = [183.73, 259.11] rounded outward. Post-mechanism-change runs only (rule 74) - the daily went from DELETE-all + INSERT-all to a scan/delete/insert merge on Pro at 2026-09-23 00:03 UTC. Superseded band: 713-858 s (cc-prompt-117 Phase 0 read 6 / cc-prompt-118 Item 5, the rewrite regime)."
   },
 
   "ec-vacuum-analyze": {

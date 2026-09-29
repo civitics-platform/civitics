@@ -130,7 +130,7 @@ a later addition for the same class of reason: D2 assumed every job in
 
 ```json
 {
-  "rule-taggers-daily": { "lo_s": 713, "hi_s": 858, "source": "cc-prompt-118 Item 5 — stated band" }
+  "rule-taggers-daily": { "lo_s": 183, "hi_s": 260, "source": "cc-169 — re-based on 7 post-merge runs" }
 }
 ```
 
@@ -161,6 +161,19 @@ been made because nothing has yet been missed by the loose ceiling.
 2. Add the entry with `lo_s`, `hi_s` and a `source` naming the window and `n`.
 3. Commit it on its own. A band change is a claim about what normal is, and it
    should be reviewable as one.
+
+### Re-basing a band after a mechanism change
+
+A band is never measured across a mechanism change (rule 74). When a job's
+mechanism changes, re-base its band from the runs after the change only. Wait
+until at least five such runs exist. The band is `[P10 − 10 %, P90 + 15 %]` of
+those runs' `cron.job_run_details` walls, where P10 and P90 are
+`percentile_cont`. Round `lo_s` down and `hi_s` up to whole seconds. The
+`source` names the window, `n`, the percentiles and the band it supersedes.
+
+The first re-base was `rule-taggers-daily` in cc-169 (FIX-1178). The daily's
+DELETE-all + INSERT-all rewrite (713–858 s) became a scan/delete/insert merge on
+2026-09-23. Seven merge runs at 203–226 s gave a band of 183–260 s.
 
 ---
 
