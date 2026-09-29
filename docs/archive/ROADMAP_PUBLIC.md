@@ -2,8 +2,8 @@
 
 A short, public-facing view of where Civitics is heading. For the internal
 phase-by-phase plan with architecture notes and sequencing, see
-[ROADMAP.md](ROADMAP.md). For granular task tracking,
-see [PHASE_GOALS.md](PHASE_GOALS.md).
+[ROADMAP.md](../ROADMAP.md). For granular task tracking,
+see [PHASE_GOALS.md](../PHASE_GOALS.md).
 
 Last updated: 2026-04-18.
 
@@ -162,7 +162,7 @@ unlimited official comment submission.
 
 - **Use the platform** at [civitics.com](https://civitics.com).
   Report anything that's wrong, unclear, or missing.
-- **Contribute code** — see [CONTRIBUTING.md](../CONTRIBUTING.md).
+- **Contribute code** — see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 - **Build on the data** — the institutional API is coming in Phase 2; open
   an issue if you have a use case we should design for.
 - **Fund the work** — grant contacts and sponsorship options will appear on

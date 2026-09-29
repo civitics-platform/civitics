@@ -157,7 +157,6 @@ PR process.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical reference — schema, clients, graph model |
 | [docs/API.md](docs/API.md) | Public `/api/*` route reference |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Full phase-by-phase roadmap |
-| [docs/ROADMAP_PUBLIC.md](docs/ROADMAP_PUBLIC.md) | Short public-facing roadmap |
 | [docs/PHASE_GOALS.md](docs/PHASE_GOALS.md) | Granular phase task tracking |
 | [docs/FIXES.md](docs/FIXES.md) | Active backlog — tagged `FIX-NNN` |
 | [CLAUDE.md](CLAUDE.md) | Working instructions for Claude Code sessions |

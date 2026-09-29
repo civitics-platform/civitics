@@ -18,7 +18,7 @@ by path, because a comment does not follow a rename.
 | [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) | 2026-04-22 | The runbook that promoted `shadow.*` to `public.*`, done in migration `20260422000000`. | Executed. Nothing replaces it. |
 | `scripts/` | 2026-05-10 | Orphan scripts from the pipeline audit (`copy-pac-tags-to-prod.ts`). | Deleted from `packages/data`. |
 | [QWEN_PROMPTS.md](QWEN_PROMPTS.md) | 2026-09-29 | The Qwen Code task queue. Qwen is deprecated, and Claude Code runs the loop. | `docs/FIXES.md` and the CC prompts (`docs/cc/`). `QWEN.md` at the root still points here. |
-| [HIT_LIST.md](HIT_LIST.md) | 2026-09-29 | Craig's pre-FIX ideas list. Read 5 of cc-172 checked all 37 items against FIXES.md. 24 are covered, fully or partly (15 fully, 9 partly), by FIXes that are all closed. 13 have no FIX; they are listed below. | `docs/FIXES.md`. The 13 uncovered items are Craig's decision list, below. |
+| [HIT_LIST.md](HIT_LIST.md) | 2026-09-29 | Craig's pre-FIX ideas list. Read 5 of cc-172 checked all 37 items against FIXES.md. 24 are covered, fully or partly (15 fully, 9 partly), by FIXes that are all closed. 13 had no FIX. Craig dropped all 13 on 2026-09-29, and they are listed below as a record. | `docs/FIXES.md`. The 13 uncovered items were dropped, not filed. |
 | [PLATFORM_REBUILD_SPEC.md](PLATFORM_REBUILD_SPEC.md) | 2026-09-29 | Why the Stage 0→2 platform rebuild happened. It cut over on 2026-04-22. | The schema it produced (`supabase/migrations/`) and [REBUILD_STATUS.md](REBUILD_STATUS.md). |
 | [STAGE_0_WRITER_CATALOG.md](STAGE_0_WRITER_CATALOG.md) | 2026-09-29 | The rebuild's Stage 0 writer audit. | Its 17 findings became the rebuild's migrations. `docs/STAGE_1_SCHEMA_DESIGN.md` stays in docs/ because two migrations cite it by path. |
 | [STAGE_1_SCRAPER_RESEARCH.md](STAGE_1_SCRAPER_RESEARCH.md) | 2026-09-29 | The rebuild's Stage 1 source research. | `packages/data/CLAUDE.md` and the pipelines. |
@@ -26,11 +26,13 @@ by path, because a comment does not follow a rename.
 | [PIPELINE_AUDIT_PROMPTS.md](PIPELINE_AUDIT_PROMPTS.md) | 2026-09-29 | The staged prompts that executed the pipeline audit. | Their commits, and the FIXes above. |
 | [DASHBOARD_REDESIGN_SPEC.md](DASHBOARD_REDESIGN_SPEC.md) | 2026-09-29 | The /dashboard redesign spec. The dashboard audit program closed on 2026-08-29. | `apps/civitics/app/dashboard/`, and `/api/phases` (FIX-1078). |
 | [COMMENT_SYSTEM_SPEC.md](COMMENT_SYSTEM_SPEC.md) | 2026-09-29 | The structured comment-type spec (2026-04-17). It cites no FIX ids, and no code references it. | Shipped as migration `20260418000000_comment_types.sql` and `packages/db/src/comment-kinds.ts`. |
+| [ROADMAP_PUBLIC.md](ROADMAP_PUBLIC.md) | 2026-09-29 | A short public-facing roadmap, last updated 2026-04-18. Its only reference was a row in the root README's documentation map. That row was dropped rather than pointed at the archive. Craig confirmed nothing outside the repo serves it. | `docs/ROADMAP.md` (the full roadmap) and `docs/PHASE_GOALS.md`. |
 | [CIVIC_INITIATIVES.md](CIVIC_INITIATIVES.md) | 2026-09-29 | The civic initiatives sprint tracker, which reads "all sprints complete". The two FIX ids it cites (905, 906) are closed, and no code references it. | `apps/civitics/app/initiatives/`, `apps/civitics/app/api/initiatives/`, and `docs/API.md`. |
 
-## HIT_LIST harvest — the 13 items no FIX covers
+## HIT_LIST harvest — the 13 items no FIX covered (dropped)
 
-cc-172 filed nothing from this list. These are for Craig to decide on.
+cc-172 filed nothing from this list. Craig reviewed it and dropped all 13 on
+2026-09-29. They stay here only as a record of what was considered.
 
 - **Bugs:** `POST /api/platform/web-vitals` returns 400. The route and `WebVitalsReporter.tsx` still exist.
 - **Bugs:** `pnpm dev` prints webpack's PackFileCacheStrategy "big strings" warning.
