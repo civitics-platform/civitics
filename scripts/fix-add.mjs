@@ -20,7 +20,10 @@
 //     before the next `^## ` header. Empty sections insert right after the
 //     header line.
 //   - Bullet shape:
-//       - {severity} {size} — **{title}** — {body} <!--id:FIX-NNN-->  (no checkbox: FIX-1016)
+//       - {severity} {size} — **{title}** — {body} <!--id:FIX-NNN--> <!--lane:{lane}-->
+//     (no checkbox: FIX-1016). The lane marker (FIX-1243) follows the id marker
+//     on the same line; `--lane` is REQUIRED and must be one of
+//     docs/cc/cc.config.json's `lanes` — the board places the bullet by it.
 //   - Writes via tmp + atomic rename. Writes LF unconditionally.
 //
 // Usage:
@@ -29,6 +32,7 @@
 //     --severity "🟠" \
 //     --size "S" \
 //     --section "INFRASTRUCTURE & PERFORMANCE" \
+//     --lane ops \
 //     --body "Long markdown body referencing [[FIX-NNN]] cross-refs..."
 //
 // Output (stdout): the allocated FIX-ID, e.g. "FIX-362". Errors → stderr.
@@ -40,6 +44,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 import { formatFixBullet, parseFixBullet, SECTION_RE } from "./lib/fixes-md.mjs";
+import { loadCcConfig } from "./lib/cc-config.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -85,11 +90,13 @@ function usage() {
       '  --severity "🟠" \\',
       '  --size "S" \\',
       '  --section "INFRASTRUCTURE & PERFORMANCE" \\',
+      "  --lane ops \\",
       '  --body "Long markdown body..."',
       "",
       "  --severity: one of 🔴 🟠 🟡 🟢 ⬜",
       "  --size:     one of S, M, L, XL",
       "  --section:  case-insensitive substring match on a `^## ` header",
+      "  --lane:     one of docs/cc/cc.config.json's lanes (required — FIX-1243)",
       "",
       "Prints the allocated FIX-ID to stdout on success.",
       "",
@@ -126,6 +133,17 @@ export function looseIds(text) {
   const out = [];
   for (const m of text.match(/FIX-\d+/g) || []) out.push(parseInt(m.slice(4), 10));
   return out;
+}
+
+/**
+ * Check a `--lane` value against the configured lanes (FIX-1243). Returns null
+ * when fine, else the reason. `bugs` is the board's pseudo-lane for the BUGS
+ * section, not a lane a bullet can name — it is refused by not being in the list.
+ */
+export function laneArgProblem(lane, lanes) {
+  if (lane === undefined || lane === null || lane === "") return "missing --lane";
+  if (!lanes.includes(lane)) return `--lane must be one of ${lanes.join(", ")} (got "${lane}")`;
+  return null;
 }
 
 const maxOf = (nums) => nums.reduce((m, n) => (n > m ? n : m), 0);
@@ -250,7 +268,7 @@ function main() {
     process.exit(1);
   }
 
-  const required = ["title", "severity", "size", "section", "body"];
+  const required = ["title", "severity", "size", "section", "lane", "body"];
   const missing = required.filter((k) => !args[k]);
   if (missing.length) {
     usage();
@@ -263,6 +281,14 @@ function main() {
   if (!ALLOWED_SIZE.has(args.size)) {
     die(`--size must be one of ${[...ALLOWED_SIZE].join(", ")} (got "${args.size}")`);
   }
+  let lanes;
+  try {
+    lanes = loadCcConfig().lanes;
+  } catch (e) {
+    die(`could not read the lanes from cc.config.json: ${e.message}`);
+  }
+  const laneWhy = laneArgProblem(args.lane, lanes);
+  if (laneWhy) die(laneWhy);
 
   const MAX_RETRIES = 1;
   let attempt = 0;
@@ -285,6 +311,7 @@ function main() {
       title: args.title,
       body: args.body,
       id,
+      lane: args.lane,
     });
     const insertAt = findInsertionIdx(lines, range.start, range.end);
     const next = [...lines.slice(0, insertAt), bullet, ...lines.slice(insertAt)].join("\n");

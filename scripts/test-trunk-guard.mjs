@@ -213,7 +213,7 @@ for (const [label, script, args] of [
   [
     "fix:add",
     ADD_SCRIPT,
-    ["--title", "guard test", "--severity", "🟠", "--size", "S", "--section", "INFRASTRUCTURE", "--body", "body."],
+    ["--title", "guard test", "--severity", "🟠", "--size", "S", "--section", "INFRASTRUCTURE", "--lane", "hygiene", "--body", "body."],
   ],
 ]) {
   const repo = newRepoPair();

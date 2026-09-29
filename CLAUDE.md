@@ -280,8 +280,13 @@ pnpm fix:add \
   --severity "🟠" \
   --size "S" \
   --section "INFRASTRUCTURE & PERFORMANCE" \
+  --lane ops \
   --body "Long markdown body referencing [[FIX-NNN]] cross-refs..."
 ```
+
+`--lane` is required (FIX-1243): one of `docs/cc/cc.config.json`'s `lanes`. It
+writes a `<!--lane:ops-->` marker after the id marker, which is how `pnpm board`
+places the bullet; bullets without one are placed by their section.
 
 Prints the allocated FIX-ID to stdout. Use the printed ID in the
 commit trailer immediately: `Fixes: FIX-<printed-id>`. The manual

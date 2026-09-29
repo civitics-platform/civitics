@@ -45,6 +45,19 @@ export const COMPLEXITY = new Set(["S", "M", "L", "XL"]);
 export const ID_MARKER_RE = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
 
 /**
+ * A bullet's lane (FIX-1243): an optional SECOND marker, written by
+ * `fix:add --lane <lane>` straight after the id marker, so the bullet stays one
+ * line — `… <!--id:FIX-1243--> <!--lane:hygiene-->`. ID_MARKER_RE is untouched:
+ * the allocator and every id reader keep matching the first marker only.
+ * Craig may hand-add one to an existing bullet; the marker wins over the
+ * section→lane map in docs/cc/cc.config.json.
+ */
+export const LANE_MARKER_RE = /<!--\s*lane:\s*([a-z][a-z0-9-]*)\s*-->/;
+
+/** The `--severity` emoji, as the words `fixes:status --json` prints for them. */
+export const PRIORITY_NAMES = { "🔴": "critical", "🟠": "high", "🟡": "medium", "🟢": "quick", "⬜": "future" };
+
+/**
  * Top-level list item with an OPTIONAL legacy checkbox.
  *   1 → the `[ ]`/`[x]` box character, or undefined when absent
  *   2 → everything after the bullet marker (and the box, if present)
@@ -100,9 +113,66 @@ export function titleOf(rest, max = 90) {
  * The canonical bullet fix:add emits. No checkbox — status lives in
  * docs/done.log (FIX-1016 D2).
  */
-export function formatFixBullet({ severity, size, title, body, id }) {
+export function formatFixBullet({ severity, size, title, body, id, lane }) {
   const n = String(id).replace(/^FIX-/, "");
-  return `- ${severity} ${size} — **${title}** — ${body} <!--id:FIX-${n}-->`;
+  return `- ${severity} ${size} — **${title}** — ${body} <!--id:FIX-${n}-->${lane ? ` <!--lane:${lane}-->` : ""}`;
+}
+
+/**
+ * What a bullet says about itself, read off its leading tokens and markers:
+ * `{priority, size, lane_marker}`. `priority` is the PRIORITY_NAMES word for the
+ * leading emoji; `size` the S/M/L/XL token after it; either is null when the
+ * bullet does not carry it (a hand-typed bullet may not). `lane_marker` is the
+ * LANE_MARKER_RE value, or null.
+ */
+export function bulletFacts(rest) {
+  const s = String(rest ?? "");
+  const emoji = PRIORITY_EMOJI.find((e) => s.startsWith(e)) ?? null;
+  const after = emoji ? s.slice(emoji.length).trimStart() : "";
+  const sz = /^(XL|S|M|L)(?=\s|$)/.exec(after);
+  const lane = LANE_MARKER_RE.exec(s);
+  return {
+    priority: emoji ? PRIORITY_NAMES[emoji] : null,
+    size: sz ? sz[1] : null,
+    lane_marker: lane ? lane[1] : null,
+  };
+}
+
+/**
+ * A bullet's lane (FIX-1243 D1): its own marker, else its section through the
+ * section→lane map, else `unmapped`. `lane_source` says which applied —
+ * `marker` | `section` | `none`.
+ *
+ * @param {{section: string|null, lane_marker: string|null}} b
+ * @param {Record<string,string>} sectionLanes exact `## ` header text → lane
+ */
+export function laneOfBullet(b, sectionLanes = {}) {
+  if (b.lane_marker) return { lane: b.lane_marker, lane_source: "marker" };
+  const mapped = b.section != null ? sectionLanes[b.section] : undefined;
+  if (typeof mapped === "string" && mapped) return { lane: mapped, lane_source: "section" };
+  return { lane: "unmapped", lane_source: "none" };
+}
+
+/**
+ * Per-id facts for every bullet in the live file and the archive — the live
+ * file wins, as in fixes:status's title index. Map id →
+ * `{priority, size, section, lane, lane_source}`.
+ */
+export function indexBulletFacts({ fixesText = "", archiveText = "", sectionLanes = {} } = {}) {
+  const out = new Map();
+  for (const text of [archiveText, fixesText]) {
+    for (const b of walkFixBullets(text)) {
+      if (!b.id) continue;
+      const f = bulletFacts(b.rest);
+      out.set(b.id, {
+        priority: f.priority,
+        size: f.size,
+        section: b.section,
+        ...laneOfBullet({ section: b.section, lane_marker: f.lane_marker }, sectionLanes),
+      });
+    }
+  }
+  return out;
 }
 
 /**

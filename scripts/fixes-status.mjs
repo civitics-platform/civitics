@@ -16,6 +16,12 @@
 //   pnpm fixes:status --since 2026-09-01    ids whose LAST done.log row is on/after that date
 //   pnpm fixes:status --json                machine-readable; what cc:verify consumes
 //
+// --json items also carry what the bullet says about itself (FIX-1243):
+// `priority` (critical|high|medium|quick|future, from the leading emoji),
+// `size` (S|M|L|XL), `section` (the `## ` header it sits under), `lane` (its
+// lane marker, else docs/cc/cc.config.json's sectionLanes, else `unmapped`)
+// and `lane_source` (marker|section|none). The text output is unchanged.
+//
 // The universe of ids is (markers in docs/FIXES.md) union (ids in docs/done.log)
 // union (markers in docs/archive/fixes-archive.md) — so an archived id that was
 // later reopened still answers, even though its bullet has left the live file.
@@ -30,7 +36,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseDoneLog, deriveStatus, buildUniverse } from "./lib/fix-status.mjs";
-import { walkFixBullets, titleOf, ID_MARKER_RE } from "./lib/fixes-md.mjs";
+import { walkFixBullets, titleOf, ID_MARKER_RE, indexBulletFacts } from "./lib/fixes-md.mjs";
+import { loadCcConfig } from "./lib/cc-config.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -86,7 +93,9 @@ export function buildTitleIndex({ fixesText = "", archiveText = "" } = {}) {
 // open count without importing this CLI (FIX-1242); re-exported unchanged.
 export { buildUniverse };
 
-export function buildItems({ universe, statusMap, titles, sources, ids, opts }) {
+const NO_FACTS = { priority: null, size: null, section: null, lane: "unmapped", lane_source: "none" };
+
+export function buildItems({ universe, statusMap, titles, sources, ids, opts, facts = new Map() }) {
   const wanted = ids.length ? new Set(ids) : null;
   const out = [];
   for (const id of universe) {
@@ -109,6 +118,7 @@ export function buildItems({ universe, statusMap, titles, sources, ids, opts }) 
       rows: entry?.rows.length ?? 0,
       title: titles.get(id) ?? NO_TITLE,
       bullet: sources.get(id) ?? "none",
+      ...(facts.get(id) ?? NO_FACTS),
     });
   }
   // Explicit ids that exist nowhere still get an answer — open, zero rows.
@@ -122,6 +132,7 @@ export function buildItems({ universe, statusMap, titles, sources, ids, opts }) 
         id, status: "open", last_date: null, last_sha: null, last_verified: null,
         last_note: null, rows: 0, title: titles.get(id) ?? NO_TITLE,
         bullet: sources.get(id) ?? "none",
+        ...(facts.get(id) ?? NO_FACTS),
       });
     }
     out.sort((a, b) => Number(a.id.slice(4)) - Number(b.id.slice(4)));
@@ -163,7 +174,7 @@ function main() {
   }
   const { ids, opts } = parsed;
 
-  let statusMap, universe, titles, sources, openCount;
+  let statusMap, universe, titles, sources, openCount, facts;
   try {
     const doneText = existsSync(DONE_PATH) ? readFileSync(DONE_PATH, "utf8") : "";
     const fixesText = existsSync(FIXES_PATH) ? readFileSync(FIXES_PATH, "utf8") : "";
@@ -172,12 +183,13 @@ function main() {
     ({ titles, sources } = buildTitleIndex({ fixesText, archiveText }));
     universe = buildUniverse({ statusMap, fixesText, archiveText });
     openCount = universe.filter((id) => (statusMap.get(id)?.status ?? "open") === "open").length;
+    facts = indexBulletFacts({ fixesText, archiveText, sectionLanes: loadCcConfig().sectionLanes });
   } catch (e) {
     process.stderr.write(`fixes:status — could not read/parse the status files: ${e.message}\n`);
     process.exit(1);
   }
 
-  const items = buildItems({ universe, statusMap, titles, sources, ids, opts });
+  const items = buildItems({ universe, statusMap, titles, sources, ids, opts, facts });
 
   if (opts.json) {
     process.stdout.write(

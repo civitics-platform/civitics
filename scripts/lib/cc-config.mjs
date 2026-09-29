@@ -26,7 +26,8 @@
 // FIX-1242 adds `lanes` (the five lanes a prompt or report may name) and
 // `boardDir` (where `pnpm board` writes board.json + index.html). boardDir is
 // OUTSIDE the repo like promptsDir, so it takes the same primary-checkout
-// anchor; CIVITICS_CC_BOARD_DIR overrides it.
+// anchor; CIVITICS_CC_BOARD_DIR overrides it. FIX-1243 adds `sectionLanes`,
+// the FIXES.md section → lane map for bullets with no lane marker.
 
 import { execSync } from "node:child_process";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -91,6 +92,13 @@ export function loadCcConfig() {
     Array.isArray(cfg.lanes) && cfg.lanes.length && cfg.lanes.every((l) => typeof l === "string" && l)
       ? cfg.lanes
       : DEFAULT_LANES;
+  // FIX-1243: `## ` header text → lane, for bullets with no lane marker. Only
+  // string values survive; a value outside lanes ∪ {bugs} is kept (the board
+  // shows it as its own row) — correcting the config is a human's call.
+  const sectionLanes = {};
+  if (cfg.sectionLanes && typeof cfg.sectionLanes === "object" && !Array.isArray(cfg.sectionLanes)) {
+    for (const [k, v] of Object.entries(cfg.sectionLanes)) if (typeof v === "string" && v) sectionLanes[k] = v;
+  }
   return {
     repoRoot: root,
     mainCheckoutRoot: main,
@@ -104,6 +112,7 @@ export function loadCcConfig() {
     // Plan files are committed → this worktree.
     projectsDir: resolve(root, "docs/cc/projects"),
     lanes,
+    sectionLanes,
   };
 }
 

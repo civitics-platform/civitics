@@ -20,10 +20,33 @@
     "name (cc:verify FAILs any other; `design` is a plan-step lane only, never a",
     "report's). `boardDir` is where `pnpm board` writes board.json + index.html;",
     "it is outside the repo, so it anchors on the primary checkout like",
-    "promptsDir. CIVITICS_CC_BOARD_DIR overrides it."
+    "promptsDir. CIVITICS_CC_BOARD_DIR overrides it.",
+    "",
+    "FIX-1243: `sectionLanes` places every FIXES.md bullet that carries no",
+    "`<!--lane:X-->` marker, by the EXACT text of the `## ` header it sits under.",
+    "A marker (written by `fix:add --lane`, or hand-added by Craig) wins over it.",
+    "`bugs` is a board-only pseudo-lane — the BUGS section renders as its own",
+    "backlog row under the lanes — and is never a valid `lane:` for a prompt,",
+    "a report or `fix:add --lane`. A section missing from the map is `unmapped`."
   ],
   "promptsDir": "../Claude/civitics",
   "reportsDir": "docs/cc/reports",
   "boardDir": "../Claude/civitics/board",
-  "lanes": ["ops", "fec", "app", "hygiene", "design"]
+  "lanes": ["ops", "fec", "app", "hygiene", "design"],
+  "sectionLanes": {
+    "BUGS — Fix These First": "bugs",
+    "DB PERFORMANCE / COMPUTE": "ops",
+    "INFRASTRUCTURE & PERFORMANCE": "ops",
+    "GENERAL / CROSS-CUTTING": "hygiene",
+    "DOCUMENTATION (Open Source Readiness)": "hygiene",
+    "HOMEPAGE": "app",
+    "OFFICIALS": "app",
+    "PROPOSALS": "app",
+    "PROPOSALS [ID]": "app",
+    "CIVIC INITIATIVES": "app",
+    "AGENCIES": "app",
+    "GRAPH": "app",
+    "DASHBOARD": "app",
+    "COMMUNITY & AUTH": "app"
+  }
 }

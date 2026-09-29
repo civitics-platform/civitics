@@ -4,20 +4,26 @@
 // Tiny assertion harness for the fix:add id allocator (scripts/fix-add.mjs).
 // Covers the pure, git-free helpers: `markerIds` (FIX-368 markers-only rule),
 // `looseIds` (done.log orphan blocking), and `computeNextId` (the FIX-771
-// origin/main fold-in + divergence signal). The git-dependent wrapper
+// origin/main fold-in + divergence signal), plus the FIX-1243 `--lane` check
+// and the lane marker's place on the line. The git-dependent wrapper
 // (readOriginMainFixes/allocateNextId) is exercised for real every time
 // `pnpm fix:add` runs; this guards the logic that decides the number.
 //
 // Run:   pnpm fix:add:test
 // Exit:  0 on pass, 1 on fail with expected-vs-actual.
 
-import { markerIds, looseIds, computeNextId } from "./fix-add.mjs";
+import { markerIds, looseIds, computeNextId, laneArgProblem } from "./fix-add.mjs";
+import { formatFixBullet, parseFixBullet, bulletFacts } from "./lib/fixes-md.mjs";
 
 const failures = [];
 function assertEq(label, actual, expected) {
   const a = JSON.stringify(actual);
   const e = JSON.stringify(expected);
   if (a !== e) failures.push(`  ✗ ${label}\n     expected: ${e}\n     actual:   ${a}`);
+  else console.log(`  ✓ ${label}`);
+}
+function assertTrue(label, cond) {
+  if (!cond) failures.push(`  ✗ ${label}`);
   else console.log(`  ✓ ${label}`);
 }
 
@@ -54,6 +60,25 @@ assertEq("no origin → working tree alone",
   computeNextId({ fixes: "<!--id:FIX-766-->", origin: "" }),
   { nextId: "FIX-767", localMax: 766, originMax: 0 });
 assertEq("empty everything → FIX-001", computeNextId({ fixes: "" }).nextId, "FIX-001");
+
+console.log("\n--lane — required, one of the configured lanes (FIX-1243):");
+const LANES = ["ops", "fec", "app", "hygiene", "design"];
+assertEq("a configured lane passes", laneArgProblem("fec", LANES), null);
+assertEq("missing → refused", laneArgProblem(undefined, LANES), "missing --lane");
+assertEq("empty → refused", laneArgProblem("", LANES), "missing --lane");
+// `bugs` is the board's pseudo-lane for the BUGS section — a bullet cannot name it.
+assertTrue("the board-only `bugs` pseudo-lane → refused", laneArgProblem("bugs", LANES)?.includes('got "bugs"'));
+assertTrue("an unknown lane → refused, naming the list", laneArgProblem("infra", LANES)?.includes("ops, fec, app, hygiene, design"));
+
+console.log("\nthe lane marker rides the same line, after the id marker:");
+const withLane = formatFixBullet({ severity: "🟡", size: "M", title: "t", body: "b.", id: "FIX-1243", lane: "hygiene" });
+assertEq("shape", withLane, "- 🟡 M — **t** — b. <!--id:FIX-1243--> <!--lane:hygiene-->");
+assertEq("ID_MARKER_RE still reads the id", parseFixBullet(withLane)?.id, "FIX-1243");
+assertEq("markerIds counts the id marker only", markerIds(withLane), [1243]);
+assertEq("bulletFacts reads the lane marker", bulletFacts(parseFixBullet(withLane).rest).lane_marker, "hygiene");
+assertEq("no lane → no second marker",
+  formatFixBullet({ severity: "🟡", size: "M", title: "t", body: "b.", id: "FIX-7" }),
+  "- 🟡 M — **t** — b. <!--id:FIX-7-->");
 
 if (failures.length) {
   console.error(`\n${failures.length} failure(s):\n${failures.join("\n")}`);

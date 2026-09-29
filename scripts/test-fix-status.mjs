@@ -17,7 +17,17 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDoneLog, deriveStatus, statusFromDoneLog, statusOf } from "./lib/fix-status.mjs";
-import { parseFixBullet, walkFixBullets, titleOf, formatFixBullet, detectEol } from "./lib/fixes-md.mjs";
+import {
+  parseFixBullet,
+  walkFixBullets,
+  titleOf,
+  formatFixBullet,
+  detectEol,
+  bulletFacts,
+  laneOfBullet,
+  indexBulletFacts,
+} from "./lib/fixes-md.mjs";
+import { buildUniverse } from "./lib/fix-status.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..");
@@ -160,6 +170,69 @@ if (boxed.length === 0) {
   );
   assertEq(`derived == checkbox for all ${boxed.length} live bullets`, mismatches.map((b) => b.id), []);
 }
+
+// -- 5. Bullet facts (FIX-1243 D1) — priority, size, section, lane ----------
+console.log("\nbullet facts — priority / size / lane:");
+assertEq("emoji → priority word, size token", bulletFacts("\u{1F534} XL — **t** — b <!--id:FIX-1-->"),
+  { priority: "critical", size: "XL", lane_marker: null });
+assertEq("every emoji has a word",
+  ["\u{1F534}", "\u{1F7E0}", "\u{1F7E1}", "\u{1F7E2}", "⬜"].map((e) => bulletFacts(`${e} S — **t**`).priority),
+  ["critical", "high", "medium", "quick", "future"]);
+assertEq("a hand-typed bullet with no size → size null", bulletFacts("\u{1F7E1} — **t** <!--id:FIX-2-->").size, null);
+assertEq("marker-only bullet → priority null", bulletFacts("plain <!--id:FIX-3-->").priority, null);
+const SECTION_LANES = { "BUGS — Fix These First": "bugs", "INFRASTRUCTURE & PERFORMANCE": "ops", GRAPH: "app" };
+assertEq("no marker → the section map", laneOfBullet({ section: "GRAPH", lane_marker: null }, SECTION_LANES),
+  { lane: "app", lane_source: "section" });
+assertEq("no marker, unmapped section → unmapped", laneOfBullet({ section: "COMPLETED", lane_marker: null }, SECTION_LANES),
+  { lane: "unmapped", lane_source: "none" });
+// Rule 105's wrong-but-green shape: a bullet UNDER BUGS carrying a fec marker
+// must land in fec — a reader that consulted the section first would put it in
+// bugs and every count would still add up.
+const FIXTURE_MD = [
+  "# FIXES",
+  "- \u{1F534} Critical — the priority key, NOT a bullet",
+  "## BUGS — Fix These First",
+  "- \u{1F534} S — **a bug the fec lane owns** — b <!--id:FIX-10--> <!--lane:fec-->",
+  "- \u{1F7E0} M — **an ordinary bug** — b <!--id:FIX-11-->",
+  "## INFRASTRUCTURE & PERFORMANCE",
+  "- \u{1F7E1} L — **infra** — b <!--id:FIX-12-->",
+  "## HOMEPAGE",
+  "- ⬜ S — **a section the map does not name** — b <!--id:FIX-13-->",
+].join("\n");
+const facts = indexBulletFacts({ fixesText: FIXTURE_MD, sectionLanes: SECTION_LANES });
+assertEq("a fec marker under BUGS lands in fec (marker wins)", facts.get("FIX-10"),
+  { priority: "critical", size: "S", section: "BUGS — Fix These First", lane: "fec", lane_source: "marker" });
+assertEq("an unmarked BUGS bullet lands in bugs", facts.get("FIX-11").lane, "bugs");
+assertEq("section map", [facts.get("FIX-12").lane, facts.get("FIX-12").size], ["ops", "L"]);
+assertEq("unmapped section", facts.get("FIX-13").lane, "unmapped");
+assertEq("the preamble's priority key is not indexed", facts.size, 4);
+const archiveFacts = indexBulletFacts({
+  fixesText: FIXTURE_MD,
+  archiveText: "## GRAPH\n- [x] \u{1F7E2} S — **archived** — b <!--id:FIX-12-->\n- [x] \u{1F7E2} S — **only archived** — b <!--id:FIX-14-->",
+  sectionLanes: SECTION_LANES,
+});
+assertEq("the live bullet wins over its archived copy", archiveFacts.get("FIX-12").lane, "ops");
+assertEq("an archive-only bullet still has facts", archiveFacts.get("FIX-14"),
+  { priority: "quick", size: "S", section: "GRAPH", lane: "app", lane_source: "section" });
+
+// Rule 116 on the live file: every open id lands in exactly one lane, the bugs
+// row, or unmapped — so the per-lane counts sum to the open count.
+console.log("\nlive backlog reconciles (rule 116):");
+const liveCfg = JSON.parse(readFileSync(resolve(REPO_ROOT, "docs/cc/cc.config.json"), "utf8"));
+const liveArchive = readFileSync(resolve(REPO_ROOT, "docs/archive/fixes-archive.md"), "utf8");
+const liveFacts = indexBulletFacts({ fixesText: liveFixes, archiveText: liveArchive, sectionLanes: liveCfg.sectionLanes });
+const universe = buildUniverse({ statusMap: liveStatus, fixesText: liveFixes, archiveText: liveArchive });
+const openIds = universe.filter((id) => statusOf(liveStatus, id) === "open");
+const perLane = new Map();
+for (const id of openIds) {
+  const lane = liveFacts.get(id)?.lane ?? "unmapped";
+  perLane.set(lane, (perLane.get(lane) ?? 0) + 1);
+}
+const sum = [...perLane.values()].reduce((a, b) => a + b, 0);
+assertEq(`Σ per-lane open = open_count (${[...perLane].map(([k, v]) => `${k} ${v}`).join(" · ")})`, sum, openIds.length);
+assertTrue("every live section with bullets is in sectionLanes (none unmapped by section)",
+  liveBullets.every((b) => /^COMPLETED/.test(b.section) || b.section in liveCfg.sectionLanes),
+  `unmapped: ${[...new Set(liveBullets.filter((b) => !(b.section in liveCfg.sectionLanes)).map((b) => b.section))].join(", ")}`);
 
 if (failures.length) {
   console.error(`\n${failures.length} failure(s):\n${failures.join("\n")}`);
