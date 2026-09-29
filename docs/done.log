@@ -1519,3 +1519,7 @@
 2026-09-27 | FIX-460 | 66bf3ece | local-only | ci(lint): FIX-460 — warn rules promoted to error; --max-warnings 0 on every lint script
 2026-09-27 | FIX-1242 | 7f0fd51e | local-only | feat(cc): FIX-1242 — pnpm board renders the lane board (projects · week · lanes) from the tree; board.local.json for the supervised windows
 2026-09-28 | FIX-1243 | 6ad77477 | local-only | chore(ci,docs): FIX-1243 — board:test + check:doc-links in fixes-integrity; docs/cc/README.md; template §0 when-forms + --lane
+2026-09-29 | FIX-1138 | c584ab14 | prod-only | chore(fixes): record prod verification of FIX-1138
+2026-09-29 | FIX-1178 | 863b820f | prod-only | chore(fixes): record prod verification of FIX-1178
+2026-09-29 | FIX-969 | 044d4f10 | prod-only | chore(fixes): record prod verification of FIX-969
+2026-09-29 | FIX-993 | f4ccdc85 | prod-only | chore(fixes): record prod verification of FIX-993
