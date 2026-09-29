@@ -9,9 +9,9 @@
 ## TL;DR
 
 - No 🚨 URGENT findings. Nothing is silently failing in prod.
-- One real cleanup target: the legacy [usaspending/index.ts](../packages/data/src/pipelines/usaspending/index.ts) (API-based) is superseded by [usaspending-bulk/index.ts](../packages/data/src/pipelines/usaspending-bulk/index.ts) per CLAUDE.md, but the `data:usaspending` script entry still ships a working pipeline that nobody calls from `runNightlySync()`.
+- One real cleanup target: the legacy [usaspending/index.ts](../../packages/data/src/pipelines/usaspending/index.ts) (API-based) is superseded by [usaspending-bulk/index.ts](../../packages/data/src/pipelines/usaspending-bulk/index.ts) per CLAUDE.md, but the `data:usaspending` script entry still ships a working pipeline that nobody calls from `runNightlySync()`.
 - Three Phase 2 skeletons (`govtrack-cosponsors`, `federal-register`, `opensecrets-bulk`) are wired as scripts and write `data_sync_log` rows tagged `status=complete, inserted=0` — misleading dashboard signal. They are NOT invoked by the nightly orchestrator (the scheduling-agent claim during discovery was incorrect).
-- `packages/data/src/pipelines/fec/` no longer exists; the [packages/data/CLAUDE.md](../packages/data/CLAUDE.md) line about `data:fec` being "retained for reference only" is stale.
+- `packages/data/src/pipelines/fec/` no longer exists; the [packages/data/CLAUDE.md](../../packages/data/CLAUDE.md) line about `data:fec` being "retained for reference only" is stale.
 - `packages/data/CLAUDE.md`'s per-source cadence section ("Hourly Regulations.gov", "Daily court metadata") doesn't match the orchestrator (everything Reg-side is daily-via-nightly; CourtListener is Sunday-only). User confirmed daily is fine — this is a doc-drift item, not a bug.
 - `data:audit`, `data:agency-leadership`, `data:agency-enrichment` are powerful but manual-only. Worth cron'ing.
 
@@ -31,77 +31,77 @@ Cadence column meanings:
 
 | File | Status | Cadence | Script | Called from | Ingest | Idempotent | Last touch |
 |---|---|---|---|---|---|---|---|
-| [pipelines/regulations/index.ts](../packages/data/src/pipelines/regulations/index.ts) | ACTIVE | daily-nightly | `data:regulations` | `pipelines/index.ts:14,153,396` | API pagination (250/page, 100ms gap) | Yes — `external_source_refs(source='regulations_gov')` dedup | recent |
-| [pipelines/congress/officials.ts](../packages/data/src/pipelines/congress/officials.ts) | ACTIVE | daily-nightly | `data:officials` | `pipelines/congress/index.ts` → `pipelines/index.ts:20,188,416` | API pagination | Yes — upsert by bioguide_id | recent |
-| [pipelines/congress/votes.ts](../packages/data/src/pipelines/congress/votes.ts) | ACTIVE | daily-nightly | `data:votes` | `pipelines/congress/index.ts` → `pipelines/index.ts:20,197,427` | API + House/Senate XML | Yes — per-roll skip-if-exists guard | recent |
-| [pipelines/openstates-bulk/people.ts](../packages/data/src/pipelines/openstates-bulk/people.ts) | ACTIVE | daily-nightly | `data:states` | `pipelines/index.ts:19,247,446` | Bulk CSV (no auth, no rate limit) | Yes — upsert; runs `link_officials_to_districts()` after | recent |
-| [pipelines/tags/rules.ts](../packages/data/src/pipelines/tags/rules.ts) | ACTIVE | daily-nightly | `data:tag-rules` | `pipelines/index.ts:21,710` | SQL rules on existing rows | Yes — deterministic | recent |
-| [pipelines/tags/ai-tagger.ts](../packages/data/src/pipelines/tags/ai-tagger.ts) | ACTIVE | daily-nightly | `data:tag-ai` | `pipelines/index.ts:22,721` | Claude API, $0.10 cap, `onlyNew: true` | Yes — cached per entity | recent |
-| [pipelines/ai-summaries/index.ts](../packages/data/src/pipelines/ai-summaries/index.ts) | ACTIVE | daily-nightly | `data:ai-summaries`, `data:ai-summaries-new` | `pipelines/index.ts:23,734` | Claude API, incremental | Yes — `ai_summary_cache` |  recent |
-| [pipelines/fec-bulk/index.ts](../packages/data/src/pipelines/fec-bulk/index.ts) | ACTIVE | weekly-nightly | `data:fec-bulk` | `pipelines/index.ts:15,168,475` | Bulk ZIP, line-by-line streaming | Yes — upsert; `donor_fingerprint` unique on individuals | recent |
-| [pipelines/usaspending-bulk/index.ts](../packages/data/src/pipelines/usaspending-bulk/index.ts) | ACTIVE | weekly-nightly | `data:usaspending-bulk`, `data:usaspending-bulk-assistance` | `pipelines/index.ts:16,212,491` | Bulk ZIP (full file first, deltas after) | Yes — `usaspending_award_id` partial unique | recent |
-| [pipelines/courtlistener/index.ts](../packages/data/src/pipelines/courtlistener/index.ts) | ACTIVE | weekly-nightly | `data:courts` | `pipelines/index.ts:17,232,509` | API paginated per court | Yes — upsert | recent |
-| [pipelines/openstates/index.ts](../packages/data/src/pipelines/openstates/index.ts) | ACTIVE | weekly-nightly | `data:states-api` | `pipelines/index.ts:18,261,524` | API (10 req/min bills cap) | Yes — upsert | recent |
-| [pipelines/agencies-hierarchy/index.ts](../packages/data/src/pipelines/agencies-hierarchy/index.ts) | ACTIVE | weekly-nightly | `data:agencies-hierarchy` | `pipelines/index.ts:24,539` | API + static lookup | Yes — parent FK update | recent |
-| [pipelines/opm-fte/index.ts](../packages/data/src/pipelines/opm-fte/index.ts) | ACTIVE | weekly-nightly | `data:opm-fte` | `pipelines/index.ts:25,552` | Bulk Parquet (HuggingFace mirror) | Yes — agency-FTE upsert | recent |
-| [pipelines/plum-book/index.ts](../packages/data/src/pipelines/plum-book/index.ts) | ACTIVE | weekly-nightly | `data:plum-book` | `pipelines/index.ts:26,567` | Bulk NDJSON (OpenSanctions, ETag-cached) | Yes — ETag-gated | recent |
-| [pipelines/elections/index.ts](../packages/data/src/pipelines/elections/index.ts) | ACTIVE | weekly-nightly | `data:elections` | `pipelines/index.ts:27,580` | Curated calendar + derived | Yes — UPDATE only | recent |
-| [pipelines/congress/committees.ts](../packages/data/src/pipelines/congress/committees.ts) | ACTIVE | weekly-nightly | `data:committees` | `pipelines/congress/index.ts` → `pipelines/index.ts:20,594` | API pagination | Yes — upsert by `committee_id` | recent |
-| [pipelines/congress/votes-backfill.ts](../packages/data/src/pipelines/congress/votes-backfill.ts) | MANUAL | manual (one-off) | `data:votes-backfill` | none (script-only) | API + XML historical | Yes — per-roll skip | 12d |
-| [pipelines/agency-enrichment/index.ts](../packages/data/src/pipelines/agency-enrichment/index.ts) | SHOULD-BE-CRON | manual | `data:agency-enrichment` | none (script-only) | USA.gov + Federal Register + Wikidata SPARQL | Yes — UPDATE on metadata | 4d |
-| [pipelines/agency-leadership/index.ts](../packages/data/src/pipelines/agency-leadership/index.ts) | SHOULD-BE-CRON | manual | `data:agency-leadership` | none (script-only) | Wikidata SPARQL + Congress.gov nominations | Yes — `is_current` + upsert | 4d |
-| [pipelines/districts-tiger/index.ts](../packages/data/src/pipelines/districts-tiger/index.ts) | MANUAL | annual (intentional) | `data:districts` | none (script-only) | Bulk shapefile (TIGER 2024) | Yes — full per-state rewrite | 35h |
-| [pipelines/legistar/index.ts](../packages/data/src/pipelines/legistar/index.ts) | MANUAL | manual per-metro | `data:legistar` | none (script-only) | Legistar OData/REST API per metro | Yes — `external_source_refs` dedup | 3w |
-| [pipelines/usaspending/index.ts](../packages/data/src/pipelines/usaspending/index.ts) | SHOULD-BE-DEPRECATED | manual | `data:usaspending` | none (script-only) | API pagination — top 100 ≥$1M per top-20 agencies | Yes — partial unique on `usaspending_award_id` | 3w |
-| [pipelines/govtrack-cosponsors/index.ts](../packages/data/src/pipelines/govtrack-cosponsors/index.ts) | PHASE-2 SKELETON | manual | `data:govtrack-cosponsors` | none (script-only) | TODO — not implemented | n/a — returns 0 rows | 9d (sync-log refactor only) |
-| [pipelines/federal-register/index.ts](../packages/data/src/pipelines/federal-register/index.ts) | PHASE-2 SKELETON | manual | `data:federal-register` | none (script-only) | TODO — not implemented | n/a — returns 0 rows | 9d (sync-log refactor only) |
-| [pipelines/opensecrets-bulk/index.ts](../packages/data/src/pipelines/opensecrets-bulk/index.ts) | PHASE-2 SKELETON | manual | `data:opensecrets-bulk` | none (script-only) | TODO — not implemented | n/a — returns 0 rows | 9d (sync-log refactor only) |
-| [pipelines/tags/ai-classifier.ts](../packages/data/src/pipelines/tags/ai-classifier.ts) | MANUAL | manual | `data:tag-industry`, `data:tag-all` | none in orchestrator | Claude API per unclassified PAC | Yes — `tag_category='industry'` upsert | recent |
-| [pipelines/enrichment/seed-backlog.ts](../packages/data/src/pipelines/enrichment/seed-backlog.ts) | MANUAL | manual (one-off backfill) | `data:enrich-seed` | none (script-only) | RPC enqueue | Yes — `enrichment_queue` dedup | 12d |
-| [pipelines/integrity-audit/index.ts](../packages/data/src/pipelines/integrity-audit/index.ts) | MANUAL | manual | `data:audit` | none (script-only) | Read-only SQL checks | Yes — read-only | 3w |
+| [pipelines/regulations/index.ts](../../packages/data/src/pipelines/regulations/index.ts) | ACTIVE | daily-nightly | `data:regulations` | `pipelines/index.ts:14,153,396` | API pagination (250/page, 100ms gap) | Yes — `external_source_refs(source='regulations_gov')` dedup | recent |
+| [pipelines/congress/officials.ts](../../packages/data/src/pipelines/congress/officials.ts) | ACTIVE | daily-nightly | `data:officials` | `pipelines/congress/index.ts` → `pipelines/index.ts:20,188,416` | API pagination | Yes — upsert by bioguide_id | recent |
+| [pipelines/congress/votes.ts](../../packages/data/src/pipelines/congress/votes.ts) | ACTIVE | daily-nightly | `data:votes` | `pipelines/congress/index.ts` → `pipelines/index.ts:20,197,427` | API + House/Senate XML | Yes — per-roll skip-if-exists guard | recent |
+| [pipelines/openstates-bulk/people.ts](../../packages/data/src/pipelines/openstates-bulk/people.ts) | ACTIVE | daily-nightly | `data:states` | `pipelines/index.ts:19,247,446` | Bulk CSV (no auth, no rate limit) | Yes — upsert; runs `link_officials_to_districts()` after | recent |
+| [pipelines/tags/rules.ts](../../packages/data/src/pipelines/tags/rules.ts) | ACTIVE | daily-nightly | `data:tag-rules` | `pipelines/index.ts:21,710` | SQL rules on existing rows | Yes — deterministic | recent |
+| [pipelines/tags/ai-tagger.ts](../../packages/data/src/pipelines/tags/ai-tagger.ts) | ACTIVE | daily-nightly | `data:tag-ai` | `pipelines/index.ts:22,721` | Claude API, $0.10 cap, `onlyNew: true` | Yes — cached per entity | recent |
+| [pipelines/ai-summaries/index.ts](../../packages/data/src/pipelines/ai-summaries/index.ts) | ACTIVE | daily-nightly | `data:ai-summaries`, `data:ai-summaries-new` | `pipelines/index.ts:23,734` | Claude API, incremental | Yes — `ai_summary_cache` |  recent |
+| [pipelines/fec-bulk/index.ts](../../packages/data/src/pipelines/fec-bulk/index.ts) | ACTIVE | weekly-nightly | `data:fec-bulk` | `pipelines/index.ts:15,168,475` | Bulk ZIP, line-by-line streaming | Yes — upsert; `donor_fingerprint` unique on individuals | recent |
+| [pipelines/usaspending-bulk/index.ts](../../packages/data/src/pipelines/usaspending-bulk/index.ts) | ACTIVE | weekly-nightly | `data:usaspending-bulk`, `data:usaspending-bulk-assistance` | `pipelines/index.ts:16,212,491` | Bulk ZIP (full file first, deltas after) | Yes — `usaspending_award_id` partial unique | recent |
+| [pipelines/courtlistener/index.ts](../../packages/data/src/pipelines/courtlistener/index.ts) | ACTIVE | weekly-nightly | `data:courts` | `pipelines/index.ts:17,232,509` | API paginated per court | Yes — upsert | recent |
+| [pipelines/openstates/index.ts](../../packages/data/src/pipelines/openstates/index.ts) | ACTIVE | weekly-nightly | `data:states-api` | `pipelines/index.ts:18,261,524` | API (10 req/min bills cap) | Yes — upsert | recent |
+| [pipelines/agencies-hierarchy/index.ts](../../packages/data/src/pipelines/agencies-hierarchy/index.ts) | ACTIVE | weekly-nightly | `data:agencies-hierarchy` | `pipelines/index.ts:24,539` | API + static lookup | Yes — parent FK update | recent |
+| [pipelines/opm-fte/index.ts](../../packages/data/src/pipelines/opm-fte/index.ts) | ACTIVE | weekly-nightly | `data:opm-fte` | `pipelines/index.ts:25,552` | Bulk Parquet (HuggingFace mirror) | Yes — agency-FTE upsert | recent |
+| [pipelines/plum-book/index.ts](../../packages/data/src/pipelines/plum-book/index.ts) | ACTIVE | weekly-nightly | `data:plum-book` | `pipelines/index.ts:26,567` | Bulk NDJSON (OpenSanctions, ETag-cached) | Yes — ETag-gated | recent |
+| [pipelines/elections/index.ts](../../packages/data/src/pipelines/elections/index.ts) | ACTIVE | weekly-nightly | `data:elections` | `pipelines/index.ts:27,580` | Curated calendar + derived | Yes — UPDATE only | recent |
+| [pipelines/congress/committees.ts](../../packages/data/src/pipelines/congress/committees.ts) | ACTIVE | weekly-nightly | `data:committees` | `pipelines/congress/index.ts` → `pipelines/index.ts:20,594` | API pagination | Yes — upsert by `committee_id` | recent |
+| [pipelines/congress/votes-backfill.ts](../../packages/data/src/pipelines/congress/votes-backfill.ts) | MANUAL | manual (one-off) | `data:votes-backfill` | none (script-only) | API + XML historical | Yes — per-roll skip | 12d |
+| [pipelines/agency-enrichment/index.ts](../../packages/data/src/pipelines/agency-enrichment/index.ts) | SHOULD-BE-CRON | manual | `data:agency-enrichment` | none (script-only) | USA.gov + Federal Register + Wikidata SPARQL | Yes — UPDATE on metadata | 4d |
+| [pipelines/agency-leadership/index.ts](../../packages/data/src/pipelines/agency-leadership/index.ts) | SHOULD-BE-CRON | manual | `data:agency-leadership` | none (script-only) | Wikidata SPARQL + Congress.gov nominations | Yes — `is_current` + upsert | 4d |
+| [pipelines/districts-tiger/index.ts](../../packages/data/src/pipelines/districts-tiger/index.ts) | MANUAL | annual (intentional) | `data:districts` | none (script-only) | Bulk shapefile (TIGER 2024) | Yes — full per-state rewrite | 35h |
+| [pipelines/legistar/index.ts](../../packages/data/src/pipelines/legistar/index.ts) | MANUAL | manual per-metro | `data:legistar` | none (script-only) | Legistar OData/REST API per metro | Yes — `external_source_refs` dedup | 3w |
+| [pipelines/usaspending/index.ts](../../packages/data/src/pipelines/usaspending/index.ts) | SHOULD-BE-DEPRECATED | manual | `data:usaspending` | none (script-only) | API pagination — top 100 ≥$1M per top-20 agencies | Yes — partial unique on `usaspending_award_id` | 3w |
+| [pipelines/govtrack-cosponsors/index.ts](../../packages/data/src/pipelines/govtrack-cosponsors/index.ts) | PHASE-2 SKELETON | manual | `data:govtrack-cosponsors` | none (script-only) | TODO — not implemented | n/a — returns 0 rows | 9d (sync-log refactor only) |
+| [pipelines/federal-register/index.ts](../../packages/data/src/pipelines/federal-register/index.ts) | PHASE-2 SKELETON | manual | `data:federal-register` | none (script-only) | TODO — not implemented | n/a — returns 0 rows | 9d (sync-log refactor only) |
+| [pipelines/opensecrets-bulk/index.ts](../../packages/data/src/pipelines/opensecrets-bulk/index.ts) | PHASE-2 SKELETON | manual | `data:opensecrets-bulk` | none (script-only) | TODO — not implemented | n/a — returns 0 rows | 9d (sync-log refactor only) |
+| [pipelines/tags/ai-classifier.ts](../../packages/data/src/pipelines/tags/ai-classifier.ts) | MANUAL | manual | `data:tag-industry`, `data:tag-all` | none in orchestrator | Claude API per unclassified PAC | Yes — `tag_category='industry'` upsert | recent |
+| [pipelines/enrichment/seed-backlog.ts](../../packages/data/src/pipelines/enrichment/seed-backlog.ts) | MANUAL | manual (one-off backfill) | `data:enrich-seed` | none (script-only) | RPC enqueue | Yes — `enrichment_queue` dedup | 12d |
+| [pipelines/integrity-audit/index.ts](../../packages/data/src/pipelines/integrity-audit/index.ts) | MANUAL | manual | `data:audit` | none (script-only) | Read-only SQL checks | Yes — read-only | 3w |
 
 ### 1b. Helpers (writers, utilities, type modules — not pipelines)
 
 | File | Used by | Notes |
 |---|---|---|
-| [pipelines/index.ts](../packages/data/src/pipelines/index.ts) | `data:sync`, `data:nightly`, `data:nightly:ci`, `data:status` | Orchestrator + `runNightlySync()` + `printStatus()`. Single source of truth for cadence. |
-| [pipelines/sync-log.ts](../packages/data/src/pipelines/sync-log.ts) | every pipeline | `startSync` / `completeSync` / `failSync` / `getDbSizeMb` / `getLastSync`. |
-| [pipelines/utils.ts](../packages/data/src/pipelines/utils.ts) | many | `sleep`, `fetchJson`, `postJson`, `QuotaExhaustedError`. |
-| [pipelines/congress/index.ts](../packages/data/src/pipelines/congress/index.ts) | `pipelines/index.ts` | Re-export hub for officials/votes/committees. |
-| [pipelines/congress/members.ts](../packages/data/src/pipelines/congress/members.ts) | `congress/{officials,votes,committees}.ts`, retitle scripts | Member-row helpers. |
-| [pipelines/congress/bills.ts](../packages/data/src/pipelines/congress/bills.ts) | `congress/votes.ts` | Bill upserts for vote-linked bills. |
-| [pipelines/fec-bulk/writer.ts](../packages/data/src/pipelines/fec-bulk/writer.ts) | `fec-bulk/index.ts`, `usaspending/{index,writer}.ts`, `usaspending-bulk/index.ts` | Exports `canonicalizeEntityName` — used cross-pipeline. **Don't delete with `usaspending/` cleanup; `usaspending-bulk` still imports it.** |
-| [pipelines/fec-bulk/util.ts](../packages/data/src/pipelines/fec-bulk/util.ts) | `fec-bulk/index.ts` | ZIP/CSV streaming. |
-| [pipelines/fec-bulk/indiv.ts](../packages/data/src/pipelines/fec-bulk/indiv.ts) | `fec-bulk/index.ts` | FIX-181 indiv aggregation. |
-| [pipelines/usaspending/writer.ts](../packages/data/src/pipelines/usaspending/writer.ts) | `usaspending/index.ts` | Used only by the deprecation candidate. Drop with parent. |
-| [pipelines/regulations/writer.ts](../packages/data/src/pipelines/regulations/writer.ts) | `regulations/index.ts` | Batched upsert. |
-| [pipelines/courtlistener/writer.ts](../packages/data/src/pipelines/courtlistener/writer.ts) | `courtlistener/index.ts` | Batched upsert. |
-| [pipelines/openstates/writer.ts](../packages/data/src/pipelines/openstates/writer.ts) | `openstates/index.ts`, `openstates-bulk/people.ts` | Shared by both OpenStates paths. |
-| [pipelines/legistar/{client,writer,mappers,types}.ts](../packages/data/src/pipelines/legistar/) | `legistar/index.ts` | Pilot-metro adapter internals. |
-| [pipelines/enrichment/queue.ts](../packages/data/src/pipelines/enrichment/queue.ts) | `tags/ai-tagger.ts`, `ai-summaries/index.ts` | Queue helpers. |
-| [pipelines/tags/topics.ts](../packages/data/src/pipelines/tags/topics.ts) | `tags/*`, `enrichment/queue.ts` | Tag universe. |
-| [pipelines/elections/calendar.ts](../packages/data/src/pipelines/elections/calendar.ts) | `elections/index.ts` | Curated election dates. |
-| [pipelines/integrity-audit/checks/*.ts, reporter.ts, types.ts](../packages/data/src/pipelines/integrity-audit/) | `integrity-audit/index.ts` | Check suite. |
+| [pipelines/index.ts](../../packages/data/src/pipelines/index.ts) | `data:sync`, `data:nightly`, `data:nightly:ci`, `data:status` | Orchestrator + `runNightlySync()` + `printStatus()`. Single source of truth for cadence. |
+| [pipelines/sync-log.ts](../../packages/data/src/pipelines/sync-log.ts) | every pipeline | `startSync` / `completeSync` / `failSync` / `getDbSizeMb` / `getLastSync`. |
+| [pipelines/utils.ts](../../packages/data/src/pipelines/utils.ts) | many | `sleep`, `fetchJson`, `postJson`, `QuotaExhaustedError`. |
+| [pipelines/congress/index.ts](../../packages/data/src/pipelines/congress/index.ts) | `pipelines/index.ts` | Re-export hub for officials/votes/committees. |
+| [pipelines/congress/members.ts](../../packages/data/src/pipelines/congress/members.ts) | `congress/{officials,votes,committees}.ts`, retitle scripts | Member-row helpers. |
+| [pipelines/congress/bills.ts](../../packages/data/src/pipelines/congress/bills.ts) | `congress/votes.ts` | Bill upserts for vote-linked bills. |
+| [pipelines/fec-bulk/writer.ts](../../packages/data/src/pipelines/fec-bulk/writer.ts) | `fec-bulk/index.ts`, `usaspending/{index,writer}.ts`, `usaspending-bulk/index.ts` | Exports `canonicalizeEntityName` — used cross-pipeline. **Don't delete with `usaspending/` cleanup; `usaspending-bulk` still imports it.** |
+| [pipelines/fec-bulk/util.ts](../../packages/data/src/pipelines/fec-bulk/util.ts) | `fec-bulk/index.ts` | ZIP/CSV streaming. |
+| [pipelines/fec-bulk/indiv.ts](../../packages/data/src/pipelines/fec-bulk/indiv.ts) | `fec-bulk/index.ts` | FIX-181 indiv aggregation. |
+| [pipelines/usaspending/writer.ts](../../packages/data/src/pipelines/usaspending/writer.ts) | `usaspending/index.ts` | Used only by the deprecation candidate. Drop with parent. |
+| [pipelines/regulations/writer.ts](../../packages/data/src/pipelines/regulations/writer.ts) | `regulations/index.ts` | Batched upsert. |
+| [pipelines/courtlistener/writer.ts](../../packages/data/src/pipelines/courtlistener/writer.ts) | `courtlistener/index.ts` | Batched upsert. |
+| [pipelines/openstates/writer.ts](../../packages/data/src/pipelines/openstates/writer.ts) | `openstates/index.ts`, `openstates-bulk/people.ts` | Shared by both OpenStates paths. |
+| [pipelines/legistar/{client,writer,mappers,types}.ts](../../packages/data/src/pipelines/legistar) | `legistar/index.ts` | Pilot-metro adapter internals. |
+| [pipelines/enrichment/queue.ts](../../packages/data/src/pipelines/enrichment/queue.ts) | `tags/ai-tagger.ts`, `ai-summaries/index.ts` | Queue helpers. |
+| [pipelines/tags/topics.ts](../../packages/data/src/pipelines/tags/topics.ts) | `tags/*`, `enrichment/queue.ts` | Tag universe. |
+| [pipelines/elections/calendar.ts](../../packages/data/src/pipelines/elections/calendar.ts) | `elections/index.ts` | Curated election dates. |
+| [pipelines/integrity-audit/checks/*.ts, reporter.ts, types.ts](../../packages/data/src/pipelines/integrity-audit) | `integrity-audit/index.ts` | Check suite. |
 
 ### 1c. Non-pipeline TS in `packages/data/`
 
 | File | Purpose | Status |
 |---|---|---|
-| [src/seed.ts](../packages/data/src/seed.ts) | `data:seed` — initial DB seeding | MANUAL one-off |
-| [src/jurisdictions/us-states.ts](../packages/data/src/jurisdictions/us-states.ts) | `data:jurisdictions` + `seedJurisdictions()` called every nightly | ACTIVE (orchestrator dep) |
-| [src/jurisdictions/pilot-metros.ts](../packages/data/src/jurisdictions/pilot-metros.ts) | `data:pilot-metros` — pilot metro seed | MANUAL one-off |
-| [src/drain/{claim,submit,apply,status,args}.ts](../packages/data/src/drain/) | `data:drain:*` — enrichment-queue worker CLI | NOT a pipeline (subagent tooling) — out of audit scope |
-| [src/scripts/retitle-procedural-bill-stubs.ts](../packages/data/src/scripts/retitle-procedural-bill-stubs.ts) | `data:retitle-stubs` (FIX-162) | MANUAL one-off |
-| [src/scripts/retitle-pn-stubs.ts](../packages/data/src/scripts/retitle-pn-stubs.ts) | `data:retitle-pn-stubs` | MANUAL one-off |
-| [src/scripts/copy-pac-tags-to-prod.ts](../packages/data/src/scripts/copy-pac-tags-to-prod.ts) | One-shot post-FIX-179 cross-env migration | **ORPHANED** — no `data:*` script entry, only `pnpm tsx <path>`. Job almost certainly done. |
+| [src/seed.ts](../../packages/data/src/seed.ts) | `data:seed` — initial DB seeding | MANUAL one-off |
+| [src/jurisdictions/us-states.ts](../../packages/data/src/jurisdictions/us-states.ts) | `data:jurisdictions` + `seedJurisdictions()` called every nightly | ACTIVE (orchestrator dep) |
+| [src/jurisdictions/pilot-metros.ts](../../packages/data/src/jurisdictions/pilot-metros.ts) | `data:pilot-metros` — pilot metro seed | MANUAL one-off |
+| [src/drain/{claim,submit,apply,status,args}.ts](../../packages/data/src/drain) | `data:drain:*` — enrichment-queue worker CLI | NOT a pipeline (subagent tooling) — out of audit scope |
+| [src/scripts/retitle-procedural-bill-stubs.ts](../../packages/data/src/scripts/retitle-procedural-bill-stubs.ts) | `data:retitle-stubs` (FIX-162) | MANUAL one-off |
+| [src/scripts/retitle-pn-stubs.ts](../../packages/data/src/scripts/retitle-pn-stubs.ts) | `data:retitle-pn-stubs` | MANUAL one-off |
+| [src/scripts/copy-pac-tags-to-prod.ts](../../packages/data/src/scripts/copy-pac-tags-to-prod.ts) | One-shot post-FIX-179 cross-env migration | **ORPHANED** — no `data:*` script entry, only `pnpm tsx <path>`. Job almost certainly done. |
 
 ### 1d. Scheduling triggers (single source of truth)
 
 | Trigger | Where | Schedule | Behavior |
 |---|---|---|---|
-| GitHub Actions | [.github/workflows/nightly.yml](../.github/workflows/nightly.yml) → `pnpm data:nightly:ci` | `0 2 * * *` daily | Runs `runNightlySync()`; weekly block fires on Sunday UTC |
-| Vercel cron (canary) | [apps/civitics/vercel.json](../apps/civitics/vercel.json) → `/api/cron/nightly-sync` | `0 2 * * *` daily | Health-check only; logs `triggered` to `data_sync_log`. Does **not** run pipelines. |
-| Vercel cron (notify) | [apps/civitics/vercel.json](../apps/civitics/vercel.json) → `/api/cron/notify-followers` | `0 3 * * *` daily | Reads vote/proposal deltas → push notifications. Cursor in `pipeline_state`. |
+| GitHub Actions | [.github/workflows/nightly.yml](../../.github/workflows/nightly.yml) → `pnpm data:nightly:ci` | `0 2 * * *` daily | Runs `runNightlySync()`; weekly block fires on Sunday UTC |
+| Vercel cron (canary) | [apps/civitics/vercel.json](../../apps/civitics/vercel.json) → `/api/cron/nightly-sync` | `0 2 * * *` daily | Health-check only; logs `triggered` to `data_sync_log`. Does **not** run pipelines. |
+| Vercel cron (notify) | [apps/civitics/vercel.json](../../apps/civitics/vercel.json) → `/api/cron/notify-followers` | `0 3 * * *` daily | Reads vote/proposal deltas → push notifications. Cursor in `pipeline_state`. |
 | Admin manual | `POST /api/admin/run-pipeline` | on-demand | 17 named pipelines runnable via admin dashboard. |
 
 No `setInterval`, `setTimeout`-as-cron, `node-cron`, Supabase scheduled edge functions, or other recurring mechanism exists. Confirmed by repo-wide grep.
@@ -112,7 +112,7 @@ No `setInterval`, `setTimeout`-as-cron, `node-cron`, Supabase scheduled edge fun
 
 Only one true orphan was found:
 
-- **[src/scripts/copy-pac-tags-to-prod.ts](../packages/data/src/scripts/copy-pac-tags-to-prod.ts)** — one-off cross-env migration from FIX-179. No `data:*` script entry. Last touched 9 days ago, but only for a workspace-import refactor (`b28cde41`), not for any functional reason. The job it performed (copying AI-generated PAC industry tags local → prod via `fec_committee_id`) is a post-cutover one-shot that should be complete. **Recommendation:** verify with a quick spot-check that no PACs still need cross-env tag migration, then move it to `docs/archive/` or delete it.
+- **[src/scripts/copy-pac-tags-to-prod.ts](../../packages/data/src/scripts/copy-pac-tags-to-prod.ts)** — one-off cross-env migration from FIX-179. No `data:*` script entry. Last touched 9 days ago, but only for a workspace-import refactor (`b28cde41`), not for any functional reason. The job it performed (copying AI-generated PAC industry tags local → prod via `fec_committee_id`) is a post-cutover one-shot that should be complete. **Recommendation:** verify with a quick spot-check that no PACs still need cross-env tag migration, then move it to `docs/archive/` or delete it.
 
 Every other file in `packages/data/src/` is reachable through either the orchestrator, a `pnpm data:*` script entry, or another active file's imports.
 
@@ -133,14 +133,14 @@ The nightly orchestrator's split — daily for `regulations` / `congress` / `ope
 
 ### 3c. Doc drift in CLAUDE.md cadence section
 
-[packages/data/CLAUDE.md:135-138](../packages/data/CLAUDE.md) "Update Schedules" lists:
+[packages/data/CLAUDE.md:135-138](../../packages/data/CLAUDE.md) "Update Schedules" lists:
 - "Hourly: Active proposal status" → actual: daily-via-nightly. User confirmed daily is fine.
 - "Daily (2am): Spending data, voting records, new bills, court metadata" → actual: spending and court metadata are Sunday-only; voting + bills are daily.
 - "Weekly: FEC bulk, full reconciliation, AI summary regeneration, search index rebuild" → FEC bulk matches; AI summary actually runs daily (incremental); "search index rebuild" is not a current pipeline.
 
 Same file's per-source notes: "[Regulations] hourly", "[CourtListener] daily at 2am" — both contradict the orchestrator.
 
-[packages/data/CLAUDE.md:72](../packages/data/CLAUDE.md) — `data:fec` "retained for reference only" but `packages/data/src/pipelines/fec/` has been deleted; no such directory exists in the tree. Confirmed by `Glob packages/data/src/pipelines/fec/**/*` returning zero files.
+[packages/data/CLAUDE.md:72](../../packages/data/CLAUDE.md) — `data:fec` "retained for reference only" but `packages/data/src/pipelines/fec/` has been deleted; no such directory exists in the tree. Confirmed by `Glob packages/data/src/pipelines/fec/**/*` returning zero files.
 
 Recommendation: a single doc PR that reconciles the cadence section against the orchestrator.
 
@@ -164,7 +164,7 @@ No obvious bulk-substitution win remaining. Phase 2 onramps (Federal Register, G
 
 ### 4c. Misleading dashboard signal from skeletons
 
-[pipelines/govtrack-cosponsors/index.ts:29](../packages/data/src/pipelines/govtrack-cosponsors/index.ts), [federal-register/index.ts:36](../packages/data/src/pipelines/federal-register/index.ts), [opensecrets-bulk/index.ts:38](../packages/data/src/pipelines/opensecrets-bulk/index.ts) all call `completeSync(logId, result)` with `inserted: 0`. A dashboard reading `data_sync_log` sees `status='complete'` and "0 rows" — indistinguishable from a real pipeline that legitimately had no new rows that day. They should mark the run as a no-op via a non-`complete` status (e.g. `skipped` with reason `not_implemented`) so the dashboard can show them differently.
+[pipelines/govtrack-cosponsors/index.ts:29](../../packages/data/src/pipelines/govtrack-cosponsors/index.ts), [federal-register/index.ts:36](../../packages/data/src/pipelines/federal-register/index.ts), [opensecrets-bulk/index.ts:38](../../packages/data/src/pipelines/opensecrets-bulk/index.ts) all call `completeSync(logId, result)` with `inserted: 0`. A dashboard reading `data_sync_log` sees `status='complete'` and "0 rows" — indistinguishable from a real pipeline that legitimately had no new rows that day. They should mark the run as a no-op via a non-`complete` status (e.g. `skipped` with reason `not_implemented`) so the dashboard can show them differently.
 
 ### 4d. Idempotency
 
@@ -185,11 +185,11 @@ The legacy `data:usaspending` and the active `data:usaspending-bulk` write to ov
 
 ### 5a. `pipelines/usaspending/` (legacy API path)
 
-**Why deprecate:** [packages/data/CLAUDE.md:86](../packages/data/CLAUDE.md) explicitly says "Legacy API script (`data:usaspending`) retained for reference — superseded by bulk approach (FIX-118)." Yet:
+**Why deprecate:** [packages/data/CLAUDE.md:86](../../packages/data/CLAUDE.md) explicitly says "Legacy API script (`data:usaspending`) retained for reference — superseded by bulk approach (FIX-118)." Yet:
 - `packages/data/package.json:15` still ships the `data:usaspending` script entry.
-- [pipelines/usaspending/index.ts](../packages/data/src/pipelines/usaspending/index.ts) is a fully-functioning pipeline that writes to `financial_relationships`.
+- [pipelines/usaspending/index.ts](../../packages/data/src/pipelines/usaspending/index.ts) is a fully-functioning pipeline that writes to `financial_relationships`.
 - It is NOT called from `runNightlySync()` (verified — `pipelines/index.ts` imports only `runUsaSpendingBulkPipeline` from `./usaspending-bulk`).
-- The only out-of-package consumers grep'd were `docs/GRAPH_PLAN.md` and `docs/STAGE_0_WRITER_CATALOG.md` (both archive-ish references).
+- The only out-of-package consumers grep'd were `docs/GRAPH_PLAN.md` and `docs/archive/STAGE_0_WRITER_CATALOG.md` (both archive-ish references).
 
 **Migration path:**
 1. Delete `packages/data/src/pipelines/usaspending/index.ts` and `pipelines/usaspending/writer.ts`.
@@ -200,7 +200,7 @@ The legacy `data:usaspending` and the active `data:usaspending-bulk` write to ov
 
 ### 5b. CLAUDE.md `data:fec` reference
 
-The directory `packages/data/src/pipelines/fec/` does not exist (confirmed by glob). [packages/data/CLAUDE.md:72](../packages/data/CLAUDE.md) line "The API-based pipeline (`data:fec`) is retained for reference only — do not use it" should be deleted.
+The directory `packages/data/src/pipelines/fec/` does not exist (confirmed by glob). [packages/data/CLAUDE.md:72](../../packages/data/CLAUDE.md) line "The API-based pipeline (`data:fec`) is retained for reference only — do not use it" should be deleted.
 
 ### 5c. `src/scripts/copy-pac-tags-to-prod.ts`
 
@@ -219,7 +219,7 @@ Next free ID: **FIX-224** (`grep -oE 'FIX-[0-9]+' docs/FIXES.md | sort -u | tail
 These are CANDIDATES — do NOT add to `docs/FIXES.md` from this audit. The follow-up review pass decides which to accept.
 
 - **FIX-224** — Delete legacy `data:usaspending` script entry + `pipelines/usaspending/` directory; bulk path supersedes. (See section 5a for migration steps.)
-- **FIX-225** — Reconcile [packages/data/CLAUDE.md](../packages/data/CLAUDE.md) cadence section against the orchestrator: drop hourly Regulations / daily CourtListener / `data:fec` claims; correct AI-summary cadence to "daily incremental".
+- **FIX-225** — Reconcile [packages/data/CLAUDE.md](../../packages/data/CLAUDE.md) cadence section against the orchestrator: drop hourly Regulations / daily CourtListener / `data:fec` claims; correct AI-summary cadence to "daily incremental".
 - **FIX-226** — Schedule `data:audit` weekly via GitHub Actions; surface the latest JSON/MD report on the admin dashboard so regressions are visible.
 - **FIX-227** — Schedule `data:agency-leadership` (Sunday-only via the existing weekly block, or its own daily run during transition windows).
 - **FIX-228** — Schedule `data:agency-enrichment` monthly (e.g. first Sunday of the month).
@@ -265,7 +265,7 @@ Five files verified against the inventory claims.
 ### Spot-check 3 — SHOULD-BE-DEPRECATED: `pipelines/usaspending/index.ts`
 
 - **File opened**, header reads "USASpending.gov pipeline — post-cutover, writes directly to public financial_entities + financial_relationships". Fully functional code.
-- **Grep `runUsaSpendingPipeline`** → only `packages/data/src/pipelines/usaspending/index.ts` itself + `packages/data/package.json` + `docs/GRAPH_PLAN.md` + `docs/STAGE_0_WRITER_CATALOG.md`. Notably ABSENT from `packages/data/src/pipelines/index.ts`.
+- **Grep `runUsaSpendingPipeline`** → only `packages/data/src/pipelines/usaspending/index.ts` itself + `packages/data/package.json` + `docs/GRAPH_PLAN.md` + `docs/archive/STAGE_0_WRITER_CATALOG.md`. Notably ABSENT from `packages/data/src/pipelines/index.ts`.
 - **Confirmed `runNightlySync` imports `runUsaSpendingBulkPipeline` only** (line 16 of orchestrator), not `runUsaSpendingPipeline`.
 - **CLAUDE.md confirms** "Legacy API script (`data:usaspending`) retained for reference — superseded by bulk approach (FIX-118)" (packages/data/CLAUDE.md:86).
 - **Status: SHOULD-BE-DEPRECATED — confirmed.** Inventory claim holds.

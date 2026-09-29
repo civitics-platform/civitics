@@ -46,6 +46,8 @@
     "check:proconfig:test": "node scripts/test-check-proconfig.mjs",
     "check:no-store-routes": "node scripts/check-no-store-routes.mjs",
     "check:no-store-routes:test": "node scripts/test-check-no-store-routes.mjs",
+    "check:doc-links": "node scripts/check-doc-links.mjs",
+    "check:doc-links:test": "node scripts/test-check-doc-links.mjs",
     "db-query:test": "node scripts/test-db-query.mjs",
     "rederive:budget:test": "node scripts/test-rederive-budget.mjs",
     "hook:test": "node scripts/test-pre-push-hook.mjs",

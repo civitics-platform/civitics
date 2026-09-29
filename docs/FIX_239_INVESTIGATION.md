@@ -10,7 +10,7 @@ backfilled cycles).
 `indiv.ts`, `supabase/migrations/20260502120000_*donor_fingerprint.sql`,
 `supabase/migrations/20260502130000_financial_entities_partial_indexes.sql`,
 `apps/civitics/app/api/search/route.ts` (FIX-236 OR-fallback),
-`docs/PIPELINE_AUDIT.md` §1a–1b, `docs/FIXES.md` FIX-239 bullet.
+`docs/archive/PIPELINE_AUDIT.md` §1a–1b, `docs/FIXES.md` FIX-239 bullet.
 
 ---
 

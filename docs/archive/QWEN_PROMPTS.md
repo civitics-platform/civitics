@@ -599,7 +599,7 @@ Add `<SpendingSection items={spendingRecords} />` near the bottom of the officia
 **Files to read first:**
 - `supabase/migrations/0009_users_table.sql` (users table schema — FK target)
 - `supabase/migrations/0001_initial_schema.sql` (search for `civic_comments` — use as RLS pattern reference)
-- `docs/CIVIC_INITIATIVES.md` (feature overview and data model spec)
+- `docs/archive/CIVIC_INITIATIVES.md` (feature overview and data model spec)
 
 **Background:**
 Civic Initiatives is a new Phase 2 feature: a lifecycle-based community platform where citizens draft proposals, gather signatures, and hold officials publicly accountable. This task creates the three core tables that underpin the entire feature. All subsequent Civic Initiatives tasks depend on this migration being applied first.
@@ -716,7 +716,7 @@ Add a trigger on `civic_initiatives` to auto-update `updated_at` on row modifica
 - `apps/civitics/app/api/proposals/[id]/comments/route.ts` (auth + admin client pattern)
 - `apps/civitics/app/api/proposals/route.ts` (list pagination pattern)
 - `supabase/migrations/0033_civic_initiatives.sql` (exact column names — authoritative)
-- `docs/CIVIC_INITIATIVES.md` (feature overview)
+- `docs/archive/CIVIC_INITIATIVES.md` (feature overview)
 
 **Background:**
 Sprint 1 API layer for Civic Initiatives. Five routes covering list, detail, create, sign, and signature count. No UI yet — these routes are the foundation that the list and detail pages (Sprint 3) will consume.

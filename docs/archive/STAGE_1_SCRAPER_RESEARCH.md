@@ -5,7 +5,7 @@ Generated: 2026-04-19 (Cowork research agent pass)
 Research question: For each of the 5 deep-pilot metros (Seattle, SF, NYC, DC, Austin), what civic data is available via structured API vs. needs custom scraping vs. is effectively unavailable?
 
 This doc is input to Stage 1 pipeline / scraper architecture decisions. The schema
-design (`STAGE_1_SCHEMA_DESIGN.md`) can proceed independently but the pipeline
+design (`../STAGE_1_SCHEMA_DESIGN.md`) can proceed independently but the pipeline
 registry shape is downstream of these findings.
 
 ---

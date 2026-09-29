@@ -129,8 +129,8 @@ Post-FIX-101 + FIX-118 (current snapshot, archived 2026-04-26):
 
 | File | Purpose |
 |---|---|
-| `docs/PLATFORM_REBUILD_SPEC.md` | Why we're doing this, original decision questions |
-| `docs/STAGE_0_WRITER_CATALOG.md` | Full pipeline writer audit, 17 architectural findings |
+| `docs/archive/PLATFORM_REBUILD_SPEC.md` | Why we're doing this, original decision questions |
+| `docs/archive/STAGE_0_WRITER_CATALOG.md` | Full pipeline writer audit, 17 architectural findings |
 | `docs/STAGE_1_SCHEMA_DESIGN.md` | Schema decisions L1–L7, table-by-table design rationale |
 | `supabase/migrations/20260421*` | Shadow migrations (applied locally, then moved to public via promotion) |
 | `supabase/migrations/20260422000000_promote_shadow_to_public.sql` | Cutover migration |

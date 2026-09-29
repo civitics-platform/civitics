@@ -315,7 +315,7 @@ should be re-filed against the new schema rather than fixed in place:
 ## Kick-off prompt for the next Cowork session
 
 > This is the first session on the platform rebuild. Read
-> `docs/PLATFORM_REBUILD_SPEC.md` end-to-end. Then start Stage 0 by grepping
+> `docs/archive/PLATFORM_REBUILD_SPEC.md` end-to-end. Then start Stage 0 by grepping
 > `\.from\("[^"]*"\)\.(insert|upsert)` across `packages/data/src/pipelines/`
 > and producing a writer-catalog table: for each call site, the table written,
 > the columns inserted, any JSON blob usage, any FK lookups attempted, and

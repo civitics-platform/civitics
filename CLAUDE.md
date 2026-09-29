@@ -41,7 +41,7 @@ below.
 > **Execution model (as of 2026-04-18):** Claude Code (VS Code extension on
 > Windows) runs the full loop autonomously: migrate → build → commit → push →
 > `pnpm fixes:sync` → commit → push. No cross-session hand-off doc required for
-> local migrations. `docs/QWEN_PROMPTS.md` and `docs/archive/SESSION_LOG.md` are
+> local migrations. `docs/archive/QWEN_PROMPTS.md` and `docs/archive/SESSION_LOG.md` are
 > preserved as historical archives.
 
 ---

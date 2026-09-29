@@ -2,7 +2,7 @@
 
 Ready-to-paste prompts for the VS Code Claude Code extension. Each block is self-contained — paste into Claude Code, let it run the full migrate→build→commit→push→`fixes:sync`→commit→push loop autonomously.
 
-Stages map to the sequencing in `docs/PIPELINE_AUDIT.md` §6 follow-up. Audit doc: commit `daa6e5ed`.
+Stages map to the sequencing in `docs/archive/PIPELINE_AUDIT.md` §6 follow-up. Audit doc: commit `daa6e5ed`.
 
 ---
 
@@ -13,7 +13,7 @@ Pure hygiene. One commit. Low risk. May need one trivial migration depending on 
 ```
 Land FIX-225 + FIX-229 + FIX-231 as one commit on main.
 
-Stage 1 of pipeline-audit follow-up. Pure hygiene; no schema impact unless FIX-229 needs to extend a CHECK constraint. Full context in docs/PIPELINE_AUDIT.md.
+Stage 1 of pipeline-audit follow-up. Pure hygiene; no schema impact unless FIX-229 needs to extend a CHECK constraint. Full context in docs/archive/PIPELINE_AUDIT.md.
 
 ## FIX-225 — Reconcile packages/data/CLAUDE.md cadence drift
 
@@ -83,7 +83,7 @@ Land FIX-234 — alert when nightly sync doesn't land.
 
 Context: data_sync_log is written by packages/data/src/pipelines/index.ts via the GHA workflow .github/workflows/nightly.yml at 2 UTC daily. If GHA fails (auth expired, runner outage, OOM mid-pipeline, source-API 503), no row appears and nothing alerts.
 
-The original audit (docs/PIPELINE_AUDIT.md §1d) claimed a Vercel canary cron writes a `triggered` row daily. That's wrong: the vercel.json cron entry exists, but the route file (apps/civitics/app/api/cron/nightly-sync/route.ts) was deleted. Vercel hits a 404 daily. We'll clean it up in this commit.
+The original audit (docs/archive/PIPELINE_AUDIT.md §1d) claimed a Vercel canary cron writes a `triggered` row daily. That's wrong: the vercel.json cron entry exists, but the route file (apps/civitics/app/api/cron/nightly-sync/route.ts) was deleted. Vercel hits a 404 daily. We'll clean it up in this commit.
 
 ## Implementation
 
@@ -162,7 +162,7 @@ Defensive check first: `ls apps/civitics/app/api/cron/nightly-sync/` should erro
     Vercel has been hitting a 404 daily.
 
     Followups: set ADMIN_EMAIL + RESEND_API_KEY in repo Settings →
-    Secrets after deploy. docs/PIPELINE_AUDIT.md §1d "Vercel cron
+    Secrets after deploy. docs/archive/PIPELINE_AUDIT.md §1d "Vercel cron
     (canary)" row is now outdated; correct in a follow-up doc PR.
 
     Verified: local
@@ -215,7 +215,7 @@ Remove the `"data:usaspending": "..."` line from the scripts block. Leave `"data
     grep -rn "data:usaspending[^-]" packages/ apps/ docs/  # match exactly, not the bulk variant
 
 Expected acceptable refs after the delete:
-- Audit/docs that reference the legacy path historically (docs/PIPELINE_AUDIT.md, docs/GRAPH_PLAN.md, docs/STAGE_0_WRITER_CATALOG.md) — leave as historical context.
+- Audit/docs that reference the legacy path historically (docs/archive/PIPELINE_AUDIT.md, docs/GRAPH_PLAN.md, docs/archive/STAGE_0_WRITER_CATALOG.md) — leave as historical context.
 - packages/data/CLAUDE.md line ~86 has "Legacy API script (data:usaspending) retained for reference — superseded by bulk approach (FIX-118)" — DELETE that line; the pipeline no longer exists.
 
 ### 5. Typecheck and build

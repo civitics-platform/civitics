@@ -45,7 +45,7 @@ Three new tables, created in `supabase/migrations/0033_civic_initiatives.sql`:
 - **`civic_initiative_signatures`** — one row per user per initiative; verification_tier: unverified/email/district
 - **`civic_initiative_responses`** — one row per official per initiative; response_type: support/oppose/pledge/refer/no_response
 
-Full column definitions: see TASK-11 in `docs/QWEN_PROMPTS.md`.
+Full column definitions: see TASK-11 in `docs/archive/QWEN_PROMPTS.md`.
 
 ---
 
@@ -246,8 +246,8 @@ Updated `[id]/page.tsx`:
 
 ## Qwen Task References
 
-- **TASK-11** — DB migration → `docs/QWEN_PROMPTS.md` ✅
-- **TASK-12** — Core API routes → `docs/QWEN_PROMPTS.md` ✅
+- **TASK-11** — DB migration → `docs/archive/QWEN_PROMPTS.md` ✅
+- **TASK-12** — Core API routes → `docs/archive/QWEN_PROMPTS.md` ✅
 
 ## Sprint 3 — Delivered (2026-04-11)
 

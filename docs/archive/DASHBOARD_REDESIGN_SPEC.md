@@ -114,7 +114,7 @@ Ordered for diagnostics. Top-down triage: are tests green → pipelines fresh �
 5. **Platform Costs** — unchanged. Fix the `$1.75B` literal to read from `chord.total_flow_usd`.
 6. **Site Activity + Browsing Flows** — moved here. This is operator analytics, not public transparency.
 7. **Development Progress** — keep (Craig's call) but drive from real data:
-   - Phase percentages → parse `docs/PHASE_GOALS.md` at build time into a JSON sidecar, OR add a `/api/phases` route that counts `FIX-NNN` items in `FIXES.md` by phase section and computes `done / total`.
+   - Phase percentages → parse `docs/PHASE_GOALS.md` at build time into a JSON sidecar, OR add a `/api/phases` route that counts `FIX-NNN` items in `../FIXES.md` by phase section and computes `done / total`.
    - Phase 1 task list → drop "500 beta users" and "Grant applications submitted" (non-eng milestones). Or move them to a separate "Launch readiness" mini-card.
    - "Dashboard redesign" → uncheck until this spec ships.
 8. **Moderation** — admin-only, gated so non-admins never fire the request.
@@ -335,7 +335,7 @@ Break into batches so each lands as a shippable commit.
 
 1. **Stat card trends** — build `/api/stats/trends` endpoint fresh, or reuse `data_sync_log.rows_inserted` history? The latter is free but only reflects pipeline inserts, not organic growth (e.g., `proposals` table size over time). Recommend: build a lightweight view.
 Answer: Build Lightweight View
-2. **Phase data source** — parse `PHASE_GOALS.md` at build time (static, fast, but requires a build step to refresh) or read at runtime via an API (live, slightly slower)? Recommend: runtime.
+2. **Phase data source** — parse `../PHASE_GOALS.md` at build time (static, fast, but requires a build step to refresh) or read at runtime via an API (live, slightly slower)? Recommend: runtime.
 Answer: Runtime
 3. **Are "500 beta users" and "Grant applications submitted" dashboard-worthy at all?** They feel like launch-readiness items, not engineering progress. Options: separate card, separate page, or delete from the dashboard entirely.
 Answer: Delete

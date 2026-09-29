@@ -28,7 +28,7 @@ ratios and the structural diagnosis are the same.
 - `packages/data/src/pipelines/edgar/companies.ts` — CIK → corp entity binding
 - Live DB introspection of `financial_entities`, `external_source_refs`
 - `docs/FIX_239_INVESTIGATION.md` — structural template
-- `docs/PIPELINE_AUDIT.md` §1a/1b — confirms `canonicalizeEntityName` is the
+- `docs/archive/PIPELINE_AUDIT.md` §1a/1b — confirms `canonicalizeEntityName` is the
   cross-pipeline normalizer
 
 ---

@@ -191,4 +191,4 @@ Key schema facts that are easy to get wrong:
 - All changes go on branch `qwen/phase1` (or current cycle branch) — never commit to master
 - After finishing a task, commit with a descriptive message prefixed `[skip vercel]`
 - Claude reviews diffs before merging — write clean, readable code
-- See `docs/QWEN_PROMPTS.md` for the current task queue
+- See `docs/archive/QWEN_PROMPTS.md` for the current task queue

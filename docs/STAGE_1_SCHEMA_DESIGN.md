@@ -2,7 +2,7 @@
 
 Author: Cowork Claude session, 2026-04-19
 Status: **Decisions L1–L7 resolved 2026-04-19. Ready to draft migrations.**
-Inputs: `STAGE_0_WRITER_CATALOG.md`, `STAGE_1_SCRAPER_RESEARCH.md`, `PLATFORM_REBUILD_SPEC.md`, `project_platform_rebuild_decisions.md`
+Inputs: `archive/STAGE_0_WRITER_CATALOG.md`, `archive/STAGE_1_SCRAPER_RESEARCH.md`, `archive/PLATFORM_REBUILD_SPEC.md`, `project_platform_rebuild_decisions.md`
 
 **Resolved decisions (see Section L for full context):**
 - L1: Initiatives → **I-B** (migrate civic_initiatives into proposals.type='initiative' + initiative_details)

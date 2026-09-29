@@ -208,7 +208,7 @@ minimum-sample floor). Tiered responsiveness lives in `EngagementBadges`.
 ## Civic initiatives
 
 Initiatives move through stages: `problem → draft → deliberate → mobilise → resolved`.
-Each stage gates certain actions (see [docs/CIVIC_INITIATIVES.md](CIVIC_INITIATIVES.md)).
+Each stage gates certain actions (see [docs/archive/CIVIC_INITIATIVES.md](archive/CIVIC_INITIATIVES.md)).
 
 ### `GET /api/initiatives`
 
