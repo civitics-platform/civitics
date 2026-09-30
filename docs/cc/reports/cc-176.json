@@ -1,0 +1,76 @@
+{
+  "cc": "176",
+  "prompt": "cc-prompt-176-fix1252-dominant-naics-code-fix1245-provenance-first-naics-label-pairs.md",
+  "started_at": "2026-09-30T04:45:53Z",
+  "finished_at": "2026-09-30T05:32:39Z",
+  "head_before": "073bd62f",
+  "head_after": "170f360b",
+  "commits": [
+    {
+      "sha": "34f7e8f3",
+      "subject": "docs(fixes): file FIX-1254 — the seven NAICS fallback labels that sit beside their industry labels"
+    },
+    {
+      "sha": "cf67043a",
+      "subject": "test(data): FIX-1245 — provenance-first fixtures for primary_industry_tag()"
+    },
+    {
+      "sha": "865fbcc8",
+      "subject": "test(data): FIX-1252 — dominant-code fixtures + harness for get_financial_entity_naics()"
+    },
+    {
+      "sha": "6fb91afd",
+      "subject": "docs(fixes): file FIX-1255 — provenance-first + the NAICS map relabel health insurers and defense IT/R&D primes on the contract surfaces"
+    },
+    {
+      "sha": "08ddfd6f",
+      "subject": "feat(db): FIX-1252 — get_financial_entity_naics() tags the dollar-dominant code; FIX-1245 — primary_industry_tag() ranks provenance before confidence, the pick-changers re-dirtied; FIX-1254 — seven NAICS fallback labels renamed to their industry labels"
+    },
+    {
+      "sha": "0de3bbc9",
+      "subject": "chore(fixes): record prod verification of FIX-1245"
+    },
+    {
+      "sha": "170f360b",
+      "subject": "chore(fixes): sync status after FIX-1252, FIX-1245, FIX-1254"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1252",
+    "FIX-1245",
+    "FIX-1254"
+  ],
+  "fixes_filed": [
+    "FIX-1254",
+    "FIX-1255"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260930010000_fix1252_fix1245_dominant_naics_provenance_first_labels.sql"
+  ],
+  "prod_writes": "One migration, 20260930010000_fix1252_fix1245_dominant_naics_provenance_first_labels.sql, applied to Pro at 05:26:34-05:26:43 UTC. It went through session:wait-for-gate:prod --census stop (gate ok, census pass) and then db-push-prod, after a separate dry run whose pending list was exactly this file. The migration is CREATE OR REPLACE of get_financial_entity_naics(), primary_industry_tag() (plus its COMMENT), chord_contract_flows_full(), treemap_recipients_by_contracts_full() and PROCEDURE refresh_contract_flow_rollups(). Its DO block DELETEd 73 donor_industry_tag_state rows and UPDATEd 1 pipeline_state row (the sector_affinity:industry_tag_signature sentinel). The gate's claim wrote the interlock and 17 holds, and released them. No MV op and no hand-fired tagger, refresh or rollup. Every other prod contact was a read: db-query --prod (reads 2, 5, 6, 7 and the read-back), prod_op_gate(120), the census (Logs API), the dry run, gh, and one HTTPS GET of /api/graph/sankey at 05:28 UTC. Five pushes to main before this report, each through the pre-push hook.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 4 (the FIX-1246 prod receipt) was not made because it is not readable yet. The first nightly tail after 6ddb302f is tonight's (dispatch 2026-09-30 21:00 UTC); this run ended at 05:32 UTC. The receipt stays cc-173's owed (i).",
+    "Read 7: check_sector_affinity_tag_staleness() was not read on prod. It DELETEs a probe row, and db-query --prod is read-only (ERROR: cannot execute DELETE in a read-only transaction). The stored signature and the shadow count were read directly instead."
+  ],
+  "lane": "fec",
+  "project": "industry-tags",
+  "owed": [
+    {
+      "fix": "FIX-1252",
+      "what": "tonight's tail re-tags under the dominant code: rule NAICS tags whose code differs from the entity's MIN code ~12.6k, industry-changing ~6.3k; the get_financial_entity_naics wall in the GHA log (vs 105.1 s MIN); sector_affinity_tag_refresh targeted with donors ~ the 73 plus re-tag drift (clone 12,500), officials re-derived ~431; stored sig = live; the 23 PACs' picks via primary_industry_tag(ARRAY[...])",
+      "after": "2026-09-30T21:30Z"
+    },
+    {
+      "fix": "FIX-1254",
+      "what": "jobid 28's Thursday rebuild: neither contract rollup table carries any of the seven old labels or a ^[a-z_]+$ string; totals equal 259,401,096,179,104 and 240,884,054,588,325 (the 09-24 USASpending runs wrote 0 rows); Electric Boat, RTX and Sikorsky show under Defense & Aerospace on the treemap; the same read is FIX-1247's owed record (cc-173 owed ii)",
+      "after": "2026-10-01T14:45Z"
+    },
+    {
+      "fix": "FIX-1245",
+      "what": "jobid 10 (Tue 00:47 UTC) rebuilds official_sector_dollars_mv and chord_industry_flows_mv on the provenance-first rank; MV total = ledger, and the 23 PACs sit under their new industries",
+      "after": "2026-10-06T01:30Z"
+    }
+  ]
+}
