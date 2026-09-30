@@ -1523,3 +1523,10 @@
 2026-09-29 | FIX-1178 | 863b820f | prod-only | chore(fixes): record prod verification of FIX-1178
 2026-09-29 | FIX-969 | 044d4f10 | prod-only | chore(fixes): record prod verification of FIX-969
 2026-09-29 | FIX-993 | f4ccdc85 | prod-only | chore(fixes): record prod verification of FIX-993
+2026-09-29 | FIX-1238 | 6bf492ea | local-only | fix(data): FIX-1238 — a roll whose bill has no bill_details row is landed once or skipped with a count; completeSync reports the skips
+2026-09-29 | FIX-1246 | 6ddb302f | local-only | feat(data): FIX-1246 — NAICS 54 is not tech: the 54/541 catch-alls retired, 5417 added; the sector-56 precedent
+2026-09-29 | FIX-1247 | d1bdae87 | local-only | feat(db): FIX-1247 — the contract surfaces carry display labels (chord, treemap, both rollups; 53/55 arms)
+2026-09-29 | FIX-1249 | 35392b96 | prod-only | chore(fixes): record prod verification of FIX-1249
+2026-09-29 | FIX-1249 | b548861c | local-only | feat(data,docs): FIX-1249 — donor_party_crawl config row: full_rebuild_lag_days 30 (the SQL file; the runner merges instead of overwriting)
+2026-09-29 | FIX-1253 | 011124a9 | local-only | fix(scripts): FIX-1253 — db-push-prod drops every --, not only a leading one
+2026-09-29 | FIX-1253 | cf1603cd | prod-only | chore(fixes): record prod verification of FIX-1253
