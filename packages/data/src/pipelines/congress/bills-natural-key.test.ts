@@ -262,6 +262,20 @@ test("7. resolveBillsBatch returns the HOLDER for a ref-less key and hands confl
   assert.ok(String(map.get("119-HR-777")).startsWith("minted-"));
   assert.equal(map.get("119-HR-5000"), null);
   assert.equal(conflicts.length, 1);
+  assert.equal(s.proposals.length, 3 + 1, "only HR 777 was minted");
+  // The vote path's args are placeholders (title = the bill number): a bound
+  // holder's row must not be overwritten with them.
+  assert.equal(s.proposals.find((p) => p.id === "orphan")!.title, "Protect Economic and Academic Freedom Act of 2025");
+});
+
+test("7b. a failed natural-key read in the resolver throws — the chamber's votes are not written against a guess", async () => {
+  const s = holderState();
+  s.failReads = new Set(["bill_details"]);
+  await assert.rejects(
+    resolveBillsBatch(asDb(s), new Map([[bill(4795).billKey, bill(4795)]])),
+    /natural-key-holders/,
+  );
+  assert.equal(s.proposals.length, 2);
 });
 
 test("8. a second run over the same keys is a no-op", async () => {
