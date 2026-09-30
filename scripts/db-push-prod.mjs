@@ -19,6 +19,7 @@
 //   pnpm db:push:prod                 # apply all pending migrations to Pro
 //   pnpm db:push:prod -- --dry-run    # list pending migrations, apply nothing
 //   pnpm db:push:prod -- --include-all
+//   node scripts/db-push-prod.mjs --workdir <worktree> --dry-run   # a worktree's migrations
 //
 // Extra args after `--` are forwarded verbatim to `supabase db push`.
 
@@ -61,13 +62,16 @@ if (!url.includes("@") || url === baseUrl) {
 }
 const redacted = url.replace(encodeURIComponent(password), "********");
 
-// pnpm forwards the `--` argument separator itself, so process.argv can lead
-// with a literal "--". Drop leading `--` tokens before they reach the supabase
-// CLI: cobra treats `--` as end-of-flags, which makes it IGNORE a following
-// --dry-run and silently turn a preview into a real push (and in a non-TTY the
-// [Y/n] confirm auto-accepts). This guards that footgun.
-let passthrough = process.argv.slice(2);
-while (passthrough[0] === "--") passthrough = passthrough.slice(1);
+// pnpm forwards the `--` argument separator itself, so process.argv can carry
+// a literal "--": leading (`pnpm db:push:prod -- --dry-run`) or after the
+// wrapper's own flags (`node scripts/db-push-prod.mjs --workdir <dir> -- --dry-run`).
+// Drop EVERY `--` before it reaches the supabase CLI: cobra treats `--` as
+// end-of-flags, which makes it IGNORE a following --dry-run and silently turn a
+// preview into a real push (and in a non-TTY the [Y/n] confirm auto-accepts).
+// `supabase db push` takes no positional arguments, so a `--` never carries
+// anything to preserve. FIX-1253: the leading-only strip let cc-173's
+// `--workdir … -- --dry-run` apply a migration it meant to preview.
+const passthrough = process.argv.slice(2).filter((a) => a !== "--");
 
 const isDryRun = passthrough.includes("--dry-run");
 const args = ["db", "push", "--db-url", url, ...passthrough];
