@@ -9,7 +9,7 @@
 // Run:   pnpm check:doc-links:test
 // Exit:  0 on pass, 1 on fail.
 
-import { scanText, resolveRef, checkTree, compareKnown, planArchive } from "./check-doc-links.mjs";
+import { scanText, resolveRef, checkTree, compareKnown, planArchive, stripCodeSpans, isFutureReceipt } from "./check-doc-links.mjs";
 
 const failures = [];
 function assertEq(label, actual, expected) {
@@ -57,6 +57,33 @@ assertEq("two breaks: the missing backtick path and the missing link", r1.breaks
 const cmp = compareKnown(r1.breaks, [{ file: "docs/A.md", target: "docs/C.md" }, { file: "docs/Z.md", target: "fixed.md" }]);
 assertEq("a known break is not fresh; an unknown one is", [cmp.fresh.map((b) => b.target), cmp.known.map((b) => b.target)], [["docs/GONE.md"], ["docs/C.md"]]);
 assertEq("a known break that resolves now is stale", cmp.stale.map((s) => s.target), ["fixed.md"]);
+
+// -- 2b. FIX-1244: code spans and future receipts -------------------------------
+console.log("\ncode spans + future receipts:");
+{
+  const shapes = scanText(
+    [
+      "An example: `[title](docs/GONE.md)` is how a link looks.", // a link INSIDE a code span — not a reference
+      "Double: ``[t](docs/GONE2.md)`` too.",
+      "Link text in code: [`docs/GRAPH_PLAN.md`](GRAPH_PLAN.md).", // a code span as link TEXT — still a link
+      "Path in backticks is still checked: `docs/THERE.md`.",
+    ].join("\n"),
+  );
+  assertEq(
+    "a link inside a code span is not a finding; code-as-link-text still is; backtick paths still are",
+    shapes.map((r) => `${r.line}:${r.kind}:${r.target}`),
+    // Line 3 also yields the backtick kind for its code-span text — that kind is deliberate.
+    ["3:link:GRAPH_PLAN.md", "3:backtick:docs/GRAPH_PLAN.md", "4:backtick:docs/THERE.md"],
+  );
+  assertEq("stripCodeSpans keeps columns", stripCodeSpans("a `b` c").length, "a `b` c".length);
+
+  const rt = new Map([["docs/cc/reports/cc-1.md", "Owed: `docs/receipts/2026-10-04.md` §4 and [past](../../receipts/2026-09-01.md)."]]);
+  const r3 = checkTree([...rt.keys()], (f) => rt.get(f), () => false, { today: "2026-09-30" });
+  assertEq("a FUTURE receipts path is not a finding; a PAST one (missing) is", r3.breaks.map((b) => b.target), ["../../receipts/2026-09-01.md"]);
+  const r4 = checkTree([...rt.keys()], (f) => rt.get(f), () => false, { today: "2026-10-04" });
+  assertEq("on its own date the receipt is checked like any other path", r4.breaks.map((b) => b.target).sort(), ["../../receipts/2026-09-01.md", "docs/receipts/2026-10-04.md"]);
+  assertEq("isFutureReceipt: .json too, and only under docs/receipts/", [isFutureReceipt("docs/receipts/2026-12-01.json", "2026-09-30"), isFutureReceipt("docs/audits/2026-12-01.md", "2026-09-30")], [true, false]);
+}
 
 // -- 3. the archive move -------------------------------------------------------
 console.log("\nplanArchive:");

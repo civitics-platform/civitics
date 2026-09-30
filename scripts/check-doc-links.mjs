@@ -75,6 +75,31 @@ const toPosix = (p) => p.split("\\").join("/");
 // `YYYY-MM-DD.md`, `FIX-NNN.md`.
 const TEMPLATED = /[<>*{}$|]|\bNNN\b|YYYY|\bX\.md$|\.\.\.|…/;
 
+// FIX-1244 — a receipts file named for a day that has not happened yet: a
+// report that owes a receipt names the file it WILL be in (cc-167.md cites
+// `docs/receipts/2026-10-04.md`). Exempt while the date is after today; on the
+// day the nightly writes it, and if it never does, the path is checked like
+// any other. Judged on the RESOLVED path, so a relative link counts too.
+export const FUTURE_RECEIPT = /^docs\/receipts\/(\d{4}-\d{2}-\d{2})\.(md|json)$/;
+
+/** True when `resolved` is a receipts file for a date after `today` (YYYY-MM-DD, UTC). */
+export function isFutureReceipt(resolved, today) {
+  const m = FUTURE_RECEIPT.exec(String(resolved ?? ""));
+  return m !== null && m[1] > today;
+}
+
+/**
+ * FIX-1244 — an inline code span is an EXAMPLE, not a link: `[title](docs/x.md)`
+ * between backticks documents the shape. Every span (single or multi-backtick)
+ * is blanked to spaces of the same length before the markdown-link regex runs,
+ * so `[`docs/X.md`](X.md)` — a code span as link TEXT — is still a link. The
+ * backtick-path kind reads the ORIGINAL line: a `docs/X.md` in backticks is
+ * exactly what that kind checks.
+ */
+export function stripCodeSpans(line) {
+  return String(line).replace(/(`+)([\s\S]*?)\1(?!`)/g, (m) => " ".repeat(m.length));
+}
+
 /**
  * Every doc reference in one file's text.
  * @returns {{line: number, kind: "link"|"backtick", raw: string, target: string}[]}
@@ -90,8 +115,8 @@ export function scanText(text) {
       return;
     }
     if (fence) return;
-    // [text](target.md#anchor "title") — relative only.
-    for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+?\.md)(#[^)\s]*)?>?(?:\s+"[^"]*")?\s*\)/g)) {
+    // [text](target.md#anchor "title") — relative only, outside code spans.
+    for (const m of stripCodeSpans(line).matchAll(/\]\(\s*<?([^)\s>]+?\.md)(#[^)\s]*)?>?(?:\s+"[^"]*")?\s*\)/g)) {
       const t = m[1];
       if (/^[a-z][a-z0-9+.-]*:/i.test(t) || TEMPLATED.test(t)) continue;
       out.push({ line: i + 1, kind: "link", raw: m[0], target: t });
@@ -132,16 +157,18 @@ export function checkFiles(root = REPO) {
 }
 
 /**
- * Check every reference. `exists(rel)` is injected (tests pass a Set).
+ * Check every reference. `exists(rel)` is injected (tests pass a Set), and so
+ * is `today` (UTC YYYY-MM-DD) for the FUTURE_RECEIPT exemption.
  * @returns {{refs: number, breaks: {file, line, kind, target, resolved}[]}}
  */
-export function checkTree(files, readRel, exists) {
+export function checkTree(files, readRel, exists, { today = new Date().toISOString().slice(0, 10) } = {}) {
   let refs = 0;
   const breaks = [];
   for (const f of files) {
     for (const r of scanText(readRel(f))) {
       refs += 1;
       const resolved = resolveRef(f, r);
+      if (resolved !== null && isFutureReceipt(resolved, today)) continue;
       if (resolved === null || !exists(resolved)) breaks.push({ file: f, line: r.line, kind: r.kind, target: r.target, resolved: resolved ?? "(outside the repo)" });
     }
   }
