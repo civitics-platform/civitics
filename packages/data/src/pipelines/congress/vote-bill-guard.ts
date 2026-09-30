@@ -12,7 +12,10 @@
  *       back-fills `bill_details`;
  *   (b) the compound unique `(jurisdiction_id, session, bill_number)` is held
  *       by a DIFFERENT proposal, so the `ignoreDuplicates` upsert wrote nothing
- *       while the new ref bound the bill key to the new id.
+ *       while the new ref bound the bill key to the new id. FIX-1256 stops (b)
+ *       at the source — the batch writer binds the ref to the holder before
+ *       it mints — and repaired the three live pairs; the guard still catches
+ *       any that predate it.
  *
  * Either way the whole roll (~433 rows for `2026-house-295`) was inserted,
  * failed `votes_bill_proposal_id_fkey`, and rolled back — every night, because

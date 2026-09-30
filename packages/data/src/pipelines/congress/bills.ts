@@ -243,11 +243,102 @@ const BILL_CHUNK_SIZE = 500;
 // buffer, which routinely exceeds 200 keys.
 const RESOLVE_IN_CHUNK = 200;
 
+/**
+ * FIX-1256 — a bill key that could not be bound to one proposal cleanly.
+ * Counted in `failed` and carried to `data_sync_log.metadata.bill_key_conflicts`;
+ * which proposal is the bill is left for a human.
+ */
+export interface BillKeyConflict {
+  bill_key: string;
+  /**
+   * holder_has_other_ref — the proposal holding the natural key already carries
+   *   a DIFFERENT congress_gov ref, so the key is neither bound to it nor minted.
+   * bill_details_key_conflict — the key was free when read and taken by the time
+   *   the minted proposal's bill_details row was written; the minted proposal is
+   *   left WITHOUT the ref, so the next run binds the ref to the holder.
+   */
+  reason: "holder_has_other_ref" | "bill_details_key_conflict";
+  /** The proposal holding `(jurisdiction_id, session, bill_number)`, when it could be read. */
+  holder_proposal_id: string | null;
+  holder_external_id?: string;
+  minted_proposal_id?: string;
+}
+
 export interface BillBatchResult {
   /** Successfully inserted or updated proposals. */
   upserted: number;
-  /** Rows that failed at the proposals write (bill_details/refs errors are logged but not counted). */
+  /**
+   * Rows that failed at the proposals write, plus every key in `keyConflicts`
+   * (bill_details/refs chunk errors are logged but not counted).
+   */
   failed: number;
+  /** FIX-1256: keys with no ref whose bill_details key-holder was found and bound instead of minting. */
+  bound: number;
+  keyConflicts: BillKeyConflict[];
+}
+
+/**
+ * FIX-1256 — the natural key of `bill_details`, UNIQUE
+ * `(jurisdiction_id, session, bill_number)`. Every writer derives it from the
+ * same three args, so a bill's key-holder can be found without its ref.
+ */
+export function billNaturalKey(
+  args: Pick<BillProposalArgs, "jurisdictionId" | "session" | "billNumber">,
+): { jurisdiction_id: string; session: string; bill_number: string } {
+  return { jurisdiction_id: args.jurisdictionId, session: args.session, bill_number: args.billNumber };
+}
+
+/** The `bill_details` row for `proposalId` — every column derives from the bill key. */
+export function billDetailsRow(proposalId: string, args: BillProposalArgs) {
+  return {
+    proposal_id: proposalId,
+    ...billNaturalKey(args),
+    chamber: args.chamber,
+    congress_number: args.congressNumber,
+    congress_gov_url: args.congressGovUrl,
+  };
+}
+
+/**
+ * FIX-1256 — billKey → the proposal holding its `bill_details` natural key,
+ * for keys that have one. `null` when any chunk could not be read: the caller
+ * must not mint blind, because minting next to an unseen holder is the stub.
+ */
+async function lookupBillDetailHolders(
+  db: Db,
+  items: BillProposalArgs[],
+): Promise<Map<string, string> | null> {
+  const out = new Map<string, string>();
+  const groups = new Map<string, BillProposalArgs[]>();
+  for (const item of items) {
+    const g = `${item.jurisdictionId}|${item.session}`;
+    const list = groups.get(g) ?? [];
+    list.push(item);
+    groups.set(g, list);
+  }
+  for (const list of groups.values()) {
+    const { jurisdiction_id, session } = billNaturalKey(list[0]!);
+    const { rows, failed } = await fetchChunkedByIds<{ proposal_id: string; bill_number: string }>(
+      list.map((i) => i.billNumber),
+      (chunk) => db
+        .from("bill_details")
+        .select("proposal_id, bill_number")
+        .eq("jurisdiction_id", jurisdiction_id)
+        .eq("session", session)
+        .in("bill_number", chunk),
+      { chunkSize: RESOLVE_IN_CHUNK, label: "bills:natural-key-holders" },
+    );
+    if (failed.length > 0) {
+      console.error(`    bills.ts batch: natural-key lookup error: ${failed[0]!.error.message}`);
+      return null;
+    }
+    const holderByNumber = new Map(rows.map((r) => [r.bill_number, r.proposal_id]));
+    for (const item of list) {
+      const holder = holderByNumber.get(item.billNumber);
+      if (holder) out.set(item.billKey, holder);
+    }
+  }
+  return out;
 }
 
 function buildProposalInsert(args: BillProposalArgs): ProposalInsert {
@@ -273,7 +364,7 @@ export async function upsertBillProposalsBatch(
   db: Db,
   items: BillProposalArgs[]
 ): Promise<BillBatchResult> {
-  if (items.length === 0) return { upserted: 0, failed: 0 };
+  if (items.length === 0) return { upserted: 0, failed: 0, bound: 0, keyConflicts: [] };
 
   // Client-side dedupe by billKey — duplicate keys in the same batch would
   // trip ON CONFLICT "cannot affect row a second time". Later wins.
@@ -304,7 +395,7 @@ export async function upsertBillProposalsBatch(
 
   if (lookupFailed.length > 0) {
     console.error(`    bills.ts batch: lookup error: ${lookupFailed[0]!.error.message}`);
-    return { upserted: 0, failed: deduped.length };
+    return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [] };
   }
 
   const existingMap = new Map<string, string>();
@@ -312,17 +403,106 @@ export async function upsertBillProposalsBatch(
     existingMap.set(r.external_id, r.entity_id);
   }
 
-  // Step 2: partition into update vs insert
+  // Step 1b (FIX-1256): a key with no ref may still have its proposal — one
+  // that holds the bill_details natural key but lost its ref. The 08-04 sync
+  // lost the refs write for 18 House bills to a statement timeout (the three
+  // writes below are separate PostgREST calls, not one transaction), and each
+  // later ingest of three of them minted a stub that took the ref while the
+  // ignoreDuplicates bill_details upsert left the key on the holder. So bind
+  // a NEW ref to the holder instead of minting.
+  const unresolved = deduped.filter((i) => !existingMap.has(i.billKey));
+  const holders = unresolved.length > 0 ? await lookupBillDetailHolders(db, unresolved) : new Map<string, string>();
+  if (holders === null) {
+    return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [] };
+  }
+
+  // A holder already bound to a DIFFERENT congress_gov key (a renumbered
+  // bill?) is not ours to rebind.
+  const holderRefs = new Map<string, string>();
+  if (holders.size > 0) {
+    const { rows, failed: refFailed } = await fetchChunkedByIds<{ entity_id: string; external_id: string }>(
+      [...new Set(holders.values())],
+      (chunk) => db
+        .from("external_source_refs")
+        .select("entity_id, external_id")
+        .eq("source", "congress_gov")
+        .eq("entity_type", "proposal")
+        .in("entity_id", chunk),
+      { chunkSize: RESOLVE_IN_CHUNK, label: "bills:holder-refs" },
+    );
+    if (refFailed.length > 0) {
+      console.error(`    bills.ts batch: holder-ref lookup error: ${refFailed[0]!.error.message}`);
+      return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [] };
+    }
+    for (const r of rows) holderRefs.set(r.entity_id, r.external_id);
+  }
+
+  // Step 2: partition into update vs bind vs insert
   const toUpdate: Array<{ id: string; args: BillProposalArgs }> = [];
+  const toBind: Array<{ id: string; args: BillProposalArgs }> = [];
   const toInsert: BillProposalArgs[] = [];
+  const keyConflicts: BillKeyConflict[] = [];
   for (const item of deduped) {
     const existingId = existingMap.get(item.billKey);
-    if (existingId) toUpdate.push({ id: existingId, args: item });
-    else toInsert.push(item);
+    const holder = holders.get(item.billKey);
+    if (existingId) {
+      toUpdate.push({ id: existingId, args: item });
+    } else if (holder) {
+      const other = holderRefs.get(holder);
+      if (other !== undefined && other !== item.billKey) {
+        console.error(
+          `    bills.ts batch: ${item.billKey} — its bill_details key is held by proposal ${holder}, ` +
+            `which is already bound to congress_gov ${other}; neither bound nor minted (FIX-1256)`,
+        );
+        keyConflicts.push({
+          bill_key: item.billKey,
+          reason: "holder_has_other_ref",
+          holder_proposal_id: holder,
+          holder_external_id: other,
+        });
+      } else {
+        toBind.push({ id: holder, args: item });
+      }
+    } else {
+      toInsert.push(item);
+    }
   }
 
   let upserted = 0;
-  let failed = 0;
+  let failed = keyConflicts.length;
+  let bound = 0;
+
+  // Step 2b (FIX-1256): bind each holder's ref, then treat it as an existing
+  // bill — Step 3 refreshes its proposals row from this run's congress.gov data.
+  for (let i = 0; i < toBind.length; i += BILL_CHUNK_SIZE) {
+    const chunk = toBind.slice(i, i + BILL_CHUNK_SIZE);
+    const { error } = await db
+      .from("external_source_refs")
+      .upsert(
+        chunk.map(({ id, args }) => ({
+          source: "congress_gov",
+          external_id: args.billKey,
+          entity_type: "proposal",
+          entity_id: id,
+          source_url: args.congressGovUrl,
+          metadata: {},
+        })),
+        { onConflict: "source,external_id", ignoreDuplicates: true },
+      );
+    if (error) {
+      console.error(`    bills.ts batch: holder ref bind chunk ${i}-${i + chunk.length}: ${error.message}`);
+      failed += chunk.length;
+      continue;
+    }
+    bound += chunk.length;
+    toUpdate.push(...chunk);
+  }
+  if (bound > 0) {
+    console.log(
+      `    bills.ts batch: bound ${bound} ref(s) to an existing bill_details key-holder instead of minting (FIX-1256): ` +
+        toBind.slice(0, 10).map(({ id, args }) => `${args.billKey}→${id}`).join(", "),
+    );
+  }
 
   // Step 3: batched UPDATE via upsert(onConflict='id'). Every row has a
   // known-existing id, so the ON CONFLICT path runs for all of them.
@@ -368,35 +548,56 @@ export async function upsertBillProposalsBatch(
       upserted += data.length;
     }
 
-    // 4b: bill_details — batched upsert ignoring duplicates on the compound
-    // unique (some bills already have bill_details from a prior run that's
-    // missing an external_source_refs row).
+    // 4b: bill_details. Step 1b already bound every key whose natural key had
+    // a holder, so a key conflict here is a key taken between that read and
+    // this write — never ignored (FIX-1256): the rows the upsert did not
+    // return are logged with both ids, counted, and kept off the ref in 4c.
+    const argsByMinted = new Map<string, BillProposalArgs>();
     const billDetailRecords = toInsert
       .map((args, idx) => {
         const proposalId = insertedIds[idx];
         if (!proposalId) return null;
-        return {
-          proposal_id: proposalId,
-          bill_number: args.billNumber,
-          chamber: args.chamber,
-          session: args.session,
-          congress_number: args.congressNumber,
-          congress_gov_url: args.congressGovUrl,
-          jurisdiction_id: args.jurisdictionId,
-        };
+        argsByMinted.set(proposalId, args);
+        return billDetailsRow(proposalId, args);
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
+    const unlanded: string[] = [];
     for (let i = 0; i < billDetailRecords.length; i += BILL_CHUNK_SIZE) {
       const chunk = billDetailRecords.slice(i, i + BILL_CHUNK_SIZE);
-      const { error } = await db
+      const { data, error } = await db
         .from("bill_details")
         .upsert(chunk, {
           onConflict: "jurisdiction_id,session,bill_number",
           ignoreDuplicates: true,
-        });
+        })
+        .select("proposal_id");
       if (error) {
         console.error(`    bills.ts batch: bill_details chunk ${i}-${i + chunk.length}: ${error.message}`);
+        continue;
+      }
+      const landed = new Set(((data ?? []) as Array<{ proposal_id: string }>).map((r) => r.proposal_id));
+      for (const r of chunk) if (!landed.has(r.proposal_id)) unlanded.push(r.proposal_id);
+    }
+
+    const unbound = new Set(unlanded);
+    if (unlanded.length > 0) {
+      const conflicted = unlanded.map((id) => argsByMinted.get(id)!);
+      const holdersNow = (await lookupBillDetailHolders(db, conflicted)) ?? new Map<string, string>();
+      for (const minted of unlanded) {
+        const args = argsByMinted.get(minted)!;
+        const holder = holdersNow.get(args.billKey) ?? null;
+        console.error(
+          `    bills.ts batch: ${args.billKey} — bill_details key taken by proposal ${holder ?? "(unread)"} ` +
+            `after the natural-key read; minted proposal ${minted} is left WITHOUT the ref (FIX-1256)`,
+        );
+        keyConflicts.push({
+          bill_key: args.billKey,
+          reason: "bill_details_key_conflict",
+          holder_proposal_id: holder,
+          minted_proposal_id: minted,
+        });
+        failed += 1;
       }
     }
 
@@ -404,7 +605,7 @@ export async function upsertBillProposalsBatch(
     const refRecords = toInsert
       .map((args, idx) => {
         const proposalId = insertedIds[idx];
-        if (!proposalId) return null;
+        if (!proposalId || unbound.has(proposalId)) return null;
         return {
           source: "congress_gov",
           external_id: args.billKey,
@@ -442,7 +643,7 @@ export async function upsertBillProposalsBatch(
     await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
 
-  return { upserted, failed };
+  return { upserted, failed, bound, keyConflicts };
 }
 
 // ---------------------------------------------------------------------------
@@ -485,24 +686,17 @@ export async function landBillDetails(
   | { status: "collision"; holderProposalId: string | null }
   | { status: "failed"; message: string }
 > {
-  const { error } = await db.from("bill_details").insert({
-    proposal_id: proposalId,
-    bill_number: args.billNumber,
-    chamber: args.chamber,
-    session: args.session,
-    congress_number: args.congressNumber,
-    congress_gov_url: args.congressGovUrl,
-    jurisdiction_id: args.jurisdictionId,
-  });
+  const { error } = await db.from("bill_details").insert(billDetailsRow(proposalId, args));
   if (!error) return { status: "landed" };
   if (error.code !== "23505") return { status: "failed", message: error.message };
 
+  const key = billNaturalKey(args);
   const { data: holder, error: holderErr } = await db
     .from("bill_details")
     .select("proposal_id")
-    .eq("jurisdiction_id", args.jurisdictionId)
-    .eq("session", args.session)
-    .eq("bill_number", args.billNumber)
+    .eq("jurisdiction_id", key.jurisdiction_id)
+    .eq("session", key.session)
+    .eq("bill_number", key.bill_number)
     .maybeSingle();
   if (holderErr) {
     console.error(`    bills.ts: bill_details holder lookup failed for ${args.billKey}: ${holderErr.message}`);
@@ -518,12 +712,17 @@ export async function landBillDetails(
 /**
  * Resolve billKey → proposalId for every key in billArgsBuffer.
  * - Existing bills: found in a single bulk external_source_refs lookup.
- * - Novel bills: inserted via upsertBillProposalsBatch, then re-fetched.
- * Returns a Map covering every key (null for any that couldn't be resolved).
+ * - Bills whose ref is missing but whose bill_details natural key is held:
+ *   upsertBillProposalsBatch binds a ref to the holder (FIX-1256's second pass).
+ * - Novel bills: inserted via upsertBillProposalsBatch.
+ * Both are then re-fetched through their refs. Returns a Map covering every
+ * key (null for any that couldn't be resolved); key conflicts are appended to
+ * `conflicts` so the caller can count them in rows_failed.
  */
 export async function resolveBillsBatch(
   db: Db,
-  billArgsBuffer: Map<string, BillProposalArgs>
+  billArgsBuffer: Map<string, BillProposalArgs>,
+  conflicts?: BillKeyConflict[],
 ): Promise<Map<string, string | null>> {
   if (billArgsBuffer.size === 0) return new Map();
 
@@ -559,7 +758,8 @@ export async function resolveBillsBatch(
   );
 
   if (novelArgs.length > 0) {
-    await upsertBillProposalsBatch(db, novelArgs);
+    const batch = await upsertBillProposalsBatch(db, novelArgs);
+    conflicts?.push(...batch.keyConflicts);
     const freshRefs = await lookupRefs(
       novelArgs.map((a) => a.billKey),
       "bills resolve fresh-refs",

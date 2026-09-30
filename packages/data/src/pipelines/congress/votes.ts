@@ -42,6 +42,7 @@ import {
   chamberForBillType,
   presentBillDetailIds,
   landBillDetails,
+  type BillKeyConflict,
   type BillProposalArgs,
 } from "./bills";
 import {
@@ -431,6 +432,9 @@ export async function runVotesPipeline(
   // and rolls whose insert failed for any other reason. Both are rows_failed.
   const skippedRolls: SkippedRoll[] = [];
   const insertFailures: InsertFailure[] = [];
+  // FIX-1256 — bill keys not bound to exactly one proposal (a key-holder that
+  // carries a different ref, or a key taken mid-write). Also rows_failed.
+  const billKeyConflicts: BillKeyConflict[] = [];
 
   const billDetailsDeps: BillDetailsGuardDeps = {
     presentIds: (ids) => presentBillDetailIds(db, ids),
@@ -504,6 +508,7 @@ export async function runVotesPipeline(
     try {
       const batchResult = await upsertBillProposalsBatch(db, batchArgs);
       proposalsUpserted += batchResult.upserted;
+      billKeyConflicts.push(...batchResult.keyConflicts);
       if (batchResult.failed > 0) {
         console.warn(`  ${batchResult.failed} ${label} failed in batch`);
       }
@@ -670,7 +675,7 @@ export async function runVotesPipeline(
 
   // Batch resolve: one bulk lookup + one bulk insert for novel bills
   console.log(`\n  Resolving ${houseBillArgs.size} unique House bills in batch...`);
-  const houseBillKeyToId = await resolveBillsBatch(db, houseBillArgs);
+  const houseBillKeyToId = await resolveBillsBatch(db, houseBillArgs, billKeyConflicts);
   proposalsUpserted += [...houseBillKeyToId.values()].filter((v) => v !== null).length;
 
   // FIX-1238: every roll about to be written must reference a proposal that
@@ -898,7 +903,7 @@ export async function runVotesPipeline(
 
   // Batch resolve: one bulk lookup + one bulk insert for novel bills
   console.log(`\n  Resolving ${senateBillArgs.size} unique Senate bills in batch...`);
-  const senateBillKeyToId = await resolveBillsBatch(db, senateBillArgs);
+  const senateBillKeyToId = await resolveBillsBatch(db, senateBillArgs, billKeyConflicts);
   proposalsUpserted += [...senateBillKeyToId.values()].filter((v) => v !== null).length;
 
   // FIX-1238 — the same guard as the House side.
@@ -978,21 +983,36 @@ export async function runVotesPipeline(
     );
   }
 
+  if (billKeyConflicts.length > 0) {
+    console.warn(
+      `\n  ⚠ FIX-1256: ${billKeyConflicts.length} bill key(s) not bound to one proposal: ` +
+        billKeyConflicts
+          .map((c) => `${c.bill_key} (${c.reason}; holder ${c.holder_proposal_id ?? "?"})`)
+          .join(", "),
+    );
+  }
+
   console.log(
     `\nVotes pipeline complete: ${proposalsUpserted} proposals upserted, ${votesInserted} votes inserted, ` +
-      `${skippedRolls.length} roll(s) skipped, ${insertFailures.length} roll insert(s) failed`
+      `${skippedRolls.length} roll(s) skipped, ${insertFailures.length} roll insert(s) failed, ` +
+      `${billKeyConflicts.length} bill key conflict(s)`
   );
 
     const estimatedMb = +(((proposalsUpserted + votesInserted) * 200) / 1024 / 1024).toFixed(2);
     // FIX-1238: rows_failed counts ROLLS not written — skipped for a missing
     // bill_details row, or whose insert failed for any other reason. It used
     // to be a hard-coded 0 while a 433-row roll failed every night.
+    // FIX-1256: plus every bill key not bound to exactly one proposal.
     await completeSync(logId, {
       inserted: votesInserted,
       updated: proposalsUpserted,
-      failed: skippedRolls.length + insertFailures.length,
+      failed: skippedRolls.length + insertFailures.length + billKeyConflicts.length,
       estimatedMb,
-      metadata: { skipped_rolls: skippedRolls, insert_failures: insertFailures },
+      metadata: {
+        skipped_rolls: skippedRolls,
+        insert_failures: insertFailures,
+        bill_key_conflicts: billKeyConflicts,
+      },
     });
 
     return { proposalsUpserted, votesInserted };
