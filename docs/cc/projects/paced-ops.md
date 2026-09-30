@@ -8,9 +8,9 @@ goal: "P1 · Infrastructure"
 steps:
   - {id: s1, kind: cc, ref: "cc-162", title: "renders census + cancellation lens"}
   - {id: s2, kind: cc, ref: "cc-164", title: "paced runner: budget 3/CALL, breather census, edge floor p0 0.23 %"}
-  - {id: s3, kind: design, ref: "FIX-1178", title: "weekly-merge paced-op design note — is rebuild_financial_entity_size_tags a paced op? phase_seconds lens"}
-  - {id: s4, kind: cc, ref: "", title: "weekly-merge prompt"}
-  - {id: s5, kind: op, ref: "FIX-1178", title: "VACUUM (FULL) entity_tags as a later landing"}
+  - {id: s3, kind: design, ref: "FIX-1248", title: "weekly-merge paced-op design note — is rebuild_financial_entity_size_tags a paced op? phase_seconds lens"}
+  - {id: s4, kind: cc, ref: "", title: "weekly-merge prompt (FIX-1248)"}
+  - {id: s5, kind: op, ref: "FIX-1248", title: "VACUUM (FULL) entity_tags as a later landing"}
 ---
 
 # Paced ops
