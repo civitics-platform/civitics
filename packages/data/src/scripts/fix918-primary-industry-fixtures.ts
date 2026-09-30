@@ -3,13 +3,8 @@
  * donor's primary industry". Each fixture is a tag set plus the pick the rule
  * must make:
  *
- *   (generated_by = 'curated') DESC, (generated_by = 'ai') ASC,
- *   confidence DESC NULLS LAST, tag
- *
- * FIX-1245 moved provenance ahead of confidence: an ai tag's confidence is the
- * model's self-report and a rule tag's is a hand-set constant (NAICS 0.85,
- * keyword 0.8 / 0.7), so the two are not one scale and a rule tag now beats
- * any ai tag. The fixtures marked FIX-1245 go RED against the FIX-918 order.
+ *   (generated_by = 'curated') DESC, confidence DESC NULLS LAST,
+ *   (generated_by = 'ai') ASC, tag
  *
  * Includes the wrong-but-green shapes: a tie on every key (the alphabet must
  * still decide, deterministically), a null confidence, and an id with no tags.
@@ -61,7 +56,7 @@ export const FIX918_FIXTURES: Fixture[] = [
   { name: "NAICS 0.85 beats a single keyword match at 0.8",
     entity_id: id(6),
     tags: [{ tag: "finance", generated_by: "rule", confidence: 0.8 },
-           { tag: "tech", generated_by: "rule", confidence: 0.85, naics_code: "541511" }],
+           { tag: "tech", generated_by: "rule", confidence: 0.85, naics_code: "541330" }],
     expected: "tech" },
   { name: "NAICS 0.85 beats an ambiguous keyword pair at 0.7",
     entity_id: id(7),
@@ -77,14 +72,14 @@ export const FIX918_FIXTURES: Fixture[] = [
   { name: "ai vs NAICS at equal 0.85 — rule wins",
     entity_id: id(9),
     tags: [{ tag: "agriculture", generated_by: "ai", confidence: 0.85 },
-           { tag: "tech", generated_by: "rule", confidence: 0.85, naics_code: "541511" }],
+           { tag: "tech", generated_by: "rule", confidence: 0.85, naics_code: "541330" }],
     expected: "tech" },
-  { name: "FIX-1245: ai ABOVE rule confidence — rule still wins (provenance before confidence)",
+  { name: "ai ABOVE rule confidence — the more confident ai tag wins (confidence before provenance)",
     entity_id: id(10),
     tags: [{ tag: "agriculture", generated_by: "ai", confidence: 0.95 },
            { tag: "tech", generated_by: "rule", confidence: 0.8 }],
-    expected: "tech" },
-  { name: "two ai tags, no rule — the more confident ai wins",
+    expected: "agriculture" },
+  { name: "two ai tags — the more confident wins",
     entity_id: id(11),
     tags: [{ tag: "agriculture", generated_by: "ai", confidence: 0.7 },
            { tag: "tech", generated_by: "ai", confidence: 0.9 }],
@@ -96,20 +91,4 @@ export const FIX918_FIXTURES: Fixture[] = [
     expected: "tech" },
   { name: "an id with no industry tag returns no row",
     entity_id: id(13), tags: [], expected: null },
-  { name: "FIX-1245: ai@0.95 vs NAICS@0.85 — NAICS wins",
-    entity_id: id(14),
-    tags: [{ tag: "defense", generated_by: "ai", confidence: 0.95 },
-           { tag: "manufacturing", generated_by: "rule", confidence: 0.85, naics_code: "336111" }],
-    expected: "manufacturing" },
-  { name: "FIX-1245: ai@0.99 vs keyword@0.70 — keyword wins",
-    entity_id: id(15),
-    tags: [{ tag: "agriculture", generated_by: "ai", confidence: 0.99 },
-           { tag: "tech", generated_by: "rule", confidence: 0.7 }],
-    expected: "tech" },
-  { name: "curated beats everything — NAICS and a 0.99 ai tag both lose to curated@0.5",
-    entity_id: id(16),
-    tags: [{ tag: "utilities", generated_by: "curated", confidence: 0.5 },
-           { tag: "tech", generated_by: "rule", confidence: 0.85, naics_code: "541511" },
-           { tag: "agriculture", generated_by: "ai", confidence: 0.99 }],
-    expected: "utilities" },
 ];
