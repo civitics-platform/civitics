@@ -1,0 +1,88 @@
+{
+  "cc": "173",
+  "prompt": "cc-prompt-173-fix918-rank-provenance-first-naics54-catchalls-contract-chord-vocabulary.md",
+  "started_at": "2026-09-30T02:19:20Z",
+  "finished_at": "2026-09-30T04:01:10Z",
+  "head_before": "c0c545c0",
+  "head_after": "c179b030",
+  "commits": [
+    {
+      "sha": "62ec6713",
+      "subject": "docs(fixes): file FIX-1245, FIX-1246, FIX-1247 — provenance-first rank, NAICS 54 catch-alls, one contract vocabulary"
+    },
+    {
+      "sha": "47033c96",
+      "subject": "test(data): FIX-1245 — provenance-first fixtures for primary_industry_tag()"
+    },
+    {
+      "sha": "a433e2ce",
+      "subject": "docs(fixes): file FIX-1252 — get_financial_entity_naics() tags each contractor by MIN(naics_code), not its dominant code"
+    },
+    {
+      "sha": "77d087e3",
+      "subject": "Revert \\\"test(data): FIX-1245 — provenance-first fixtures for primary_industry_tag()\\\""
+    },
+    {
+      "sha": "d1bdae87",
+      "subject": "feat(db): FIX-1247 — the contract surfaces carry display labels (chord, treemap, both rollups; 53/55 arms)"
+    },
+    {
+      "sha": "011124a9",
+      "subject": "fix(scripts): FIX-1253 — db-push-prod drops every --, not only a leading one"
+    },
+    {
+      "sha": "6ddb302f",
+      "subject": "feat(data): FIX-1246 — NAICS 54 is not tech: the 54/541 catch-alls retired, 5417 added; the sector-56 precedent"
+    },
+    {
+      "sha": "6b80861e",
+      "subject": "feat(app,graph): FIX-1247 — the Sankey reads the shared NAICS label table and the tag's display_label; SpendingGraph / SankeyGraph colour every label"
+    },
+    {
+      "sha": "cf1603cd",
+      "subject": "chore(fixes): record prod verification of FIX-1253"
+    },
+    {
+      "sha": "c179b030",
+      "subject": "chore(fixes): sync status after FIX-1246, FIX-1247, FIX-1253 (and cc-174's FIX-1238, FIX-1249)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1246",
+    "FIX-1247",
+    "FIX-1253"
+  ],
+  "fixes_filed": [
+    "FIX-1245",
+    "FIX-1246",
+    "FIX-1247",
+    "FIX-1252",
+    "FIX-1253"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260930000000_fix1247_contract_display_labels.sql"
+  ],
+  "prod_writes": "One migration, 20260930000000_fix1247_contract_display_labels.sql, applied to Pro at about 02:47 UTC: SET statement_timeout, CREATE OR REPLACE of chord_contract_flows_full(), treemap_recipients_by_contracts_full() and PROCEDURE refresh_contract_flow_rollups(), RESET. It is metadata DDL with no data statement. It landed through what I ran as a DRY RUN (node ../../scripts/db-push-prod.mjs --workdir ../../../civitics-worktrees/fix-1245 -- --dry-run, from the primary's packages/data). The wrapper forwarded the mid-argv -- and cobra ignored --dry-run; that is FIX-1253, fixed in this run. So it went in WITHOUT session:wait-for-gate and without a held read immediately before it. The nearest reads were held=false at 02:44:08 and 02:48:01 UTC. Right after, prod_op_gate(120) read ok:true (02:48:28), and the census PASSed: renders 0 over 01:48:30-02:48:30 UTC, front door 0 5xx of 1,724 in the 02:30 bucket. Read-back: the five pg_get_functiondef bodies are byte-equal to the clone's; donor_industry_tag_state (81,415) and the tag signature are untouched. No other prod write: FIX-1245's function change, re-dirty DELETE and sentinel UPDATE never ran on prod. Nine pushes to main, each after a held=false read (02:27:49, 02:30:05, 02:44:08, 02:48:43, 02:50:04, 02:52:43, 03:55:31, 03:56:44, 03:57:28 UTC); this report is a tenth. Every other prod contact was a read: db-query --prod, the census (Logs API), a db-push-prod dry run that did forward --dry-run after the fix (~02:51, nothing pending), gh, and one HTTPS GET of /api/graph/sankey on the Vercel origin (03:58 UTC).",
+  "ci": "green",
+  "stopped_items": [
+    "D1 / FIX-1245 STOPPED (tree contradicts the premise). The prompt sized the provenance-first rank at cc-166's 23 donors ($4.82M-class). Prod today has 73 pick-changers: those 23 PACs ($2,417,581.00 to officials) plus 50 NAICS-tagged contractors ($0 donated, $428.0B of contracts). 26 of the 50 ($270.4B) would move to a tag derived from MIN(naics_code), the lexicographically smallest code on any of their contracts, not their dominant one (FIX-1252). Examples: Electric Boat defense → oil_gas on 213113 ($112.4B); 10 defense primes → manufacturing ($121.1B). So the rank change, the re-dirty DELETE, the sentinel UPDATE, the prod verification record (item 5) and owed (iii) did not happen. The fixture commit 47033c96 was reverted by 77d087e3. FIX-1245 stays OPEN behind FIX-1252.",
+    "Item 2's migration did not land behind session:wait-for-gate as specified: a preview with a mid-argv -- applied it (FIX-1253). The gate conditions read clean right after (see prod_writes); the wrapper is fixed.",
+    "permission prompt: one command was denied. It was the SQL-side live mutant for the FIX-1247 drift test: sed an arm of the committed 20260930000000 migration in the worktree, run naics-sector-label.test.ts, then git checkout -- the file. I stopped that command. The SQL side is covered by the test's own in-memory arm edit (test 2), and the TS-side live mutant ran (2 of 4 red).",
+    "Item 1 carries only the D1 fixtures. The D2 NAICS fixtures and the D3 drift test rode their code commits (6ddb302f, 6b80861e): pushed ahead of the code, they would have turned tests.yml's @civitics/data and @civitics/app-civitics suites red on main."
+  ],
+  "lane": "fec",
+  "project": "industry-tags",
+  "owed": [
+    {
+      "fix": "FIX-1246",
+      "what": "the first nightly tail after 6ddb302f retires the NAICS-54 catch-all tags: 0 rule rows with metadata naics_code LIKE '54%' outside 5411/5412/5415/5417, KEEP counts ~3,284/2,338/734/140, sector_affinity_tag_refresh path targeted with ~7,212 donors changed",
+      "after": "2026-09-30T21:30Z"
+    },
+    {
+      "fix": "FIX-1247",
+      "what": "jobid 28's Thursday rebuild writes labels: no ^[a-z_]+$ string in contract_agency_sector_rollup.sector or contract_recipient_rollup.industry, sums vs the 09-24 rows, row counts",
+      "after": "2026-10-01T14:45Z"
+    }
+  ]
+}
