@@ -61,10 +61,11 @@
  *                a 0-render breather costs no Logs call it did not before).
  *                The CALL just finished is judged on its own span against
  *                --renders-per-call-max (default 3) here.
- *             c. pipeline_state.donor_party_crawl = {"max_units":
- *                --units-per-call} upserted before the CALL and restored to the
- *                prior value (prod: ABSENT → DELETE, never "defaults") after it
- *                — and again in `finally`.
+ *             c. pipeline_state.donor_party_crawl ← {"max_units":
+ *                --units-per-call} MERGED in before the CALL (FIX-1249: the
+ *                key's other fields, e.g. full_rebuild_lag_days, survive) and
+ *                restored to the full prior value (ABSENT → DELETE, never
+ *                "defaults") after it — and again in `finally`.
  *             d. CALL public.refresh_donor_party_rollup_incremental(); read its
  *                terminal data_sync_log row: caught_up → done; partial with
  *                "unit cap reached" / "wall-clock budget reached" → again;
@@ -166,6 +167,32 @@ export const REASON = "FIX-1212 bootstrap (cc-147 runner)";
 const PIPELINE = "donor_party_rollup_refresh";
 const APP = "civitics_dp_bootstrap";
 const CALL_SQL = "CALL public.refresh_donor_party_rollup_incremental()";
+
+/**
+ * FIX-1249 — the pacing row is MERGED into `donor_party_crawl`, never written
+ * wholesale. The key also carries `full_rebuild_lag_days` (30 on prod, from
+ * `docs/audits/2026-09-30-fix1249-donor-party-crawl-lag-days.sql`), which the
+ * procedure reads on every CALL to pick crawl vs full; a wholesale
+ * `value = EXCLUDED.value` dropped it for the length of a paced run, so the
+ * procedure silently reverted to the default 14.
+ */
+export const PACING_UPSERT_SQL =
+  `INSERT INTO public.pipeline_state (key, value) VALUES ('donor_party_crawl', $1::jsonb)
+         ON CONFLICT (key) DO UPDATE SET value = public.pipeline_state.value || EXCLUDED.value, updated_at = clock_timestamp()`;
+
+/**
+ * The restore after every CALL and again in `finally`: the row's FULL prior
+ * value (every key, not just `max_units`), or DELETE when there was no row.
+ * One statement for both sites so they cannot drift.
+ */
+export function pacingRestoreStatement(prior: Record<string, unknown> | null): { sql: string; params: string[] } {
+  return prior === null
+    ? { sql: "DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'", params: [] }
+    : {
+        sql: `UPDATE public.pipeline_state SET value = $1::jsonb, updated_at = clock_timestamp() WHERE key = 'donor_party_crawl'`,
+        params: [JSON.stringify(prior)],
+      };
+}
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const DATA_DIR = path.resolve(__dirname, "..", "..");
 
@@ -1469,13 +1496,8 @@ async function main(): Promise<number> {
   const restoreCrawl = async (): Promise<void> => {
     if (!crawlDirty) return;
     try {
-      if (R.pacing.prior_value === null) {
-        await tClient.query("DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'");
-      } else {
-        await tClient.query(
-          `UPDATE public.pipeline_state SET value = $1::jsonb, updated_at = clock_timestamp() WHERE key = 'donor_party_crawl'`,
-          [JSON.stringify(R.pacing.prior_value)]);
-      }
+      const restore = pacingRestoreStatement(R.pacing.prior_value);
+      await tClient.query(restore.sql, restore.params);
       crawlDirty = false;
       R.pacing.restores += 1;
       R.pacing.restored = true;
@@ -1812,10 +1834,7 @@ async function main(): Promise<number> {
       }
 
       // c. The pacing row, before every CALL.
-      await c.query(
-        `INSERT INTO public.pipeline_state (key, value) VALUES ('donor_party_crawl', $1::jsonb)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = clock_timestamp()`,
-        [JSON.stringify({ max_units: args.unitsPerCall })]);
+      await c.query(PACING_UPSERT_SQL, [JSON.stringify({ max_units: args.unitsPerCall })]);
       crawlDirty = true;
       R.pacing.upserts += 1;
       log(`[pacing] donor_party_crawl = {"max_units": ${args.unitsPerCall}} (prior: ${JSON.stringify(R.pacing.prior_value)})`);
@@ -2023,12 +2042,8 @@ async function main(): Promise<number> {
       await snapC.query("SET statement_timeout = '5min'");
       if (crawlDirty) {
         // The last resort: tClient may be the thing that died.
-        if (R.pacing.prior_value === null) {
-          await snapC.query("DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'");
-        } else {
-          await snapC.query(`UPDATE public.pipeline_state SET value = $1::jsonb, updated_at = clock_timestamp() WHERE key = 'donor_party_crawl'`,
-            [JSON.stringify(R.pacing.prior_value)]);
-        }
+        const restore = pacingRestoreStatement(R.pacing.prior_value);
+        await snapC.query(restore.sql, restore.params);
         crawlDirty = false;
         R.pacing.restores += 1;
         R.pacing.restored = true;

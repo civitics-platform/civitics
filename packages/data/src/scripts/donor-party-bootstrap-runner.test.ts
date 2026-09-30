@@ -14,6 +14,8 @@ import { edgeVerdictFor, verdictFor } from "../lib/cancellation-census";
 import type { GatePoll } from "../lib/prod-op-gate";
 import {
   BREATHER_CENSUS_REREAD_S,
+  PACING_UPSERT_SQL,
+  pacingRestoreStatement,
   EXIT,
   WOULD_TRIP_NOTE,
   breatherCensus,
@@ -886,4 +888,25 @@ test("cc-154 D2: the gate half goes through censusHalfReading, and evaluateCensu
   assert.match(code, /return censusHalfReading\(cen\.code, cen\.summary\);/);
   assert.doesNotMatch(code, /ok: cen\.code === 0/, "the old gate-half verdict is gone");
   assert.match(code, /phase: CensusPhase = "pre_call"\): Trip \| null \{\s*\n\s*if \(exitCode === CENSUS_EXIT\.unavailable\) return null;/);
+});
+
+// FIX-1249 — the pacing row is merged into donor_party_crawl, so the key's
+// full_rebuild_lag_days (30 on prod) survives a paced run; the restore puts
+// back EVERY key of the prior value.
+test("FIX-1249: the pacing upsert MERGES into the existing row — never value = EXCLUDED.value", () => {
+  assert.match(PACING_UPSERT_SQL, /SET value = public\.pipeline_state\.value \|\| EXCLUDED\.value/);
+  assert.doesNotMatch(PACING_UPSERT_SQL, /SET value = EXCLUDED\.value/);
+  assert.match(PACING_UPSERT_SQL, /ON CONFLICT \(key\)/);
+});
+
+test("FIX-1249: the restore puts back the FULL prior value, not just max_units", () => {
+  const r = pacingRestoreStatement({ full_rebuild_lag_days: 30, max_units: 40 });
+  assert.match(r.sql, /^UPDATE public\.pipeline_state SET value = \$1::jsonb/);
+  assert.deepEqual(JSON.parse(r.params[0]!), { full_rebuild_lag_days: 30, max_units: 40 });
+});
+
+test("FIX-1249: an ABSENT prior row is restored by DELETE (absent = defaults), never by writing defaults", () => {
+  const r = pacingRestoreStatement(null);
+  assert.equal(r.sql, "DELETE FROM public.pipeline_state WHERE key = 'donor_party_crawl'");
+  assert.deepEqual(r.params, []);
 });
