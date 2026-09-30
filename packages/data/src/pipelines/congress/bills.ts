@@ -446,6 +446,71 @@ export async function upsertBillProposalsBatch(
 }
 
 // ---------------------------------------------------------------------------
+// FIX-1238 — the vote writer's bill_details guard (see ./vote-bill-guard.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Which of `proposalIds` have a `bill_details` row — the FK target of
+ * `votes.bill_proposal_id`. Chunked like `lookupRefs`; throws on a read error
+ * (the guard decides what a failed read means, not this).
+ */
+export async function presentBillDetailIds(db: Db, proposalIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < proposalIds.length; i += RESOLVE_IN_CHUNK) {
+    const rows = rowsOrThrow(
+      await db
+        .from("bill_details")
+        .select("proposal_id")
+        .in("proposal_id", proposalIds.slice(i, i + RESOLVE_IN_CHUNK)),
+      "votes bill_details presence",
+    );
+    for (const r of rows as { proposal_id: string }[]) out.add(r.proposal_id);
+  }
+  return out;
+}
+
+/**
+ * ONE targeted landing of a `bill_details` row for a proposal that already
+ * exists but has none. Every column is derivable from the roll's bill key, so
+ * no congress.gov fetch is needed. A 23505 means the compound unique
+ * `(jurisdiction_id, session, bill_number)` is held by another proposal
+ * (FIX-1238 case b) — its holder is read back and returned, never resolved.
+ */
+export async function landBillDetails(
+  db: Db,
+  proposalId: string,
+  args: BillProposalArgs,
+): Promise<
+  | { status: "landed" }
+  | { status: "collision"; holderProposalId: string | null }
+  | { status: "failed"; message: string }
+> {
+  const { error } = await db.from("bill_details").insert({
+    proposal_id: proposalId,
+    bill_number: args.billNumber,
+    chamber: args.chamber,
+    session: args.session,
+    congress_number: args.congressNumber,
+    congress_gov_url: args.congressGovUrl,
+    jurisdiction_id: args.jurisdictionId,
+  });
+  if (!error) return { status: "landed" };
+  if (error.code !== "23505") return { status: "failed", message: error.message };
+
+  const { data: holder, error: holderErr } = await db
+    .from("bill_details")
+    .select("proposal_id")
+    .eq("jurisdiction_id", args.jurisdictionId)
+    .eq("session", args.session)
+    .eq("bill_number", args.billNumber)
+    .maybeSingle();
+  if (holderErr) {
+    console.error(`    bills.ts: bill_details holder lookup failed for ${args.billKey}: ${holderErr.message}`);
+  }
+  return { status: "collision", holderProposalId: (holder?.proposal_id as string | undefined) ?? null };
+}
+
+// ---------------------------------------------------------------------------
 // Batch resolver — used by the vote-ingestion path to flush a session's worth
 // of novel bills in one round-trip instead of one SELECT+INSERT per bill.
 // ---------------------------------------------------------------------------

@@ -40,8 +40,17 @@ import {
   resolveBillsBatch,
   upsertBillProposalsBatch,
   chamberForBillType,
+  presentBillDetailIds,
+  landBillDetails,
   type BillProposalArgs,
 } from "./bills";
+import {
+  guardBillDetails,
+  writeRollVotes,
+  type BillDetailsGuardDeps,
+  type InsertFailure,
+  type SkippedRoll,
+} from "./vote-bill-guard";
 import { XMLParser } from "fast-xml-parser";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect } from "../../lib/heavy-rebuild";
@@ -418,6 +427,16 @@ export async function runVotesPipeline(
 
   let proposalsUpserted = 0;
   let votesInserted = 0;
+  // FIX-1238 — rolls not written because their bill has no bill_details row,
+  // and rolls whose insert failed for any other reason. Both are rows_failed.
+  const skippedRolls: SkippedRoll[] = [];
+  const insertFailures: InsertFailure[] = [];
+
+  const billDetailsDeps: BillDetailsGuardDeps = {
+    presentIds: (ids) => presentBillDetailIds(db, ids),
+    land: (id, args) => landBillDetails(db, id, args),
+    log: (line) => console.log(line),
+  };
 
   try {
 
@@ -654,19 +673,23 @@ export async function runVotesPipeline(
   const houseBillKeyToId = await resolveBillsBatch(db, houseBillArgs);
   proposalsUpserted += [...houseBillKeyToId.values()].filter((v) => v !== null).length;
 
+  // FIX-1238: every roll about to be written must reference a proposal that
+  // HAS a bill_details row (the FK target). One batched read; one targeted
+  // landing per absent bill; whatever is still absent is skipped below.
+  const houseAbsent = await guardBillDetails(
+    houseRollBuffer.filter((r) => r.votedAt).map((r) => r.billKey),
+    houseBillKeyToId,
+    houseBillArgs,
+    billDetailsDeps,
+  );
+
   // Pass 2: write vote records using the resolved proposalId map
   console.log("  Writing House vote records...");
-  for (const roll of houseRollBuffer) {
-    const proposalId = roll.billKey ? (houseBillKeyToId.get(roll.billKey) ?? null) : null;
-    const voteRecords: VoteInsert[] = [];
-
-    if (!proposalId) {
-      console.log(`    ${roll.rollCallId}: no proposal reference, skipping vote records`);
-    } else if (!roll.votedAt) {
-      console.log(`    ${roll.rollCallId}: no voted_at, skipping (column is NOT NULL)`);
-    } else {
-      const votedAtIso = new Date(roll.votedAt).toISOString();
-
+  const houseWrite = await writeRollVotes<HouseRollItem, VoteInsert>(houseRollBuffer, {
+    proposalIdFor: (billKey) => (billKey ? (houseBillKeyToId.get(billKey) ?? null) : null),
+    absent: houseAbsent,
+    build: (roll, proposalId, votedAtIso) => {
+      const voteRecords: VoteInsert[] = [];
       for (const rv of roll.recordedVotes) {
         const rvObj      = rv as Record<string, unknown>;
         const legislator = rvObj["legislator"] as Record<string, unknown> | null;
@@ -689,22 +712,14 @@ export async function runVotesPipeline(
           metadata:         { vote_result: roll.resultStr, legis_num: roll.legisNum },
         });
       }
-    }
-
-    if (voteRecords.length > 0) {
-      const { error: insertErr } = await db.from("votes").insert(voteRecords);
-      if (insertErr && insertErr.code !== "23505") {
-        console.error(`    ${roll.rollCallId}: insert error — ${insertErr.message}`);
-      } else if (insertErr?.code === "23505") {
-        console.log(`    ${roll.rollCallId}: unique violation on (roll_call_id, official_id)`);
-      } else {
-        votesInserted += voteRecords.length;
-        console.log(`    ${roll.rollCallId}: inserted ${voteRecords.length} votes`);
-      }
-    } else if (proposalId && roll.votedAt) {
-      console.log(`    ${roll.rollCallId}: no matchable vote records`);
-    }
-  }
+      return voteRecords;
+    },
+    insert: async (records) => await db.from("votes").insert(records),
+    log: (line) => console.log(line),
+  });
+  votesInserted += houseWrite.inserted;
+  skippedRolls.push(...houseWrite.skipped);
+  insertFailures.push(...houseWrite.insertFailures);
 
   // -------------------------------------------------------------------------
   // Step 4: Senate LIS XML vote feeds — two-pass to batch bill resolution
@@ -886,19 +901,21 @@ export async function runVotesPipeline(
   const senateBillKeyToId = await resolveBillsBatch(db, senateBillArgs);
   proposalsUpserted += [...senateBillKeyToId.values()].filter((v) => v !== null).length;
 
+  // FIX-1238 — the same guard as the House side.
+  const senateAbsent = await guardBillDetails(
+    senateRollBuffer.filter((r) => r.votedAt).map((r) => r.billKey),
+    senateBillKeyToId,
+    senateBillArgs,
+    billDetailsDeps,
+  );
+
   // Pass 2: write vote records using the resolved proposalId map
   console.log("  Writing Senate vote records...");
-  for (const roll of senateRollBuffer) {
-    const proposalId = roll.billKey ? (senateBillKeyToId.get(roll.billKey) ?? null) : null;
-    const voteRecords: VoteInsert[] = [];
-
-    if (!proposalId) {
-      console.log(`    ${roll.rollCallId}: no proposal reference, skipping vote records`);
-    } else if (!roll.votedAt) {
-      console.log(`    ${roll.rollCallId}: no voted_at, skipping (column is NOT NULL)`);
-    } else {
-      const votedAtIso = new Date(roll.votedAt).toISOString();
-
+  const senateWrite = await writeRollVotes<SenateRollItem, VoteInsert>(senateRollBuffer, {
+    proposalIdFor: (billKey) => (billKey ? (senateBillKeyToId.get(billKey) ?? null) : null),
+    absent: senateAbsent,
+    build: (roll, proposalId, votedAtIso) => {
+      const voteRecords: VoteInsert[] = [];
       for (const m of roll.memberList) {
         const mObj     = m as Record<string, unknown>;
         const lastName = String(mObj["last_name"] ?? "").trim();
@@ -927,22 +944,14 @@ export async function runVotesPipeline(
           metadata:         { vote_result: roll.resultStr },
         });
       }
-    }
-
-    if (voteRecords.length > 0) {
-      const { error: insertErr } = await db.from("votes").insert(voteRecords);
-      if (insertErr && insertErr.code !== "23505") {
-        console.error(`    ${roll.rollCallId}: insert error — ${insertErr.message}`);
-      } else if (insertErr?.code === "23505") {
-        console.log(`    ${roll.rollCallId}: unique violation on (roll_call_id, official_id)`);
-      } else {
-        votesInserted += voteRecords.length;
-        console.log(`    ${roll.rollCallId}: inserted ${voteRecords.length} votes`);
-      }
-    } else if (proposalId && roll.votedAt) {
-      console.log(`    ${roll.rollCallId}: no matchable vote records`);
-    }
-  }
+      return voteRecords;
+    },
+    insert: async (records) => await db.from("votes").insert(records),
+    log: (line) => console.log(line),
+  });
+  votesInserted += senateWrite.inserted;
+  skippedRolls.push(...senateWrite.skipped);
+  insertFailures.push(...senateWrite.insertFailures);
 
   if (houseUnmatched > 0) {
     console.log(`\n  House unmatched bioguide IDs (no official in DB): ${houseUnmatched}`);
@@ -962,16 +971,28 @@ export async function runVotesPipeline(
     }
   }
 
+  if (skippedRolls.length > 0) {
+    console.warn(
+      `\n  ⚠ FIX-1238: ${skippedRolls.length} roll(s) skipped — their bill has no bill_details row ` +
+        `(votes.bill_proposal_id's FK target): ${skippedRolls.map((s) => `${s.roll} (${s.bill_key})`).join(", ")}`,
+    );
+  }
+
   console.log(
-    `\nVotes pipeline complete: ${proposalsUpserted} proposals upserted, ${votesInserted} votes inserted`
+    `\nVotes pipeline complete: ${proposalsUpserted} proposals upserted, ${votesInserted} votes inserted, ` +
+      `${skippedRolls.length} roll(s) skipped, ${insertFailures.length} roll insert(s) failed`
   );
 
     const estimatedMb = +(((proposalsUpserted + votesInserted) * 200) / 1024 / 1024).toFixed(2);
+    // FIX-1238: rows_failed counts ROLLS not written — skipped for a missing
+    // bill_details row, or whose insert failed for any other reason. It used
+    // to be a hard-coded 0 while a 433-row roll failed every night.
     await completeSync(logId, {
       inserted: votesInserted,
       updated: proposalsUpserted,
-      failed: 0,
+      failed: skippedRolls.length + insertFailures.length,
       estimatedMb,
+      metadata: { skipped_rolls: skippedRolls, insert_failures: insertFailures },
     });
 
     return { proposalsUpserted, votesInserted };

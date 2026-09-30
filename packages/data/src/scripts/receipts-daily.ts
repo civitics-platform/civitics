@@ -62,6 +62,7 @@ import {
   type VacuumRow,
   type VmRow,
   type VmProbeRow,
+  type VotesSkips,
   type ForkerBucketRow,
   type ForkerCancelRow,
   type ForkerRunningRow,
@@ -339,6 +340,20 @@ WHERE pipeline IN ('nightly_cron','nightly_killed')
   AND started_at >= $1::timestamptz
   AND started_at <  $2::timestamptz
 ORDER BY started_at`;
+
+/**
+ * FIX-1238 — the nightly window's latest `congress_votes` row. `skipped_rolls`
+ * is the vote writer's record of rolls it did not insert because the bill has
+ * no `bill_details` row (the FK target of `votes.bill_proposal_id`).
+ */
+const Q_VOTES_SKIPS = `
+SELECT rows_failed, metadata->'skipped_rolls' AS skipped_rolls
+FROM public.data_sync_log
+WHERE pipeline = 'congress_votes'
+  AND started_at >= $1::timestamptz
+  AND started_at <  $2::timestamptz
+ORDER BY started_at DESC
+LIMIT 1`;
 
 /**
  * FIX-1218 — the nightly dispatcher's per-call stamp. One row by primary key,
@@ -931,6 +946,29 @@ async function main(): Promise<void> {
     const ghRun = dayRuns.find((run) => jobsByRun.get(run.databaseId)?.already_ran !== true) ?? dayRuns[0] ?? null;
     const offsetHours: number | null = ghRun === null ? null : offsetFromSlot(ghRun.createdAt);
 
+    // FIX-1238 — the window's congress_votes row: which rolls were skipped
+    // because their bill has no bill_details row. Rendered only when non-empty.
+    const votesRows = await r.run<Record<string, unknown>>("votes_skips", Q_VOTES_SKIPS, [
+      windowStart.toISOString(),
+      windowEnd.toISOString(),
+    ]);
+    const votesSkips: VotesSkips | null =
+      votesRows[0] === undefined
+        ? null
+        : {
+            rows_failed: num(votesRows[0]["rows_failed"]),
+            skipped_rolls: (Array.isArray(votesRows[0]["skipped_rolls"])
+              ? (votesRows[0]["skipped_rolls"] as Record<string, unknown>[])
+              : []
+            ).map((s) => ({
+              roll: str(s["roll"]) ?? "?",
+              bill_key: str(s["bill_key"]) ?? "?",
+              proposal_id: str(s["proposal_id"]) ?? "?",
+              reason: str(s["reason"]) ?? "?",
+              holder_proposal_id: str(s["holder_proposal_id"]),
+            })),
+          };
+
     const dispatchRows = await r.run<Record<string, unknown>>("gha_dispatch_nightly", Q_GHA_DISPATCH_NIGHTLY);
     const dv = (dispatchRows[0]?.["value"] ?? null) as Record<string, unknown> | null;
     const dispatcher: DispatchStamp | null =
@@ -1125,6 +1163,7 @@ async function main(): Promise<void> {
           (ghRun === null ? "No nightly run (any event) maps to nominal day " + date + " in the last 20 runs." : null),
         runs,
         dispatcher,
+        votes_skips: votesSkips,
       },
       cron_jobs: cronJobs,
       daily: {

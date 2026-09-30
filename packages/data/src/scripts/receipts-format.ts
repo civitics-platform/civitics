@@ -420,6 +420,44 @@ export interface NightlySection {
   runs?: NightlyRunRow[];
   /** FIX-1218 — pipeline_state.gha_dispatch_nightly; null when absent. */
   dispatcher?: DispatchStamp | null;
+  /**
+   * FIX-1238 — the window's `congress_votes` row: rolls skipped because their
+   * bill has no `bill_details` row. Optional so older files type-check; null
+   * when the window has no votes row.
+   */
+  votes_skips?: VotesSkips | null;
+}
+
+/** FIX-1238 — one `data_sync_log.metadata.skipped_rolls[]` entry, as rendered. */
+export interface VotesSkippedRoll {
+  roll: string;
+  bill_key: string;
+  proposal_id: string;
+  reason: string;
+  holder_proposal_id: string | null;
+}
+
+export interface VotesSkips {
+  rows_failed: number | null;
+  skipped_rolls: VotesSkippedRoll[];
+}
+
+/**
+ * FIX-1238 — the one line under the nightly's Phases table. Empty when nothing
+ * was skipped: the line exists to make a skip visible, not to report a zero.
+ */
+export function votesSkipsLine(v: VotesSkips | null | undefined): string | null {
+  if (!v || v.skipped_rolls.length === 0) return null;
+  const rolls = v.skipped_rolls
+    .map((s) =>
+      "`" + s.roll + "` (" + s.bill_key + ", " + s.reason +
+      (s.holder_proposal_id ? "; key held by " + s.holder_proposal_id.slice(0, 8) : "") + ")",
+    )
+    .join(", ");
+  return (
+    "**congress_votes skipped " + v.skipped_rolls.length + " roll(s)** — the bill has no `bill_details` row " +
+    "(FIX-1238; `rows_failed` " + (v.rows_failed ?? "—") + "): " + rolls
+  );
 }
 
 export interface UnitTiming {
@@ -1153,7 +1191,13 @@ export function renderMarkdown(d: ReceiptsData): string {
       ]),
     ),
   );
-  p(queryBlock(d.queries, ["nightly_phases", "gha_dispatch_nightly"]));
+  const skips = votesSkipsLine(d.nightly.votes_skips);
+  if (skips) {
+    p("");
+    p(skips);
+    p("");
+  }
+  p(queryBlock(d.queries, ["nightly_phases", "gha_dispatch_nightly", "votes_skips"]));
 
   // 2 -------------------------------------------------------------------
   p("## 2. pg_cron jobs vs their bands");

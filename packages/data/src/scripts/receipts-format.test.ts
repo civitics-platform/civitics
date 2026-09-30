@@ -32,6 +32,7 @@ import {
   runConclusionCell,
   verdictFor,
   verdictsFor,
+  votesSkipsLine,
   VERCEL_LIVENESS_STALE_MIN,
   vercelLivenessVerdict,
   BOX_HEALTH_MEM_STALE_MIN,
@@ -990,4 +991,46 @@ test("FIX-1189 §10: a pre-O2 file (no section data) renders a stated absence", 
   assert.match(legislatorIdsLines(s, LEG_AS_OF, LEG_CLASSES).join("\n"), /predates FIX-1189 O2/);
   const md = renderMarkdown(fixture());
   assert.match(md.slice(md.indexOf("## 10."), md.indexOf("## 11.")), /predates FIX-1189 O2/);
+});
+
+// FIX-1238 — the vote writer's skipped rolls get one line under the nightly's
+// Phases table, and only when there is something to say.
+test("FIX-1238: votesSkipsLine names each skipped roll, its bill, the reason and the key holder", () => {
+  const line = votesSkipsLine({
+    rows_failed: 1,
+    skipped_rolls: [
+      {
+        roll: "2026-house-295",
+        bill_key: "119-HR-4795",
+        proposal_id: "d536667f-6a0d-4aeb-b1b9-324c946b4701",
+        reason: "bill_details_key_collision",
+        holder_proposal_id: "0e2433b5-0fd3-4e27-a3ae-9741c468122d",
+      },
+    ],
+  })!;
+  assert.match(line, /congress_votes skipped 1 roll\(s\)/);
+  assert.match(line, /`2026-house-295` \(119-HR-4795, bill_details_key_collision; key held by 0e2433b5\)/);
+  assert.match(line, /`rows_failed` 1/);
+});
+
+test("FIX-1238: no skips (or no votes row) renders nothing — the line is not a zero report", () => {
+  assert.equal(votesSkipsLine(null), null);
+  assert.equal(votesSkipsLine(undefined), null);
+  assert.equal(votesSkipsLine({ rows_failed: 0, skipped_rolls: [] }), null);
+  const d = fixture();
+  assert.doesNotMatch(renderMarkdown(d), /congress_votes skipped/);
+});
+
+test("FIX-1238: renderMarkdown puts the skip line in section 1, after the Phases table", () => {
+  const d = fixture();
+  d.nightly.votes_skips = {
+    rows_failed: 1,
+    skipped_rolls: [
+      { roll: "2026-house-295", bill_key: "119-HR-4795", proposal_id: "p", reason: "bill_details_landing_failed", holder_proposal_id: null },
+    ],
+  };
+  const md = renderMarkdown(d);
+  const at = md.indexOf("congress_votes skipped 1 roll(s)");
+  assert.ok(at > md.indexOf("### Phases") && at < md.indexOf("## 2. pg_cron jobs"));
+  assert.doesNotMatch(md.slice(at, md.indexOf("\n", at)), /key held by/);
 });
