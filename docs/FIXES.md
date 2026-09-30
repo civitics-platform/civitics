@@ -109,6 +109,7 @@ Ask the question with **`pnpm fixes:status FIX-NNN`** (or `pnpm fixes:status` fo
 ---
 
 ## PROPOSALS [ID]
+- 🟡 S — **Three congress.gov bills have two proposals rows and three refs have no bill_details; resolveBillsBatch never consults the natural key, so a lost ref mints a stub** — HR 4795 / 9816 / 9847 each have an 08-04 proposal holding the bill_details key (jurisdiction, session 119, bill_number) with NO congress_gov ref, and a later stub (08-26 / 08-28) that holds the 119-HR-NNNN ref and no bill_details; roll 2026-house-295 (HR 4795) is skipped nightly by the FIX-1238 guard as bill_details_key_collision. Three more refs (119-S-221 / S-2466 / S-3690) point at proposals with no bill_details and no second holder. Cause, from the 08-04 nightly log: not a cancel. The recent-bills sync is three non-transactional PostgREST writes (proposals, then bill_details, then refs); on a stressed box the HR batch lost its refs write and the S batch its bill_details write to the 8 s statement timeout, logged but not counted. The upsert (onConflict the natural key, ignoreDuplicates) then let every later ingest of those bills mint a stub. Repair the six from a committed manifest (move the ref to the older key-holder, move or drop the stub dependents, retire the stub; land the three case-a rows) and bind a ref to an existing bill_details holder before minting, in upsertBillProposalsBatch, which both the sync and resolveBillsBatch call. Refs [[FIX-1238]], [[FIX-545]]. (cc-177) <!--id:FIX-1256--> <!--lane:app-->
 
 
 ---
