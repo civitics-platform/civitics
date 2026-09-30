@@ -1530,3 +1530,6 @@
 2026-09-29 | FIX-1249 | b548861c | local-only | feat(data,docs): FIX-1249 — donor_party_crawl config row: full_rebuild_lag_days 30 (the SQL file; the runner merges instead of overwriting)
 2026-09-29 | FIX-1253 | 011124a9 | local-only | fix(scripts): FIX-1253 — db-push-prod drops every --, not only a leading one
 2026-09-29 | FIX-1253 | cf1603cd | prod-only | chore(fixes): record prod verification of FIX-1253
+2026-09-29 | FIX-1236 | 0c6c5811 | local-only | feat(app): FIX-1236 — pages/_error.tsx renders the busy-record page on a degraded ISR first render, keeping private/no-store
+2026-09-29 | FIX-1250 | 9cdf2012 | local-only | feat(scripts,docs): FIX-1250 — pnpm session:held exits on a held prod session; the pre-push hook refuses a push to main under a hold; cc.md + the template say so; the permission-prompt reading
+2026-09-29 | FIX-1251 | eae6d0ce | local-only | feat(data,scripts): FIX-1251 — monthly jobs with no firing in the lookback read "scheduled · next <date>", not "missing"; the board says monthly
