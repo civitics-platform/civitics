@@ -20,6 +20,7 @@ import {
 import type { RefObject } from "react";
 import type { SankeyOptions } from "./types";
 import { resolveToken, resolveColor } from "./tokens";
+import { contractSectorColor } from "./sector-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,35 +57,11 @@ interface SLink extends SankeyLinkMinimal<SNode, SLink> {
 
 const ROOT_NODE_ID = "root:federal";
 
-// Sector palette — same buckets as chord/spending so colors stay consistent.
-// Token strings (FIX-729) built from the 9-hue viz ramp + brand hues; the
-// original 18 Tailwind hexes collapse near-neighbour pairs (violet/violet-400,
-// amber/amber-400, red/rose, blue/sky, cyan/teal) onto the same token. Wrap
-// with resolveColor(…, svgEl) at d3 .attr() sites.
-const SECTOR_COLORS: Record<string, string> = {
-  "Manufacturing":         "rgb(var(--c-viz-4))",     // was blue → civic blue
-  "Information Technology": "rgb(var(--c-viz-7))",    // was violet → wine
-  "Professional Services":  "rgb(var(--c-viz-2))",    // was cyan → teal
-  "Health Care":           "rgb(var(--c-viz-9))",     // was pink → bronze
-  "Construction":          "rgb(var(--c-amber))",     // was amber
-  "Transportation":        "rgb(var(--c-viz-2))",     // was teal → teal
-  "Finance":               "rgb(var(--c-green-ink))", // was emerald
-  "Education":             "rgb(var(--c-blue))",      // was indigo → blue
-  "Real Estate":           "rgb(var(--c-viz-8))",     // was lime → olive
-  "Mining":                "rgb(var(--c-accent))",    // was red
-  "Retail":                "rgb(var(--c-viz-6))",     // was orange → terracotta
-  "Agriculture":           "rgb(var(--c-viz-1))",     // was green
-  "Wholesale Trade":       "rgb(var(--c-viz-7))",     // was violet-400 → wine
-  "Utilities":             "rgb(var(--c-viz-3))",     // was amber-400 → ochre-gold
-  "Entertainment":         "rgb(var(--c-accent))",    // was rose → accent
-  "Public Administration": "rgb(var(--c-viz-4))",     // was sky → civic blue
-  "Other Services":        "rgb(var(--c-ink-soft))",  // neutral
-  "Other":                 "rgb(var(--c-viz-5))",     // was slate → steel-slate
-};
-
-function sectorColor(sector: string): string {
-  return SECTOR_COLORS[sector] ?? "rgb(var(--c-viz-5))";
-}
+// Sector palette — FIX-1247: one resolver shared with SpendingGraph, over the
+// one vocabulary the sankey route and the chord now both emit (an industry
+// display label, or the NAICS fallback label of the SQL CASE). Token strings
+// (FIX-729); wrap with resolveColor(…, svgEl) at d3 .attr() sites.
+const sectorColor = contractSectorColor;
 
 function fmtMoney(cents: number): string {
   const d = cents / 100;

@@ -95,3 +95,39 @@ const LABEL_TO_KEY: Record<string, IndustryKey> = {
 export function labelToIndustryKey(label: string): IndustryKey | null {
   return LABEL_TO_KEY[label.trim().toLowerCase()] ?? null;
 }
+
+/**
+ * FIX-1247 — one colour per industry key, for surfaces that draw the industry
+ * LABEL (the contract chord, treemap and Sankey carry display labels since
+ * FIX-1247). Token strings (FIX-729): `rgb(var(--c-x))`, resolved by the
+ * browser in HTML and by resolveColor() at d3 .attr() sites.
+ *
+ * Sixteen distinct tokens, so the sixteen keys never share a colour on the
+ * paper page. The terminal scope re-binds --c-accent to --c-term-red, so there
+ * `defense` and `mining` meet; mining has no NAICS mapping and 23 curated tags,
+ * which is why it got the colliding slot.
+ */
+export const INDUSTRY_KEY_COLORS: Readonly<Record<IndustryKey, string>> = {
+  defense:        "rgb(var(--c-accent))",
+  manufacturing:  "rgb(var(--c-viz-4))",
+  tech:           "rgb(var(--c-viz-2))",
+  health:         "rgb(var(--c-viz-1))",
+  finance:        "rgb(var(--c-viz-7))",
+  transportation: "rgb(var(--c-viz-6))",
+  real_estate:    "rgb(var(--c-viz-8))",
+  agriculture:    "rgb(var(--c-amber))",
+  legal:          "rgb(var(--c-viz-9))",
+  labor:          "rgb(var(--c-term-green))",
+  utilities:      "rgb(var(--c-viz-3))",
+  oil_gas:        "rgb(var(--c-ink))",
+  lobby:          "rgb(var(--c-term-blue))",
+  retail:         "rgb(var(--c-ink-soft))",
+  mining:         "rgb(var(--c-term-red))",
+  media:          "rgb(var(--c-ink-faint))",
+};
+
+/** The colour of an industry display label (any casing, current or historical), or null. */
+export function industryLabelColor(label: string): string | null {
+  const key = labelToIndustryKey(label);
+  return key ? INDUSTRY_KEY_COLORS[key] : null;
+}

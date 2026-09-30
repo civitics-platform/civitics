@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { SpendingOptions } from "./types";
+import { contractSectorColor } from "./sector-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -100,32 +101,14 @@ function Skeleton() {
   );
 }
 
-// ── NAICS sector colors ───────────────────────────────────────────────────────
+// ── Sector colors ─────────────────────────────────────────────────────────────
 
-// Token strings (FIX-729) — this component is HTML-only (style= / gradients),
-// so the browser resolves the var() strings directly; no resolveColor needed.
-// Hex→token mapping matches SankeyGraph's so shared hues stay consistent.
-const SECTOR_COLORS: Record<string, string> = {
-  'Manufacturing':          'rgb(var(--c-viz-4))',     // was blue → civic blue
-  'Professional Services':  'rgb(var(--c-viz-7))',     // was violet → wine
-  'Information Technology': 'rgb(var(--c-viz-2))',     // was cyan → teal
-  'Construction':           'rgb(var(--c-amber))',     // was amber
-  'Healthcare':             'rgb(var(--c-green-ink))', // was emerald
-  'Transportation':         'rgb(var(--c-viz-6))',     // was orange → terracotta
-  'Finance':                'rgb(var(--c-blue))',      // was indigo → blue
-  'Administrative Services':'rgb(var(--c-viz-8))',     // was lime → olive
-  'Government':             'rgb(var(--c-viz-5))',     // was slate → steel-slate
-  'Education':              'rgb(var(--c-viz-9))',     // was pink → bronze
-  'Agriculture':            'rgb(var(--c-viz-1))',     // was green
-  'Wholesale Trade':        'rgb(var(--c-viz-7))',     // was violet-400 → wine
-  'Utilities':              'rgb(var(--c-viz-3))',     // was amber-400 → ochre-gold
-  'Other Services':         'rgb(var(--c-ink-soft))',  // neutral
-  'Other':                  'rgb(var(--c-viz-5))',     // was slate → steel-slate
-};
-
-function sectorColor(sector: string): string {
-  return SECTOR_COLORS[sector] ?? 'rgb(var(--c-viz-5))';
-}
+// FIX-1247: the chord's `sector` and the treemap's `industry` are an industry
+// display label or a NAICS fallback label; contractSectorColor() colours both,
+// shared with SankeyGraph. Token strings (FIX-729) — this component is
+// HTML-only (style= / gradients), so the browser resolves the var() strings
+// directly; no resolveColor needed.
+const sectorColor = contractSectorColor;
 
 // ── Main component ────────────────────────────────────────────────────────────
 

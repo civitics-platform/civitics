@@ -3,6 +3,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient, noStoreFetch } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { naicsSectorLabel } from "@/lib/naics-sector-label";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ interface FinancialEntityRow {
 interface TagRow {
   entity_id: string;
   tag: string;
+  /** FIX-1247: the sector the Sankey shows — the chord and treemap carry the same label. */
+  display_label: string;
 }
 
 export interface SankeyFlow {
@@ -52,41 +55,6 @@ export interface SankeyResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-// NAICS 2-digit prefix → human-readable sector.
-// Matches the buckets used by chord_contract_flows so the two viz types stay
-// visually consistent.
-function naicsToSector(naics: string | null | undefined): string {
-  if (!naics) return "Other";
-  const prefix = naics.slice(0, 2);
-  switch (prefix) {
-    case "11": return "Agriculture";
-    case "21": return "Mining";
-    case "22": return "Utilities";
-    case "23": return "Construction";
-    case "31":
-    case "32":
-    case "33": return "Manufacturing";
-    case "42": return "Wholesale Trade";
-    case "44":
-    case "45": return "Retail";
-    case "48":
-    case "49": return "Transportation";
-    case "51": return "Information Technology";
-    case "52": return "Finance";
-    case "53": return "Real Estate";
-    case "54": return "Professional Services";
-    case "55": return "Management";
-    case "56": return "Administrative";
-    case "61": return "Education";
-    case "62": return "Health Care";
-    case "71": return "Entertainment";
-    case "72": return "Accommodation";
-    case "81": return "Other Services";
-    case "92": return "Public Administration";
-    default:   return "Other";
-  }
-}
 
 // Scan ceiling. Contracts are heavily power-law distributed by amount, so the
 // top-N rows already cover ~99% of total spend. 5000 is a comfortable upper
@@ -220,7 +188,7 @@ export async function GET(req: NextRequest) {
 
   const agencies = new Map<string, AgencyRow>(agenciesRes.rows.map((a) => [a.id, a]));
   const vendors = new Map<string, FinancialEntityRow>(vendorsRes.rows.map((v) => [v.id, v]));
-  const vendorTags = new Map<string, string>(tagsRes.rows.map((t) => [t.entity_id, t.tag]));
+  const vendorTags = new Map<string, TagRow>(tagsRes.rows.map((t) => [t.entity_id, t]));
 
   // Aggregate to (agency, sector, vendor) buckets.
   const flowMap = new Map<string, SankeyFlow>();
@@ -235,8 +203,9 @@ export async function GET(req: NextRequest) {
     // Industry tag (FIX-109) takes priority over NAICS prefix mapping.
     // The legacy financial_entities.industry fallback was removed in FIX-167
     // (column was polluted with FEC CONNECTED_ORG_NM and has been dropped).
-    const sector =
-      vendorTags.get(vendor.id) ?? (naics ? naicsToSector(naics) : null) ?? "Other";
+    // FIX-1247: the tag's display LABEL, then the SQL CASE's NAICS label — the
+    // one vocabulary chord_contract_flows and the treemap carry.
+    const sector = vendorTags.get(vendor.id)?.display_label ?? naicsSectorLabel(naics);
 
     const key = `${agency.id}|${sector}|${vendor.id}`;
     const existing = flowMap.get(key);
