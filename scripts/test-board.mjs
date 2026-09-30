@@ -352,6 +352,17 @@ assertEq("checkPromptFrontMatter accepts `after …`", checkPromptFrontMatter({ 
 assertEq("…and a window", checkPromptFrontMatter({ cc: "1", lane: "ops", when: "2026-10-01T23:15Z..2026-10-02T03:30Z" }, { n: 1 }).problems, []);
 assertTrue("…and refuses a zoneless one", /when:/.test(checkPromptFrontMatter({ cc: "1", lane: "ops", when: "after 2026-09-29T16:30" }, { n: 1 }).problems.join(" ")));
 
+// -- 6d'. FIX-1251 — a monthly job with no firing says when it fires next ---
+console.log("\nmonthly cron events:");
+{
+  const evs = [...board.week.days.flatMap((d) => d.events), ...(board.week.later ?? [])].filter((e) => e.kind === "cron");
+  const ev = (re) => evs.find((e) => re.test(e.label));
+  assertEq("a monthly in the week (`30 11 1 * *`) reads `monthly · next`, not `no firing`", ev(/monthly-first/)?.size, "monthly · next 2026-10-01 11:30");
+  assertEq("a monthly past the week (`0 12 15 * *`) too", ev(/monthly-fifteenth/)?.size, "monthly · next 2026-10-15 12:00");
+  assertEq("a WEEKLY job with no firing still says `no firing` (rule 105)", ev(/donor-party-rollup-refresh/)?.size, "no firing in 2 receipts");
+  assertEq("parseCron marks day-of-month/month schedules monthly, and only those", ["30 11 1 * *", "0 0 * 6 *", "0 15 * * 2", "0 3 * * *"].map((x) => parseCron(x).monthly), [true, true, false, false]);
+}
+
 // -- 6e. cron and nightly history (D6) ----------------------------------------
 console.log("\nreceipts history:");
 const histPaths = { ...paths, receiptsDir: resolve(F, "receipts-history") };

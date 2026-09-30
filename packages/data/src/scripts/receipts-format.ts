@@ -22,6 +22,7 @@
  */
 
 import { BINDING_ACTIONS } from "../pipelines/congress/legislator-ids";
+import { nextCronOccurrence, restrictsDayOfMonthOrMonth } from "../lib/cron-next";
 
 /**
  * Verdict vocabulary.
@@ -43,7 +44,8 @@ export type Verdict =
   | "no-band"
   | "failed"
   | "running"
-  | "inactive";
+  | "inactive"
+  | "scheduled";
 
 /** One hand-written band. `hi_s` is the ceiling that matters; `lo_s` is usually 0. */
 export interface Band {
@@ -117,10 +119,25 @@ export interface JobVerdict extends JobFiring {
  *     rebuild-ec-incremental-mon — and rendering them `missing` put four
  *     permanent false alarms in every file, which is how a reader learns to
  *     skim the verdict column.
+ *     FIX-1251 splits the ACTIVE-and-never-fired case once more: a job whose
+ *     schedule restricts day-of-month or month (the five `1 * *` jobs) and
+ *     whose schedule put NO occurrence inside the lookback window has simply
+ *     not come round yet — `scheduled`, detail `monthly · next <ISO UTC>`. It
+ *     read `missing` ~16 days of every month. An occurrence that DID fall in
+ *     the window and left no firing is still `missing`, and so is every
+ *     daily / weekly / sub-daily job. Needs `ctx` (the read instant and the
+ *     lookback); without it the split is not made and the answer is `missing`.
  *  5. NO BAND is `no-band`. Never `in-band`.
  *  6. Only then is the duration compared.
  */
-export function verdictFor(firing: JobFiring, band: Band | null): JobVerdict {
+export interface VerdictContext {
+  /** When the lookback was read — the file's `generated_at`. */
+  asOf: Date;
+  /** `CRON_LOOKBACK_DAYS` in receipts-daily.ts. */
+  lookbackDays: number;
+}
+
+export function verdictFor(firing: JobFiring, band: Band | null, ctx?: VerdictContext): JobVerdict {
   const base = { ...firing, band };
 
   if (firing.sync_status === "skipped") {
@@ -169,9 +186,25 @@ export function verdictFor(firing: JobFiring, band: Band | null): JobVerdict {
             : "job is disabled (active = false); schedule would be " + firing.schedule,
       };
     }
+    const scheduled = ctx ? monthlyNotYetDue(firing.schedule, ctx) : null;
+    if (scheduled) return { ...base, verdict: "scheduled", detail: scheduled };
     return { ...base, verdict: "missing", detail: "no firing in the lookback window" };
   }
   return { ...base, ...compareToBand(firing.duration_s, band) };
+}
+
+/**
+ * FIX-1251 — the `scheduled` detail, or null when the job does not qualify: its
+ * schedule must restrict day-of-month or month, AND its first occurrence after
+ * the lookback's start must be AFTER `asOf` (no occurrence fell in the window,
+ * so no firing was owed). Exported for the tests.
+ */
+export function monthlyNotYetDue(schedule: string | null, ctx: VerdictContext): string | null {
+  if (!restrictsDayOfMonthOrMonth(schedule)) return null;
+  const windowStart = new Date(ctx.asOf.getTime() - ctx.lookbackDays * 86_400_000);
+  const firstInWindow = nextCronOccurrence(schedule, windowStart);
+  if (firstInWindow === null || firstInWindow.getTime() <= ctx.asOf.getTime()) return null;
+  return "monthly · next " + firstInWindow.toISOString().replace(".000Z", "Z");
 }
 
 /**
@@ -192,8 +225,8 @@ export function compareToBand(
   return { verdict: "in-band", detail: null };
 }
 
-export function verdictsFor(firings: JobFiring[], bands: Bands): JobVerdict[] {
-  return firings.map((f) => verdictFor(f, bands[f.jobname] ?? null));
+export function verdictsFor(firings: JobFiring[], bands: Bands, ctx?: VerdictContext): JobVerdict[] {
+  return firings.map((f) => verdictFor(f, bands[f.jobname] ?? null, ctx));
 }
 
 /** Rendered when the run has not concluded, because this file is part of it. */
@@ -1225,7 +1258,7 @@ export function renderMarkdown(d: ReceiptsData): string {
         j.phase_seconds == null ? "—" : "`" + j.phase_seconds + "`",
         j.cron_status,
         j.band === null ? "—" : j.band.lo_s + "–" + j.band.hi_s + " s",
-        j.verdict === "in-band" ? "in-band" : "**" + j.verdict + "**",
+        j.verdict === "in-band" || j.verdict === "scheduled" ? j.verdict : "**" + j.verdict + "**",
         j.detail,
       ]),
     ),

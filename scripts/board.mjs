@@ -338,7 +338,10 @@ export function parseCron(schedule) {
     if (dowR) return dowOk;
     return true;
   };
-  return { raw: f.join(" "), daily, subDaily, mode, times, matchesDay, firstTime: times[0] ?? (ho.any ? "00:00" : `${pad2(Math.min(...ho.values))}:00`) };
+  // FIX-1251: restricts day-of-month or month — the receipts' `scheduled`
+  // rule. Twin of packages/data/src/lib/cron-next.ts (a package boundary).
+  const monthly = f[2] !== "*" || f[3] !== "*";
+  return { raw: f.join(" "), daily, subDaily, mode, monthly, times, matchesDay, firstTime: times[0] ?? (ho.any ? "00:00" : `${pad2(Math.min(...ho.values))}:00`) };
 }
 
 /**
@@ -1290,9 +1293,14 @@ export function buildBoard(
   const cronHist = cronHistory(history, inputs.bands ?? {});
   const histByName = new Map(cronHist.map((h) => [h.jobname, h]));
   const nightlyHist = nightlyHistory(history);
-  const sizeOf = (h) => {
-    // pg_cron's run details age out after ~14 days, so a monthly job's firing
-    // falls out of the window a fortnight after it ran — say so, don't guess.
+  const sizeOf = (h, cron, nextEv) => {
+    // The receipts read pg_cron over a 14-day lookback, so a monthly job's
+    // firing falls out of the window a fortnight after it ran. FIX-1251: say
+    // when it fires next instead of "no firing" — the receipts' own verdict for
+    // it is `scheduled`, not `missing`.
+    if ((!h || !h.firings) && cron?.monthly && nextEv) {
+      return { size: `monthly · next ${nextEv.date} ${nextEv.time}`, verdict: h?.last_verdict || "none" };
+    }
     if (!h || !h.firings) return { size: `no firing in ${history.length} receipts`, verdict: h?.last_verdict || "none" };
     const med = h.median_s !== undefined ? `~${fmtDur(h.median_s)}` : "no duration";
     const last = h.last_s !== undefined ? ` · last ${fmtDur(h.last_s)}` : " · last run has no duration";
@@ -1316,7 +1324,7 @@ export function buildBoard(
     }
     const evs = cronEvents(cron, todayMs);
     const label = cron.mode === "next" && cron.subDaily ? `${name} (\`${cron.raw}\`)` : name;
-    const sz = sizeOf(histByName.get(str(job.jobname)));
+    const sz = sizeOf(histByName.get(str(job.jobname)), cron, evs[0]);
     for (const e of evs) {
       const ev = { ...e, kind: "cron", lane: "", label, size: sz.size, verdict: sz.verdict };
       if (Date.parse(`${e.date}T00:00:00Z`) > lastMs) diagnostics.cron_later.push(`${name} \`${cron.raw}\` → ${e.date}`);

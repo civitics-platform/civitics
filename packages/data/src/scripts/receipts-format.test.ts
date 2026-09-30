@@ -32,6 +32,7 @@ import {
   runConclusionCell,
   verdictFor,
   verdictsFor,
+  monthlyNotYetDue,
   votesSkipsLine,
   VERCEL_LIVENESS_STALE_MIN,
   vercelLivenessVerdict,
@@ -1033,4 +1034,68 @@ test("FIX-1238: renderMarkdown puts the skip line in section 1, after the Phases
   const at = md.indexOf("congress_votes skipped 1 roll(s)");
   assert.ok(at > md.indexOf("### Phases") && at < md.indexOf("## 2. pg_cron jobs"));
   assert.doesNotMatch(md.slice(at, md.indexOf("\n", at)), /key held by/);
+});
+
+// FIX-1251 — a monthly job that has not come round yet reads `scheduled`, not
+// `missing`. Schedules are the five from docs/receipts/2026-09-30.json; the
+// instants are that file's generated_at and the two receipt days owed.
+const NEVER_FIRED = { last_start: null, last_end: null, duration_s: null, cron_status: null, sync_status: null };
+const MONTHLIES: Array<[string, string, string]> = [
+  ["financial-entity-totals-reconcile", "0 12 1 * *", "2026-10-01T12:00:00Z"],
+  ["donor-rollup-orphan-sweep", "30 12 1 * *", "2026-10-01T12:30:00Z"],
+  ["donor-party-rollup-orphan-sweep", "0 13 1 * *", "2026-10-01T13:00:00Z"],
+  ["entity-connection-stats-orphan-sweep", "30 13 1 * *", "2026-10-01T13:30:00Z"],
+  ["donation-edge-orphan-sweep", "30 11 1 * *", "2026-10-01T11:30:00Z"],
+];
+const CTX_0930 = { asOf: new Date("2026-09-30T00:01:15.618Z"), lookbackDays: 14 };
+
+test("FIX-1251: the five monthlies read `scheduled · next Thu 10-01` in the 09-30 file", () => {
+  for (const [jobname, schedule, nextAt] of MONTHLIES) {
+    const v = verdictFor(firing({ jobname, schedule, ...NEVER_FIRED }), null, CTX_0930);
+    assert.equal(v.verdict, "scheduled", jobname);
+    assert.equal(v.detail, "monthly · next " + nextAt, jobname);
+  }
+});
+
+test("FIX-1251: in the 10-16 file (10-01 is out of the lookback) they read `scheduled · next Sun 11-01`", () => {
+  const ctx = { asOf: new Date("2026-10-15T21:13:00Z"), lookbackDays: 14 };
+  const v = verdictFor(firing({ schedule: "0 12 1 * *", ...NEVER_FIRED }), null, ctx);
+  assert.equal(v.verdict, "scheduled");
+  assert.equal(v.detail, "monthly · next 2026-11-01T12:00:00Z");
+});
+
+test("FIX-1251: a monthly that SHOULD have fired inside the lookback and did not is still `missing`", () => {
+  const ctx = { asOf: new Date("2026-10-05T21:13:00Z"), lookbackDays: 14 };
+  const v = verdictFor(firing({ schedule: "0 12 1 * *", ...NEVER_FIRED }), null, ctx);
+  assert.equal(v.verdict, "missing");
+  assert.equal(monthlyNotYetDue("0 12 1 * *", ctx), null);
+});
+
+test("FIX-1251: a monthly that DID fire inside the lookback is band-compared, never `scheduled` (rule 105)", () => {
+  const ctx = { asOf: new Date("2026-10-01T21:13:00Z"), lookbackDays: 14 };
+  const v = verdictFor(firing({ schedule: "0 12 1 * *", duration_s: 42 }), BAND, ctx);
+  assert.equal(v.verdict, "in-band");
+  assert.equal(verdictFor(firing({ schedule: "0 12 1 * *", duration_s: 42 }), null, ctx).verdict, "no-band");
+});
+
+test("FIX-1251: a daily or weekly job with no firing is still `missing`, context or not", () => {
+  assert.equal(verdictFor(firing({ schedule: "30 3 * * *", ...NEVER_FIRED }), null, CTX_0930).verdict, "missing");
+  assert.equal(verdictFor(firing({ schedule: "37 2 * * 6", ...NEVER_FIRED }), null, CTX_0930).verdict, "missing");
+});
+
+test("FIX-1251: without a context the split is not made (`missing`); `inactive` still outranks it", () => {
+  assert.equal(verdictFor(firing({ schedule: "0 12 1 * *", ...NEVER_FIRED }), null).verdict, "missing");
+  assert.equal(verdictFor(firing({ schedule: "0 12 1 * *", active: false, ...NEVER_FIRED }), null, CTX_0930).verdict, "inactive");
+});
+
+test("FIX-1251: `scheduled` renders plain in the table (not a fault), `missing` stays bold", () => {
+  const d = fixture();
+  d.cron_jobs = verdictsFor(
+    [firing({ jobname: "m1", schedule: "0 12 1 * *", ...NEVER_FIRED }), firing({ jobname: "d1", schedule: "30 3 * * *", ...NEVER_FIRED })],
+    {},
+    CTX_0930,
+  );
+  const md = renderMarkdown(d);
+  assert.match(md, /\| scheduled \| monthly · next 2026-10-01T12:00:00Z \|/);
+  assert.match(md, /\| \*\*missing\*\* \| no firing in the lookback window \|/);
 });

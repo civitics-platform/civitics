@@ -1004,7 +1004,9 @@ async function main(): Promise<void> {
     // redirected — it is hand-edited and shared by both targets, and following
     // the receipt into local/ would make every job read `no-band` (FIX-1209).
     const bands = loadBands(resolveReceiptPaths(args, isLocal).bandsDir);
-    const cronJobs = verdictsFor(firings, bands);
+    // FIX-1251: the read instant + lookback let a monthly job that has not come
+    // round yet read `scheduled`, not `missing`.
+    const cronJobs = verdictsFor(firings, bands, { asOf: now, lookbackDays: CRON_LOOKBACK_DAYS });
 
     const dailyRows = await r.run<Record<string, unknown>>("daily_run", Q_DAILY_RUN);
     // `latest` says what happened; `complete` carries the numbers. See Q_DAILY_RUN.
