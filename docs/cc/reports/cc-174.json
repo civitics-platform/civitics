@@ -1,0 +1,105 @@
+{
+  "cc": "174",
+  "prompt": "cc-prompt-174-hygiene-fix1238-votes-fk-skip-donor-party-lag-days-held-guard-monthly-verdict-fix1236-error-page.md",
+  "started_at": "2026-09-30T02:19:11Z",
+  "finished_at": "2026-09-30T04:25:00Z",
+  "head_before": "c0c545c0",
+  "head_after": "ed172586",
+  "commits": [
+    {
+      "sha": "241909f6",
+      "subject": "docs(fixes): file FIX-1248, FIX-1249, FIX-1250, FIX-1251 — weekly-merge anchor, donor-party lag days, pre-push held guard, monthly verdict; lane:fec markers on 1188/1203/1204; paced-ops plan re-anchored"
+    },
+    {
+      "sha": "6bf492ea",
+      "subject": "fix(data): FIX-1238 — a roll whose bill has no bill_details row is landed once or skipped with a count; completeSync reports the skips"
+    },
+    {
+      "sha": "b548861c",
+      "subject": "feat(data,docs): FIX-1249 — donor_party_crawl config row: full_rebuild_lag_days 30 (the SQL file; the runner merges instead of overwriting)"
+    },
+    {
+      "sha": "35392b96",
+      "subject": "chore(fixes): record prod verification of FIX-1249"
+    },
+    {
+      "sha": "9cdf2012",
+      "subject": "feat(scripts,docs): FIX-1250 — pnpm session:held exits on a held prod session; the pre-push hook refuses a push to main under a hold; cc.md + the template say so; the permission-prompt reading"
+    },
+    {
+      "sha": "eae6d0ce",
+      "subject": "feat(data,scripts): FIX-1251 — monthly jobs with no firing in the lookback read \\\"scheduled · next <date>\\\", not \\\"missing\\\"; the board says monthly"
+    },
+    {
+      "sha": "0c6c5811",
+      "subject": "feat(app): FIX-1236 — pages/_error.tsx renders the busy-record page on a degraded ISR first render, keeping private/no-store"
+    },
+    {
+      "sha": "43fddf04",
+      "subject": "chore(scripts,docs): FIX-1244 — check:doc-links ignores links inside code spans and future receipts paths; the known-breaks list shrinks 19 → 18"
+    },
+    {
+      "sha": "ed172586",
+      "subject": "chore(fixes): sync status after FIX-1236, FIX-1250, FIX-1251"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1238",
+    "FIX-1249",
+    "FIX-1250",
+    "FIX-1251",
+    "FIX-1236"
+  ],
+  "fixes_filed": [
+    "FIX-1248",
+    "FIX-1249",
+    "FIX-1250",
+    "FIX-1251"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "One data write, no DDL, no migration: pipeline_state key donor_party_crawl, MERGE-upserted to {\\\"full_rebuild_lag_days\\\": 30} from docs/audits/2026-09-30-fix1249-donor-party-crawl-lag-days.sql under session:wait-for-gate:prod (--expected-minutes 1, --census off, reason \\\"cc-174 FIX-1249 config row\\\"), via db-query --prod --call --yes-i-mean-prod. INSERT 0 1 at 2026-09-30 02:41:29.664701+00 (there was no row before); the session was claimed, 17 guarded holds were cleared, the interlock released, --then exited 0. Every other prod contact was a read: db-query --prod reads (FIX-1238's refs/proposals/bill_details/pg_stat_user_tables, jobid 17 and its data_sync_log rows, prod_session_state(), a post-hoc prod_op_gate(60)), and pnpm session:held (the new pre-push gate) before each push from item 3 on. Nine pushes to main, each a Vercel deploy, each after held=false (by hand for items 0, 1, 2 and 6; through the hook from item 3). Two read-only HTTPS GETs on the Vercel origin (the 404 smoke). Public reads of clerk.house.gov roll 295 (curl) and, in the local rehearsal, the House/Senate XML feeds and congress.gov (the votes step itself).",
+  "ci": "green",
+  "stopped_items": [
+    "read 2(b) STOP (the prompt's own): 2026-house-295 is case (b), a compound-unique collision. The ref 119-HR-4795 binds proposal d536667f-6a0d-4aeb-b1b9-324c946b4701 (created 2026-08-28, no bill_details row); proposal 0e2433b5-0fd3-4e27-a3ae-9741c468122d (created 2026-08-04, NO xsr ref) holds (federal, 119, HR 4795). D1 shipped the skip; which proposal is the bill is left for Craig. Two more case-(b) bills and three case-(a) bills sit on prod with no roll yet (section 1, read 2)."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1238",
+      "what": "next nightly (dispatch 09-30 21:00 UTC; receipts 2026-10-01): no votes_bill_proposal_id_fkey line; data_sync_log congress_votes rows_failed 1, skipped_rolls names 2026-house-295 (bill_details_key_collision); receipts §1 prints the skip line",
+      "after": "2026-09-30T21:30Z"
+    },
+    {
+      "fix": "FIX-1238",
+      "what": "pre-ec probe votes n_dead flat 10-02 → 10-03 (the +433/day series stops)",
+      "after": "2026-10-03T04:30Z"
+    },
+    {
+      "fix": "FIX-1238",
+      "what": "jobid 56 votes-vacuum-analyze first firing Sat 02:37 UTC, then the 04:25 pre-ec probe ≥ 99 % all-visible (cc-167's owed read, same receipt)",
+      "after": "2026-10-03T04:30Z"
+    },
+    {
+      "fix": "FIX-1251",
+      "what": "receipts 2026-10-02: the five monthlies fired Thu 10-01 and read in-band / no-band",
+      "after": "2026-10-01T21:30Z"
+    },
+    {
+      "fix": "FIX-1251",
+      "what": "receipts 2026-10-16: the five read scheduled · monthly · next 2026-11-01…, not missing",
+      "after": "2026-10-15T21:30Z"
+    },
+    {
+      "fix": "FIX-1249",
+      "what": "jobid 17 Tue 10-06 15:00 UTC: data_sync_log donor_party_rollup_refresh metadata full_rebuild_lag '30 days', mode crawl",
+      "after": "2026-10-06T15:05Z"
+    },
+    {
+      "fix": "FIX-1236",
+      "what": "opportunistic: the front-door watch's next real 5xx on a revalidate page renders 'This record is busy right now' (not forceable on Pro)",
+      "after": "2026-09-30T04:16Z"
+    }
+  ]
+}
