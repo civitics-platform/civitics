@@ -34,9 +34,9 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
 import { DEFAULT_LANES } from "./cc-front-matter.mjs";
 
-function git(args) {
+function git(args, cwd) {
   try {
-    return execSync(`git ${args}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execSync(`git ${args}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], ...(cwd ? { cwd } : {}) }).trim();
   } catch {
     return null;
   }
@@ -51,10 +51,13 @@ export function repoRoot() {
 
 /**
  * The PRIMARY checkout's root — the stable anchor for paths outside the repo.
- * Equals repoRoot() when not in a linked worktree.
+ * Equals repoRoot() when not in a linked worktree. `cwd` (optional) resolves
+ * from another directory: `scripts/session-held.mjs` (FIX-1250) reads the
+ * primary checkout's .env.local.prod through this, and its test runs it from a
+ * throwaway worktree.
  */
-export function mainCheckoutRoot() {
-  const common = git("rev-parse --path-format=absolute --git-common-dir");
+export function mainCheckoutRoot(cwd) {
+  const common = git("rev-parse --path-format=absolute --git-common-dir", cwd);
   // A bare-ish fallback: older git without --path-format, or an unusual layout.
   if (!common) return repoRoot();
   return dirname(common.replace(/\/$/, ""));

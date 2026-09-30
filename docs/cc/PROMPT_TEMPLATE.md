@@ -120,7 +120,12 @@ the checklist below.
    State every owed receipt in the `owed:` shape —
    `{fix: FIX-NNN, what: "<one line>", after: <date or zoned ISO instant>}` —
    so `/cc` copies it into the report mechanically.
-10. **Autonomous loop** — order, and the conditions that stop it.
+10. **Autonomous loop** — order, and the conditions that stop it. Every loop
+    carries the ratified permission-prompt reading (cc-174, FIX-1250): **any
+    permission prompt — log the exact command, stop THAT command, carry on if
+    the item can complete without it, and flag the reading in
+    `stopped_items`.** It replaces the older "any permission prompt (log the
+    exact command, STOP)", which read as stopping the whole run.
 11. **After-commit report** — the front matter (see `.claude/commands/cc.md`:
     the FIX-1175 fields plus `lane`, `project` and `owed` from §0 and §9) plus
     the prose sections this run should answer.
@@ -172,6 +177,15 @@ CC reads this before starting. Each line is a rule that has cost a real session.
 - `main` advances only by fast-forward from a rebased branch:
   `git push origin feature/fix-<id>:main`.
 - Never `--amend`, never `--no-verify`, never force-push.
+- **Every push to main goes through the pre-push hook's `session:held` gate**
+  (FIX-1250). The hook reads `prod_session_state()` through the primary
+  checkout's `.env.local.prod` and `held=true` REFUSES the push — so does an
+  unreadable state; wait and retry. Never `--no-verify`, never the
+  `CIVITICS_SKIP_HELD_GUARD` escape (it exists for a checkout with no prod DSN
+  and is never set by a prompt). `pnpm session:held` prints the one line by
+  hand: `held=<bool> reason=… claimant=… claimed_at=… expected_minutes=…
+  live_writers=<n>`, exit 0 free / 1 held / 2 unreadable. It steps aside under
+  `GITHUB_ACTIONS`, where the nightly pushes its receipts.
 - Commit trailer block, verbatim, at the end of every commit:
   ```
   Co-Authored-By: Claude <model> <noreply@anthropic.com>
@@ -300,9 +314,11 @@ passing, and both failures the clock rather than the data.
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `board:test`,
   `session:worktree:test`, `drain:test`, `check:proconfig:test`,
   `check:no-store-routes:test`, `check:render-timeouts:test`,
-  `check:doc-links:test`). `cc:verify:test` also covers `cc:prompt`.
+  `check:doc-links:test`, `session:held:test`, `hook:test`). `cc:verify:test`
+  also covers `cc:prompt`; `fixes:test` also runs `session:held:test`.
   `board:test` (which also runs the phase-goals pin) and `pnpm check:doc-links`
-  run in `fixes-integrity.yml` on every push (FIX-1243).
+  run in `fixes-integrity.yml` on every push (FIX-1243), as do
+  `session:held:test` and `hook:test` (FIX-1250).
 - **Moving a doc** goes through `pnpm check:doc-links --archive <name>.md
   --dry-run`. The dry run lists every `git mv` and every rewrite; without
   `--dry-run` it performs them. It refuses a doc that code or a migration

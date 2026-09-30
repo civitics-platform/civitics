@@ -111,3 +111,11 @@ jobs:
       # dangling reference behind.
       - name: doc-link check + its unit tests
         run: node scripts/test-check-doc-links.mjs && node scripts/check-doc-links.mjs
+
+      # FIX-1250: the pre-push held guard. session:held's exits, ref parser and
+      # primary-checkout resolution (a real throwaway worktree), and the hook's
+      # wiring (runs first, refuses on 1 and 2, steps aside only under CI or the
+      # named escape) — both pure Node + git + sh, no DSN, ~2s. The hook suite
+      # (FIX-1199) had been local-only until now.
+      - name: session:held + pre-push hook unit tests
+        run: node scripts/test-session-held.mjs && node scripts/test-pre-push-hook.mjs

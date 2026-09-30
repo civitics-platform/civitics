@@ -17,7 +17,43 @@
 # through its bundled `sh`, so this POSIX script works on Craig's Windows box.
 #
 # Bypass (use sparingly, and never to dodge a real off-trunk completion):
-# `git push --no-verify`.
+# `git push --no-verify`. Agents never bypass (PROMPT_TEMPLATE.md, git section).
+
+# ── The held guard (FIX-1250) — runs FIRST ──────────────────────────────────
+# Rule 180: every push to main reads prod_session_state() and sees held=false.
+# That read used to live only in prompt text, and nothing exited on held=true
+# (cc-167 pushed into cc-166's hold). `pnpm session:held --pre-push` reads git's
+# ref lines from stdin, gates ONLY a push whose remote ref is refs/heads/main,
+# and exits 0 free / 1 held / 2 unreadable. Both 1 and 2 REFUSE the push: the
+# read is required, so "could not read it" is not "free". Wait for the hold to
+# clear, then push again.
+#
+# It steps aside when:
+#   * GITHUB_ACTIONS is set. The nightly's receipts job (and the audit job)
+#     push to main from a CI checkout with no prod DSN; the nightly is the
+#     writer a supervised session defers to, not a session that defers.
+#   * CIVITICS_SKIP_HELD_GUARD=1 — for a checkout with no prod DSN at all.
+#     Documented here; never set by a prompt. `--no-verify` stays forbidden.
+push_refs=$(cat)
+if [ -n "$GITHUB_ACTIONS" ]; then
+  echo "[pre-push] session:held SKIPPED under GITHUB_ACTIONS (no prod DSN in CI). FIX-1250."
+elif [ "$CIVITICS_SKIP_HELD_GUARD" = "1" ]; then
+  echo "[pre-push] session:held SKIPPED: CIVITICS_SKIP_HELD_GUARD=1 (a checkout with no prod DSN). FIX-1250."
+else
+  printf '%s\n' "$push_refs" | pnpm -s session:held --pre-push
+  held_exit=$?
+  if [ "$held_exit" -ne 0 ]; then
+    echo ""
+    if [ "$held_exit" -eq 1 ]; then
+      echo "[pre-push] ✗ a supervised prod session is HELD — push to main refused (FIX-1250)."
+      echo "[pre-push]   Wait for it to release, then push again. Never --no-verify."
+    else
+      echo "[pre-push] ✗ prod_session_state() could not be read — push to main refused (FIX-1250)."
+      echo "[pre-push]   Rule 180 requires the read. Fix the DSN/connection and push again."
+    fi
+    exit 1
+  fi
+fi
 
 echo "[pre-push] running @civitics/data typecheck ..."
 if ! pnpm --filter @civitics/data typecheck; then

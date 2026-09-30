@@ -97,6 +97,10 @@ Two things override the prompt text:
   `stopped_items`, and carry on with the rest. Do not work around it.
 - **The tree contradicts the prompt's premise** → stop and report. A prompt is
   written against a tree that has since moved; the tree wins.
+- **Any permission prompt** → log the exact command, stop THAT command, carry
+  on if the item can complete without it, and flag the reading in
+  `stopped_items`. (The ratified reading, cc-174 / FIX-1250: a prompt is not a
+  stop for the whole run, and it is never worked around.)
 
 ### Step 3 — write the report
 
@@ -209,6 +213,12 @@ git commit -m "docs(cc): report for cc-<n>"
 Docs-only, so `tests.yml` skips it via `paths-ignore` and `fixes-integrity.yml`
 still runs. Print the same report text into the chat as well — Craig may still
 read it there; the file is the record.
+
+**Every push to main goes through the pre-push hook's `session:held` gate**
+(FIX-1250) — the report's push and every commit's before it. `held=true`
+REFUSES the push, and so does an unreadable state (exit 2); wait and retry.
+Never `--no-verify`, never the `CIVITICS_SKIP_HELD_GUARD` escape. `pnpm
+session:held` prints the same one line by hand.
 
 Once the report commit is pushed, clear the in-flight marker and re-render the
 board:

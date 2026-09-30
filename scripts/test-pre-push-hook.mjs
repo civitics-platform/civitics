@@ -55,6 +55,7 @@ const STUB = [
   'case "$*" in',
   "  *typecheck*) exit ${FAKE_TYPECHECK_EXIT:-0} ;;",
   "  *fixes:check:trunk*) exit ${FAKE_TRUNK_EXIT:-0} ;;",
+  '  *session:held*) cat > "$PNPM_LOG.stdin"; exit ${FAKE_HELD_EXIT:-0} ;;',
   "esac",
   "exit 0",
   "",
@@ -89,7 +90,7 @@ function makeFixture({ shallow = false, trunk = true } = {}) {
   return { dir, binDir, log };
 }
 
-function runHook(fx, env = {}) {
+function runHook(fx, env = {}, input = "") {
   let status = 0;
   let out = "";
   try {
@@ -97,6 +98,7 @@ function runHook(fx, env = {}) {
       cwd: fx.dir,
       encoding: "utf8",
       stdio: "pipe",
+      input,
       env: {
         ...process.env,
         PATH: `${fx.binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`,
@@ -104,6 +106,8 @@ function runHook(fx, env = {}) {
         GITHUB_ACTIONS: "",
         FAKE_TYPECHECK_EXIT: "",
         FAKE_TRUNK_EXIT: "",
+        FAKE_HELD_EXIT: "",
+        CIVITICS_SKIP_HELD_GUARD: "",
         ...env,
       },
     });
@@ -112,7 +116,8 @@ function runHook(fx, env = {}) {
     out = `${e.stdout || ""}${e.stderr || ""}`;
   }
   const calls = existsSync(fx.log) ? readFileSync(fx.log, "utf8") : "";
-  return { status, out, calls };
+  const heldStdin = existsSync(`${fx.log}.stdin`) ? readFileSync(`${fx.log}.stdin`, "utf8") : null;
+  return { status, out, calls, heldStdin };
 }
 
 // -- 3. the skip path --------------------------------------------------------
@@ -162,7 +167,51 @@ console.log("the gate still runs everywhere else:");
   assertTrue("prints the typecheck abort", /typecheck failed/.test(r.out), r.out);
 }
 
-// -- 5. teardown -------------------------------------------------------------
+// -- 5. the held guard (FIX-1250) --------------------------------------------
+// session:held itself is unit-tested in scripts/test-session-held.mjs (the ref
+// parser, the three exits). Here: the hook calls it FIRST, hands it git's ref
+// lines, refuses on 1 AND 2, and steps aside only under CI or the named escape.
+const MAIN_PUSH = "refs/heads/feature/x 1111111 refs/heads/main 2222222\n";
+console.log("the held guard:");
+{
+  const fx = makeFixture();
+  const r = runHook(fx, {}, MAIN_PUSH);
+  assertTrue("held=false (0) ⇒ push proceeds", r.status === 0, `status=${r.status}\n${r.out}`);
+  const order = r.calls.split("\n").filter(Boolean);
+  assertTrue("session:held runs BEFORE the typecheck", /session:held --pre-push/.test(order[0] ?? "") && /typecheck/.test(order[1] ?? ""), JSON.stringify(order));
+  assertTrue("git's ref lines reach session:held on stdin", (r.heldStdin ?? "").includes("refs/heads/main 2222222"), JSON.stringify(r.heldStdin));
+}
+{
+  const fx = makeFixture();
+  const r = runHook(fx, { FAKE_HELD_EXIT: "1" }, MAIN_PUSH);
+  assertTrue("held=true (1) ⇒ push REFUSED", r.status === 1, `status=${r.status}\n${r.out}`);
+  assertTrue("says HELD and wait", /HELD — push to main refused/.test(r.out) && /Wait for it to release/.test(r.out), r.out);
+  assertTrue("nothing after it ran (no typecheck)", !/typecheck/.test(r.calls), JSON.stringify(r.calls));
+}
+{
+  const fx = makeFixture();
+  const r = runHook(fx, { FAKE_HELD_EXIT: "2" }, MAIN_PUSH);
+  assertTrue("unreadable (2) ⇒ push REFUSED too", r.status === 1, `status=${r.status}\n${r.out}`);
+  assertTrue("says the state could not be read", /could not be read — push to main refused/.test(r.out), r.out);
+}
+{
+  const fx = makeFixture({ shallow: false, trunk: true });
+  const r = runHook(fx, { GITHUB_ACTIONS: "true", FAKE_HELD_EXIT: "2" }, MAIN_PUSH);
+  assertTrue("CI ⇒ held guard steps aside (the nightly's receipts push has no DSN)", r.status === 0 && !/session:held/.test(r.calls), `status=${r.status} calls=${JSON.stringify(r.calls)}`);
+  assertTrue("CI ⇒ says SKIPPED", /session:held SKIPPED under GITHUB_ACTIONS/.test(r.out), r.out);
+}
+{
+  const fx = makeFixture();
+  const r = runHook(fx, { CIVITICS_SKIP_HELD_GUARD: "1", FAKE_HELD_EXIT: "1" }, MAIN_PUSH);
+  assertTrue("CIVITICS_SKIP_HELD_GUARD=1 ⇒ steps aside, and says so", r.status === 0 && !/session:held/.test(r.calls) && /CIVITICS_SKIP_HELD_GUARD=1/.test(r.out), `status=${r.status}\n${r.out}`);
+}
+{
+  const fx = makeFixture();
+  const r = runHook(fx, { CIVITICS_SKIP_HELD_GUARD: "0", FAKE_HELD_EXIT: "1" }, MAIN_PUSH);
+  assertTrue("any other value of the escape does NOT skip", r.status === 1, `status=${r.status}\n${r.out}`);
+}
+
+// -- 6. teardown -------------------------------------------------------------
 for (const d of cleanups) {
   try {
     rmSync(d, { recursive: true, force: true });
