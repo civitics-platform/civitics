@@ -6,7 +6,8 @@
  * states that matter once it does:
  *
  *   - a mapped code emits exactly one `rule` row at 0.85;
- *   - an unmapped sector (23/56/61/71/72/81) and a null code emit nothing;
+ *   - an unmapped sector (23/56/61/71/72/81, and 54 outside 5411/5412/5415/5417
+ *     since FIX-1246) and a null code emit nothing;
  *   - a NAICS tag that AGREES with the keyword tag dedupes to ONE row, and the
  *     keyword row is the one kept (it is pushed first);
  *   - a NAICS tag that DISAGREES yields TWO rows — the multi-tag donor that
@@ -15,7 +16,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildNaicsIndustryTags, dedupeIndustryTags } from "./rules";
+import { buildNaicsIndustryTags, dedupeIndustryTags, naicsToIndustry } from "./rules";
 import { VALID_INDUSTRIES } from "./topics";
 
 const E_MAPPED   = "11111111-1111-1111-1111-111111111111";
@@ -65,7 +66,7 @@ test("an unmapped sector and a null code emit nothing", () => {
 test("NAICS confidence outranks both keyword confidences (0.8 single, 0.7 ambiguous)", () => {
   // primary_industry_tag() ranks on confidence after provenance; this ordering is
   // what makes a contract code beat a name match without a NAICS-specific key.
-  const [n] = buildNaicsIndustryTags([{ entity_id: E_MAPPED, naics_code: "541330" }]);
+  const [n] = buildNaicsIndustryTags([{ entity_id: E_MAPPED, naics_code: "541511" }]);
   assert.ok(n!.confidence > 0.8);
   assert.ok(n!.confidence > 0.7);
 });
@@ -85,7 +86,7 @@ test("a NAICS tag that AGREES with the keyword tag dedupes to ONE row — the ke
 test("a NAICS tag that DISAGREES yields TWO rows — the multi-tag state FIX-918 ranks", () => {
   const all = [
     keywordTag(E_DISAGREE, "finance"),
-    ...buildNaicsIndustryTags([{ entity_id: E_DISAGREE, naics_code: "541330" }]),  // 541 → tech
+    ...buildNaicsIndustryTags([{ entity_id: E_DISAGREE, naics_code: "541511" }]),  // 5415 → tech
   ];
   const out = dedupeIndustryTags(all);
   assert.deepEqual(
@@ -96,12 +97,42 @@ test("a NAICS tag that DISAGREES yields TWO rows — the multi-tag state FIX-918
 
 test("every tag the NAICS pass can emit is a vocabulary key", () => {
   const codes = ["11", "21", "22", "31", "32", "33", "3254", "325", "326", "334", "335", "336",
-                 "42", "44", "45", "48", "49", "51", "52", "53", "54", "541", "5411", "5412",
-                 "5415", "55", "62", "92"];
+                 "42", "44", "45", "48", "49", "51", "52", "53", "5411", "5412",
+                 "5415", "5417", "55", "62", "92"];
   const rows = buildNaicsIndustryTags(codes.map((c, i) => ({
     entity_id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`,
     naics_code: c.padEnd(6, "0"),
   })));
   assert.equal(rows.length, codes.length);
   for (const r of rows) assert.ok((VALID_INDUSTRIES as readonly string[]).includes(r.tag), r.tag);
+});
+
+/**
+ * FIX-1246 — NAICS 54 is not tech. The "54" and "541" catch-alls are gone;
+ * engineering, consulting, advertising, design and "other professional" have no
+ * bucket in the vocabulary and go untagged (the sector-56 precedent), and the
+ * four sub-sectors with a true home keep it. 541330 is the wrong-but-green
+ * shape: the old map tagged it tech, and it is the largest retired prefix
+ * (5413, 3,249 prod entities on 2026-09-30).
+ */
+test("FIX-1246: NAICS 54 outside 5411/5412/5415/5417 emits nothing", () => {
+  for (const code of ["541330", "541611", "541810", "541990", "541430", "540000", "54"]) {
+    assert.equal(naicsToIndustry(code), null, `${code} must not map`);
+    assert.deepEqual(buildNaicsIndustryTags([{ entity_id: E_UNMAPPED, naics_code: code }]), [], code);
+  }
+});
+
+test("FIX-1246: the four 54 sub-sectors with a bucket keep it", () => {
+  const cases: Array<[string, string]> = [
+    ["541511", "tech"],     // 5415 Computer Systems Design
+    ["541715", "tech"],     // 5417 Scientific R&D (new)
+    ["541110", "legal"],    // 5411 Legal Services
+    ["541211", "finance"],  // 5412 Accounting
+  ];
+  for (const [code, want] of cases) {
+    assert.equal(naicsToIndustry(code), want, code);
+    const rows = buildNaicsIndustryTags([{ entity_id: E_MAPPED, naics_code: code }]);
+    assert.equal(rows.length, 1, code);
+    assert.equal(rows[0]!.tag, want, code);
+  }
 });

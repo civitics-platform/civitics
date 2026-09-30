@@ -1247,7 +1247,16 @@ const NAICS2_INDUSTRY: Record<string, string> = {
   "51": "tech",
   "52": "finance",
   "53": "real_estate",
-  "54": "tech",
+  // NAICS 54 — Professional, Scientific and Technical Services: engineering,
+  // consulting, architecture, design, advertising, "other professional". The
+  // blanket `tech` made it the largest NAICS source of `tech` (12,834 of 19,222
+  // prod tags, 2026-09-30) and the largest cross-industry disagreements with
+  // the keyword and ai tags. Most of it has no right bucket in this
+  // vocabulary, so the entry is REMOVED rather than repointed (the sector-56
+  // precedent below): naicsToIndustry returns null and the row goes untagged,
+  // and the contract chord's NAICS fallback label 'Professional Services'
+  // carries it. The four sub-sectors that DO have a bucket stay, in
+  // NAICS_OVERRIDE: 5411 legal, 5412 finance, 5415 and 5417 tech (FIX-1246).
   "55": "finance",
   // NAICS 56 — Administrative/Support and Waste Management: staffing, security
   // and waste firms, NOT unions. Mapping it to `labor` was a category error and
@@ -1281,10 +1290,12 @@ const NAICS_OVERRIDE: Record<string, string> = {
   "3254": "health",
   "325": "manufacturing",
   "326": "manufacturing",
-  "541": "tech",
-  "5411": "legal",
-  "5412": "finance",
-  "5415": "tech",
+  // FIX-1246: the "541" → tech catch-all is gone with its "54" parent above;
+  // only the sub-sectors with a true home map.
+  "5411": "legal",    // Legal Services
+  "5412": "finance",  // Accounting, Tax Preparation, Bookkeeping, and Payroll Services
+  "5415": "tech",     // Computer Systems Design and Related Services
+  "5417": "tech",     // Scientific Research and Development Services
 };
 
 // Exported (FIX-909) for the same reason as INDUSTRY_KEYWORDS — the NAICS emit
@@ -1304,8 +1315,8 @@ export function naicsToIndustry(code: string): string | null {
 /**
  * The NAICS emit loop of tagFinancialEntities, lifted out so it can be pinned
  * by a test (FIX-919). One `rule` industry row per rollup entity whose code
- * maps; an unmapped sector (23/56/61/71/72/81) or a key outside the vocabulary
- * emits nothing.
+ * maps; an unmapped sector (23/56/61/71/72/81, and 54 outside 5411/5412/5415/
+ * 5417 — FIX-1246) or a key outside the vocabulary emits nothing.
  *
  * Confidence 0.85 sits above both keyword confidences (0.8 for a single match,
  * 0.7 when a name matches several industries), and that ordering is what lets
