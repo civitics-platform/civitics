@@ -1,0 +1,133 @@
+{
+ "generated_at": "2026-09-30T23:46:35.700377+00:00",
+ "database": "prod",
+ "fix": "FIX-1256",
+ "prompt": "cc-177",
+ "population_filter": "external_source_refs x WHERE x.source = 'congress_gov' AND x.entity_type = 'proposal' AND NOT EXISTS (bill_details bd WHERE bd.proposal_id = x.entity_id); natural key (x's proposal's jurisdiction_id, split_part(external_id,'-',1), split_part(external_id,'-',2) || ' ' || split_part(external_id,'-',3)); case b = another proposal holds it and has no congress_gov ref; case a = nobody holds it",
+ "counts": {
+  "case_b": 3,
+  "case_a": 3,
+  "excluded": 0,
+  "latent_holders_federal_no_congress_gov_ref": 34
+ },
+ "items": [
+  {
+   "case": "b",
+   "external_id": "119-HR-4795",
+   "ref_id": "ac0de838-0883-4571-8824-500f3f45dbb1",
+   "ref_proposal_id": "d536667f-6a0d-4aeb-b1b9-324c946b4701",
+   "holder_proposal_id": "0e2433b5-0fd3-4e27-a3ae-9741c468122d",
+   "bill_key": {
+    "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+    "session": "119",
+    "bill_number": "HR 4795"
+   },
+   "ref_proposal": {
+    "title": "Protect Economic and Academic Freedom Act of 2026",
+    "created_at": "2026-08-28T13:53:45.692789+00:00"
+   },
+   "holder": {
+    "title": "Protect Economic and Academic Freedom Act of 2025",
+    "created_at": "2026-08-04T05:34:51.502156+00:00",
+    "refs": null
+   }
+  },
+  {
+   "case": "b",
+   "external_id": "119-HR-9816",
+   "ref_id": "7e65ad0e-4a49-4499-9c19-3ad48e2276bc",
+   "ref_proposal_id": "a1675d57-ca42-4e6e-b5de-cbf1c2238db6",
+   "holder_proposal_id": "bb9d330b-f1c9-4f52-b107-217369a7ee0e",
+   "bill_key": {
+    "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+    "session": "119",
+    "bill_number": "HR 9816"
+   },
+   "ref_proposal": {
+    "title": "MOMMIES Act",
+    "created_at": "2026-08-26T03:07:03.126888+00:00"
+   },
+   "holder": {
+    "title": "MOMMIES Act",
+    "created_at": "2026-08-04T05:34:51.502156+00:00",
+    "refs": null
+   }
+  },
+  {
+   "case": "b",
+   "external_id": "119-HR-9847",
+   "ref_id": "f240621b-7113-4c5a-8649-f391d5581f9d",
+   "ref_proposal_id": "7969fc6c-6703-4b06-800f-66495d900046",
+   "holder_proposal_id": "221255d4-f435-423a-ac29-eb243033df4d",
+   "bill_key": {
+    "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+    "session": "119",
+    "bill_number": "HR 9847"
+   },
+   "ref_proposal": {
+    "title": "Improving CARE for Youth Act",
+    "created_at": "2026-08-26T03:07:03.126888+00:00"
+   },
+   "holder": {
+    "title": "Improving CARE for Youth Act",
+    "created_at": "2026-08-04T05:34:51.502156+00:00",
+    "refs": null
+   }
+  },
+  {
+   "case": "a",
+   "external_id": "119-S-221",
+   "ref_id": "5ef18596-2b6c-413c-88af-0f94c9fb4614",
+   "proposal_id": "7db59f36-0154-4061-a483-6ded46288f31",
+   "bill_key": {
+    "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+    "session": "119",
+    "bill_number": "S 221"
+   },
+   "chamber": "senate",
+   "congress_number": 119,
+   "congress_gov_url": "https://congress.gov/bill/119th-congress/senate-bill/221",
+   "proposal": {
+    "title": "Extending Limits of United States Customs Waters Act of 2025",
+    "created_at": "2026-08-04T05:38:30.138804+00:00"
+   }
+  },
+  {
+   "case": "a",
+   "external_id": "119-S-2466",
+   "ref_id": "985cc8f3-fe3d-4867-847d-d66d08864d68",
+   "proposal_id": "6723c412-fe33-4bfa-aea3-8cd16f4ca659",
+   "bill_key": {
+    "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+    "session": "119",
+    "bill_number": "S 2466"
+   },
+   "chamber": "senate",
+   "congress_number": 119,
+   "congress_gov_url": "https://congress.gov/bill/119th-congress/senate-bill/2466",
+   "proposal": {
+    "title": "Senior Savings Protection Act",
+    "created_at": "2026-08-04T05:38:30.138804+00:00"
+   }
+  },
+  {
+   "case": "a",
+   "external_id": "119-S-3690",
+   "ref_id": "32f0c062-c2ca-4341-b678-db932512c052",
+   "proposal_id": "6e70a524-286f-407b-99ad-dee2398a52cf",
+   "bill_key": {
+    "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+    "session": "119",
+    "bill_number": "S 3690"
+   },
+   "chamber": "senate",
+   "congress_number": 119,
+   "congress_gov_url": "https://congress.gov/bill/119th-congress/senate-bill/3690",
+   "proposal": {
+    "title": "Ensuring Access to Medicaid Buy-in Programs Act of 2026",
+    "created_at": "2026-08-04T05:38:30.138804+00:00"
+   }
+  }
+ ],
+ "excluded": []
+}
