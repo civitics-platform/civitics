@@ -10,6 +10,10 @@
  * one — or the reverse — fails here instead of splitting one recipient into two
  * sectors across the chord and the Sankey.
  *
+ * FIX-1254 renamed the seven 1:1 arms to their industry labels, and FIX-1252
+ * gave the treemap's copy a CTE column argument (`r.naics_code`, the dominant
+ * code); the opener below matches all three argument shapes.
+ *
  * Also checked: every label the contract surfaces can emit has a colour in
  * packages/graph (sector-colors.ts + industries.ts, read off disk — the app
  * cannot import the graph package's d3 modules into a node test).
@@ -24,7 +28,11 @@ import { NAICS_SECTOR_LABELS, NAICS_SECTOR_OTHER, naicsSectorLabel } from "./nai
 const REPO = join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = join(REPO, "supabase", "migrations");
 
-const CASE_OPEN = /CASE\s+SUBSTRING\(\s*(?:MIN\(\s*)?fr\.metadata->>'naics_code'\s*\)?\s+FROM\s+1\s+FOR\s+2\s*\)/gi;
+// The CASE's argument is a row's code (`fr.metadata->>'naics_code'`, the chord),
+// FIX-1247's `MIN(fr.metadata->>'naics_code')`, or since FIX-1252 the recipient's
+// dominant code from a CTE column (`r.naics_code`, the treemap).
+const CASE_OPEN =
+  /CASE\s+SUBSTRING\(\s*(?:MIN\(\s*)?(?:fr\.metadata->>'naics_code'|[a-z_]+\.naics_code)\s*\)?\s+FROM\s+1\s+FOR\s+2\s*\)/gi;
 
 type ParsedCase = { arms: Record<string, string>; otherwise: string | null };
 
@@ -70,21 +78,24 @@ test("FIX-1247 the TS table equals every copy of the NAICS CASE in the latest mi
 test("FIX-1247 the parser sees a one-arm edit (the drift test can go red)", () => {
   const { file } = latestCase();
   const sql = readFileSync(join(MIGRATIONS, file), "utf8");
-  const mutated = sql.replace("WHEN '53' THEN 'Real Estate'", "WHEN '53' THEN 'Real Estate & Rental'");
+  // Every occurrence: the first may sit in the migration's header comment (the
+  // FIX-1254 file writes the CASE once there), which the parser strips.
+  const mutated = sql.split("WHEN '53' THEN 'Real Estate & Construction'").join("WHEN '53' THEN 'Real Estate'");
   assert.notEqual(mutated, sql, "the mutation must hit an arm");
   const cases = parseNaicsCases(mutated);
   assert.ok(cases.some((c) => c.arms["53"] !== NAICS_SECTOR_LABELS["53"]));
-  const dropped = parseNaicsCases(sql.replace("WHEN '55' THEN 'Management'", ""));
+  const dropped = parseNaicsCases(sql.split("WHEN '55' THEN 'Management'").join(""));
   assert.ok(dropped.some((c) => !("55" in c.arms)));
 });
 
 test("FIX-1247 naicsSectorLabel mirrors the CASE, including its NULL and ELSE", () => {
   assert.equal(naicsSectorLabel("236220"), "Construction");
   assert.equal(naicsSectorLabel("541330"), "Professional Services");
-  assert.equal(naicsSectorLabel("531110"), "Real Estate");      // was missing from the SQL
+  assert.equal(naicsSectorLabel("531110"), "Real Estate & Construction"); // FIX-1247 added 53; FIX-1254 its industry label
   assert.equal(naicsSectorLabel("551112"), "Management");       // was missing from the SQL
   assert.equal(naicsSectorLabel("561612"), "Administrative Services"); // the Sankey said "Administrative"
-  assert.equal(naicsSectorLabel("621111"), "Healthcare");       // the Sankey said "Health Care"
+  assert.equal(naicsSectorLabel("621111"), "Health Care");      // FIX-1254: was "Healthcare" beside the industry's "Health Care"
+  assert.equal(naicsSectorLabel("517310"), "Technology & Communications"); // FIX-1254: was "Information Technology"
   assert.equal(naicsSectorLabel("921110"), "Government");       // the Sankey said "Public Administration"
   assert.equal(naicsSectorLabel("999999"), "Other");
   assert.equal(naicsSectorLabel(null), "Other");

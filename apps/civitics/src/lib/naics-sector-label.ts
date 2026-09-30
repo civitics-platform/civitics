@@ -4,9 +4,9 @@
  * THE SOURCE OF TRUTH IS THE SQL. `chord_contract_flows_full()`,
  * `treemap_recipients_by_contracts_full()` and both CTEs of
  * `refresh_contract_flow_rollups()` label an untagged contract recipient by
- * `CASE SUBSTRING(<naics_code> FROM 1 FOR 2) WHEN '11' THEN 'Agriculture' …
+ * `CASE SUBSTRING(<naics_code> FROM 1 FOR 2) WHEN '11' THEN 'Agriculture & Food' …
  * ELSE 'Other' END` (latest definition:
- * supabase/migrations/20260930000000_fix1247_contract_display_labels.sql).
+ * supabase/migrations/20260930010000_fix1252_fix1245_dominant_naics_provenance_first_labels.sql).
  * This is that CASE, arm for arm, for the one surface that computes it in TS —
  * the Sankey route, which scans financial_relationships directly. Before
  * FIX-1247 the route carried its own copy that disagreed with the SQL on seven
@@ -18,31 +18,34 @@
  * the ELSE differs from this table.
  *
  * A tagged recipient never reaches this: every surface takes the tag's
- * display_label (an INDUSTRY_LABELS value) first.
+ * display_label (an INDUSTRY_LABELS value) first. FIX-1254: where a NAICS
+ * sector maps 1:1 to an industry (11, 21, 44/45, 51, 52, 53, 62) the arm emits
+ * that industry's label, so a tagged and an untagged recipient of one industry
+ * draw as one sector, not a near-duplicate pair.
  */
 
 /** NAICS 2-digit prefix → the contract-surface label. Mirrors the SQL CASE. */
 export const NAICS_SECTOR_LABELS: Readonly<Record<string, string>> = {
-  "11": "Agriculture",
-  "21": "Mining",
+  "11": "Agriculture & Food",
+  "21": "Mining & Metals",
   "22": "Utilities",
   "23": "Construction",
   "31": "Manufacturing",
   "32": "Manufacturing",
   "33": "Manufacturing",
   "42": "Wholesale Trade",
-  "44": "Retail",
-  "45": "Retail",
+  "44": "Consumer Goods & Services",
+  "45": "Consumer Goods & Services",
   "48": "Transportation",
   "49": "Transportation",
-  "51": "Information Technology",
-  "52": "Finance",
-  "53": "Real Estate",
+  "51": "Technology & Communications",
+  "52": "Finance & Insurance",
+  "53": "Real Estate & Construction",
   "54": "Professional Services",
   "55": "Management",
   "56": "Administrative Services",
   "61": "Education",
-  "62": "Healthcare",
+  "62": "Health Care",
   "71": "Arts & Entertainment",
   "72": "Hospitality",
   "81": "Other Services",

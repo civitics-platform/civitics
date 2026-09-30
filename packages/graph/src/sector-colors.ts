@@ -13,10 +13,14 @@
  *
  * Resolution order:
  *   1. an industry label (current or historical, any casing) → its key's colour
- *      (INDUSTRY_KEY_COLORS). The NAICS labels that are ALSO a historical label
- *      — Finance, Healthcare, Retail, Agriculture, Real Estate, Manufacturing,
- *      Transportation, Utilities — resolve here too, so "Finance" and
- *      "Finance & Insurance" share a hue.
+ *      (INDUSTRY_KEY_COLORS). Since FIX-1254 the CASE emits the industry label
+ *      itself for the seven sectors that map 1:1 (Agriculture & Food, Mining &
+ *      Metals, Consumer Goods & Services, Technology & Communications, Finance &
+ *      Insurance, Real Estate & Construction, Health Care), and Manufacturing,
+ *      Transportation and Utilities already were one. The pre-FIX-1254 strings
+ *      (Finance, Healthcare, Retail, Agriculture, Real Estate) still resolve
+ *      here through LABEL_TO_KEY's historical entries, for a rollup written
+ *      before the rename.
  *   2. a NAICS-only label → NAICS_LABEL_COLORS.
  *   3. anything else → the default steel-slate.
  *
@@ -29,10 +33,13 @@ import { industryLabelColor } from "./industries";
 
 /** NAICS fallback labels that are not also an industry label. Token strings (FIX-729). */
 export const NAICS_LABEL_COLORS: Readonly<Record<string, string>> = {
+  // Historical (pre-FIX-1254): the CASE now emits "Mining & Metals" and
+  // "Technology & Communications", which step 1 resolves. Kept, like
+  // LABEL_TO_KEY's historical labels, for a rollup written before the rename.
   "Mining":                  "rgb(var(--c-accent))",
+  "Information Technology":  "rgb(var(--c-viz-2))",
   "Construction":            "rgb(var(--c-amber))",
   "Wholesale Trade":         "rgb(var(--c-viz-7))",
-  "Information Technology":  "rgb(var(--c-viz-2))",
   "Professional Services":   "rgb(var(--c-viz-7))",
   "Management":              "rgb(var(--c-viz-4))",
   "Administrative Services": "rgb(var(--c-viz-8))",
