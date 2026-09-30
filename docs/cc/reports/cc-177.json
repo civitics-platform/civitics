@@ -1,0 +1,61 @@
+{
+  "cc": "177",
+  "prompt": "cc-prompt-177-bill-proposal-collisions-repoint-refs-retire-stubs-natural-key-resolve.md",
+  "started_at": "2026-09-30T23:13:23Z",
+  "finished_at": "2026-09-30T23:53:09Z",
+  "head_before": "0df41a13",
+  "head_after": "4fb84af2",
+  "commits": [
+    {
+      "sha": "ecba63cd",
+      "subject": "docs(fixes): file FIX-1256 — three congress.gov bills have two proposals rows; a lost ref mints a stub because the resolver never reads the natural key"
+    },
+    {
+      "sha": "a638f474",
+      "subject": "fix(data): FIX-1256 — the bill batch writer binds a ref to the bill_details key-holder before minting a proposal; a natural-key conflict is counted, not ignored"
+    },
+    {
+      "sha": "52c6f95e",
+      "subject": "fix(data): FIX-1256 — resolveBillsBatch binds its own key-holders; a vote-path bind never overwrites the holder's row"
+    },
+    {
+      "sha": "533f0e76",
+      "subject": "chore(audits,scripts): FIX-1256 — the six-item repair manifest + script (dry run, one transaction per item, refuse on a colliding dependent)"
+    },
+    {
+      "sha": "a8c89093",
+      "subject": "docs(fixes): file FIX-1257 — mapBillStatus reads only the latest action text, so a bill that passed a chamber shows as introduced or in_committee"
+    },
+    {
+      "sha": "6e8306ac",
+      "subject": "chore(fixes): FIX-1256 — the six bill collisions repaired on prod"
+    },
+    {
+      "sha": "4fb84af2",
+      "subject": "chore(fixes): sync status after FIX-1256"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1256"
+  ],
+  "fixes_filed": [
+    "FIX-1256",
+    "FIX-1257"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "One manifest-driven data set, FIX-1256, 23:48:45-23:48:47 UTC, from docs/audits/2026-09-30-fix1256-bill-proposal-collisions.json. It ran as scripts/fix1256-repair-bill-collisions.mjs --prod --apply, the --then of session:wait-for-gate:prod --expected-minutes 1 --census off (gate OK at 23:48:44Z). It held the FIX-950 claim, which wrote the interlock and 17 guarded holds and released them. Six atomic DO statements. Three case-b pairs (HR 4795 / 9816 / 9847): each UPDATEd 1 external_source_refs row onto the 08-04 holder, DELETEd 1 identical entity_tags row and 1 entity_search_index row of the stub, UPDATEd 1 enrichment_queue row onto the holder, UPDATEd the holder's proposals row (the copy set in the report), DELETEd the stub proposals row, and called refresh_primary_source_for_entities for the holder. Three case-a bills (S 221 / 2466 / 3690): INSERTed 1 bill_details row each. No migration, no MV op, no hand-fired pipeline. Every other prod contact was a read: db-query --prod, the script's --build-manifest and --dry-run (READ ONLY transactions), session:held, prod_op_gate, and gh. Six pushes to main before this report, each through the pre-push hook.",
+  "ci": "green",
+  "stopped_items": [
+    "Clone rehearsal: session:wait-for-gate (local) never opens on the clone. It blocked on a:nightly_due and on d:cron-job-budget-watchdog / d:derived-mvs-unit-watchdog, because the local nightly never runs and the */2 watchdogs are parked locally. I stopped it at --max-wait-minutes 5 and ran the local apply directly, without the claim. The claim path was exercised only on prod, where it worked."
+  ],
+  "lane": "app",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1256",
+      "what": "roll 2026-house-295 lands in the next nightly's congress_votes (no hand-fire): votes for the roll = its member count (~433), no skipped_rolls, no bill_key_conflicts, rows_failed 0; receipts 2026-10-02 §1 carries no FIX-1238 skip line",
+      "after": "2026-10-01T21:30Z"
+    }
+  ]
+}
