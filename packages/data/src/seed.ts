@@ -42,32 +42,32 @@ const apiKey = process.env["CONGRESS_API_KEY"] as string;
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log("===================================");
-  console.log("  Civitics Data Seed");
-  console.log("  Congress.gov Pipeline");
-  console.log("===================================");
-  console.log();
+  console.info("===================================");
+  console.info("  Civitics Data Seed");
+  console.info("  Congress.gov Pipeline");
+  console.info("===================================");
+  console.info();
 
   const db = createAdminClient();
 
   // [1/4] Jurisdictions
-  console.log("[1/4] Seeding jurisdictions...");
+  console.info("[1/4] Seeding jurisdictions...");
   const { federalId, stateIds } = await seedJurisdictions(db);
   const jurisdictionCount = stateIds.size + 1; // states/DC + federal
-  console.log(
+  console.info(
     `  → Seeded ${jurisdictionCount} jurisdictions (50 states + DC + federal)`
   );
-  console.log();
+  console.info();
 
   // [2/4] Governing bodies
-  console.log("[2/4] Seeding governing bodies...");
+  console.info("[2/4] Seeding governing bodies...");
   const { senateId, houseId } = await seedGoverningBodies(db, federalId);
-  console.log(`  → US Senate ID: ${senateId}`);
-  console.log(`  → US House ID:  ${houseId}`);
-  console.log();
+  console.info(`  → US Senate ID: ${senateId}`);
+  console.info(`  → US House ID:  ${houseId}`);
+  console.info();
 
   // [3/4] Officials
-  console.log("[3/4] Running officials pipeline...");
+  console.info("[3/4] Running officials pipeline...");
   const officialsResult = await runOfficialsPipeline({
     apiKey,
     stateIds,
@@ -75,31 +75,31 @@ async function main(): Promise<void> {
     houseId,
     federalId,
   });
-  console.log(
+  console.info(
     `  Inserted ${officialsResult.inserted}, Updated ${officialsResult.updated} officials`
   );
-  console.log();
+  console.info();
 
   // [4/4] Votes
-  console.log("[4/4] Running votes pipeline...");
+  console.info("[4/4] Running votes pipeline...");
   const votesResult = await runVotesPipeline({
     apiKey,
     federalId,
     senateGovBodyId: senateId,
     houseGovBodyId: houseId,
   });
-  console.log();
+  console.info();
 
   // Summary
-  console.log("===================================");
-  console.log("  Seed complete!");
-  console.log(`  Jurisdictions: ${jurisdictionCount}`);
-  console.log(
+  console.info("===================================");
+  console.info("  Seed complete!");
+  console.info(`  Jurisdictions: ${jurisdictionCount}`);
+  console.info(
     `  Officials: ${officialsResult.inserted} inserted, ${officialsResult.updated} updated`
   );
-  console.log(`  Proposals: ${votesResult.proposalsUpserted} upserted`);
-  console.log(`  Votes: ${votesResult.votesInserted} inserted`);
-  console.log("===================================");
+  console.info(`  Proposals: ${votesResult.proposalsUpserted} upserted`);
+  console.info(`  Votes: ${votesResult.votesInserted} inserted`);
+  console.info("===================================");
 }
 
 main().catch((err) => {

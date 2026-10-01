@@ -160,7 +160,7 @@ test("FIX-1213 (i)-(iii): the claimant's own CALL runs; everyone else still defe
       const t1 = (await b.query<{ t: string }>("SELECT clock_timestamp()::text AS t")).rows[0]!.t;
       await b.query("CALL public.refresh_donor_party_rollup_incremental()");
       const r1 = await lastRow(b, t1);
-      console.log(`[fix1213 (i)] no GUC: status=${r1?.status} skip_reason=${r1?.skip_reason}`);
+      console.info(`[fix1213 (i)] no GUC: status=${r1?.status} skip_reason=${r1?.skip_reason}`);
       assert.equal(r1?.status, "skipped");
       assert.match(r1?.skip_reason ?? "", /^prod session held:/);
 
@@ -168,8 +168,8 @@ test("FIX-1213 (i)-(iii): the claimant's own CALL runs; everyone else still defe
       await b.query(`SET ${GUC} = 'fix1213 heavy test'`);
       const sb = await state(b);
       const sc = await state(c);
-      console.log(`[fix1213 (ii)] from B: ${JSON.stringify(sb)}`);
-      console.log(`[fix1213 (ii)] from C: defer=${sc.defer} claimant=${sc.claimant}`);
+      console.info(`[fix1213 (ii)] from B: ${JSON.stringify(sb)}`);
+      console.info(`[fix1213 (ii)] from C: defer=${sc.defer} claimant=${sc.claimant}`);
       assert.equal(sb.held, true);
       assert.equal(sb.defer, false);
       assert.equal(sb.claimant, "fix1213 heavy test");
@@ -183,7 +183,7 @@ test("FIX-1213 (i)-(iii): the claimant's own CALL runs; everyone else still defe
       const t2 = (await b.query<{ t: string }>("SELECT clock_timestamp()::text AS t")).rows[0]!.t;
       await b.query("CALL public.refresh_donor_party_rollup_incremental()");
       const r2 = await lastRow(b, t2);
-      console.log(`[fix1213 (ii)] with GUC: status=${r2?.status} mode=${r2?.mode} rows=${r2?.rows}`);
+      console.info(`[fix1213 (ii)] with GUC: status=${r2?.status} mode=${r2?.mode} rows=${r2?.rows}`);
       assert.notEqual(r2?.status, "skipped", "the claimant's own CALL must run");
       assert.equal(r2?.status, "complete");
       assert.equal(r2?.mode, "crawl");
@@ -192,7 +192,7 @@ test("FIX-1213 (i)-(iii): the claimant's own CALL runs; everyone else still defe
       await a.query("SELECT pg_advisory_unlock(hashtext('prod_supervised_session')::bigint)");
       locked = false;
       const s3 = await state(b);
-      console.log(`[fix1213 (iii)] GUC, no lock: held=${s3.held} defer=${s3.defer} bypass=${s3.claimant_bypass}`);
+      console.info(`[fix1213 (iii)] GUC, no lock: held=${s3.held} defer=${s3.defer} bypass=${s3.claimant_bypass}`);
       assert.equal(s3.held, false);
       assert.equal(s3.defer, false);
       assert.equal(s3.claimant_bypass, false);

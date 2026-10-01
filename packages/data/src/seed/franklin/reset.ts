@@ -13,8 +13,6 @@
 import { Client } from "pg";
 import { LOCAL_DB_URL } from "./lib";
 
-/* eslint-disable no-console */
-
 function isProdUrl(url: string): boolean {
   return /supabase\.(co|com)/i.test(url);
 }
@@ -53,7 +51,7 @@ async function main(): Promise<void> {
   const wantsSsl = /[?&]sslmode=/.test(dbUrl) || dbUrl.includes("supabase.");
   const client = new Client({ connectionString: cleanUrl, ssl: wantsSsl ? { rejectUnauthorized: false } : undefined });
   await client.connect();
-  console.log(`data:seed:franklin:reset — host=${h} ${prod ? "(PROD)" : "(local)"}`);
+  console.info(`data:seed:franklin:reset — host=${h} ${prod ? "(PROD)" : "(local)"}`);
 
   // FK-safe order, every statement synthetic-scoped.
   const SYN_USERS = `(SELECT id FROM public.users WHERE is_synthetic)`;
@@ -114,10 +112,10 @@ async function main(): Promise<void> {
   try {
     for (const sql of stmts) {
       const res = await client.query(sql);
-      console.log(`  ${res.rowCount ?? 0}\t${sql.split("\n")[0].slice(12, 80)}…`);
+      console.info(`  ${res.rowCount ?? 0}\t${sql.split("\n")[0].slice(12, 80)}…`);
     }
     await client.query("COMMIT");
-    console.log("Reset complete.");
+    console.info("Reset complete.");
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("Reset failed, rolled back:", err);

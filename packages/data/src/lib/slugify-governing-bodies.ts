@@ -32,7 +32,7 @@ export async function slugifyGoverningBodies(db: Db): Promise<number> {
   }
   const filled = typeof data === "number" ? data : 0;
   if (filled > 0) {
-    console.log(`  [slugify-gb] filled ${filled} new governing_body slug(s)`);
+    console.info(`  [slugify-gb] filled ${filled} new governing_body slug(s)`);
   }
   return filled;
 }

@@ -330,7 +330,7 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
   // processed THIS run — rows before the offset already landed in a prior run.
   const startRowOffset = Math.min(Math.max(0, spec.startRowOffset ?? 0), spec.rows.length);
   if (startRowOffset > 0) {
-    console.log(
+    console.info(
       `    ${label} resuming at row ${startRowOffset.toLocaleString()}/${spec.rows.length.toLocaleString()} (FIX-754)`,
     );
   }

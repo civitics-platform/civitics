@@ -105,7 +105,7 @@ export async function acquireNamedSessionLock(
       [name],
     );
     if (res.rows[0]?.locked) {
-      console.log(`${tag} interlock acquired (${name}) (${opts.ref})`);
+      console.info(`${tag} interlock acquired (${name}) (${opts.ref})`);
       if (opts.label) await writeLabel(client, opts.label, tag, opts.ref);
       return makeHeldLock(client, name, opts);
     }
@@ -172,7 +172,7 @@ function makeHeldLock(
         await client.query(`SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [name]);
       } catch { /* the session ending releases it anyway */ }
       try { await client.end(); } catch { /* best effort */ }
-      console.log(`${tag} interlock released (${name}) (${opts.ref})`);
+      console.info(`${tag} interlock released (${name}) (${opts.ref})`);
     },
   };
 }

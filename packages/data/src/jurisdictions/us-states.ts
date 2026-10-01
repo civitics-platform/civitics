@@ -138,7 +138,7 @@ export const STATE_DATA: StateRecord[] = [
 export async function seedJurisdictions(
   db: ReturnType<typeof createAdminClient>
 ): Promise<{ federalId: string; stateIds: Map<string, string>; warnings: string[] }> {
-  console.log("  Seeding jurisdictions...");
+  console.info("  Seeding jurisdictions...");
   const warnings: string[] = [];
 
   // --- Federal (US country node) ---
@@ -244,7 +244,7 @@ export async function seedJurisdictions(
     }
   }
 
-  console.log(`  Seeded ${seededCount} jurisdictions`);
+  console.info(`  Seeded ${seededCount} jurisdictions`);
   if (warnings.length > 0) {
     // FIX-386: self-log a `jurisdictions_seed` data_sync_log row when any
     // per-state catch fired. Single canonical visible signal regardless of
@@ -284,7 +284,7 @@ export async function seedGoverningBodies(
   db: ReturnType<typeof createAdminClient>,
   federalId: string
 ): Promise<{ senateId: string; houseId: string; presidencyId: string }> {
-  console.log("  Seeding governing bodies...");
+  console.info("  Seeding governing bodies...");
 
   let senateId: string;
   let houseId: string;
@@ -413,15 +413,15 @@ if (require.main === module) {
 
   seedJurisdictions(db)
     .then(({ federalId, stateIds }) => {
-      console.log("Federal jurisdiction ID:", federalId);
-      console.log("State IDs seeded:", stateIds.size);
+      console.info("Federal jurisdiction ID:", federalId);
+      console.info("State IDs seeded:", stateIds.size);
       return seedGoverningBodies(db, federalId);
     })
     .then(({ senateId, houseId, presidencyId }) => {
-      console.log("US Senate ID:", senateId);
-      console.log("US House ID:", houseId);
-      console.log("US Presidency ID:", presidencyId);
-      console.log("Done.");
+      console.info("US Senate ID:", senateId);
+      console.info("US House ID:", houseId);
+      console.info("US Presidency ID:", presidencyId);
+      console.info("Done.");
     })
     .catch((err) => {
       console.error("Fatal error:", err);

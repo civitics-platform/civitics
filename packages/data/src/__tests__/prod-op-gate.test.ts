@@ -176,7 +176,7 @@ test("FIX-1215: prod_op_gate() branches on the clone (p_now injected, rolled bac
     tx("all clear at 12:00 with healthy watchdogs", async () => {
       await watchdogs(NOON);
       const g = await gate(c, NOON);
-      console.log(`[fix1215] clear: ok=${g.ok} blocked=${JSON.stringify(g.blocked_by)}`);
+      console.info(`[fix1215] clear: ok=${g.ok} blocked=${JSON.stringify(g.blocked_by)}`);
       assert.deepEqual(g.blocked_by.filter((b) => b.check !== "e"), [], "only the live interlock may block here");
       assert.equal(g.readings["watchdogs"].jobs.length >= 2, true);
     });
@@ -215,7 +215,7 @@ test("FIX-1215: prod_op_gate() branches on the clone (p_now injected, rolled bac
 
     const active = (await c.query<{ active: boolean }>("SELECT active FROM cron.job WHERE jobid = $1", [frv])).rows[0]!.active;
     tx("(b) a > 60 s-mean daily slot 40 min ahead: expected 1800 blocks, 600 clears", async () => {
-      if (!active) { console.log("[fix1215] fr-vacuum-analyze inactive on this clone — slot case not exercised"); return; }
+      if (!active) { console.info("[fix1215] fr-vacuum-analyze inactive on this clone — slot case not exercised"); return; }
       const now = "2030-03-12 02:20:00+00";
       await watchdogs(now);
       for (const d of ["09", "10", "11"]) {

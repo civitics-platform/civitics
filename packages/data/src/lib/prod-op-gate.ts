@@ -231,7 +231,7 @@ export interface WaitResult {
  */
 export async function waitForProdOpGate(opts: WaitOptions): Promise<WaitResult> {
   const pollMs = Math.max(1, opts.pollSeconds ?? 300) * 1000;
-  const log = opts.log ?? ((l: string) => console.log(l));
+  const log = opts.log ?? ((l: string) => console.info(l));
   const read = opts.readGate ?? readProdOpGateOnce;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const now = opts.now ?? Date.now;

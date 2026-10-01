@@ -37,7 +37,7 @@ export async function seedPilotMetros(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
 ): Promise<Map<string, string>> {
-  console.log("\n  Seeding pilot metro jurisdictions...");
+  console.info("\n  Seeding pilot metro jurisdictions...");
   const result = new Map<string, string>(); // legistarClient → jurisdictionId
   const now = new Date().toISOString();
 
@@ -72,9 +72,9 @@ export async function seedPilotMetros(
           .from("jurisdictions")
           .update({ coverage_status: "claimed", coverage_started_at: now })
           .eq("id", existing.id);
-        console.log(`    ✓  ${metro.name}: coverage_status → claimed (existing row)`);
+        console.info(`    ✓  ${metro.name}: coverage_status → claimed (existing row)`);
       } else {
-        console.log(`    –  ${metro.name}: already ${existing.coverage_status}`);
+        console.info(`    –  ${metro.name}: already ${existing.coverage_status}`);
       }
       result.set(metro.legistarClient, existing.id);
     } else {
@@ -99,7 +99,7 @@ export async function seedPilotMetros(
         console.error(`    ✗  ${metro.name}: insert failed —`, insertErr?.message);
         continue;
       }
-      console.log(`    ✓  ${metro.name}: inserted (id=${inserted.id})`);
+      console.info(`    ✓  ${metro.name}: inserted (id=${inserted.id})`);
       result.set(metro.legistarClient, inserted.id);
     }
   }
@@ -121,18 +121,18 @@ export async function seedPilotMetros(
         .from("jurisdictions")
         .update({ coverage_status: "claimed", coverage_started_at: now })
         .eq("id", dc.id);
-      console.log(`    ✓  Washington DC: coverage_status → claimed`);
+      console.info(`    ✓  Washington DC: coverage_status → claimed`);
     } else {
-      console.log(`    –  Washington DC: already ${dc.coverage_status}`);
+      console.info(`    –  Washington DC: already ${dc.coverage_status}`);
     }
     result.set("dc_lims", dc.id);
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────
 
-  console.log(`\n  Pilot metro jurisdictions ready: ${result.size} / 5`);
+  console.info(`\n  Pilot metro jurisdictions ready: ${result.size} / 5`);
   for (const [client, id] of result) {
-    console.log(`    ${client.padEnd(16)} → ${id}`);
+    console.info(`    ${client.padEnd(16)} → ${id}`);
   }
 
   return result;

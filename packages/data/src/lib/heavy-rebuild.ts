@@ -141,7 +141,7 @@ export async function runHeavyRebuild(fn: string): Promise<number> {
  * elapsed milliseconds so the caller can log the cost against the job budget.
  */
 export async function vacuumAfterKilledFecWriter(
-  log: (msg: string) => void = console.log,
+  log: (msg: string) => void = console.info,
 ): Promise<number> {
   const t0 = Date.now();
   const { Client } = await import("pg");

@@ -42,8 +42,6 @@ import {
   upsertUser,
 } from "./lib";
 
-/* eslint-disable no-console */
-
 // ---------------------------------------------------------------------------
 // Logical-file shapes (only the fields we read).
 // ---------------------------------------------------------------------------
@@ -451,9 +449,9 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--allow-prod") allowProd = true;
     else if (a === "--refresh-all-mvs") refreshAllMvs = true;
     else if (a === "--help" || a === "-h") {
-      console.log("Usage: data:seed:franklin [--allow-prod] [--db-url <url>] [--refresh-all-mvs]");
-      console.log("  --allow-prod   seed PRODUCTION; password is read from .env.local.prod (never the CLI)");
-      console.log("  --db-url <url> explicit connection string (fallback; password appears on the CLI — avoid)");
+      console.info("Usage: data:seed:franklin [--allow-prod] [--db-url <url>] [--refresh-all-mvs]");
+      console.info("  --allow-prod   seed PRODUCTION; password is read from .env.local.prod (never the CLI)");
+      console.info("  --db-url <url> explicit connection string (fallback; password appears on the CLI — avoid)");
       process.exit(0);
     }
   }
@@ -1287,9 +1285,9 @@ async function refreshMvs(ctx: SeedCtx, all: boolean): Promise<void> {
   for (const fn of fns) {
     try {
       await ctx.query(`SELECT public.${fn}()`);
-      console.log(`  refreshed ${fn}`);
+      console.info(`  refreshed ${fn}`);
     } catch (err) {
-      console.log(`  (skipped ${fn}: ${(err as Error).message})`);
+      console.info(`  (skipped ${fn}: ${(err as Error).message})`);
     }
   }
 }
@@ -1318,7 +1316,7 @@ async function main(): Promise<void> {
     ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
   });
   await client.connect();
-  console.log(`data:seed:franklin — host=${h} ${prod ? "(PROD)" : "(local)"}`);
+  console.info(`data:seed:franklin — host=${h} ${prod ? "(PROD)" : "(local)"}`);
 
   const ctx = new SeedCtx(client);
   try {
@@ -1393,38 +1391,38 @@ async function main(): Promise<void> {
     // rollup min-n) under `positions` — fold them into the positions set.
     positions.positions.push(...loadJson<Positions>("horizontal/positions-plus.json").positions);
 
-    console.log("1-4  entities (jurisdictions, bodies, agencies, officials)…");
+    console.info("1-4  entities (jurisdictions, bodies, agencies, officials)…");
     await seedEntities(ctx, entities);
-    console.log("5-6  money graph (entities + relationships)…");
+    console.info("5-6  money graph (entities + relationships)…");
     await seedMoney(ctx, money);
-    console.log("7-8  proposals + bill_details + votes (assembly + council)…");
+    console.info("7-8  proposals + bill_details + votes (assembly + council)…");
     await seedProposalsAndVotes(ctx, proposals);
-    console.log("8b   meetings + agenda items (Commons 'Public meetings' panel)…");
+    console.info("8b   meetings + agenda items (Commons 'Public meetings' panel)…");
     await seedMeetings(ctx, meetings);
-    console.log("10   citizen + curator + fixture-author users…");
+    console.info("10   citizen + curator + fixture-author users…");
     await upsertUser(ctx, "user-curator", "Franklin Commons", { role: "curator", is_curator: true });
     await seedCitizens(ctx, citizens);
-    console.log("9    initiative (proposal + details + signatures + responses)…");
+    console.info("9    initiative (proposal + details + signatures + responses)…");
     await seedInitiative(ctx, initiatives);
-    console.log("11   positions…");
+    console.info("11   positions…");
     await seedPositions(ctx, positions);
-    console.log("12   threads (HB-14 B-1; S2 CM-22/HB-09/CM-15/CM-19 B-2/B-3/B-4; +10 kinds)…");
+    console.info("12   threads (HB-14 B-1; S2 CM-22/HB-09/CM-15/CM-19 B-2/B-3/B-4; +10 kinds)…");
     await seedThread(ctx, threads, ctx.id("prop-hb14"));
-    console.log("12b  position deltas (attributed persuasion → comment.deltas)…");
+    console.info("12b  position deltas (attributed persuasion → comment.deltas)…");
     await seedDeltas(ctx, positionDeltas);
-    console.log("12c  statements (Polis-lite quick-takes + authored vote_summary)…");
+    console.info("12c  statements (Polis-lite quick-takes + authored vote_summary)…");
     await seedStatements(ctx, statements);
-    console.log("12d  Q&A lane (citizen questions + office-account official answers)…");
+    console.info("12d  Q&A lane (citizen questions + office-account official answers)…");
     await seedQA(ctx, qa);
-    console.log("12e  follows (user_follows + civic_initiative_follows)…");
+    console.info("12e  follows (user_follows + civic_initiative_follows)…");
     await seedFollows(ctx, follows);
-    console.log("12f  position-rollup display (authored, synthetic-only, FIX-614)…");
+    console.info("12f  position-rollup display (authored, synthetic-only, FIX-614)…");
     await seedRollupDisplay(ctx, rollupDisplay);
-    console.log("13   moderation fixtures + content_flags (≥3 → needs_review)…");
+    console.info("13   moderation fixtures + content_flags (≥3 → needs_review)…");
     await seedFixtures(ctx, fixtures);
-    console.log("14   Investigations #1 + #2 (evidence cards + citations + promotion)…");
+    console.info("14   Investigations #1 + #2 (evidence cards + citations + promotion)…");
     await seedInvestigation(ctx, investigations);
-    console.log("16   refresh materialized views…");
+    console.info("16   refresh materialized views…");
     await refreshMvs(ctx, refreshAllMvs);
 
     const counts = await ctx.one<Record<string, string>>(
@@ -1439,7 +1437,7 @@ async function main(): Promise<void> {
          (SELECT count(*) FROM public.evidence_cards WHERE is_synthetic AND status='promoted') AS promoted_cards,
          (SELECT count(*) FROM public.franklin_seed_map) AS mapped`,
     );
-    console.log("\nDone. Synthetic counts:", counts);
+    console.info("\nDone. Synthetic counts:", counts);
   } finally {
     await client.end();
   }

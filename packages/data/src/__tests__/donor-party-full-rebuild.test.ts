@@ -250,10 +250,10 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
       const ms1 = await callProc(a, notices);
       const l1 = await lastLog(a);
       const md1 = l1.metadata;
-      console.log(`[fix1212 (i)] ${l1.status} mode=${md1["mode"]} wall=${(ms1 / 1000).toFixed(1)} s ` +
+      console.info(`[fix1212 (i)] ${l1.status} mode=${md1["mode"]} wall=${(ms1 / 1000).toFixed(1)} s ` +
         `rows=${md1["rollup_rows"]} windows_run=${JSON.stringify(md1["windows_run"])}`);
-      console.log(`[fix1212 (i)] stage_seconds=${JSON.stringify(md1["stage_seconds"])}`);
-      console.log(`[fix1212 (i)] apply_seconds=${JSON.stringify(md1["apply_seconds"])}`);
+      console.info(`[fix1212 (i)] stage_seconds=${JSON.stringify(md1["stage_seconds"])}`);
+      console.info(`[fix1212 (i)] apply_seconds=${JSON.stringify(md1["apply_seconds"])}`);
       assert.equal(md1["mode"], "full");
       assert.equal(l1.status, "complete");
       assert.equal(md1["caught_up"], true);
@@ -280,8 +280,8 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
             JOIN public.officials o ON o.id = fr.to_id AND fr.to_type = 'official'
            WHERE fr.relationship_type = 'donation' AND fr.from_type = 'financial_entity'
            GROUP BY 1, 2) g`);
-      console.log(`[fix1212 (iv)] MV     rows=${mv.rows[0]!.n} cents=${mv.rows[0]!.cents} tx=${mv.rows[0]!.tx}`);
-      console.log(`[fix1212 (iv)] whole  rows=${whole.rows[0]!.n} cents=${whole.rows[0]!.cents} tx=${whole.rows[0]!.tx} ` +
+      console.info(`[fix1212 (iv)] MV     rows=${mv.rows[0]!.n} cents=${mv.rows[0]!.cents} tx=${mv.rows[0]!.tx}`);
+      console.info(`[fix1212 (iv)] whole  rows=${whole.rows[0]!.n} cents=${whole.rows[0]!.cents} tx=${whole.rows[0]!.tx} ` +
         `(one-shot agg ${((Date.now() - t4) / 1000).toFixed(1)} s)`);
       assert.equal(mv.rows[0]!.cents, whole.rows[0]!.cents, "SUM(total_cents) to the cent");
       assert.equal(mv.rows[0]!.tx, whole.rows[0]!.tx, "SUM(tx_count)");
@@ -293,7 +293,7 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
       const ms2a = await callProc(a);
       const l2a = await lastLog(a);
       const cur2 = await key(a, "donor_party_full_rebuild");
-      console.log(`[fix1212 (ii)] call 1: ${l2a.status} wall=${(ms2a / 1000).toFixed(1)} s ` +
+      console.info(`[fix1212 (ii)] call 1: ${l2a.status} wall=${(ms2a / 1000).toFixed(1)} s ` +
         `windows_done=${JSON.stringify(l2a.metadata["windows_done"])} err=${l2a.error_message}`);
       assert.equal(l2a.status, "partial");
       assert.equal(l2a.metadata["unit_capped"], true);
@@ -304,7 +304,7 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
       await putKey(a, "donor_party_crawl", origCrawl);
       const ms2b = await callProc(a);
       const l2b = await lastLog(a);
-      console.log(`[fix1212 (ii)] call 2: ${l2b.status} wall=${(ms2b / 1000).toFixed(1)} s resumed=${l2b.metadata["resumed"]} ` +
+      console.info(`[fix1212 (ii)] call 2: ${l2b.status} wall=${(ms2b / 1000).toFixed(1)} s resumed=${l2b.metadata["resumed"]} ` +
         `windows_run=${JSON.stringify(l2b.metadata["windows_run"])}`);
       assert.equal(l2b.metadata["resumed"], true);
       assert.deepEqual(num(l2b.metadata["windows_run"]), Array.from({ length: 13 }, (_, k) => k + 4));
@@ -360,7 +360,7 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
         (await a.query<{ donor_id: string }>(
           "SELECT donor_id::text FROM public.donor_party_rollup_mv WHERE party_key = $1", [SENTINEL_PARTY]))
           .rows.map((r) => r.donor_id));
-      console.log(`[fix1212 (iii)] ${l3.status} cancel_detail=${l3.metadata["cancel_detail"]} ` +
+      console.info(`[fix1212 (iii)] ${l3.status} cancel_detail=${l3.metadata["cancel_detail"]} ` +
         `windows_done=${JSON.stringify(done3)} window ${cancelled} rows before=${before[cancelled - 1]} after=${after[cancelled - 1]}`);
       assert.equal(l3.status, "partial");
       assert.equal(l3.metadata["canceled"], true);
@@ -378,7 +378,7 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
       const l3b = await lastLog(a);
       const left = await a.query<{ n: string }>(
         "SELECT count(*)::text AS n FROM public.donor_party_rollup_mv WHERE party_key = $1", [SENTINEL_PARTY]);
-      console.log(`[fix1212 (iii)] resume: ${l3b.status} wall=${(ms3b / 1000).toFixed(1)} s ` +
+      console.info(`[fix1212 (iii)] resume: ${l3b.status} wall=${(ms3b / 1000).toFixed(1)} s ` +
         `windows_run=${JSON.stringify(l3b.metadata["windows_run"])} sentinels left=${left.rows[0]!.n}`);
       assert.equal(l3b.status, "complete");
       assert.ok(num(l3b.metadata["windows_run"]).includes(cancelled), "the cancelled window is retried");

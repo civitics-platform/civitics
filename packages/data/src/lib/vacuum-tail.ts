@@ -91,7 +91,7 @@ export const BACKSTOP_ONLY_WRITERS = [
 export async function vacuumRewritten(
   client: Client,
   writer: string,
-  log: (msg: string) => void = console.log,
+  log: (msg: string) => void = console.info,
 ): Promise<void> {
   const targets = REWRITE_TARGETS[writer];
   if (!targets || targets.length === 0) return;
@@ -115,7 +115,7 @@ export async function vacuumTables(
   client: Client,
   tables: readonly string[],
   reason: string,
-  log: (msg: string) => void = console.log,
+  log: (msg: string) => void = console.info,
 ): Promise<void> {
   for (const table of tables) {
     const t0 = Date.now();

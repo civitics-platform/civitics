@@ -299,7 +299,7 @@ test("FIX-1178 (a): the merge converges, strands nothing, and refuses a shrink",
     );
     await c.query("ROLLBACK TO SAVEPOINT guard_probe");
 
-    console.log(
+    console.info(
       `[fix1178a] behavioural half: desired=${n1} d1=${d1} i1=${i1} d2=${d2} i2=${i2} ` +
         `wall=${((Date.now() - t0) / 1000).toFixed(1)}s`,
     );

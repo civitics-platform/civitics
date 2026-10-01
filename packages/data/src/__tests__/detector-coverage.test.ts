@@ -37,7 +37,7 @@ async function connect(): Promise<Client | null> {
 async function inRollback(fn: (c: Client) => Promise<void>): Promise<boolean> {
   const c = await connect();
   if (!c) {
-    console.log("[detector-coverage] local Docker DB unreachable — SKIPPING (expected in CI)");
+    console.info("[detector-coverage] local Docker DB unreachable — SKIPPING (expected in CI)");
     return false;
   }
   try {
@@ -167,7 +167,7 @@ test("FIX-977 a brand-new scheduled pipeline joins the registry with no code cha
 test("FIX-977 cron_cadence_hours parses the schedule families in use, and refuses the rest", async () => {
   const c = await connect();
   if (!c) {
-    console.log("[detector-coverage] local Docker DB unreachable — SKIPPING (expected in CI)");
+    console.info("[detector-coverage] local Docker DB unreachable — SKIPPING (expected in CI)");
     return;
   }
   try {

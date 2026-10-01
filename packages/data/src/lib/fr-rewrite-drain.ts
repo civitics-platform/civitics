@@ -124,14 +124,14 @@ async function budgeted(
   try {
     await client.query(`SET LOCAL statement_timeout = '${budgetSeconds}s'`);
     await client.query(sql, params);
-    console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    console.info(`${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (err) {
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     if ((err as { code?: string })?.code === "57014" && Date.now() - t0 >= budgetSeconds * 900) {
-      console.log(`BUDGET (${secs}s)`);
+      console.info(`BUDGET (${secs}s)`);
       throw new BudgetExceeded(`${label} exceeded its ${budgetSeconds}s budget`);
     }
-    console.log(`FAILED (${secs}s)`);
+    console.info(`FAILED (${secs}s)`);
     throw err;
   }
 }
@@ -205,7 +205,7 @@ export async function drainFrRewrite(
   const ran: string[] = [];
   const deferred = steps.filter((s) => s.deferred).map((s) => s.label);
 
-  console.log("\n-- FR rewrite drain (post-commit, chunked) ----------------");
+  console.info("\n-- FR rewrite drain (post-commit, chunked) ----------------");
 
   const [offRow] = await q<{ n: string }>(
     client,
@@ -214,7 +214,7 @@ export async function drainFrRewrite(
   const [donorRow] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM ${scope.donorTable}`);
   const officials = Number(offRow?.n ?? 0);
   const donors = Number(donorRow?.n ?? 0);
-  console.log(`  affected officials: ${officials.toLocaleString()}   donors: ${donors.toLocaleString()}`);
+  console.info(`  affected officials: ${officials.toLocaleString()}   donors: ${donors.toLocaleString()}`);
 
   try {
     // -- 1. entity_connections money edges for the deleted rows --------------
@@ -248,7 +248,7 @@ export async function drainFrRewrite(
 
       const nPartial = Number(partial?.n ?? 0);
       if (nPartial > 0) {
-        console.log(
+        console.info(
           `    ! ${nPartial.toLocaleString()} money edge(s) lost SOME but not all of their evidence and were\n` +
             `      KEPT — they now overstate. Deleting them would drop live evidence too, so they\n` +
             `      need an entity_connections rebuild this drain cannot do (FIX-1210).`,
@@ -270,11 +270,11 @@ export async function drainFrRewrite(
         STEP_BUDGET_S["donor_rollup"]!,
       );
       ran.push("donor_rollup_rebuild_recipients(affected)");
-      console.log("    -> official_donor_totals, official_donor_rollup_mv,");
-      console.log("       official_small_dollar_rollup, official_sector_affinity_rollup,");
-      console.log("       treemap_individuals_rollup, official_donor_bracket_totals");
+      console.info("    -> official_donor_totals, official_donor_rollup_mv,");
+      console.info("       official_small_dollar_rollup, official_sector_affinity_rollup,");
+      console.info("       treemap_individuals_rollup, official_donor_bracket_totals");
     } else {
-      console.log(
+      console.info(
         `  SKIPPED donor_rollup_rebuild_recipients -- no affected officials in scope ` +
           `(pass the official ids back in to run it)`,
       );
@@ -286,7 +286,7 @@ export async function drainFrRewrite(
     // commit independently, so an abort costs one chunk, not the run.
     const chunks = Math.ceil(donors / DONOR_CHUNK);
     if (chunks === 0) {
-      console.log(
+      console.info(
         `  SKIPPED financial_entity_donation_totals_rebuild + donor_party_rollup_rebuild_donors --
 ` +
           `    no donor set. Donors are read off the rows the landing DELETED and a DELETE leaves
@@ -341,7 +341,7 @@ export async function drainFrRewrite(
     //
     // What the caller gets back is the declared list, so a test can assert that
     // nothing platform-scoped ran.
-    console.log(
+    console.info(
       `
   ${deferred.length} platform-scoped step(s) declared and NOT run here.
 ` +

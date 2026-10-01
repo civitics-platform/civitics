@@ -44,10 +44,10 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log("=== enrichment_queue status ===");
+  console.info("=== enrichment_queue status ===");
   for (const r of summary) {
     if (r.count > 0) {
-      console.log(`  ${r.status.padEnd(23)} ${r.task_type.padEnd(8)} ${r.count}`);
+      console.info(`  ${r.status.padEnd(23)} ${r.task_type.padEnd(8)} ${r.count}`);
     }
   }
 
@@ -67,9 +67,9 @@ async function main(): Promise<void> {
       .select("*", { count: "exact", head: true })
       .eq("status", "processing")
       .lt("claimed_at", staleCutoff);
-    console.log(`\n=== STALE CLAIMS (>${staleMinutes} min, first 5 of ${staleCount}) ===`);
+    console.info(`\n=== STALE CLAIMS (>${staleMinutes} min, first 5 of ${staleCount}) ===`);
     for (const s of stale) {
-      console.log(`  id=${s.id} task=${s.task_type} by=${s.claimed_by} at=${s.claimed_at}`);
+      console.info(`  id=${s.id} task=${s.task_type} by=${s.claimed_by} at=${s.claimed_at}`);
     }
 
     if (reclaim) {
@@ -85,12 +85,12 @@ async function main(): Promise<void> {
         console.error("reclaim failed:", updErr.message);
         process.exit(1);
       }
-      console.log(`\nReclaimed ${updCount ?? "?"} stale claim(s) → pending`);
+      console.info(`\nReclaimed ${updCount ?? "?"} stale claim(s) → pending`);
     } else {
-      console.log("\n(run with --reclaim to flip these back to pending)");
+      console.info("\n(run with --reclaim to flip these back to pending)");
     }
   } else {
-    console.log("\nNo stale claims.");
+    console.info("\nNo stale claims.");
   }
 }
 

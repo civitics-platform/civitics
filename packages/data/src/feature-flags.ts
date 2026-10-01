@@ -56,7 +56,7 @@ type BooleanFlag = {
 
 export function checkFlag(flag: BooleanFlag, pipelineName: string): boolean {
   if (!FLAGS[flag]) {
-    console.log(`⏭  ${pipelineName} disabled via ${flag} flag`);
+    console.info(`⏭  ${pipelineName} disabled via ${flag} flag`);
     return false;
   }
   return true;

@@ -351,7 +351,7 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
     return 0;
   });
   if (held > 0) {
-    console.log(`  [prod-session] held ${held} guarded pipeline(s) (FIX-1177/1172)`);
+    console.info(`  [prod-session] held ${held} guarded pipeline(s) (FIX-1177/1172)`);
   }
 
   // The same `dbUrl` again (the FIX-950 same-dsn rule): the release must clear
@@ -372,7 +372,7 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
         );
         return 0;
       });
-      if (cleared > 0) console.log(`  [prod-session] cleared ${cleared} hold(s)`);
+      if (cleared > 0) console.info(`  [prod-session] cleared ${cleared} hold(s)`);
       await lock.release();
     },
   };

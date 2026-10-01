@@ -275,7 +275,7 @@ test("FIX-1194: record_box_health() on the clone — the stamp appears, readings
 
       const r = await c.query<{ v: Record<string, any> }>("SELECT public.record_box_health($1::timestamptz) AS v", [NOON]);
       const v = r.rows[0]!.v;
-      console.log(`[fix1194] probe on the clone: probe_ms=${v["probe_ms"]} ${JSON.stringify(v)}`);
+      console.info(`[fix1194] probe on the clone: probe_ms=${v["probe_ms"]} ${JSON.stringify(v)}`);
       assert.equal(v["startup_timeouts_10m"], 1);
       assert.equal(v["startup_timeouts_60m"], 2);
       // The 10-s startup-timeout row IS the budget watchdog's max wall — prod_op_gate reads it the same way.
