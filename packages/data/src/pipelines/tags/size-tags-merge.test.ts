@@ -1,7 +1,13 @@
 /**
- * FIX-1248 — the weekly `size`-tag MERGE, behavioural proof.
+ * FIX-1248 — the weekly `size`-tag MERGE, source anchors + behavioural proof.
  *
  * Runs via:  tsx --test src/pipelines/tags/size-tags-merge.test.ts
+ *
+ * TWO HALVES, as in pre-vote-timing-merge.test.ts. The source anchors assert
+ * what only the migration TEXT can show: the PROCEDURE still carries no `SET`
+ * clause (FIX-1128: it COMMITs), no routine carries planner GUCs or an inert
+ * statement_timeout, and the daily branch is byte-identical to the one
+ * 20260920080000 shipped. They need no database, so they run in CI.
  *
  * The three functions are tested against real rows, because a TypeScript
  * reimplementation of a set difference would test a copy rather than the
@@ -26,7 +32,163 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { Client } from "pg";
+
+// `__dirname`, not `import.meta.dirname`: tsx transforms this file to CJS.
+const MIGRATIONS = path.join(__dirname, "..", "..", "..", "..", "..", "supabase", "migrations");
+// Found by suffix so a version bump at landing time does not orphan the anchors.
+const MIGRATION_SUFFIX = "_fix1248_weekly_size_tags_merge.sql";
+const DAILY_MIGRATION = "20260920080000_fix1178a_pre_vote_timing_merge.sql";
+
+function migration(): string {
+  const hits = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(MIGRATION_SUFFIX));
+  assert.equal(hits.length, 1, `expected exactly one *${MIGRATION_SUFFIX}, found ${hits.join(", ") || "none"}`);
+  return fs.readFileSync(path.join(MIGRATIONS, hits[0] as string), "utf8").replace(/\r\n/g, "\n");
+}
+
+/** The text between a routine's CREATE line and its `AS $function$` / `AS $procedure$`. */
+function header(src: string, signature: string): string {
+  const i = src.indexOf(signature);
+  assert.notEqual(i, -1, `routine header not found: ${signature}`);
+  const rest = src.slice(i);
+  const end = rest.search(/AS \$(function|procedure)\$/);
+  assert.notEqual(end, -1, `no AS $...$ after ${signature}`);
+  return rest.slice(0, end);
+}
+
+/** A routine's body, between its opening and closing dollar-quote. */
+function body(src: string, signature: string): string {
+  const i = src.indexOf(signature);
+  assert.notEqual(i, -1, `routine not found: ${signature}`);
+  const rest = src.slice(i);
+  const m = rest.match(/AS \$(function|procedure)\$([\s\S]*?)\$\1\$/);
+  assert.ok(m, `no dollar-quoted body after ${signature}`);
+  return m[2] as string;
+}
+
+const SIG = {
+  scan: "CREATE OR REPLACE FUNCTION public.rebuild_financial_entity_size_tags_scan(",
+  del: "CREATE OR REPLACE FUNCTION public.rebuild_financial_entity_size_tags_delete(",
+  ins: "CREATE OR REPLACE FUNCTION public.rebuild_financial_entity_size_tags_insert(",
+  wrap: "CREATE OR REPLACE FUNCTION public.rebuild_financial_entity_size_tags(",
+  proc: "CREATE OR REPLACE PROCEDURE public.run_rule_taggers",
+};
+
+// ---------------------------------------------------------------------------
+// (i) Source anchors — no database, so these run in CI.
+// ---------------------------------------------------------------------------
+
+test("FIX-1248: the PROCEDURE takes no SET clause (FIX-1128 / transaction control)", () => {
+  assert.doesNotMatch(
+    header(migration(), SIG.proc),
+    /\bSET\s+\w+\s*(=|TO)/,
+    "run_rule_taggers COMMITs; ANY proconfig SET makes it atomic and it dies at the first COMMIT",
+  );
+});
+
+test("FIX-1248: every function pins search_path and carries no planner GUC or statement_timeout", () => {
+  const src = migration();
+  for (const sig of [SIG.scan, SIG.del, SIG.ins, SIG.wrap]) {
+    const h = header(src, sig);
+    assert.match(h, /SECURITY DEFINER/, `${sig}: the three halves and the wrapper stay SECURITY DEFINER`);
+    assert.match(h, /SET search_path TO 'public', 'pg_temp'/, `${sig}: SECURITY DEFINER needs a pinned search_path`);
+    assert.doesNotMatch(h, /enable_(hashjoin|mergejoin|nestloop)/, `${sig}: the anti-joins WANT hash joins`);
+    assert.doesNotMatch(h, /statement_timeout/i, `${sig}: a routine-level statement_timeout is INERT (FIX-1128)`);
+  }
+  assert.doesNotMatch(header(src, SIG.proc), /statement_timeout/i);
+});
+
+test("FIX-1248: _delete carries BOTH guards, checked before the DELETE, and they RAISE", () => {
+  const b = body(migration(), SIG.del);
+  const iShrink = b.indexOf("v_des < v_cur * 0.5");
+  const iTen = b.indexOf("v_gone > v_cur * 0.10");
+  const iDelete = b.indexOf("DELETE FROM public.entity_tags");
+  assert.ok(iShrink > -1, "the 50 % shrink floor");
+  assert.ok(iTen > -1, "the 10 % delete ceiling");
+  assert.ok(iShrink < iDelete && iTen < iDelete, "a guard after the DELETE would have already deleted");
+  assert.equal((b.match(/RAISE EXCEPTION/g) ?? []).length, 2, "a WARNING would be wrong-but-green");
+  assert.match(b, /refusing a shrink past 50/);
+  assert.match(b, /refusing a delete past 10/);
+});
+
+test("FIX-1248: both anti-joins key on (entity_id, tag) — a tier change is a delete plus an insert", () => {
+  const src = migration();
+  const del = body(src, SIG.del);
+  const delAnti = del.slice(del.indexOf("AND NOT EXISTS"));
+  assert.match(delAnti, /d\.entity_id\s*=\s*t\.entity_id/);
+  assert.match(delAnti, /d\.tag\s*=\s*t\.tag/, "keyed on entity_id alone, a tier change would strand the old tag");
+
+  const ins = body(src, SIG.ins);
+  const insAnti = ins.slice(ins.indexOf("WHERE NOT EXISTS"), ins.indexOf("ON CONFLICT"));
+  assert.match(insAnti, /t\.entity_type\s*=\s*'financial_entity'/);
+  assert.match(insAnti, /t\.entity_id\s*=\s*d\.entity_id/);
+  assert.match(insAnti, /t\.tag\s*=\s*d\.tag/);
+  assert.match(insAnti, /t\.tag_category\s*=\s*'size'/);
+  assert.match(insAnti, /t\.metadata\s*=\s*d\.metadata/, "a same-key row with a stale total must get past the anti-join");
+  assert.doesNotMatch(insAnti, /generated_by/, "generated_by is NOT in the unique key");
+});
+
+test("FIX-1248: the conflict arm UPDATEs a moved total, only on a rule row, only when it differs", () => {
+  const ins = body(migration(), SIG.ins);
+  const arm = ins.slice(ins.indexOf("ON CONFLICT"));
+  assert.match(arm, /DO UPDATE/, "DO NOTHING would leave a moved total stale forever");
+  assert.match(arm, /SET metadata\s*=\s*EXCLUDED\.metadata/);
+  assert.match(arm, /entity_tags\.metadata IS DISTINCT FROM EXCLUDED\.metadata/, "an unconditional UPDATE rewrites every conflicting row");
+  assert.match(arm, /entity_tags\.generated_by = 'rule'/, "a manual row on a size key is not this job's to overwrite");
+  assert.match(arm, /RETURNING \(xmax = 0\)/, "the inserted/updated split");
+});
+
+test("FIX-1248: every temp-table reference is pg_temp-qualified", () => {
+  const src = migration();
+  for (const sig of [SIG.scan, SIG.del, SIG.ins]) {
+    const bare = body(src, sig).match(/(?<!pg_temp\.)(?<!TEMP TABLE )\bfes_desired\b/g) ?? [];
+    assert.equal(bare.length, 0, `${sig}: unqualified fes_desired — search_path is 'public','pg_temp', so public wins`);
+  }
+});
+
+test("FIX-1248: the wrapper and the weekly branch call scan, then delete, then insert", () => {
+  const src = migration();
+  for (const b of [body(src, SIG.wrap), body(src, SIG.proc)]) {
+    const iScan = b.indexOf("rebuild_financial_entity_size_tags_scan()");
+    const iDel = b.indexOf("rebuild_financial_entity_size_tags_delete()");
+    const iIns = b.indexOf("rebuild_financial_entity_size_tags_insert()");
+    assert.ok(iScan > -1 && iDel > -1 && iIns > -1, "all three halves must be called");
+    assert.ok(iScan < iDel && iDel < iIns, "scan, then delete, then insert");
+  }
+});
+
+test("FIX-1248: the weekly branch stamps three phases and four counts, absent when unmeasured", () => {
+  const b = body(migration(), SIG.proc);
+  const weekly = b.slice(b.indexOf("IF p_cadence = 'weekly' THEN"), b.indexOf("-- ── pre-vote timing"));
+  assert.match(weekly, /'scan',\s*round/);
+  assert.match(weekly, /'delete',\s*round/);
+  assert.match(weekly, /'insert',\s*round/);
+  assert.match(b, /CASE WHEN v_inserted IS NULL THEN '\{\}'::jsonb/, "the daily's row must not grow two misleading zeroes");
+  assert.match(b, /'inserted_rows', v_inserted/);
+  assert.match(b, /'updated_rows', v_updated/);
+  // The gate, the advance and the subtransaction's handlers are kept.
+  assert.match(weekly, /IF v_stored_sig IS DISTINCT FROM v_current_sig THEN/);
+  assert.match(weekly, /ON CONFLICT \(key\) DO UPDATE SET value = EXCLUDED\.value/);
+  assert.match(weekly, /WHEN query_canceled THEN/);
+});
+
+test("FIX-1248: the DAILY branch is byte-identical to the one 20260920080000 shipped", () => {
+  const daily = (src: string) => {
+    const b = body(src, SIG.proc);
+    const i = b.indexOf("  ELSE\n    -- ── pre-vote timing");
+    const j = b.indexOf("    COMMIT;\n  END IF;", i);
+    assert.ok(i > -1 && j > i, "daily branch not found");
+    return b.slice(i, j);
+  };
+  const before = fs.readFileSync(path.join(MIGRATIONS, DAILY_MIGRATION), "utf8").replace(/\r\n/g, "\n");
+  assert.equal(daily(migration()), daily(before), "FIX-1248 must not touch the daily branch (rule 138)");
+});
+
+// ---------------------------------------------------------------------------
+// (ii) Behavioural — skipped without a DB, and without CIVITICS_DB_HEAVY_TESTS=1.
+// ---------------------------------------------------------------------------
 
 const LOCAL_DSN =
   process.env["SUPABASE_DB_URL"] ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
