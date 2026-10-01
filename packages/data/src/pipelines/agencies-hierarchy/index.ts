@@ -110,7 +110,7 @@ interface AgencyRow {
 // ---------------------------------------------------------------------------
 
 export async function runAgenciesHierarchyPipeline(): Promise<PipelineResult> {
-  console.log("\n=== Agencies hierarchy backfill ===");
+  console.info("\n=== Agencies hierarchy backfill ===");
   const logId = await startSync("agencies_hierarchy");
   const db = createAdminClient();
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
@@ -123,7 +123,7 @@ export async function runAgenciesHierarchyPipeline(): Promise<PipelineResult> {
     if (error) throw new Error(error.message);
 
     const rows = (agencies ?? []) as AgencyRow[];
-    console.log(`  Loaded ${rows.length} federal agencies`);
+    console.info(`  Loaded ${rows.length} federal agencies`);
 
     const byAcronym = new Map<string, AgencyRow>();
     for (const r of rows) {
@@ -150,7 +150,7 @@ export async function runAgenciesHierarchyPipeline(): Promise<PipelineResult> {
       await sleep(10);
     }
 
-    console.log(`  Static pass: ${result.updated} parent links set`);
+    console.info(`  Static pass: ${result.updated} parent links set`);
 
     // ── Pass 2: USASpending subtier relationships (best-effort) ───────────────
     // The USASpending toptier_agency endpoint returns subtier codes; we only
@@ -164,7 +164,7 @@ export async function runAgenciesHierarchyPipeline(): Promise<PipelineResult> {
         const body = (await resp.json()) as {
           results?: Array<{ abbreviation: string; toptier_code: string; agency_name: string }>;
         };
-        console.log(`  USASpending toptier: ${body.results?.length ?? 0} agencies`);
+        console.info(`  USASpending toptier: ${body.results?.length ?? 0} agencies`);
         // Only records subtier_id for the top-level agencies; recursive subtier
         // walk is deferred to Phase 2.
         for (const top of body.results ?? []) {
@@ -182,7 +182,7 @@ export async function runAgenciesHierarchyPipeline(): Promise<PipelineResult> {
     }
 
     await completeSync(logId, result);
-    console.log(`  ✓ Done. Parent links set: ${result.updated}, failed: ${result.failed}`);
+    console.info(`  ✓ Done. Parent links set: ${result.updated}, failed: ${result.failed}`);
     return result;
   } catch (err) {
     await failSync(logId, err instanceof Error ? err.message : String(err));

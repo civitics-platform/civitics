@@ -109,22 +109,22 @@ async function printStatus(): Promise<void> {
   const pipelines = ["regulations", "fec_bulk", "irs990", "usaspending", "courtlistener", "openstates", "congress_officials", "congress_votes"] as const;
   const syncTimes = await Promise.all(pipelines.map((p) => getLastSync(p)));
 
-  console.log("\n=== Civitics Data Status ===");
-  console.log(`  Officials:              ${(officials.count ?? 0).toLocaleString()}`);
-  console.log(`  Proposals:              ${(proposals.count ?? 0).toLocaleString()}`);
-  console.log(`  Votes:                  ${(votes.count ?? 0).toLocaleString()}`);
-  console.log(`  Financial relationships: ${(financials.count ?? 0).toLocaleString()} (donations, gifts, etc.)`);
-  console.log(`  Spending records:       ${(spending.count ?? 0).toLocaleString()} (contracts + grants)`);
+  console.info("\n=== Civitics Data Status ===");
+  console.info(`  Officials:              ${(officials.count ?? 0).toLocaleString()}`);
+  console.info(`  Proposals:              ${(proposals.count ?? 0).toLocaleString()}`);
+  console.info(`  Votes:                  ${(votes.count ?? 0).toLocaleString()}`);
+  console.info(`  Financial relationships: ${(financials.count ?? 0).toLocaleString()} (donations, gifts, etc.)`);
+  console.info(`  Spending records:       ${(spending.count ?? 0).toLocaleString()} (contracts + grants)`);
 
-  console.log("\n  Last sync times:");
+  console.info("\n  Last sync times:");
   for (let i = 0; i < pipelines.length; i++) {
     const last = syncTimes[i];
     const ts = last ? new Date(last).toLocaleString() : "never";
-    console.log(`    ${pipelines[i].padEnd(16)} ${ts}`);
+    console.info(`    ${pipelines[i].padEnd(16)} ${ts}`);
   }
 
   const dbMb = await getDbSizeMb();
-  console.log(`\n  DB size: ${dbMb} MB / ${STORAGE_BUDGET_MB} MB budget (${Math.round((dbMb / STORAGE_BUDGET_MB) * 100)}% used)`);
+  console.info(`\n  DB size: ${dbMb} MB / ${STORAGE_BUDGET_MB} MB budget (${Math.round((dbMb / STORAGE_BUDGET_MB) * 100)}% used)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -132,20 +132,20 @@ async function printStatus(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function runAllPipelines(): Promise<void> {
-  console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║   Civitics Phase 1 Pipeline Orchestrator  ║");
-  console.log("╚══════════════════════════════════════════╝");
+  console.info("\n╔══════════════════════════════════════════╗");
+  console.info("║   Civitics Phase 1 Pipeline Orchestrator  ║");
+  console.info("╚══════════════════════════════════════════╝");
 
   const startTime = Date.now();
   const db = createAdminClient();
 
   // Seed jurisdictions and governing bodies first (idempotent)
-  console.log("\n[0/5] Seeding jurisdictions and governing bodies...");
+  console.info("\n[0/5] Seeding jurisdictions and governing bodies...");
   const { federalId, stateIds } = await seedJurisdictions(db);
   const { senateId: senateGovBodyId, houseId: houseGovBodyId } = await seedGoverningBodies(db, federalId);
 
   const initialMb = await getDbSizeMb();
-  console.log(`      Starting DB size: ${initialMb} MB`);
+  console.info(`      Starting DB size: ${initialMb} MB`);
 
   const results: Array<{
     name: string;
@@ -290,16 +290,16 @@ export async function runAllPipelines(): Promise<void> {
   const finalMb = await getDbSizeMb();
   const elapsedMin = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
 
-  console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║              Pipeline Report              ║");
-  console.log("╚══════════════════════════════════════════╝");
-  console.log(`${"Pipeline".padEnd(16)} ${"Inserted".padStart(9)} ${"Updated".padStart(9)} ${"Failed".padStart(7)} ${"~MB".padStart(7)}`);
-  console.log("─".repeat(52));
+  console.info("\n╔══════════════════════════════════════════╗");
+  console.info("║              Pipeline Report              ║");
+  console.info("╚══════════════════════════════════════════╝");
+  console.info(`${"Pipeline".padEnd(16)} ${"Inserted".padStart(9)} ${"Updated".padStart(9)} ${"Failed".padStart(7)} ${"~MB".padStart(7)}`);
+  console.info("─".repeat(52));
 
   let totalInserted = 0, totalUpdated = 0, totalFailed = 0, totalEstMb = 0;
   for (const r of results) {
     const flag = r.error ? " ⚠" : "";
-    console.log(
+    console.info(
       `${r.name.padEnd(16)} ${String(r.inserted).padStart(9)} ${String(r.updated).padStart(9)} ${String(r.failed).padStart(7)} ${r.estimatedMb.toFixed(1).padStart(7)}${flag}`
     );
     totalInserted += r.inserted;
@@ -308,23 +308,23 @@ export async function runAllPipelines(): Promise<void> {
     totalEstMb    += r.estimatedMb;
   }
 
-  console.log("─".repeat(52));
-  console.log(
+  console.info("─".repeat(52));
+  console.info(
     `${"TOTAL".padEnd(16)} ${String(totalInserted).padStart(9)} ${String(totalUpdated).padStart(9)} ${String(totalFailed).padStart(7)} ${totalEstMb.toFixed(1).padStart(7)}`
   );
 
   const remaining = STORAGE_BUDGET_MB - finalMb;
   const pct = Math.round((finalMb / STORAGE_BUDGET_MB) * 100);
 
-  console.log(`\n  DB size:  ${finalMb} MB → was ${initialMb} MB (+${(finalMb - initialMb).toFixed(1)} MB)`);
-  console.log(`  Budget:   ${finalMb} / ${STORAGE_BUDGET_MB} MB (${pct}% used, ${remaining.toFixed(1)} MB remaining)`);
-  console.log(`  Elapsed:  ${elapsedMin} minutes`);
+  console.info(`\n  DB size:  ${finalMb} MB → was ${initialMb} MB (+${(finalMb - initialMb).toFixed(1)} MB)`);
+  console.info(`  Budget:   ${finalMb} / ${STORAGE_BUDGET_MB} MB (${pct}% used, ${remaining.toFixed(1)} MB remaining)`);
+  console.info(`  Elapsed:  ${elapsedMin} minutes`);
 
   const failedPipelines = results.filter((r) => r.error);
   if (failedPipelines.length > 0) {
-    console.log(`\n  ⚠ Failed/skipped: ${failedPipelines.map((r) => r.name).join(", ")}`);
+    console.info(`\n  ⚠ Failed/skipped: ${failedPipelines.map((r) => r.name).join(", ")}`);
   } else {
-    console.log("\n  ✓ All pipelines completed successfully");
+    console.info("\n  ✓ All pipelines completed successfully");
   }
 }
 
@@ -447,10 +447,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     phase === "enrichment" || phase === "enrichment-tail" || phase === "all";
 
   const startedAt = new Date();
-  console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║          Nightly Sync Starting            ║");
-  console.log("╚══════════════════════════════════════════╝");
-  console.log(`  Started: ${startedAt.toISOString()}  phase=${phase}`);
+  console.info("\n╔══════════════════════════════════════════╗");
+  console.info("║          Nightly Sync Starting            ║");
+  console.info("╚══════════════════════════════════════════╝");
+  console.info(`  Started: ${startedAt.toISOString()}  phase=${phase}`);
 
   // FIX-743: `runWeekly = isSunday || NIGHTLY_FORCE_WEEKLY==="true"`. Named
   // isWeekly downstream (results.is_weekly, the `if (isWeekly)` heavy block, the
@@ -469,7 +469,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     process.env["NIGHTLY_FORCE_WEEKLY"],
     slotOffsetHours,
   );
-  console.log(
+  console.info(
     `  [nightly] weekly stages: ${
       weeklyMode === "forced"
         ? "FORCED (NIGHTLY_FORCE_WEEKLY=true)"
@@ -481,7 +481,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   if (slotOffsetHours > 0) {
     // Log the nominal day explicitly: with the slot on the previous UTC day,
     // "Sunday" next to a Saturday timestamp is otherwise unreadable.
-    console.log(
+    console.info(
       `  [nightly] nominal slot day: ${nominalSlotInstant(now, slotOffsetHours).toISOString()} ` +
         `(${SLOT_OFFSET_ENV}=${slotOffsetHours}, started ${now.toISOString()})`,
     );
@@ -527,9 +527,9 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const { data: reaped, error } = await (db as any).rpc("reap_stale_sync_log", { stale_minutes: 60 });
     if (error) throw error;
     if (Array.isArray(reaped) && reaped.length > 0) {
-      console.log(`[nightly] reap_stale_sync_log — reaped ${reaped.length} orphan row(s):`);
+      console.info(`[nightly] reap_stale_sync_log — reaped ${reaped.length} orphan row(s):`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const r of reaped as any[]) console.log(`  ${r.pipeline} (${r.id})`);
+      for (const r of reaped as any[]) console.info(`  ${r.pipeline} (${r.id})`);
     }
   } catch (err) {
     console.warn("[nightly] reap_stale_sync_log failed (continuing):", errMsg(err));
@@ -600,7 +600,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const t0 = Date.now();
     try {
       const r = await runExecutiveSeed({ db });
-      console.log(`[nightly] executive seed — complete in ${Date.now() - t0}ms (inserted=${r.inserted} updated=${r.updated})`);
+      console.info(`[nightly] executive seed — complete in ${Date.now() - t0}ms (inserted=${r.inserted} updated=${r.updated})`);
     } catch (err) {
       const msg = errMsg(err);
       console.error("[nightly] executive seed failed (non-fatal):", msg);
@@ -707,7 +707,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   if (shouldLoadResumeState(fecTrigger)) {
     fecResumeState = await loadFecRunState(db);
     if (fecResumeState) {
-      console.log(`[nightly] RESUMING fec_bulk (FIX-754): ${describeFecRunState(fecResumeState)}`);
+      console.info(`[nightly] RESUMING fec_bulk (FIX-754): ${describeFecRunState(fecResumeState)}`);
     }
   }
 
@@ -725,7 +725,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const probeCycle = resolveProbeCycle(new Date(), process.env["FEC_INDIV_CYCLES"]);
     fecDropPending = await indivDropPending(db, probeCycle);
     if (fecDropPending) {
-      console.log(
+      console.info(
         `[nightly] NEW FEC DROP — triggering off-Sunday fec_bulk for cycle ${probeCycle} (FIX-903); ` +
           `see the [fec-drop-check] line above for the FEC Last-Modified vs stored watermark`,
       );
@@ -768,7 +768,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         // overrides still win, matching the weekly narrowing below.
         if (!prevFecCycles)      process.env["FEC_CYCLES"]       = fecResumeState.cycle;
         if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = fecResumeState.cycle;
-        console.log(`[nightly] fec_bulk resume: cycles narrowed to pending cycle ${fecResumeState.cycle} (FIX-754)`);
+        console.info(`[nightly] fec_bulk resume: cycles narrowed to pending cycle ${fecResumeState.cycle} (FIX-754)`);
       } else if (!prevFecCycles || !prevFecIndivCycles) {
         // FIX-903: currentFecCycle() is the SAME helper the drop probe above
         // used, so the probe and the run it triggers can never disagree about
@@ -792,11 +792,11 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       // that killed it (playbook C3, a guard where it cannot fire), while the
       // resume signal is durable in pipeline_state. Never throws.
       if (fecResumeState) {
-        console.log(
+        console.info(
           `[nightly] fec_bulk resume — paying the vacuum tail the killed writer skipped (FIX-1100/FIX-943)`,
         );
         const vacMs = await vacuumAfterKilledFecWriter();
-        console.log(`[nightly] fec_bulk resume vacuum complete in ${(vacMs / 1000).toFixed(1)}s (FIX-1100)`);
+        console.info(`[nightly] fec_bulk resume vacuum complete in ${(vacMs / 1000).toFixed(1)}s (FIX-1100)`);
       }
       try {
         const r = await runFecBulkPipeline();
@@ -839,7 +839,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const probeCycle = resolveProbeCycle(new Date(), process.env["FEC_INDIV_CYCLES"]);
     const probe = await probeIndivDrop(db, probeCycle);
     await recordDropProbe(db, probe, "enrichment-light");
-    console.log(
+    console.info(
       `[nightly] FEC drop probe (phase=enrichment-light): pending=${probe.pending} ` +
         `cycle=${probe.cycle} remote=${probe.remote_last_modified ?? "(none)"} ` +
         `watermark=${probe.watermark_last_modified ?? "(none)"} (FIX-1163)`,
@@ -1086,7 +1086,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         results.total_ai_cost_usd += costUsd;
         // Surface duration through the pipeline tag-industry slot via console only —
         // tag_industry lives under results.ai (no duration_ms field).
-        console.log(`[nightly] tag-industry — complete in ${((Date.now() - t0) / 1000).toFixed(1)}s, ${r.tagged} tagged`);
+        console.info(`[nightly] tag-industry — complete in ${((Date.now() - t0) / 1000).toFixed(1)}s, ${r.tagged} tagged`);
       } catch (err) {
         const msg = errMsg(err);
         console.error("[nightly] tag-industry failed:", msg);
@@ -1122,7 +1122,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   //   at current scale; non-fatal — a scorer failure must not abort the nightly.
   try {
     const { scored } = await scoreComments();
-    console.log(`[nightly] comment bridge scorer — ${scored} comment(s) scored`);
+    console.info(`[nightly] comment bridge scorer — ${scored} comment(s) scored`);
   } catch (err) {
     const msg = errMsg(err);
     console.error("[nightly] comment bridge scorer failed:", msg);
@@ -1212,10 +1212,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   results.completed_at = new Date();
   results.duration_ms = results.completed_at.getTime() - startedAt.getTime();
 
-  console.log(`\n  Nightly sync complete: ${results.completed_at.toISOString()}`);
-  console.log(`  Duration: ${(results.duration_ms / 1000).toFixed(1)}s`);
+  console.info(`\n  Nightly sync complete: ${results.completed_at.toISOString()}`);
+  console.info(`  Duration: ${(results.duration_ms / 1000).toFixed(1)}s`);
   if (results.errors.length > 0) {
-    console.log(`  Errors (${results.errors.length}): ${results.errors.join("; ")}`);
+    console.info(`  Errors (${results.errors.length}): ${results.errors.join("; ")}`);
   }
 
   // Record results to pipeline_state for dashboard. FIX-293: merge with any
@@ -1369,15 +1369,15 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
 
 export async function runUsaSpendingBulk(): Promise<void> {
   const startTime = Date.now();
-  console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║   USASpending bulk (contracts + assistance) ║");
-  console.log("╚══════════════════════════════════════════╝");
+  console.info("\n╔══════════════════════════════════════════╗");
+  console.info("║   USASpending bulk (contracts + assistance) ║");
+  console.info("╚══════════════════════════════════════════╝");
 
   const contracts  = await runUsaSpendingBulkPipeline({ category: "contracts" });
   const assistance = await runUsaSpendingBulkPipeline({ category: "assistance" });
 
   const mins = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-  console.log(
+  console.info(
     `\n  USASpending done in ${mins} min — ` +
     `contracts: inserted=${contracts.inserted} failed=${contracts.failed}; ` +
     `assistance: inserted=${assistance.inserted} failed=${assistance.failed}`,

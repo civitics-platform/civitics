@@ -259,7 +259,7 @@ export async function syncCompanies(
   for (const entry of scope) {
     processed++;
     if (processed % 25 === 0) {
-      console.log(`  [edgar/companies] ${processed}/${scope.length} processed`);
+      console.info(`  [edgar/companies] ${processed}/${scope.length} processed`);
     }
 
     const cik = padCik(entry.cik);
@@ -281,7 +281,7 @@ export async function syncCompanies(
     if (!financialEntityId) {
       financialEntityId = await resolveCorporationEntityByCanonical(db, canonical);
       if (financialEntityId) {
-        console.log(`  [edgar/companies] CIK ${cik} canonical-bound to existing entity ${financialEntityId} (canonical="${canonical}")`);
+        console.info(`  [edgar/companies] CIK ${cik} canonical-bound to existing entity ${financialEntityId} (canonical="${canonical}")`);
       } else {
         financialEntityId = await insertCorporationEntity(db, meta, canonical, cik);
       }
@@ -318,6 +318,6 @@ export async function syncCompanies(
     await refreshPrimarySourceForEntities(db, "financial_entity", newlyBoundEntityIds);
   }
 
-  console.log(`  [edgar/companies] ${records.length}/${scope.length} companies synced`);
+  console.info(`  [edgar/companies] ${records.length}/${scope.length} companies synced`);
   return records;
 }

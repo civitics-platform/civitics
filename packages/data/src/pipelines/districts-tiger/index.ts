@@ -279,7 +279,7 @@ async function processCongressionalShapefile(
 export async function runTigerDistrictsPipeline(
   stateIds: Map<string, string>,
 ): Promise<PipelineResult> {
-  console.log(`\n=== Census TIGER ${TIGER_YEAR} district boundaries pipeline ===`);
+  console.info(`\n=== Census TIGER ${TIGER_YEAR} district boundaries pipeline ===`);
   const logId = await startSync("tiger_districts");
   const db = createAdminClient();
 
@@ -291,7 +291,7 @@ export async function runTigerDistrictsPipeline(
 
     for (const state of STATE_DATA) {
       if (NO_SLD.has(state.abbr)) {
-        console.log(`  ${state.abbr}: no state legislative districts (skipped)`);
+        console.info(`  ${state.abbr}: no state legislative districts (skipped)`);
         continue;
       }
       const parentId = stateIds.get(state.name);
@@ -336,7 +336,7 @@ export async function runTigerDistrictsPipeline(
         totalFailed += failed;
         totalSkipped += skipped;
         results.push({ state: state.abbr, chamber, n: inserted, failed });
-        console.log(`  ${state.abbr} ${chamber}: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
+        console.info(`  ${state.abbr} ${chamber}: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
 
         rmDir(extractDir);
       }
@@ -369,14 +369,14 @@ export async function runTigerDistrictsPipeline(
       totalFailed++;
     } else {
       const n = (floterialRes.data as unknown as number | null) ?? 0;
-      console.log(`  NH floterials: ${n} derived district${n === 1 ? "" : "s"} written`);
+      console.info(`  NH floterials: ${n} derived district${n === 1 ? "" : "s"} written`);
     }
 
     // FIX-217: Pass 2 — Congressional districts (per-state, 119th Congress).
     // TIGER ships these as one shapefile per state at
     // tl_{year}_{state_fips}_cd119.zip — same shape as SLD files. DC, PR,
     // and territories aren't included; STATE_DATA lists US states only.
-    console.log(`\n  --- Congressional districts (119th Congress) ---`);
+    console.info(`\n  --- Congressional districts (119th Congress) ---`);
     for (const state of STATE_DATA) {
       const fileName = `tl_${TIGER_YEAR}_${state.fips}_cd${CD_SESSION}.zip`;
       const url = `${CD_BASE}/${fileName}`;
@@ -413,7 +413,7 @@ export async function runTigerDistrictsPipeline(
       totalInserted += inserted;
       totalFailed += failed;
       totalSkipped += skipped;
-      console.log(`  ${state.abbr} cd: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
+      console.info(`  ${state.abbr} cd: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
 
       rmDir(extractDir);
     }
@@ -429,7 +429,7 @@ export async function runTigerDistrictsPipeline(
     if (linkRes.error) {
       console.warn(`  link_officials_to_districts error: ${linkRes.error.message}`);
     } else {
-      console.log(`  Linked ${linked} officials to district jurisdictions (state legs)`);
+      console.info(`  Linked ${linked} officials to district jurisdictions (state legs)`);
     }
 
     // FIX-217: Federal House Reps don't have org_classification='lower'
@@ -440,20 +440,20 @@ export async function runTigerDistrictsPipeline(
     if (fedLinkRes.error) {
       console.warn(`  link_federal_reps_to_districts error: ${fedLinkRes.error.message}`);
     } else {
-      console.log(`  Linked ${fedLinked} House Reps to congressional districts`);
+      console.info(`  Linked ${fedLinked} House Reps to congressional districts`);
     }
 
     const estimatedMb = +(bytesDownloaded / 1024 / 1024).toFixed(2);
     const result: PipelineResult = { inserted: totalInserted, updated: linked, failed: totalFailed, estimatedMb };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log(`  TIGER ${TIGER_YEAR} districts report`);
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  Districts upserted:   ${totalInserted}`);
-    console.log(`  Officials linked:     ${linked}`);
-    console.log(`  Failed:               ${totalFailed}`);
-    console.log(`  Skipped (ZZ/null):    ${totalSkipped}`);
-    console.log(`  Downloaded:           ${(bytesDownloaded / 1024 / 1024).toFixed(1)} MB`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info(`  TIGER ${TIGER_YEAR} districts report`);
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  Districts upserted:   ${totalInserted}`);
+    console.info(`  Officials linked:     ${linked}`);
+    console.info(`  Failed:               ${totalFailed}`);
+    console.info(`  Skipped (ZZ/null):    ${totalSkipped}`);
+    console.info(`  Downloaded:           ${(bytesDownloaded / 1024 / 1024).toFixed(1)} MB`);
 
     await completeSync(logId, result);
     return result;

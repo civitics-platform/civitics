@@ -91,21 +91,21 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
 
   try {
-    console.log("\n=== IRS 990 pipeline ===");
-    console.log(`  Seed orgs: ${SEED_NONPROFITS.length}`);
+    console.info("\n=== IRS 990 pipeline ===");
+    console.info(`  Seed orgs: ${SEED_NONPROFITS.length}`);
     const years = taxYears();
-    console.log(`  Tax years: ${years.join(", ")}`);
+    console.info(`  Tax years: ${years.join(", ")}`);
 
     // Load officials lookup once (re-used across all years).
-    console.log("  Loading officials → canonical-name map...");
+    console.info("  Loading officials → canonical-name map...");
     const officialsByName = await loadOfficialsByCanonicalName(db);
-    console.log(`    ${officialsByName.size.toLocaleString()} canonical names indexed`);
+    console.info(`    ${officialsByName.size.toLocaleString()} canonical names indexed`);
 
     const watermark = await loadIndexWatermark(db);
     const seedFp = fingerprintSeedEins(SEED_NONPROFITS.map((s) => s.ein));
 
     for (const year of years) {
-      console.log(`\n  [year=${year}]`);
+      console.info(`\n  [year=${year}]`);
       const url = indexCsvUrl(year);
 
       // Watermark check — skip only when BOTH the index Last-Modified AND
@@ -116,22 +116,22 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       const wmKey = String(year);
       const stored = watermark[wmKey];
       if (lm && stored && stored.lastModified === lm && stored.seedFingerprint === seedFp) {
-        console.log(`    Index unchanged + seed fingerprint matches (lm=${lm}, fp=${seedFp}) — skipping`);
+        console.info(`    Index unchanged + seed fingerprint matches (lm=${lm}, fp=${seedFp}) — skipping`);
         continue;
       }
       if (lm && stored && stored.lastModified === lm && stored.seedFingerprint !== seedFp) {
-        console.log(`    Index unchanged but seed fingerprint differs (was ${stored.seedFingerprint || "<legacy>"}, now ${seedFp}) — re-streaming`);
+        console.info(`    Index unchanged but seed fingerprint differs (was ${stored.seedFingerprint || "<legacy>"}, now ${seedFp}) — re-streaming`);
       }
 
       // Stream the index CSV, collecting only rows whose EIN is in the seed set.
-      console.log(`    Streaming index ${url}...`);
+      console.info(`    Streaming index ${url}...`);
       const matches: Array<{ row: IndexRow; ein: string }> = [];
       try {
         const { rowCount } = await streamIndexCsv(url, (row) => {
           const ein = normalizeEin(row.EIN);
           if (SEED_EIN_SET.has(ein)) matches.push({ row, ein });
         });
-        console.log(`    Index rows: ${rowCount.toLocaleString()}, seed matches: ${matches.length}`);
+        console.info(`    Index rows: ${rowCount.toLocaleString()}, seed matches: ${matches.length}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`    Index stream failed for year ${year}: ${msg} — skipping year`);
@@ -145,7 +145,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       const candidateObjectIds = matches.map((m) => m.row.OBJECT_ID).filter(Boolean);
       const alreadyIngested = await filterUningestedObjectIds(db, candidateObjectIds);
       const newMatches = matches.filter((m) => m.row.OBJECT_ID && !alreadyIngested.has(m.row.OBJECT_ID));
-      console.log(`    New filings to ingest: ${newMatches.length} (skipping ${alreadyIngested.size} already-present)`);
+      console.info(`    New filings to ingest: ${newMatches.length} (skipping ${alreadyIngested.size} already-present)`);
       if (newMatches.length === 0) {
         if (lm) {
           watermark[wmKey] = { lastModified: lm, seedFingerprint: seedFp };
@@ -160,7 +160,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       // through it, and extract only entries whose object_id is in our
       // needed set.
       const zipUrls = await getYearZipUrls(year);
-      console.log(`    ZIP archives for year ${year}: ${zipUrls.length}`);
+      console.info(`    ZIP archives for year ${year}: ${zipUrls.length}`);
       if (zipUrls.length === 0) {
         console.warn(`    No ZIP archives found for year ${year} — IRS page may have changed`);
         result.failed += newMatches.length;
@@ -178,7 +178,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
         if (needed.size === 0) break;  // every needed filing accounted for
         const zipName = path.basename(new URL(zipUrl).pathname);
         const zipPath = path.join(dir, zipName);
-        console.log(`      Downloading ${zipName}...`);
+        console.info(`      Downloading ${zipName}...`);
         try {
           await downloadFileToTemp(zipUrl, zipPath);
         } catch (err) {
@@ -199,10 +199,10 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
         safeUnlink(zipPath);
 
         if (xmlMap.size === 0) {
-          console.log(`      ${zipName}: 0 matches`);
+          console.info(`      ${zipName}: 0 matches`);
           continue;
         }
-        console.log(`      ${zipName}: ${xmlMap.size} matches`);
+        console.info(`      ${zipName}: ${xmlMap.size} matches`);
 
         for (const [objectId, xml] of xmlMap.entries()) {
           const entry = objectIdToRow.get(objectId);
@@ -301,7 +301,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
             }
           }
 
-          console.log(`      [ok]   ${ein}/${objectId} (${orgName.slice(0, 40)}): ${parsed.officers.length} officers, ${parsed.grantsOut.length} grants`);
+          console.info(`      [ok]   ${ein}/${objectId} (${orgName.slice(0, 40)}): ${parsed.officers.length} officers, ${parsed.grantsOut.length} grants`);
           refreshedEntityIds.add(entityId);
         }
       }
@@ -328,7 +328,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
     }
 
     await completeSync(logId, result);
-    console.log(`\n  IRS 990 complete: ${result.inserted} rows inserted, ${result.failed} failed, ${result.estimatedMb.toFixed(1)} MB XML processed`);
+    console.info(`\n  IRS 990 complete: ${result.inserted} rows inserted, ${result.failed} failed, ${result.estimatedMb.toFixed(1)} MB XML processed`);
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

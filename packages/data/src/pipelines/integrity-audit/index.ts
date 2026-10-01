@@ -90,8 +90,7 @@ function parseArgs(argv: string[]): Args {
     } else if (a === "--allow-prod") {
       allowProd = true;
     } else if (a === "--help" || a === "-h") {
-      // eslint-disable-next-line no-console
-      console.log(
+      console.info(
         "Usage: data:audit [--db-url <url>] [--strict] [--out <dir>] [--allow-prod]",
       );
       process.exit(0);
@@ -112,7 +111,6 @@ function parseArgs(argv: string[]): Args {
     dbUrl = constructDbUrlFromEnv();
   }
   if (!dbUrl) {
-    // eslint-disable-next-line no-console
     console.error(
       "ERROR: no database URL. Set COWORK_READONLY_DB_URL or SUPABASE_DB_URL, " +
         "or provide SUPABASE_DB_PASSWORD + NEXT_PUBLIC_SUPABASE_URL, or pass --db-url.",
@@ -179,8 +177,7 @@ async function main(): Promise<void> {
 
   const { jsonPath, mdPath } = writeReport(report, outDir, allowProd);
   printStdoutTable(report);
-  // eslint-disable-next-line no-console
-  console.log(`\nWrote: ${jsonPath}\nWrote: ${mdPath}`);
+  console.info(`\nWrote: ${jsonPath}\nWrote: ${mdPath}`);
 
   if (strict && report.summary.errors > 0) {
     process.exit(1);
@@ -188,7 +185,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(err);
   process.exit(1);
 });

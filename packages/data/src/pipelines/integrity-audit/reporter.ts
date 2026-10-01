@@ -104,8 +104,7 @@ export function printStdoutTable(report: AuditReport): void {
   }));
   // eslint-disable-next-line no-console
   console.table(rows);
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `\nTotals: ${report.summary.errors} error · ${report.summary.warnings} warning · ${report.summary.infos} info (of ${report.summary.total} checks)`,
   );
 }

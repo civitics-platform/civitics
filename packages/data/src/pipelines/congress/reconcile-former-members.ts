@@ -155,14 +155,14 @@ export async function runReconcileFormerMembers(opts: {
   }
 
   if (diff.staleIds.length === 0) {
-    console.log(
+    console.info(
       `  reconcile-former-members: 0 departed members (${activeOfficials.length} active, feed ${feedMemberCount}).`
     );
     return { guardPassed: true, deactivated: 0, staleBioguideIds: [] };
   }
 
   // Log the to-deactivate list BEFORE applying (decision #6).
-  console.log(
+  console.info(
     `  reconcile-former-members: deactivating ${diff.staleIds.length} departed ` +
       `member(s): ${diff.staleBioguideIds.join(", ")}`
   );
@@ -186,7 +186,7 @@ export async function runReconcileFormerMembers(opts: {
     }
   }
 
-  console.log(
+  console.info(
     `  reconcile-former-members: deactivated ${diff.staleIds.length} member(s) → is_active=false, tier='former'.`
   );
   return {

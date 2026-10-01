@@ -26,7 +26,7 @@ const TARGET_CONGRESSES = [117, 118, 119];
 
 async function runOneCongress(congress: number): Promise<number> {
   return new Promise((resolve) => {
-    console.log(`\n── Backfilling ${congress}th Congress ─────────────────────`);
+    console.info(`\n── Backfilling ${congress}th Congress ─────────────────────`);
     // Forward our argv (e.g. --allow-prod) so the child's pipeline guard
     // sees the same flags. process.argv = [node, this-script, ...userArgs].
     const userArgs = process.argv.slice(2);
@@ -46,16 +46,16 @@ async function runOneCongress(congress: number): Promise<number> {
       },
     );
     child.on("exit", (code) => {
-      console.log(`── ${congress}th exit code: ${code ?? "null"} ─────────────`);
+      console.info(`── ${congress}th exit code: ${code ?? "null"} ─────────────`);
       resolve(code ?? 1);
     });
   });
 }
 
 async function main() {
-  console.log("=== Votes backfill — FIX-051 ===");
-  console.log(`Target congresses: ${TARGET_CONGRESSES.join(", ")}`);
-  console.log("This may take 2–3 hours. Safe to interrupt and re-run.\n");
+  console.info("=== Votes backfill — FIX-051 ===");
+  console.info(`Target congresses: ${TARGET_CONGRESSES.join(", ")}`);
+  console.info("This may take 2–3 hours. Safe to interrupt and re-run.\n");
 
   for (const c of TARGET_CONGRESSES) {
     const code = await runOneCongress(c);
@@ -65,7 +65,7 @@ async function main() {
     }
   }
 
-  console.log("\n✓ Backfill complete.");
+  console.info("\n✓ Backfill complete.");
 }
 
 main().catch((err) => {

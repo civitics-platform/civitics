@@ -92,8 +92,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--min-cluster" && args[i + 1]) minCluster = Number(args[++i]);
     else if (a === "--score-threshold" && args[i + 1]) scoreThreshold = Number(args[++i]);
     else if (a === "--help" || a === "-h") {
-      // eslint-disable-next-line no-console
-      console.log(
+      console.info(
         "Usage: data:brigade-scan [--db-url <url>] [--allow-prod] [--dry-run] " +
           "[--horizon-days N] [--window-minutes N] [--min-cluster N] [--score-threshold F]",
       );
@@ -156,7 +155,6 @@ async function main(): Promise<void> {
   const isProd = /supabase\.(co|com)/i.test(host) || /supabase\./i.test(a.dbUrl);
 
   if (isProd && !a.allowProd) {
-    // eslint-disable-next-line no-console
     console.error(
       `REFUSING to run against what looks like prod (${host}) without --allow-prod.\n` +
         "The scan reads prod tables and appends to brigade_candidates. Confirm intent, " +
@@ -174,8 +172,7 @@ async function main(): Promise<void> {
   });
   await client.connect();
 
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `SF-P4 brigade scan — host=${host} sha=${sha} ${isProd ? "(PROD)" : "(local)"}` +
       `${a.dryRun ? " [dry-run]" : ""}`,
   );
@@ -220,8 +217,7 @@ async function main(): Promise<void> {
       target: c.target_id ?? "(cross-target)",
     })),
   );
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `\nCandidates: ${fast.length} fast · ${slow.length} slow` +
       ` — ${a.dryRun ? "dry-run (nothing written)" : `${written} logged to brigade_candidates`}`,
   );
@@ -233,7 +229,6 @@ async function main(): Promise<void> {
   })).filter((d) => d.delta !== 0);
 
   if (dirty.length > 0) {
-    // eslint-disable-next-line no-console
     console.error(
       `\n⚠️  POLLUTION: detector mutated content tables — ${dirty
         .map((d) => `${d.table}+${d.delta}`)
@@ -241,12 +236,10 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  // eslint-disable-next-line no-console
-  console.log("✅ Zero-pollution: no content table mutated (only brigade_candidates appended).");
+  console.info("✅ Zero-pollution: no content table mutated (only brigade_candidates appended).");
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(err);
   process.exit(1);
 });

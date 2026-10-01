@@ -109,8 +109,7 @@ export function parseArgs(argv: string[]): Args {
     else if (a === "--damp-cap" && args[i + 1]) dampCap = Number(args[++i]);
     else if (a === "--score-threshold" && args[i + 1]) scoreThreshold = Number(args[++i]);
     else if (a === "--help" || a === "-h") {
-      // eslint-disable-next-line no-console
-      console.log(
+      console.info(
         "Usage: data:sybil-scan [--db-url <url>] [--allow-prod] [--dry-run] " +
           "[--horizon-days N] [--min-accounts N] [--couple-minutes N] " +
           "[--burst-minutes N] [--damp-cap N] [--score-threshold F]",
@@ -221,7 +220,6 @@ async function main(): Promise<void> {
   const isProd = isProdHost(host, a.dbUrl);
 
   if (isProd && !a.allowProd) {
-    // eslint-disable-next-line no-console
     console.error(
       `REFUSING to run against what looks like prod (${host}) without --allow-prod.\n` +
         "The scan reads prod tables and appends to sybil_candidates. Confirm intent, " +
@@ -239,8 +237,7 @@ async function main(): Promise<void> {
   });
   await client.connect();
 
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `FIX-571 Sybil scan — host=${host} sha=${sha} ${isProd ? "(PROD)" : "(local)"}` +
       `${a.dryRun ? " [dry-run]" : ""}`,
   );
@@ -280,8 +277,7 @@ async function main(): Promise<void> {
 
   // eslint-disable-next-line no-console
   console.table(candidates.map(summarizeCandidate));
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `\nScanned ${linkable} linkable event(s) (non-NULL ip_hash, last ${a.horizonDays}d). ` +
       `Candidates: ${candidates.length}` +
       ` — ${
@@ -289,8 +285,7 @@ async function main(): Promise<void> {
       }.`,
   );
   if (candidates.length === 0) {
-    // eslint-disable-next-line no-console
-    console.log(
+    console.info(
       linkable === 0
         ? "  (0 linkable rows — the log is empty / pepper-unset era: measured-empty, not broken.)"
         : "  (linkable rows present but none crossed the score threshold: measured-empty.)",
@@ -305,7 +300,6 @@ async function main(): Promise<void> {
   })).filter((d) => d.delta !== 0);
 
   if (dirty.length > 0) {
-    // eslint-disable-next-line no-console
     console.error(
       `\n⚠️  POLLUTION: detector mutated watched tables — ${dirty
         .map((d) => `${d.table}+${d.delta}`)
@@ -313,8 +307,7 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     "✅ Zero-pollution: no content table nor abuse_events mutated (only sybil_candidates appended).",
   );
 }
@@ -324,7 +317,6 @@ async function main(): Promise<void> {
 const invokedHref = process.argv[1] ? pathToFileURL(process.argv[1]).href.toLowerCase() : "";
 if (invokedHref === import.meta.url.toLowerCase()) {
   main().catch((err) => {
-    // eslint-disable-next-line no-console
     console.error(err);
     process.exit(1);
   });

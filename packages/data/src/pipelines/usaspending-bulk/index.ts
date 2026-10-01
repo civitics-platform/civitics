@@ -305,7 +305,7 @@ async function loadAgencyMap(
     if (row.acronym) map.set(row.acronym.toUpperCase().trim(), row.id);
   }
 
-  console.log(`  Loaded ${data.length} agencies (${map.size} name/acronym keys)`);
+  console.info(`  Loaded ${data.length} agencies (${map.size} name/acronym keys)`);
   return map;
 }
 
@@ -366,7 +366,7 @@ async function processCsvFile(
   const result: FileResult = { upserted: 0, failed: 0, skipped: 0, skippedNonGrant: 0 };
 
   const fileMb = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(0);
-  console.log(`    Processing CSV (${fileMb} MB uncompressed)...`);
+  console.info(`    Processing CSV (${fileMb} MB uncompressed)...`);
 
   const parser = fs.createReadStream(csvPath).pipe(
     parse({
@@ -477,7 +477,7 @@ async function processCsvFile(
       }
 
       if (rowsRead % 100_000 === 0) {
-        console.log(
+        console.info(
           `    ... ${rowsRead.toLocaleString()} rows read,` +
           ` ${rowsMatched.toLocaleString()} matched,` +
           ` ${result.upserted.toLocaleString()} upserted`,
@@ -488,14 +488,14 @@ async function processCsvFile(
     await flushBatch();
   });
 
-  console.log(`    Rows read:          ${rowsRead.toLocaleString()}`);
-  console.log(`    Matched agencies:   ${rowsMatched.toLocaleString()}`);
-  console.log(`    Skipped:            ${result.skipped.toLocaleString()}`);
+  console.info(`    Rows read:          ${rowsRead.toLocaleString()}`);
+  console.info(`    Matched agencies:   ${rowsMatched.toLocaleString()}`);
+  console.info(`    Skipped:            ${result.skipped.toLocaleString()}`);
   if (cfg.category === "assistance") {
-    console.log(`    Non-grant skipped:  ${result.skippedNonGrant.toLocaleString()}`);
+    console.info(`    Non-grant skipped:  ${result.skippedNonGrant.toLocaleString()}`);
   }
-  console.log(`    Upserted:           ${result.upserted.toLocaleString()}`);
-  console.log(`    Failed:             ${result.failed.toLocaleString()}`);
+  console.info(`    Upserted:           ${result.upserted.toLocaleString()}`);
+  console.info(`    Failed:             ${result.failed.toLocaleString()}`);
 
   return result;
 }
@@ -534,7 +534,7 @@ export async function runUsaSpendingBulkPipeline(
 ): Promise<PipelineResult> {
   const cfg = CATEGORY_CONFIGS[opts.category ?? "contracts"];
 
-  console.log(`\n=== USASpending bulk archive pipeline (${cfg.category}) ===`);
+  console.info(`\n=== USASpending bulk archive pipeline (${cfg.category}) ===`);
   const logId = await startSync(cfg.syncLogName);
   const db    = createAdminClient();
 
@@ -543,19 +543,19 @@ export async function runUsaSpendingBulkPipeline(
 
   try {
     // ── [1/5] Discover archive files via S3 prefix queries ────────────────
-    console.log("\n  [1/5] Discovering archive files...");
+    console.info("\n  [1/5] Discovering archive files...");
     const fy = currentFy();
 
     // FIX-739: DB-backed state (one-time lift from the legacy file on first run).
     const state    = await loadState(db);
-    console.log(`  State: ${describeState(state, cfg.category)}`);
+    console.info(`  State: ${describeState(state, cfg.category)}`);
     const baseline = opts.force ? null : getBaseline(state, cfg.category);
 
     // Fetch Full listing unconditionally (needed whether we run Full or to
     // determine the latest Full date for delta-mode display). Delta listing
     // is deferred — only fetched when we actually need it.
     const fullFiles = await discoverFullFiles(cfg, fy);
-    console.log(`  FY${fy} Full ${cfg.filePrefix} files: ${fullFiles.length}`);
+    console.info(`  FY${fy} Full ${cfg.filePrefix} files: ${fullFiles.length}`);
 
     if (fullFiles.length === 0) {
       console.warn(`  No Full archive found for FY${fy} ${cfg.filePrefix}`);
@@ -564,7 +564,7 @@ export async function runUsaSpendingBulkPipeline(
     }
 
     // ── [2/5] Decide Full vs Delta ─────────────────────────────────────────
-    console.log("\n  [2/5] Determining run mode...");
+    console.info("\n  [2/5] Determining run mode...");
 
     let filesToProcess: ArchiveFile[];
     let runMode: "full" | "delta";
@@ -582,7 +582,7 @@ export async function runUsaSpendingBulkPipeline(
       const plan = startFullRun(state, cfg.category, fullArchiveDate);
       await saveState(db, state);
       if (plan.discardedDate) {
-        console.log(
+        console.info(
           `  Discarded in-progress Full for ${plan.discardedDate} — ` +
           `newer archive ${fullArchiveDate} available`,
         );
@@ -592,24 +592,24 @@ export async function runUsaSpendingBulkPipeline(
         : plan.resumed
           ? `Resuming Full run (${plan.completedParts.length} CSV part(s) already complete — skipping)`
           : "No prior baseline — first run";
-      console.log(`  ${how}: Full archive dated ${fullArchiveDate}`);
+      console.info(`  ${how}: Full archive dated ${fullArchiveDate}`);
     } else {
       const deltaFiles = await discoverDeltaFiles(cfg);
-      console.log(`  Delta files available: ${deltaFiles.length}`);
+      console.info(`  Delta files available: ${deltaFiles.length}`);
       filesToProcess = deltasSince(deltaFiles, baseline.lastArchiveDate);
       runMode = "delta";
       if (filesToProcess.length === 0) {
-        console.log(`  No new Delta files since ${baseline.lastArchiveDate} — nothing to do`);
+        console.info(`  No new Delta files since ${baseline.lastArchiveDate} — nothing to do`);
         await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 });
         return { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
       }
-      console.log(
+      console.info(
         `  Delta mode: ${filesToProcess.length} file(s) since ${baseline.lastArchiveDate}`,
       );
     }
 
     // ── [3/5] Load agency map ──────────────────────────────────────────────
-    console.log("\n  [3/5] Loading agency map...");
+    console.info("\n  [3/5] Loading agency map...");
     const agencyMap = await loadAgencyMap(db);
     if (agencyMap.size === 0) {
       await failSync(logId, "No agencies loaded — cannot filter archive rows");
@@ -617,22 +617,22 @@ export async function runUsaSpendingBulkPipeline(
     }
 
     // ── [4/5] Download and process each archive file ───────────────────────
-    console.log("\n  [4/5] Processing archive files...");
+    console.info("\n  [4/5] Processing archive files...");
     ensureTmpDir();
 
     let lastProcessedDate = runMode === "delta" ? (baseline?.lastArchiveDate ?? "") : "";
 
     for (const archiveFile of filesToProcess) {
-      console.log(`\n  Processing ${archiveFile.name}...`);
+      console.info(`\n  Processing ${archiveFile.name}...`);
 
       const zipPath = path.join(TMP_DIR, archiveFile.name);
 
       try {
         // Download ZIP (can be 300 MB – 1 GB)
-        console.log("    Downloading (large file — please wait)...");
+        console.info("    Downloading (large file — please wait)...");
         await downloadFile(archiveFile.url, zipPath);
         const zipMb = (fs.statSync(zipPath).size / 1024 / 1024).toFixed(0);
-        console.log(`    Downloaded ${zipMb} MB`);
+        console.info(`    Downloaded ${zipMb} MB`);
 
         // FIX-766: enumerate EVERY CSV part via the central directory, then
         // extract → process → delete one part at a time to bound disk.
@@ -641,7 +641,7 @@ export async function runUsaSpendingBulkPipeline(
           console.warn(`    No .csv found inside ${archiveFile.name} — skipping`);
           continue;
         }
-        console.log(`    ${parts.length} CSV part(s) in ${archiveFile.name}`);
+        console.info(`    ${parts.length} CSV part(s) in ${archiveFile.name}`);
 
         for (let k = 0; k < parts.length; k++) {
           const part  = parts[k]!;
@@ -652,11 +652,11 @@ export async function runUsaSpendingBulkPipeline(
           // this same Full archive. Delta parts are not checkpointed — deltas
           // are small and a killed delta simply reprocesses (idempotent).
           if (runMode === "full" && isPartComplete(state, cfg.category, key)) {
-            console.log(`    ── ${label} (${part.path}) already complete — skipping`);
+            console.info(`    ── ${label} (${part.path}) already complete — skipping`);
             continue;
           }
 
-          console.log(`\n    ═══════ ${label}: ${part.path} ═══════`);
+          console.info(`\n    ═══════ ${label}: ${part.path} ═══════`);
           const csvPath = path.join(TMP_DIR, path.basename(part.path));
           try {
             await part.extractTo(csvPath);
@@ -686,7 +686,7 @@ export async function runUsaSpendingBulkPipeline(
     }
 
     // ── [5/5] Finalize ─────────────────────────────────────────────────────
-    console.log("\n  [5/5] Finalising...");
+    console.info("\n  [5/5] Finalising...");
     cleanTmpDir();
 
     const result: PipelineResult = {
@@ -696,14 +696,14 @@ export async function runUsaSpendingBulkPipeline(
       estimatedMb: 0,  // agent of change — let dashboard derive from DB size
     };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log(`  USASpending bulk pipeline report (${cfg.category})`);
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"Run mode:".padEnd(30)} ${runMode}`);
-    console.log(`  ${"FY:".padEnd(30)} ${fy}`);
-    console.log(`  ${"Files processed:".padEnd(30)} ${filesToProcess.length}`);
-    console.log(`  ${"Relationships upserted:".padEnd(30)} ${totalUpserted}`);
-    console.log(`  ${"Failed:".padEnd(30)} ${totalFailed}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info(`  USASpending bulk pipeline report (${cfg.category})`);
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Run mode:".padEnd(30)} ${runMode}`);
+    console.info(`  ${"FY:".padEnd(30)} ${fy}`);
+    console.info(`  ${"Files processed:".padEnd(30)} ${filesToProcess.length}`);
+    console.info(`  ${"Relationships upserted:".padEnd(30)} ${totalUpserted}`);
+    console.info(`  ${"Failed:".padEnd(30)} ${totalFailed}`);
 
     await completeSync(logId, result);
 

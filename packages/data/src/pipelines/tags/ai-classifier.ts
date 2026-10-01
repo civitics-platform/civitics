@@ -215,7 +215,7 @@ async function classifyPac(
 // ---------------------------------------------------------------------------
 
 export async function runAiClassifier(options: { confirmed?: boolean } = {}): Promise<{ tagged: number; skipped: number }> {
-  console.log("\n=== AI industry classifier ===");
+  console.info("\n=== AI industry classifier ===");
 
   // `confirmed: true` (set by orchestrator + CLI --confirm) flips the
   // cost-gate into autonomous-approval mode for this process — it skips the
@@ -291,17 +291,17 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
            ON fe.fec_committee_id = o.fec_committee_id`,
     );
     const overriddenIds = new Set<string>(overriddenRows.map((r) => r.id));
-    console.log(`  Curated overrides excluded from classification: ${overriddenIds.size}`);
+    console.info(`  Curated overrides excluded from classification: ${overriddenIds.size}`);
 
     const pacs: UntaggedPac[] = selectClassifierCandidates(allPacs, alreadyTagged, overriddenIds);
 
     if (pacs.length === 0) {
-      console.log("  No untagged PACs found over threshold. Nothing to do.");
+      console.info("  No untagged PACs found over threshold. Nothing to do.");
       await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 });
       return { tagged: 0, skipped: 0 };
     }
 
-    console.log(`\n  Untagged PACs (over $${(MIN_DONATION_CENTS / 100).toLocaleString()}): ${pacs.length}`);
+    console.info(`\n  Untagged PACs (over $${(MIN_DONATION_CENTS / 100).toLocaleString()}): ${pacs.length}`);
 
     // 2. Wire cost gate — samples 3 real API calls, asks for approval
     const anthropic = createAiClient();
@@ -341,7 +341,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     const abstainsByAnswer = new Map<string, number>();
     const abstainedPacs: { name: string; answer: string; reason: string }[] = [];
 
-    console.log(`\n  Classifying ${pacsToProcess.length} PACs...\n`);
+    console.info(`\n  Classifying ${pacsToProcess.length} PACs...\n`);
 
     for (const pac of pacsToProcess) {
       process.stdout.write(`  ${pac.display_name.slice(0, 55).padEnd(55)} → `);
@@ -418,14 +418,14 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     // 4. Summary
     const abstained = [...abstainsByAnswer.values()].reduce((a, b) => a + b, 0);
 
-    console.log("\n  ─────────────────────────────────────────────────");
-    console.log("  AI classifier report");
-    console.log("  ─────────────────────────────────────────────────");
-    console.log(`  ${"PACs processed:".padEnd(32)} ${pacsToProcess.length}`);
-    console.log(`  ${"Tagged:".padEnd(32)} ${tagged}`);
-    console.log(`  ${"Abstained (no tag written):".padEnd(32)} ${abstained}`);
-    console.log(`  ${"Skipped/failed:".padEnd(32)} ${skipped}`);
-    console.log(`  ${"Actual cost (est):".padEnd(32)} $${(tagged * COST_PER_PAC_USD).toFixed(4)}`);
+    console.info("\n  ─────────────────────────────────────────────────");
+    console.info("  AI classifier report");
+    console.info("  ─────────────────────────────────────────────────");
+    console.info(`  ${"PACs processed:".padEnd(32)} ${pacsToProcess.length}`);
+    console.info(`  ${"Tagged:".padEnd(32)} ${tagged}`);
+    console.info(`  ${"Abstained (no tag written):".padEnd(32)} ${abstained}`);
+    console.info(`  ${"Skipped/failed:".padEnd(32)} ${skipped}`);
+    console.info(`  ${"Actual cost (est):".padEnd(32)} $${(tagged * COST_PER_PAC_USD).toFixed(4)}`);
 
     if (abstained > 0) {
       // FIX-911: an out-of-vocabulary answer that is NOT the prompt's own `other`
@@ -433,7 +433,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
       // and the vocabulary have drifted. Call it out separately rather than
       // burying it in one abstain count.
       const invented = [...abstainsByAnswer.entries()].filter(([a]) => a !== ABSTAIN_ANSWER);
-      console.log(
+      console.info(
         `  Abstain breakdown: ` +
           [...abstainsByAnswer.entries()]
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))

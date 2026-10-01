@@ -68,7 +68,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Promise<PipelineResult> {
-  console.log("\n=== LittleSis ingestion pipeline ===");
+  console.info("\n=== LittleSis ingestion pipeline ===");
 
   const logId  = await startSync("littlesis");
   const db     = createAdminClient();
@@ -80,13 +80,13 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
 
   try {
     // ── Download + fingerprint ───────────────────────────────────────────
-    console.log("  Downloading entities.json.gz...");
+    console.info("  Downloading entities.json.gz...");
     const ent = await downloadAndFingerprint(LITTLESIS_ENTITIES_URL, entPath);
-    console.log(`    ${(ent.bytes / 1024 / 1024).toFixed(1)} MB, sha256 ${ent.sha256.slice(0, 12)}…`);
+    console.info(`    ${(ent.bytes / 1024 / 1024).toFixed(1)} MB, sha256 ${ent.sha256.slice(0, 12)}…`);
 
-    console.log("  Downloading relationships.json.gz...");
+    console.info("  Downloading relationships.json.gz...");
     const rel = await downloadAndFingerprint(LITTLESIS_RELATIONSHIPS_URL, relPath);
-    console.log(`    ${(rel.bytes / 1024 / 1024).toFixed(1)} MB, sha256 ${rel.sha256.slice(0, 12)}…`);
+    console.info(`    ${(rel.bytes / 1024 / 1024).toFixed(1)} MB, sha256 ${rel.sha256.slice(0, 12)}…`);
 
     result.estimatedMb = +((ent.bytes + rel.bytes) / 1024 / 1024).toFixed(2);
 
@@ -94,15 +94,15 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stored = await getStoredFingerprint(db as any);
     if (!force && stored.entities_sha === ent.sha256 && stored.relationships_sha === rel.sha256) {
-      console.log(`  Both dumps unchanged since ${stored.last_run_at ?? "first run"} — skipping.`);
+      console.info(`  Both dumps unchanged since ${stored.last_run_at ?? "first run"} — skipping.`);
       await skipSync(logId, "dumps_unchanged");
       return result;
     }
-    if (force) console.log("  --force: bypassing freshness gate");
+    if (force) console.info("  --force: bypassing freshness gate");
     else {
       const changedEnt = stored.entities_sha      !== ent.sha256;
       const changedRel = stored.relationships_sha !== rel.sha256;
-      console.log(`  Dumps changed: entities=${changedEnt} relationships=${changedRel}`);
+      console.info(`  Dumps changed: entities=${changedEnt} relationships=${changedRel}`);
     }
 
     // ── Build match index + preload existing bindings ───────────────────
@@ -114,42 +114,42 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     // in it. Unfiltered, the map held 2,551,270 keys and the build peaked at
     // 1,282 MB RSS on the prod clone — for a dump that asks about a few tens of
     // thousands of people.
-    console.log("  Collecting LittleSis person sort keys from the entities dump...");
+    console.info("  Collecting LittleSis person sort keys from the entities dump...");
     const personKeys = await collectLittleSisPersonKeys(entPath);
 
-    console.log("  Building match index from Civitics rows...");
+    console.info("  Building match index from Civitics rows...");
     const idx = await buildMatchIndex(personKeys);
-    console.log(
+    console.info(
       `    officials lastname keys=${idx.officialsByLastName.size}` +
       `, persons sort-keys=${idx.personsBySortKey.size}` +
       `, orgs canonical=${idx.orgsByCanonical.size}`,
     );
 
-    console.log("  Preloading existing LittleSis bindings from external_source_refs...");
+    console.info("  Preloading existing LittleSis bindings from external_source_refs...");
     const known = await preloadKnownLittleSisIds(db);
-    console.log(`    ${known.size} existing bindings`);
+    console.info(`    ${known.size} existing bindings`);
 
     // ── P1 ───────────────────────────────────────────────────────────────
-    console.log("  P1: matching entities against Civitics...");
+    console.info("  P1: matching entities against Civitics...");
     const p1 = await pass1AnchorMatch(entPath, idx, known);
-    console.log(
+    console.info(
       `    entities=${p1.stats.entities_seen.toLocaleString()}` +
       ` high=${p1.stats.high_matches} medium=${p1.stats.medium_matches}` +
       ` queued=${p1.stats.queued} missed=${p1.stats.missed}`,
     );
 
     // ── P2 + P3 ──────────────────────────────────────────────────────────
-    console.log("  P2: streaming relationships for 0-hop edges + 1-hop candidates...");
+    console.info("  P2: streaming relationships for 0-hop edges + 1-hop candidates...");
     const p2 = await pass2CollectEdges(relPath, p1.anchorMap, p1.byId);
-    console.log(
+    console.info(
       `    rels=${p2.rels_seen.toLocaleString()}` +
       ` cat5_skipped=${p2.rels_skipped_category}` +
       ` zero_hop=${p2.zeroHopEdges.length} hop1_set=${p2.hop1Set.size}`,
     );
 
-    console.log("  P3: streaming relationships for 2-hop edges...");
+    console.info("  P3: streaming relationships for 2-hop edges...");
     const p3 = await pass3CollectEdges(relPath, p1.anchorMap, p2.hop1Set);
-    console.log(`    two_hop=${p3.twoHopEdges.length}`);
+    console.info(`    two_hop=${p3.twoHopEdges.length}`);
 
     // ── Materialize hop-1 financial_entities (only those referenced by an edge) ──
     const referencedHop1 = new Set<number>();
@@ -168,9 +168,9 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
       const ent = p1.byId.get(lsId);
       if (ent) hop1Entities.push(ent);
     }
-    console.log(`  Materializing ${hop1Entities.length} hop-1 entities...`);
+    console.info(`  Materializing ${hop1Entities.length} hop-1 entities...`);
     const hop1Upsert = await upsertHop1FinancialEntities(hop1Entities);
-    console.log(
+    console.info(
       `    inserted=${hop1Upsert.inserted} matched=${hop1Upsert.matched}` +
       ` failed=${hop1Upsert.failed} rpcErrors=${hop1Upsert.rpcErrors}`,
     );
@@ -224,17 +224,17 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
 
     // ── Build edge inputs + upsert ───────────────────────────────────────
     const edgeInputs = buildEdgeInputs([...p2.zeroHopEdges, ...p3.twoHopEdges], resolver);
-    console.log(`  Upserting ${edgeInputs.length} external_relationships...`);
+    console.info(`  Upserting ${edgeInputs.length} external_relationships...`);
     const relUpsert = await upsertExternalRelationships(edgeInputs);
-    console.log(`    inserted=${relUpsert.inserted} failed=${relUpsert.failed}`);
+    console.info(`    inserted=${relUpsert.inserted} failed=${relUpsert.failed}`);
     result.inserted += relUpsert.inserted;
     result.failed   += relUpsert.failed;
 
     // ── Review queue ─────────────────────────────────────────────────────
     if (p1.ambiguous.length > 0) {
-      console.log(`  Queueing ${p1.ambiguous.length} ambiguous entity matches for review...`);
+      console.info(`  Queueing ${p1.ambiguous.length} ambiguous entity matches for review...`);
       const queue = await upsertReviewQueue(p1.ambiguous);
-      console.log(`    queued=${queue.inserted} failed=${queue.failed}`);
+      console.info(`    queued=${queue.inserted} failed=${queue.failed}`);
     }
 
     // ── Persist fingerprints ─────────────────────────────────────────────
@@ -242,7 +242,7 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     await storeFingerprint(db as any, ent.sha256, rel.sha256);
 
     await completeSync(logId, result);
-    console.log(`\n  ✓ Done. inserted=${result.inserted} failed=${result.failed} estimated=${result.estimatedMb} MB`);
+    console.info(`\n  ✓ Done. inserted=${result.inserted} failed=${result.failed} estimated=${result.estimatedMb} MB`);
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

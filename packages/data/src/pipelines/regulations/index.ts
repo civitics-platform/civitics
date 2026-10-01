@@ -114,7 +114,7 @@ export async function runRegulationsPipeline(
   apiKey: string,
   federalId: string
 ): Promise<PipelineResult> {
-  console.log("\n=== Regulations.gov pipeline (public) ===");
+  console.info("\n=== Regulations.gov pipeline (public) ===");
   const logId = await startSync("regulations");
   const db = createAdminClient();
   let inserted = 0, updated = 0, failed = 0;
@@ -122,7 +122,7 @@ export async function runRegulationsPipeline(
   try {
     // ── 1. Fetch open-for-comment documents (commentEndDate >= today) ──────
     const today = new Date().toISOString().split("T")[0]!;
-    console.log("  Fetching open-for-comment documents...");
+    console.info("  Fetching open-for-comment documents...");
     const openDocs = await fetchAllDocuments(
       apiKey,
       {
@@ -132,14 +132,14 @@ export async function runRegulationsPipeline(
       },
       8 // up to 8 × 250 = 2,000 docs
     );
-    console.log(`  Got ${openDocs.length} open-for-comment documents`);
+    console.info(`  Got ${openDocs.length} open-for-comment documents`);
 
     // ── 2. Fetch recent documents (last 12 months, not just open) ──────────
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
     const since = twelveMonthsAgo.toISOString().split("T")[0]!;
 
-    console.log(`  Fetching documents posted since ${since}...`);
+    console.info(`  Fetching documents posted since ${since}...`);
     const recentDocs = await fetchAllDocuments(
       apiKey,
       {
@@ -149,12 +149,12 @@ export async function runRegulationsPipeline(
       },
       4 // up to 4 × 250 = 1,000 more docs
     );
-    console.log(`  Got ${recentDocs.length} recent documents`);
+    console.info(`  Got ${recentDocs.length} recent documents`);
 
     // ── 3. Deduplicate by regulations.gov ID ───────────────────────────────
     const allDocs = new Map<string, RegDoc>();
     for (const d of [...openDocs, ...recentDocs]) allDocs.set(d.id, d);
-    console.log(`  Processing ${allDocs.size} unique documents...`);
+    console.info(`  Processing ${allDocs.size} unique documents...`);
 
     if (allDocs.size === 0) {
       await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 });
@@ -167,10 +167,10 @@ export async function runRegulationsPipeline(
         .map((d) => d.attributes.agencyId)
         .filter((a): a is string => typeof a === "string" && a.length > 0),
     )];
-    console.log(`  Resolving ${acronyms.length} unique agency acronyms...`);
+    console.info(`  Resolving ${acronyms.length} unique agency acronyms...`);
     const { byAcronym, inserted: newAgencies, unmappedAcronyms } =
       await resolveAgencies(db, acronyms, federalId);
-    console.log(`    ${byAcronym.size} agencies resolved (${newAgencies} newly inserted)`);
+    console.info(`    ${byAcronym.size} agencies resolved (${newAgencies} newly inserted)`);
     if (unmappedAcronyms.length > 0) {
       console.warn(`  ⚠ Unmapped agency acronyms (add to packages/db/src/agency-names.ts):`);
       console.warn(`    ${unmappedAcronyms.join(", ")}`);
@@ -209,15 +209,15 @@ export async function runRegulationsPipeline(
     const estimatedMb = +(((inserted + updated) * 2365) / 1024 / 1024).toFixed(2);
     const syncResult: PipelineResult = { inserted, updated, failed, estimatedMb };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  Regulations.gov pipeline report");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"Documents fetched:".padEnd(32)} ${allDocs.size}`);
-    console.log(`  ${"Agencies resolved:".padEnd(32)} ${byAcronym.size} (${newAgencies} new)`);
-    console.log(`  ${"Proposals inserted:".padEnd(32)} ${inserted}`);
-    console.log(`  ${"Proposals updated:".padEnd(32)} ${updated}`);
-    console.log(`  ${"Proposals failed:".padEnd(32)} ${failed}`);
-    console.log(`  ${"Estimated storage:".padEnd(32)} ~${estimatedMb} MB`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  Regulations.gov pipeline report");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Documents fetched:".padEnd(32)} ${allDocs.size}`);
+    console.info(`  ${"Agencies resolved:".padEnd(32)} ${byAcronym.size} (${newAgencies} new)`);
+    console.info(`  ${"Proposals inserted:".padEnd(32)} ${inserted}`);
+    console.info(`  ${"Proposals updated:".padEnd(32)} ${updated}`);
+    console.info(`  ${"Proposals failed:".padEnd(32)} ${failed}`);
+    console.info(`  ${"Estimated storage:".padEnd(32)} ~${estimatedMb} MB`);
 
     await completeSync(logId, syncResult);
     return syncResult;

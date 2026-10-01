@@ -324,7 +324,7 @@ async function buildOfficialMaps(
     })),
   );
   const officialMap = bioguide.map;
-  console.log(`  Built bioguide map with ${officialMap.size} entries`);
+  console.info(`  Built bioguide map with ${officialMap.size} entries`);
   reportCollisions("bioguide", bioguide.collisions);
 
   // FIX-940: the Senate governing body carries ~1.95k `tier='candidate'` rows
@@ -359,7 +359,7 @@ async function buildOfficialMaps(
       .limit(limit), "id", after),
     { key: (r) => r.id },
   );
-  console.log(
+  console.info(
     `  Senate pool: ${rawPoolCount ?? "?"} rows in the governing body → ` +
       `${senators.length} current members after the is_active + tier='elected' filter`,
   );
@@ -395,7 +395,7 @@ async function buildOfficialMaps(
       })),
     );
     senatorByNameState = built.map;
-    console.log(`  Built senator name:state map with ${senatorByNameState.size} entries`);
+    console.info(`  Built senator name:state map with ${senatorByNameState.size} entries`);
     reportCollisions("senator name:state", built.collisions);
   }
 
@@ -421,7 +421,7 @@ export async function runVotesPipeline(
 ): Promise<VotesPipelineResult> {
   const { apiKey, federalId, senateGovBodyId, houseGovBodyId } = options;
 
-  console.log("Starting Congress bills + XML member votes pipeline...");
+  console.info("Starting Congress bills + XML member votes pipeline...");
   const logId = await startSync("congress_votes");
 
   const db = createAdminClient();
@@ -439,7 +439,7 @@ export async function runVotesPipeline(
   const billDetailsDeps: BillDetailsGuardDeps = {
     presentIds: (ids) => presentBillDetailIds(db, ids),
     land: (id, args) => landBillDetails(db, id, args),
-    log: (line) => console.log(line),
+    log: (line) => console.info(line),
   };
 
   try {
@@ -452,7 +452,7 @@ export async function runVotesPipeline(
   // bill_details.proposal_id).
   // -------------------------------------------------------------------------
 
-  console.log("\n--- Step 1: Syncing bills from Congress.gov API ---");
+  console.info("\n--- Step 1: Syncing bills from Congress.gov API ---");
 
   const billTypes = [
     { type: "hr",    label: "House bills" },
@@ -462,7 +462,7 @@ export async function runVotesPipeline(
   ] as const;
 
   for (const { type, label } of billTypes) {
-    console.log(`\n  Fetching recent ${label}...`);
+    console.info(`\n  Fetching recent ${label}...`);
 
     let bills: BillSummary[] = [];
 
@@ -472,7 +472,7 @@ export async function runVotesPipeline(
         apiKey
       );
       bills = listData.bills ?? [];
-      console.log(`  Got ${bills.length} ${label}`);
+      console.info(`  Got ${bills.length} ${label}`);
     } catch (err) {
       console.error(`  Error fetching ${label}:`, err);
       continue;
@@ -516,7 +516,7 @@ export async function runVotesPipeline(
       console.error(`  Unexpected error processing ${label} batch:`, err);
     }
 
-    console.log(`  Proposals upserted so far: ${proposalsUpserted}`);
+    console.info(`  Proposals upserted so far: ${proposalsUpserted}`);
   }
 
   // -------------------------------------------------------------------------
@@ -543,7 +543,7 @@ export async function runVotesPipeline(
   // Step 3: House Clerk XML vote feeds — two-pass to batch bill resolution
   // -------------------------------------------------------------------------
 
-  console.log("\n--- Step 3: Fetching House Clerk XML votes ---");
+  console.info("\n--- Step 3: Fetching House Clerk XML votes ---");
 
   let houseUnmatched = 0;
 
@@ -585,12 +585,12 @@ export async function runVotesPipeline(
         console.warn(`  House skip-check load error (${pattern}): ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    console.log(`  Pre-loaded ${houseExistingIds.size} existing House roll IDs`);
+    console.info(`  Pre-loaded ${houseExistingIds.size} existing House roll IDs`);
   }
 
   // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data
   for (const { session, year } of sessions) {
-    console.log(`\n  House session ${session} (${year}) — collecting rolls...`);
+    console.info(`\n  House session ${session} (${year}) — collecting rolls...`);
 
     for (let rollNum = 1; rollNum <= 500; rollNum++) {
       const paddedRoll = String(rollNum).padStart(3, "0");
@@ -602,7 +602,7 @@ export async function runVotesPipeline(
           continue;
         }
 
-        console.log(`    Roll ${rollNum}: fetching...`);
+        console.info(`    Roll ${rollNum}: fetching...`);
 
         let xmlText: string;
         try {
@@ -610,7 +610,7 @@ export async function runVotesPipeline(
         } catch (fetchErr: unknown) {
           const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
           if (msg.includes("HTTP 404")) {
-            console.log(`    Roll ${rollNum}: 404 — no more rolls for session ${session}`);
+            console.info(`    Roll ${rollNum}: 404 — no more rolls for session ${session}`);
             break;
           }
           console.error(`    Roll ${rollNum}: fetch error — ${msg}`);
@@ -674,7 +674,7 @@ export async function runVotesPipeline(
   }
 
   // Batch resolve: one bulk lookup + one bulk insert for novel bills
-  console.log(`\n  Resolving ${houseBillArgs.size} unique House bills in batch...`);
+  console.info(`\n  Resolving ${houseBillArgs.size} unique House bills in batch...`);
   const houseBillKeyToId = await resolveBillsBatch(db, houseBillArgs, billKeyConflicts);
   proposalsUpserted += [...houseBillKeyToId.values()].filter((v) => v !== null).length;
 
@@ -689,7 +689,7 @@ export async function runVotesPipeline(
   );
 
   // Pass 2: write vote records using the resolved proposalId map
-  console.log("  Writing House vote records...");
+  console.info("  Writing House vote records...");
   const houseWrite = await writeRollVotes<HouseRollItem, VoteInsert>(houseRollBuffer, {
     proposalIdFor: (billKey) => (billKey ? (houseBillKeyToId.get(billKey) ?? null) : null),
     absent: houseAbsent,
@@ -720,7 +720,7 @@ export async function runVotesPipeline(
       return voteRecords;
     },
     insert: async (records) => await db.from("votes").insert(records),
-    log: (line) => console.log(line),
+    log: (line) => console.info(line),
   });
   votesInserted += houseWrite.inserted;
   skippedRolls.push(...houseWrite.skipped);
@@ -730,7 +730,7 @@ export async function runVotesPipeline(
   // Step 4: Senate LIS XML vote feeds — two-pass to batch bill resolution
   // -------------------------------------------------------------------------
 
-  console.log("\n--- Step 4: Fetching Senate LIS XML votes ---");
+  console.info("\n--- Step 4: Fetching Senate LIS XML votes ---");
 
   let senateUnmatched = 0;
   /** FIX-940: which keys missed, not just how many — names the member to chase. */
@@ -767,12 +767,12 @@ export async function runVotesPipeline(
     } catch (err) {
       console.warn(`  Senate skip-check load error: ${err instanceof Error ? err.message : String(err)}`);
     }
-    console.log(`  Pre-loaded ${senateExistingIds.size} existing Senate roll IDs`);
+    console.info(`  Pre-loaded ${senateExistingIds.size} existing Senate roll IDs`);
   }
 
   // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data
   for (const { session } of sessions) {
-    console.log(`\n  Senate session ${session} — collecting rolls...`);
+    console.info(`\n  Senate session ${session} — collecting rolls...`);
 
     const folderKey = `vote${CURRENT_CONGRESS}${session}`;
 
@@ -788,7 +788,7 @@ export async function runVotesPipeline(
           continue;
         }
 
-        console.log(`    Roll ${rollNum}: fetching...`);
+        console.info(`    Roll ${rollNum}: fetching...`);
 
         let xmlText: string;
         try {
@@ -796,7 +796,7 @@ export async function runVotesPipeline(
         } catch (fetchErr: unknown) {
           const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
           if (msg.includes("HTTP 404")) {
-            console.log(`    Roll ${rollNum}: 404 — no more rolls for session ${session}`);
+            console.info(`    Roll ${rollNum}: 404 — no more rolls for session ${session}`);
             break;
           }
           console.error(`    Roll ${rollNum}: fetch error — ${msg}`);
@@ -902,7 +902,7 @@ export async function runVotesPipeline(
   }
 
   // Batch resolve: one bulk lookup + one bulk insert for novel bills
-  console.log(`\n  Resolving ${senateBillArgs.size} unique Senate bills in batch...`);
+  console.info(`\n  Resolving ${senateBillArgs.size} unique Senate bills in batch...`);
   const senateBillKeyToId = await resolveBillsBatch(db, senateBillArgs, billKeyConflicts);
   proposalsUpserted += [...senateBillKeyToId.values()].filter((v) => v !== null).length;
 
@@ -915,7 +915,7 @@ export async function runVotesPipeline(
   );
 
   // Pass 2: write vote records using the resolved proposalId map
-  console.log("  Writing Senate vote records...");
+  console.info("  Writing Senate vote records...");
   const senateWrite = await writeRollVotes<SenateRollItem, VoteInsert>(senateRollBuffer, {
     proposalIdFor: (billKey) => (billKey ? (senateBillKeyToId.get(billKey) ?? null) : null),
     absent: senateAbsent,
@@ -952,14 +952,14 @@ export async function runVotesPipeline(
       return voteRecords;
     },
     insert: async (records) => await db.from("votes").insert(records),
-    log: (line) => console.log(line),
+    log: (line) => console.info(line),
   });
   votesInserted += senateWrite.inserted;
   skippedRolls.push(...senateWrite.skipped);
   insertFailures.push(...senateWrite.insertFailures);
 
   if (houseUnmatched > 0) {
-    console.log(`\n  House unmatched bioguide IDs (no official in DB): ${houseUnmatched}`);
+    console.info(`\n  House unmatched bioguide IDs (no official in DB): ${houseUnmatched}`);
   }
   if (senateUnmatched > 0) {
     // FIX-940: an unmatched Senator is now the DESIGNED failure mode — the map
@@ -992,7 +992,7 @@ export async function runVotesPipeline(
     );
   }
 
-  console.log(
+  console.info(
     `\nVotes pipeline complete: ${proposalsUpserted} proposals upserted, ${votesInserted} votes inserted, ` +
       `${skippedRolls.length} roll(s) skipped, ${insertFailures.length} roll insert(s) failed, ` +
       `${billKeyConflicts.length} bill key conflict(s)`
@@ -1052,7 +1052,7 @@ if (require.main === module) {
         houseGovBodyId: houseId,
       });
 
-      console.log("Votes pipeline complete:", result);
+      console.info("Votes pipeline complete:", result);
       process.exit(0);
     } catch (err) {
       console.error("Fatal error:", err);

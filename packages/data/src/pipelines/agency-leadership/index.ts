@@ -209,7 +209,7 @@ async function runCongressNominationsPass(
 ): Promise<void> {
   const apiKey = process.env["CONGRESS_API_KEY"];
   if (!apiKey) {
-    console.log("\n  Pass 2: Congress.gov nominations — SKIPPED (CONGRESS_API_KEY not set)");
+    console.info("\n  Pass 2: Congress.gov nominations — SKIPPED (CONGRESS_API_KEY not set)");
     return;
   }
 
@@ -219,7 +219,7 @@ async function runCongressNominationsPass(
   // cutoff to avoid treating historical commissioners as currently serving.
   const CURRENT_CONGRESS = 119;
   const CONGRESS_START_DATE = "2025-01-03";
-  console.log(`\n  Pass 2: Congress.gov nominations (${CURRENT_CONGRESS}th Congress, on/after ${CONGRESS_START_DATE})`);
+  console.info(`\n  Pass 2: Congress.gov nominations (${CURRENT_CONGRESS}th Congress, on/after ${CONGRESS_START_DATE})`);
 
   // Agency lookup by normalized name
   const agencyByNormName = new Map<string, AgencyRow>();
@@ -303,7 +303,7 @@ async function runCongressNominationsPass(
     totalFetched += nominations.length;
     // If the entire page predated CONGRESS_START_DATE, all further pages will too
     if (nominations.length > 0 && !pageHadRecentNominations) {
-      console.log(`    Reached nominations older than ${CONGRESS_START_DATE} — stopping pagination`);
+      console.info(`    Reached nominations older than ${CONGRESS_START_DATE} — stopping pagination`);
       hasMore = false;
     } else {
       hasMore = nominations.length === pageSize;
@@ -312,7 +312,7 @@ async function runCongressNominationsPass(
     await sleep(300);
   }
 
-  console.log(
+  console.info(
     `  Congress.gov: ${totalFetched} nominations scanned → confirmed matches for ${confirmedByAgency.size} agencies`
   );
 
@@ -414,7 +414,7 @@ async function runCongressNominationsPass(
 // ---------------------------------------------------------------------------
 
 export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
-  console.log("\n=== Agency leadership pipeline ===");
+  console.info("\n=== Agency leadership pipeline ===");
 
   const logId = await startSync("agency_leadership");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -432,7 +432,7 @@ export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
     if (agErr) throw new Error(agErr.message);
 
     const agencies = (agencyData ?? []) as AgencyRow[];
-    console.log(`  ${agencies.length} federal agencies with wikidata_id`);
+    console.info(`  ${agencies.length} federal agencies with wikidata_id`);
 
     // Federal jurisdiction (fips_code='00')
     const { data: jurData } = await db
@@ -463,13 +463,13 @@ export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
       const wdId = (o.source_ids as Record<string, string> | null)?.wikidata_id;
       if (wdId) officialByWdId.set(wdId, o.id as string);
     }
-    console.log(`  ${officialByWdId.size} officials with wikidata_id already in DB`);
+    console.info(`  ${officialByWdId.size} officials with wikidata_id already in DB`);
 
     let noLeadersCount = 0;
     let totalStaleClosed = 0;
 
     // ── Pass 1: Wikidata ────────────────────────────────────────────────────
-    console.log("\n  Pass 1: Wikidata SPARQL (P488 head + sub-Cabinet positions)");
+    console.info("\n  Pass 1: Wikidata SPARQL (P488 head + sub-Cabinet positions)");
 
     for (const agency of agencies) {
       if (!agency.wikidata_id) continue;
@@ -642,19 +642,19 @@ export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
       totalStaleClosed += staleClosed;
 
       const staleNote = staleClosed > 0 ? `, ${staleClosed} stale closed` : "";
-      console.log(`  ${agency.acronym ?? agency.name}: ${recent.length} leader(s) processed${staleNote}`);
+      console.info(`  ${agency.acronym ?? agency.name}: ${recent.length} leader(s) processed${staleNote}`);
     }
 
-    console.log(`\n  ${noLeadersCount} agencies with no Wikidata leaders → enqueued for AI enrichment`);
+    console.info(`\n  ${noLeadersCount} agencies with no Wikidata leaders → enqueued for AI enrichment`);
     if (totalStaleClosed > 0) {
-      console.log(`  ${totalStaleClosed} stale is_current connections corrected`);
+      console.info(`  ${totalStaleClosed} stale is_current connections corrected`);
     }
 
     // ── Pass 2: Congress.gov nominations ───────────────────────────────────
     await runCongressNominationsPass(db, agencies, federalJurisdictionId, result, today);
 
     await completeSync(logId, result);
-    console.log(`\n  ✓ Done. Inserted: ${result.inserted}, updated: ${result.updated}, failed: ${result.failed}`);
+    console.info(`\n  ✓ Done. Inserted: ${result.inserted}, updated: ${result.updated}, failed: ${result.failed}`);
     return result;
   } catch (err) {
     await failSync(logId, err instanceof Error ? err.message : String(err));

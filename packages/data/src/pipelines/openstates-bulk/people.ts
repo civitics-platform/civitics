@@ -145,7 +145,7 @@ function pickWebsiteUrl(links: string | undefined, openstatesId: string): string
 export async function runBulkPeoplePipeline(
   stateIds: Map<string, string>,
 ): Promise<PipelineResult> {
-  console.log("\n=== OpenStates bulk people pipeline ===");
+  console.info("\n=== OpenStates bulk people pipeline ===");
   const logId = await startSync("openstates_bulk_people");
   const db = createAdminClient();
 
@@ -172,7 +172,7 @@ export async function runBulkPeoplePipeline(
       }
     }
     const govBodyMap = await resolveGoverningBodies(db, govBodyKeys);
-    console.log(`  Resolved ${govBodyMap.size} governing bodies`);
+    console.info(`  Resolved ${govBodyMap.size} governing bodies`);
 
     for (const state of STATE_DATA) {
       const jurisdictionId = stateIds.get(state.name);
@@ -191,7 +191,7 @@ export async function runBulkPeoplePipeline(
         bytes = await downloadFile(url, dest);
       } catch (err) {
         if (err instanceof NotFoundError) {
-          console.log(`  ${state.abbr}: no CSV available`);
+          console.info(`  ${state.abbr}: no CSV available`);
         } else {
           console.warn(`  ${state.abbr}: download failed — ${err instanceof Error ? err.message : err}`);
           failed++;
@@ -248,7 +248,7 @@ export async function runBulkPeoplePipeline(
       }
 
       const summary = `${records.length} rows · +${inputs.length} valid${chamberMisses ? ` · ${chamberMisses} chamber-miss` : ""}`;
-      console.log(`  ${state.abbr}: ${summary}`);
+      console.info(`  ${state.abbr}: ${summary}`);
       statesProcessed++;
       safeUnlink(dest);
     }
@@ -276,15 +276,15 @@ export async function runBulkPeoplePipeline(
     const estimatedMb = +(bytesDownloaded / 1024 / 1024).toFixed(2);
     const result: PipelineResult = { inserted, updated, failed, estimatedMb };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  OpenStates bulk people report");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  States processed: ${statesProcessed} · skipped: ${statesSkipped}`);
-    console.log(`  Inserted:         ${inserted}`);
-    console.log(`  Updated:          ${updated}`);
-    console.log(`  Failed:           ${failed}`);
-    console.log(`  District-linked:  ${linked}`);
-    console.log(`  Downloaded:       ${(bytesDownloaded / 1024 / 1024).toFixed(2)} MB`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  OpenStates bulk people report");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  States processed: ${statesProcessed} · skipped: ${statesSkipped}`);
+    console.info(`  Inserted:         ${inserted}`);
+    console.info(`  Updated:          ${updated}`);
+    console.info(`  Failed:           ${failed}`);
+    console.info(`  District-linked:  ${linked}`);
+    console.info(`  Downloaded:       ${(bytesDownloaded / 1024 / 1024).toFixed(2)} MB`);
 
     // FIX-492 — slugify ingest invariant: state-chamber gbs resolved/inserted by
     // resolveGoverningBodies this run get their slug filled. Idempotent.

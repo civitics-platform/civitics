@@ -88,7 +88,7 @@ async function runMetro(
   officials: number;
   bodies: number;
 }> {
-  console.log(`\n  ── ${config.name} (${config.client}) ──────────────────────────`);
+  console.info(`\n  ── ${config.name} (${config.client}) ──────────────────────────`);
 
   const stateKey = `legistar_${config.client}_last_run`;
   const { data: stateRow } = await db
@@ -104,7 +104,7 @@ async function runMetro(
   // FIX-471 backfill path and always runs (it's cheap: bodies + persons +
   // officerecords, no per-event fetches).
   if (!membershipOnly && !force && hoursSince < 6) {
-    console.log(`    Skipping — ran ${hoursSince.toFixed(1)}h ago (min 6h). Use --force to override.`);
+    console.info(`    Skipping — ran ${hoursSince.toFixed(1)}h ago (min 6h). Use --force to override.`);
     return { matters: 0, meetings: 0, agendaItems: 0, votes: 0, officials: 0, bodies: 0 };
   }
 
@@ -112,13 +112,13 @@ async function runMetro(
 
   // ── Step 1: Bodies ───────────────────────────────────────────────────────
   const bodies = await api.fetchBodies();
-  console.log(`    Bodies: ${bodies.length} fetched`);
+  console.info(`    Bodies: ${bodies.length} fetched`);
   const bodyRes = await upsertBodiesBatch(db, bodies, config);
-  console.log(`    Bodies: ${bodyRes.bodyIdMap.size} upserted (${bodyRes.inserted} new)`);
+  console.info(`    Bodies: ${bodyRes.bodyIdMap.size} upserted (${bodyRes.inserted} new)`);
 
   // ── Step 2: Persons ─────────────────────────────────────────────────────
   const persons = await api.fetchPersons();
-  console.log(`    Persons: ${persons.length} fetched`);
+  console.info(`    Persons: ${persons.length} fetched`);
 
   // Resolve THE council body (FIX-471): the hardcoded per-metro council BodyId,
   // mapped through the just-upserted bodies. No more `.limit(1)` roulette that
@@ -132,7 +132,7 @@ async function runMetro(
   const { personIds: currentPersonIds, usedFallback } = currentCouncilMemberPersonIds(
     officeRecords, config.councilBodyId, councilSeats,
   );
-  console.log(
+  console.info(
     `    OfficeRecords: ${officeRecords.length} fetched → ${currentPersonIds.size} current council members` +
     `${usedFallback ? ` (fallback: top-${councilSeats} by recent start; body has no live term dates)` : ""}`,
   );
@@ -145,12 +145,12 @@ async function runMetro(
     console.warn(`    Persons: council BodyId ${config.councilBodyId} not found among upserted bodies for ${config.name} — skipping persons`);
   } else {
     personRes = await upsertPersonsBatch(db, persons, config, councilBodyId, currentPersonIds);
-    console.log(
+    console.info(
       `    Persons: ${personRes.personIdMap.size} mapped (${personRes.inserted} new, ` +
       `${personRes.rekeyed} re-keyed → council: ${personRes.reactivated} active / ${personRes.deactivated} former)`,
     );
     const { demoted } = await reconcileCouncilBody(db, config.jurisdictionId, councilBodyId);
-    console.log(`    Council body reconciled → municipal_council; ${demoted} stray council body(ies) demoted`);
+    console.info(`    Council body reconciled → municipal_council; ${demoted} stray council body(ies) demoted`);
   }
 
   // --membership-only: FIX-471 backfill stops here (no matters/events/votes,
@@ -164,9 +164,9 @@ async function runMetro(
 
   // ── Step 3: Matters ──────────────────────────────────────────────────────
   const matters = await api.fetchMatters(lastRun);
-  console.log(`    Matters: ${matters.length} fetched`);
+  console.info(`    Matters: ${matters.length} fetched`);
   const matterRes = await upsertMattersBatch(db, matters, config, bodyRes.bodyIdMap);
-  console.log(`    Matters: ${matterRes.matterIdMap.size} upserted (${matterRes.inserted} new, ${matterRes.updated} updated)`);
+  console.info(`    Matters: ${matterRes.matterIdMap.size} upserted (${matterRes.inserted} new, ${matterRes.updated} updated)`);
 
   // ── Step 4: Events ───────────────────────────────────────────────────────
   const eventSince = lastRun ?? (() => {
@@ -175,15 +175,15 @@ async function runMetro(
     return d.toISOString().slice(0, 19);
   })();
   const events = await api.fetchEvents(eventSince);
-  console.log(`    Events: ${events.length} fetched (since ${eventSince.slice(0, 10)})`);
+  console.info(`    Events: ${events.length} fetched (since ${eventSince.slice(0, 10)})`);
   const eventRes = await upsertEventsBatch(db, events, config, bodyRes.bodyIdMap);
-  console.log(`    Events: ${eventRes.eventIdMap.size} upserted (${eventRes.inserted} new)`);
+  console.info(`    Events: ${eventRes.eventIdMap.size} upserted (${eventRes.inserted} new)`);
 
   // ── Steps 5+6: EventItems + Votes (per-event fetch + batch write) ────────
   let totalItems = 0;
   let totalVotes = 0;
   const eventIds = [...eventRes.eventIdMap.keys()];
-  console.log(`    EventItems+Votes: fetching for ${eventIds.length} meetings...`);
+  console.info(`    EventItems+Votes: fetching for ${eventIds.length} meetings...`);
 
   for (let i = 0; i < eventIds.length; i++) {
     const legiEventId = eventIds[i];
@@ -242,7 +242,7 @@ async function runMetro(
     }
 
     if ((i + 1) % 20 === 0) {
-      console.log(`    EventItems: ${i + 1}/${eventIds.length} meetings processed (${totalItems} items, ${totalVotes} votes)`);
+      console.info(`    EventItems: ${i + 1}/${eventIds.length} meetings processed (${totalItems} items, ${totalVotes} votes)`);
     }
     await sleep(150); // per-event rate limit
   }
@@ -275,7 +275,7 @@ async function runMetro(
 // ---------------------------------------------------------------------------
 
 export async function runLegistarPipeline(): Promise<PipelineResult> {
-  console.log("\n=== Legistar city council pipeline (public) ===");
+  console.info("\n=== Legistar city council pipeline (public) ===");
   const db = createAdminClient();
   const force = process.argv.includes("--force");
   // FIX-471: bodies + persons + OfficeRecords membership rewrite only. The
@@ -291,7 +291,7 @@ export async function runLegistarPipeline(): Promise<PipelineResult> {
   const logId = await startSync("legistar");
 
   try {
-    console.log("\n  Resolving pilot metro jurisdictions...");
+    console.info("\n  Resolving pilot metro jurisdictions...");
     const jurisdictionMap = await seedPilotMetros(db);
 
     const metros: MetroConfig[] = METRO_CLIENTS
@@ -318,7 +318,7 @@ export async function runLegistarPipeline(): Promise<PipelineResult> {
     const failures: string[] = [];
 
     if (membershipOnly) {
-      console.log("\n  Mode: --membership-only (FIX-471 backfill — no matters/events/votes)\n");
+      console.info("\n  Mode: --membership-only (FIX-471 backfill — no matters/events/votes)\n");
     }
 
     for (const config of metros) {
@@ -337,17 +337,17 @@ export async function runLegistarPipeline(): Promise<PipelineResult> {
       }
     }
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  Legistar pipeline report");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"governing_bodies:".padEnd(36)} ${totalBodies}`);
-    console.log(`  ${"officials (persons):".padEnd(36)} ${totalOfficials}`);
-    console.log(`  ${"proposals (matters):".padEnd(36)} ${totalMatters}`);
-    console.log(`  ${"meetings (events):".padEnd(36)} ${totalMeetings}`);
-    console.log(`  ${"agenda items:".padEnd(36)} ${totalItems}`);
-    console.log(`  ${"votes:".padEnd(36)} ${totalVotes}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  Legistar pipeline report");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"governing_bodies:".padEnd(36)} ${totalBodies}`);
+    console.info(`  ${"officials (persons):".padEnd(36)} ${totalOfficials}`);
+    console.info(`  ${"proposals (matters):".padEnd(36)} ${totalMatters}`);
+    console.info(`  ${"meetings (events):".padEnd(36)} ${totalMeetings}`);
+    console.info(`  ${"agenda items:".padEnd(36)} ${totalItems}`);
+    console.info(`  ${"votes:".padEnd(36)} ${totalVotes}`);
     if (failures.length > 0) {
-      console.log(`  ${"metro failures:".padEnd(36)} ${failures.join("; ")}`);
+      console.info(`  ${"metro failures:".padEnd(36)} ${failures.join("; ")}`);
     }
 
     const result: PipelineResult = {

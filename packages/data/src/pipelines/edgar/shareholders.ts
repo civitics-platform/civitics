@@ -188,7 +188,7 @@ export async function scanDailyShareholders(
   const rows = parseDailyIndex(res.body).filter(
     (r) => TARGET_FORMS.has(r.formType) && trackedCiks.has(r.cik),
   );
-  console.log(`  [edgar/shareholders] ${rows.length} relevant 13D/G rows in ${url.slice(url.lastIndexOf("/") + 1)}`);
+  console.info(`  [edgar/shareholders] ${rows.length} relevant 13D/G rows in ${url.slice(url.lastIndexOf("/") + 1)}`);
 
   const out: ShareholderFiling[] = [];
   for (const row of rows) {

@@ -96,8 +96,7 @@ export function printStdoutTable(report: HarnessReport): void {
   }));
   // eslint-disable-next-line no-console
   console.table(rows);
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `\nTotals: ${report.summary.matches} match · ${report.summary.mismatches} mismatch ` +
       `(${report.summary.regressions} regression · ${report.summary.knownFailing} known-failing)`,
   );

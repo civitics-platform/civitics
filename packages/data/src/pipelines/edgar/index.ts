@@ -60,7 +60,7 @@ function selectUniverse(): ReturnType<typeof loadSp500Universe> {
   if (!filter) return all;
   const wanted = new Set(filter.split(",").map((s) => padCik(s.trim())).filter(Boolean));
   const scoped = all.filter((u) => wanted.has(u.cik));
-  console.log(`  [edgar] EDGAR_CIKS scope: ${scoped.length} / ${all.length} companies`);
+  console.info(`  [edgar] EDGAR_CIKS scope: ${scoped.length} / ${all.length} companies`);
   return scoped;
 }
 
@@ -84,7 +84,7 @@ export async function runEdgarPipeline(): Promise<PipelineResult> {
 
   try {
     const universe = selectUniverse();
-    console.log(`  [edgar] starting weekly run · ${universe.length} companies`);
+    console.info(`  [edgar] starting weekly run · ${universe.length} companies`);
 
     const companies = await syncCompanies(universe);
     if (companies.length === 0) {
@@ -200,12 +200,12 @@ export async function runEdgarPipeline(): Promise<PipelineResult> {
       }
     }
 
-    console.log(`  [edgar] weekly run summary:`);
-    console.log(`    officers upserted:    ${officerInserts}`);
-    console.log(`    matched edges:        ${edgeInserts}`);
-    console.log(`    review-queue entries: ${queueInserts}`);
-    console.log(`    unparseable filings:  ${unparseable}`);
-    console.log(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
+    console.info(`  [edgar] weekly run summary:`);
+    console.info(`    officers upserted:    ${officerInserts}`);
+    console.info(`    matched edges:        ${edgeInserts}`);
+    console.info(`    review-queue entries: ${queueInserts}`);
+    console.info(`    unparseable filings:  ${unparseable}`);
+    console.info(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
 
     result.inserted = officerInserts + edgeInserts + queueInserts;
     await completeSync(logId, result);
@@ -262,7 +262,7 @@ export async function runEdgarDailyPipeline(): Promise<PipelineResult> {
 
     const filings = await scanDailyShareholders(todayUtc(), trackedCiks);
     if (filings.length === 0) {
-      console.log(`  [edgar:daily] no 13D/G filings for tracked CIKs today`);
+      console.info(`  [edgar:daily] no 13D/G filings for tracked CIKs today`);
       await skipSync(logId, "no_filings");
       return result;
     }
@@ -402,12 +402,12 @@ export async function runEdgarDailyPipeline(): Promise<PipelineResult> {
       result.failed += q.failed;
     }
 
-    console.log(`  [edgar:daily] summary:`);
-    console.log(`    filings:              ${filings.length}`);
-    console.log(`    shareholders rows:    ${shInserted}`);
-    console.log(`    matched edges:        ${edgeInserts}`);
-    console.log(`    review-queue entries: ${queueInserts}`);
-    console.log(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
+    console.info(`  [edgar:daily] summary:`);
+    console.info(`    filings:              ${filings.length}`);
+    console.info(`    shareholders rows:    ${shInserted}`);
+    console.info(`    matched edges:        ${edgeInserts}`);
+    console.info(`    review-queue entries: ${queueInserts}`);
+    console.info(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
 
     result.inserted = shInserted + edgeInserts + queueInserts;
     await completeSync(logId, result);

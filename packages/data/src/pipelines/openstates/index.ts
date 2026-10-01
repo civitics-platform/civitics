@@ -248,7 +248,7 @@ export async function runOpenStatesPipeline(
   apiKey: string,
   stateIds: Map<string, string>,   // state name → jurisdiction UUID
 ): Promise<PipelineResult> {
-  console.log("\n=== OpenStates pipeline (public) ===");
+  console.info("\n=== OpenStates pipeline (public) ===");
   const logId = await startSync("openstates");
   const db = createAdminClient();
 
@@ -281,7 +281,7 @@ export async function runOpenStatesPipeline(
       }
     }
     const govBodyMap = await resolveGoverningBodies(db, govBodyKeys);
-    console.log(`  Resolved ${govBodyMap.size} state legislative bodies`);
+    console.info(`  Resolved ${govBodyMap.size} state legislative bodies`);
 
     const govBodyFor = (jurisdictionId: string, orgClass: OrgClass) =>
       govBodyMap.get(`${jurisdictionId}|${mapChamberType(orgClass)}`) ?? null;
@@ -357,7 +357,7 @@ export async function runOpenStatesPipeline(
         }
       }
 
-      console.log(`  ${state.abbr} legislators: ${totalLegislators} upserted`);
+      console.info(`  ${state.abbr} legislators: ${totalLegislators} upserted`);
 
       if (quotaHit) break;
 
@@ -422,7 +422,7 @@ export async function runOpenStatesPipeline(
         billPage++;
       }
 
-      console.log(`  ${state.abbr} bills: ${stateBillsFetched} fetched · ${stateBillsInserted} inserted · ${stateBillsUpdated} updated`);
+      console.info(`  ${state.abbr} bills: ${stateBillsFetched} fetched · ${stateBillsInserted} inserted · ${stateBillsUpdated} updated`);
     }
 
     // FIX-915 — refresh district cross-links. Mirrors the call site at the end
@@ -462,17 +462,17 @@ export async function runOpenStatesPipeline(
       estimatedMb,
     };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  OpenStates pipeline report");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"Legislators inserted:".padEnd(32)} ${officialsInserted}`);
-    console.log(`  ${"Legislators updated:".padEnd(32)} ${officialsUpdated}`);
-    console.log(`  ${"Legislators failed:".padEnd(32)} ${officialsFailed}`);
-    console.log(`  ${"Bills inserted:".padEnd(32)} ${billsInserted}`);
-    console.log(`  ${"Bills updated:".padEnd(32)} ${billsUpdated}`);
-    console.log(`  ${"Bills failed:".padEnd(32)} ${billsFailed}`);
-    console.log(`  ${"District-linked:".padEnd(32)} ${districtLinked}`);
-    if (quotaHit) console.log(`  ${"Run ended with quota exhausted.".padEnd(32)}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  OpenStates pipeline report");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Legislators inserted:".padEnd(32)} ${officialsInserted}`);
+    console.info(`  ${"Legislators updated:".padEnd(32)} ${officialsUpdated}`);
+    console.info(`  ${"Legislators failed:".padEnd(32)} ${officialsFailed}`);
+    console.info(`  ${"Bills inserted:".padEnd(32)} ${billsInserted}`);
+    console.info(`  ${"Bills updated:".padEnd(32)} ${billsUpdated}`);
+    console.info(`  ${"Bills failed:".padEnd(32)} ${billsFailed}`);
+    console.info(`  ${"District-linked:".padEnd(32)} ${districtLinked}`);
+    if (quotaHit) console.info(`  ${"Run ended with quota exhausted.".padEnd(32)}`);
 
     await completeSync(logId, result);
     return result;

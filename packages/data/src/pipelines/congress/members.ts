@@ -144,7 +144,7 @@ export async function fetchAllMembers(
     `/member?currentMember=true&limit=250`;
 
   while (nextUrl) {
-    console.log(`  Fetching page ${pageNum} of members...`);
+    console.info(`  Fetching page ${pageNum} of members...`);
 
     const data: CongressMemberListResponse = await fetchCongressApi<CongressMemberListResponse>(
       nextUrl,
@@ -154,7 +154,7 @@ export async function fetchAllMembers(
     const items = data.members ?? [];
     allMembers.push(...items);
 
-    console.log(
+    console.info(
       `  Got ${items.length} items (total: ${allMembers.length})`
     );
 

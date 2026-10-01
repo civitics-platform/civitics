@@ -119,7 +119,7 @@ export async function collectLittleSisPersonKeys(
     if (key) keys.add(key);
   }
   const secs = (Number(process.hrtime.bigint() - t0) / 1e9).toFixed(1);
-  console.log(
+  console.info(
     `[littlesis] person key-set built in ${secs}s from ${seen.toLocaleString()} Person entities: ` +
       `${keys.size.toLocaleString()} distinct sort keys`,
   );
@@ -264,7 +264,7 @@ export async function buildMatchIndex(
 
   const secs  = (Number(process.hrtime.bigint() - t0) / 1e9).toFixed(1);
   const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
-  console.log(
+  console.info(
     `[littlesis] match index built in ${secs}s, rss=${rssMb}MB, ` +
     `officials=${officialsByLastName.size}, persons=${personsBySortKey.size}, orgs=${orgsByCanonical.size}` +
     (personKeys

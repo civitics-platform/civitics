@@ -19,7 +19,7 @@
 import { skipSync, startSync, type PipelineResult } from "../sync-log";
 
 export async function runFederalRegisterPipeline(_sinceDate?: string): Promise<PipelineResult> {
-  console.log("\n=== Federal Register pipeline (skeleton) ===");
+  console.info("\n=== Federal Register pipeline (skeleton) ===");
   const logId = await startSync("federal_register");
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
 
@@ -34,7 +34,7 @@ export async function runFederalRegisterPipeline(_sinceDate?: string): Promise<P
   //   5. Throttle 1 req / 200 ms; paginate via next_page_url
 
   await skipSync(logId, "not_implemented");
-  console.log("  Skeleton pipeline — no work performed (status=skipped).");
+  console.info("  Skeleton pipeline — no work performed (status=skipped).");
   return result;
 }
 

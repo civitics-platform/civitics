@@ -300,7 +300,7 @@ export async function loadState(db: Db): Promise<UsaSpendingBulkState> {
   if (legacy) {
     if (legacy.contracts)  state.contracts  = { baseline: legacy.contracts };
     if (legacy.assistance) state.assistance = { baseline: legacy.assistance };
-    console.log(
+    console.info(
       `  [usaspending-state] migrated legacy file state into pipeline_state for env "${envKey()}"`,
     );
     await saveState(db, state);

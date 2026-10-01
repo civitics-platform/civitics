@@ -423,7 +423,7 @@ async function runLevelCountyCreate(
   db: Db, snap: Snapshot, opts: Options, counters: Counters, cc: CountyCounters,
 ): Promise<number> {
   const fileName = `tl_${TIGER_YEAR}_us_county.zip`;
-  console.log(`    downloading national county file (~100 MB)…`);
+  console.info(`    downloading national county file (~100 MB)…`);
   const { zipPath, downloaded, bytes } = await getZip(opts, "COUNTY", fileName);
   const extractDir = path.join(TMP_DIR, "county");
   const paths = await extractZip(zipPath, extractDir);
@@ -512,7 +512,7 @@ async function runLevelPlace(db: Db, snap: Snapshot, opts: Options, counters: Co
       counters);
     rmDir(extractDir);
     const delta = counters.updated - before;
-    if (delta > 0) console.log(`    place ${fips}: ${delta} ${opts.dryRun ? "would-update" : "updated"} · ${(zip.bytes / 1024).toFixed(0)}KB`);
+    if (delta > 0) console.info(`    place ${fips}: ${delta} ${opts.dryRun ? "would-update" : "updated"} · ${(zip.bytes / 1024).toFixed(0)}KB`);
   }
   return bytes;
 }
@@ -520,7 +520,7 @@ async function runLevelPlace(db: Db, snap: Snapshot, opts: Options, counters: Co
 // ── Main runner ──────────────────────────────────────────────────────────────
 
 function logLevel(level: Level, c: Counters, before: Counters): void {
-  console.log(
+  console.info(
     `  ${level}: ${c.updated - before.updated} updated · ` +
     `${c.alreadyPopulated - before.alreadyPopulated} already · ` +
     `${c.noMatch - before.noMatch} no-match · ` +
@@ -530,8 +530,8 @@ function logLevel(level: Level, c: Counters, before: Counters): void {
 }
 
 export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<PipelineResult> {
-  console.log(`\n=== Jurisdiction boundary backfill (TIGER ${TIGER_YEAR}) ===`);
-  console.log(`  levels=${opts.levels.join(",")} · stateFips=${opts.stateFips ? [...opts.stateFips].join(",") : "all"} · dryRun=${opts.dryRun}${opts.fromFile ? ` · fromFile=${opts.fromFile}` : ""}`);
+  console.info(`\n=== Jurisdiction boundary backfill (TIGER ${TIGER_YEAR}) ===`);
+  console.info(`  levels=${opts.levels.join(",")} · stateFips=${opts.stateFips ? [...opts.stateFips].join(",") : "all"} · dryRun=${opts.dryRun}${opts.fromFile ? ` · fromFile=${opts.fromFile}` : ""}`);
   const logId = await startSync("jurisdictions_boundary_backfill");
   const db = createAdminClient();
   const counters = emptyCounters();
@@ -541,20 +541,20 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
   try {
     ensureTmpDir();
     const snap = await loadSnapshot(db);
-    console.log(`  snapshot: ${snap.statesByFips.size} states · ${snap.stateEquivByAbbr.size} state-equiv · ${snap.countiesByGeoid.size} counties · ${snap.citiesByFips.size} cities`);
+    console.info(`  snapshot: ${snap.statesByFips.size} states · ${snap.stateEquivByAbbr.size} state-equiv · ${snap.countiesByGeoid.size} counties · ${snap.citiesByFips.size} cities`);
 
     const placeFips = opts.stateFips ? [...opts.stateFips] : STATE_DATA.map((s) => s.fips);
 
     if (opts.levels.includes("state")) {
-      console.log("\n  --- States ---");
+      console.info("\n  --- States ---");
       const before = { ...counters };
       bytes += await runLevelState(db, snap, opts, counters);
       logLevel("state", counters, before);
     }
     if (opts.levels.includes("county")) {
-      console.log("\n  --- Counties (create + backfill) ---");
+      console.info("\n  --- Counties (create + backfill) ---");
       bytes += await runLevelCountyCreate(db, snap, opts, counters, countyCounters);
-      console.log(
+      console.info(
         `  county: ${countyCounters.inserted} ${opts.dryRun ? "would-insert" : "inserted"} · ` +
         `${countyCounters.updatedBoundary} boundary-filled · ` +
         `${countyCounters.alreadyComplete} already-complete · ` +
@@ -563,7 +563,7 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
       );
     }
     if (opts.levels.includes("place")) {
-      console.log("\n  --- Places ---");
+      console.info("\n  --- Places ---");
       const before = { ...counters };
       bytes += await runLevelPlace(db, snap, opts, counters, placeFips);
       logLevel("place", counters, before);
@@ -578,22 +578,22 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
       estimatedMb: +(bytes / 1024 / 1024).toFixed(2),
     };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log(`  Boundary backfill report${opts.dryRun ? " (DRY RUN)" : ""}`);
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${opts.dryRun ? "Would update" : "Updated"}:        ${counters.updated}`);
-    console.log(`  Already populated:   ${counters.alreadyPopulated}`);
-    console.log(`  No match:            ${counters.noMatch}`);
-    console.log(`  Ambiguous (skipped): ${counters.ambiguous}`);
-    console.log(`  Errors:              ${counters.parseError}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info(`  Boundary backfill report${opts.dryRun ? " (DRY RUN)" : ""}`);
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${opts.dryRun ? "Would update" : "Updated"}:        ${counters.updated}`);
+    console.info(`  Already populated:   ${counters.alreadyPopulated}`);
+    console.info(`  No match:            ${counters.noMatch}`);
+    console.info(`  Ambiguous (skipped): ${counters.ambiguous}`);
+    console.info(`  Errors:              ${counters.parseError}`);
     if (opts.levels.includes("county")) {
-      console.log(`  County ${opts.dryRun ? "would-insert" : "inserted"}: ${countyCounters.inserted}`);
-      console.log(`  County boundary-filled: ${countyCounters.updatedBoundary}`);
-      console.log(`  County already-complete: ${countyCounters.alreadyComplete}`);
-      console.log(`  County no-parent (skipped): ${countyCounters.skippedNoParent}`);
-      console.log(`  County errors:          ${countyCounters.errors}`);
+      console.info(`  County ${opts.dryRun ? "would-insert" : "inserted"}: ${countyCounters.inserted}`);
+      console.info(`  County boundary-filled: ${countyCounters.updatedBoundary}`);
+      console.info(`  County already-complete: ${countyCounters.alreadyComplete}`);
+      console.info(`  County no-parent (skipped): ${countyCounters.skippedNoParent}`);
+      console.info(`  County errors:          ${countyCounters.errors}`);
     }
-    console.log(`  Downloaded:          ${(bytes / 1024 / 1024).toFixed(1)} MB`);
+    console.info(`  Downloaded:          ${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
     if (opts.dryRun) {
       // A dry run wrote nothing — mark the sync row skipped, not complete.

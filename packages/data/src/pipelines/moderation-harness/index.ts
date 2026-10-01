@@ -75,8 +75,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--out" && args[i + 1]) outDir = args[++i];
     else if (a === "--allow-prod") allowProd = true;
     else if (a === "--help" || a === "-h") {
-      // eslint-disable-next-line no-console
-      console.log(
+      console.info(
         "Usage: data:moderation-harness [--db-url <url>] [--strict] [--out <dir>] [--allow-prod]",
       );
       process.exit(0);
@@ -122,7 +121,6 @@ async function main(): Promise<void> {
   // The harness WRITES (moderation_audit) and exercises live rules on prod tables
   // (rolled back). Guard the prod path behind an explicit flag.
   if (isProd && !allowProd) {
-    // eslint-disable-next-line no-console
     console.error(
       `REFUSING to run against what looks like prod (${host}) without --allow-prod.\n` +
         "The harness writes moderation_audit and create-and-rolls-back fixture content " +
@@ -141,8 +139,7 @@ async function main(): Promise<void> {
   });
   await client.connect();
 
-  // eslint-disable-next-line no-console
-  console.log(
+  console.info(
     `Shadow moderation harness — host=${host} sha=${sha} ` +
       `${isProd ? "(PROD — fixtures create-and-rollback)" : "(local)"}`,
   );
@@ -276,19 +273,16 @@ async function main(): Promise<void> {
 
   const dirty = pollution.filter((p) => p.delta !== 0);
   if (dirty.length > 0) {
-    // eslint-disable-next-line no-console
     console.error(
       `\n⚠️  POLLUTION: rows leaked past rollback — ${dirty
         .map((p) => `${p.table}+${p.delta}`)
         .join(", ")}`,
     );
   } else {
-    // eslint-disable-next-line no-console
-    console.log("\n✅ Zero-pollution: every fixture's content rolled back cleanly.");
+    console.info("\n✅ Zero-pollution: every fixture's content rolled back cleanly.");
   }
 
-  // eslint-disable-next-line no-console
-  console.log(`\nWrote: ${jsonPath}\nWrote: ${mdPath}`);
+  console.info(`\nWrote: ${jsonPath}\nWrote: ${mdPath}`);
 
   // CI semantics: fail on a handled/partial REGRESSION or any pollution. Never
   // fail on known-failing GAP rows (those are the backlog signal, by design).
@@ -298,7 +292,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(err);
   process.exit(1);
 });

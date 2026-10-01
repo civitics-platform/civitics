@@ -112,7 +112,7 @@ export function buildElectionUpdateStatement(rowCount: number): string {
 // ---------------------------------------------------------------------------
 
 export async function runElectionsPipeline(): Promise<PipelineResult> {
-  console.log("\n=== Elections pipeline ===");
+  console.info("\n=== Elections pipeline ===");
   const logId = await startSync("elections");
   const db = createAdminClient();
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
@@ -290,7 +290,7 @@ export async function runElectionsPipeline(): Promise<PipelineResult> {
       });
     }
 
-    console.log(
+    console.info(
       `  Elections: detected=${scanned} changed=${result.updated}` +
         (result.failed ? ` failed=${result.failed}` : ""),
     );

@@ -54,7 +54,7 @@ function normalizeName(s: string): string {
 async function enrichSocialMedia(_db: ReturnType<typeof createAdminClient>, _agencies: AgencyRow[], _result: PipelineResult): Promise<void> {
   // registry.usa.gov was decommissioned. No working archive source found.
   // Implement this pass when a replacement source is available.
-  console.log("\n  Pass 1: Social media handles — DEFERRED (no source available)");
+  console.info("\n  Pass 1: Social media handles — DEFERRED (no source available)");
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ function buildFedRegSlugMatcher(
 }
 
 async function enrichFedRegAndWikidata(db: ReturnType<typeof createAdminClient>, agencies: AgencyRow[], result: PipelineResult): Promise<void> {
-  console.log("\n  Pass 2: Federal Register + Wikidata");
+  console.info("\n  Pass 2: Federal Register + Wikidata");
 
   // ── Federal Register ────────────────────────────────────────────────────────
   let fedRegAgencies: FedRegAgency[] = [];
@@ -153,7 +153,7 @@ async function enrichFedRegAndWikidata(db: ReturnType<typeof createAdminClient>,
     });
     if (resp.ok) {
       fedRegAgencies = (await resp.json()) as FedRegAgency[];
-      console.log(`    Federal Register: ${fedRegAgencies.length} agency records`);
+      console.info(`    Federal Register: ${fedRegAgencies.length} agency records`);
     }
   } catch (err) {
     console.warn("    Federal Register unavailable:", err instanceof Error ? err.message : err);
@@ -202,7 +202,7 @@ LIMIT 3000
     if (resp.ok) {
       const body = await resp.json() as { results?: { bindings?: WikidataBinding[] } };
       wikidataRows = body.results?.bindings ?? [];
-      console.log(`    Wikidata: ${wikidataRows.length} US agency bindings`);
+      console.info(`    Wikidata: ${wikidataRows.length} US agency bindings`);
     } else {
       console.warn(`    Wikidata SPARQL returned ${resp.status}`);
     }
@@ -320,7 +320,7 @@ LIMIT 3000
       result.updated++;
     }
   }
-  console.log(`    FedReg matches: ${frMatched}, Wikidata matches: ${wdMatched}, DB writes: ${result.updated}`);
+  console.info(`    FedReg matches: ${frMatched}, Wikidata matches: ${wdMatched}, DB writes: ${result.updated}`);
 
   // ── FIX-415: seed external_source_refs + materialize primary_source ──────────
   // Mirrors the FIX-410 path (xsr row → rebuild picks the winner) but sourced
@@ -351,7 +351,7 @@ LIMIT 3000
       if (rpcErr) {
         console.warn(`    FIX-415 primary_source refresh failed: ${rpcErr.message}`);
       } else {
-        console.log(
+        console.info(
           `    FIX-415 federal_register attribution: ${fedRegSeeds.length} agencies seeded, ${refreshed ?? 0} primary_source rows materialized`,
         );
       }
@@ -387,7 +387,7 @@ LIMIT 3000
       if (rpcErr) {
         console.warn(`    FIX-467 primary_source refresh failed: ${rpcErr.message}`);
       } else {
-        console.log(
+        console.info(
           `    FIX-467 regulations_gov attribution: ${regulationsGovSeeds.length} agencies seeded, ${refreshed ?? 0} primary_source rows materialized`,
         );
       }
@@ -401,7 +401,7 @@ LIMIT 3000
 
 export async function runAgencyEnrichmentPipeline(): Promise<PipelineResult> {
   const pass = process.argv.find(a => a.startsWith("--pass="))?.split("=")[1] ?? null;
-  console.log("\n=== Agency enrichment pipeline ===");
+  console.info("\n=== Agency enrichment pipeline ===");
 
   const logId = await startSync("agency_enrichment");
   const db = createAdminClient();
@@ -415,13 +415,13 @@ export async function runAgencyEnrichmentPipeline(): Promise<PipelineResult> {
     if (error) throw new Error(error.message);
 
     const rows = (agencies ?? []) as AgencyRow[];
-    console.log(`  Loaded ${rows.length} federal agencies`);
+    console.info(`  Loaded ${rows.length} federal agencies`);
 
     if (!pass || pass === "1") await enrichSocialMedia(db, rows, result);
     if (!pass || pass === "2") await enrichFedRegAndWikidata(db, rows, result);
 
     await completeSync(logId, result);
-    console.log(`\n  ✓ Done. Updated: ${result.updated}, failed: ${result.failed}`);
+    console.info(`\n  ✓ Done. Updated: ${result.updated}, failed: ${result.failed}`);
     return result;
   } catch (err) {
     await failSync(logId, err instanceof Error ? err.message : String(err));

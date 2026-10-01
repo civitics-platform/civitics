@@ -437,11 +437,11 @@ function fmt(counts: EnqueueCounts): string {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log(`\n═══ Enrichment backlog seed ════════════════════════════════`);
-  console.log(`    Mode: ${DRY_RUN ? "DRY RUN" : "LIVE"}${FORCE ? " + FORCE (reseed done items; ceiling override)" : ""}${PACS_ONLY ? " + PACS-ONLY (skip proposals/officials)" : ""}${ALL_FINANCIAL_ENTITIES ? " + ALL-FINANCIAL-ENTITIES (individuals INCLUDED)" : ""}`);
-  console.log(`    FE pool: ${PACS_ONLY ? "pac + party_committee only" : ALL_FINANCIAL_ENTITIES ? "every financial_entity INCLUDING individuals" : "every financial_entity EXCEPT individuals (FIX-1158 default)"}`);
-  console.log(`    Ceiling: ${MAX_ENQUEUE.toLocaleString()} rows${FORCE ? " (overridden by --force)" : ""}`);
-  console.log(`    Time: ${new Date().toISOString()}\n`);
+  console.info(`\n═══ Enrichment backlog seed ════════════════════════════════`);
+  console.info(`    Mode: ${DRY_RUN ? "DRY RUN" : "LIVE"}${FORCE ? " + FORCE (reseed done items; ceiling override)" : ""}${PACS_ONLY ? " + PACS-ONLY (skip proposals/officials)" : ""}${ALL_FINANCIAL_ENTITIES ? " + ALL-FINANCIAL-ENTITIES (individuals INCLUDED)" : ""}`);
+  console.info(`    FE pool: ${PACS_ONLY ? "pac + party_committee only" : ALL_FINANCIAL_ENTITIES ? "every financial_entity INCLUDING individuals" : "every financial_entity EXCEPT individuals (FIX-1158 default)"}`);
+  console.info(`    Ceiling: ${MAX_ENQUEUE.toLocaleString()} rows${FORCE ? " (overridden by --force)" : ""}`);
+  console.info(`    Time: ${new Date().toISOString()}\n`);
 
   const db = createAdminClient() as unknown as Db;
 
@@ -494,12 +494,12 @@ async function main(): Promise<void> {
         metadata: p.metadata,
       }),
     }));
-  console.log(`── Proposal tags (${proposalTagRows.length} to seed, with source text) ──`);
-  console.log(formatSkipTally(proposalTagSkips));
+  console.info(`── Proposal tags (${proposalTagRows.length} to seed, with source text) ──`);
+  console.info(formatSkipTally(proposalTagSkips));
   const proposalTagPlan = await planEnqueue(db, "proposal", "tag", proposalTagRows, "proposal-tags");
   plans.push(proposalTagPlan);
   proposalTagCounts = proposalTagPlan.counts;
-  console.log(`   ${fmt(proposalTagCounts)}\n`);
+  console.info(`   ${fmt(proposalTagCounts)}\n`);
 
   // 2. Proposal summaries — require real source text (FIX-894)
   const summarizedProposalIds = await summarizedEntityIds(db, "proposal", "plain_language");
@@ -533,12 +533,12 @@ async function main(): Promise<void> {
         }),
       };
     });
-  console.log(`── Proposal summaries (${proposalSummaryRows.length} to seed, with source text) ──`);
-  console.log(formatSkipTally(proposalSummarySkips));
+  console.info(`── Proposal summaries (${proposalSummaryRows.length} to seed, with source text) ──`);
+  console.info(formatSkipTally(proposalSummarySkips));
   const proposalSummaryPlan = await planEnqueue(db, "proposal", "summary", proposalSummaryRows, "proposal-summaries");
   plans.push(proposalSummaryPlan);
   proposalSummaryCounts = proposalSummaryPlan.counts;
-  console.log(`   ${fmt(proposalSummaryCounts)}\n`);
+  console.info(`   ${fmt(proposalSummaryCounts)}\n`);
 
   // 3. Official summaries. FIX-896 removed the official TAG leg that used to sit
   //    here: AI issue-area classification for officials is retired (the model was
@@ -577,11 +577,11 @@ async function main(): Promise<void> {
         }),
       };
     });
-  console.log(`── Official summaries (${officialSummaryRows.length} to seed) ──`);
+  console.info(`── Official summaries (${officialSummaryRows.length} to seed) ──`);
   const officialSummaryPlan = await planEnqueue(db, "official", "summary", officialSummaryRows, "official-summaries");
   plans.push(officialSummaryPlan);
   officialSummaryCounts = officialSummaryPlan.counts;
-  console.log(`   ${fmt(officialSummaryCounts)}\n`);
+  console.info(`   ${fmt(officialSummaryCounts)}\n`);
   } // end !PACS_ONLY
 
   // 5. Financial entity industry tags — seed only entities without any industry tag.
@@ -652,11 +652,11 @@ async function main(): Promise<void> {
         }),
       };
     });
-  console.log(`── Financial entity industry tags (${feTagRows.length} to seed) ──`);
+  console.info(`── Financial entity industry tags (${feTagRows.length} to seed) ──`);
   const feTagPlan = await planEnqueue(db, "financial_entity", "tag", feTagRows, "financial-entity-tags");
   plans.push(feTagPlan);
   const feTagCounts = feTagPlan.counts;
-  console.log(`   ${fmt(feTagCounts)}\n`);
+  console.info(`   ${fmt(feTagCounts)}\n`);
 
   // -- FIX-1158: count first, then decide, then write -------------------------
   //
@@ -664,9 +664,9 @@ async function main(): Promise<void> {
   // knows its own total, and the first point at which anything could be
   // written. That ordering is the whole fix: a ceiling checked after the first
   // arm has already committed is not a ceiling.
-  console.log(`══ Enqueue plan ═════════════════════════════════════════════`);
-  console.log(formatPlanTable(planTableRows(plans)));
-  console.log("");
+  console.info(`══ Enqueue plan ═════════════════════════════════════════════`);
+  console.info(formatPlanTable(planTableRows(plans)));
+  console.info("");
 
   const total = planTotal(plans);
   const verdict = ceilingVerdict(total, MAX_ENQUEUE, FORCE);
@@ -675,14 +675,14 @@ async function main(): Promise<void> {
   // 0, because it wrote nothing and "tell me what this would do" must not be a
   // failure. Only a live run refuses.
   if (DRY_RUN) {
-    console.log(`   [dry-run] ${total.toLocaleString()} row(s) would be upserted -- nothing written.`);
+    console.info(`   [dry-run] ${total.toLocaleString()} row(s) would be upserted -- nothing written.`);
     if (verdict === "refuse") {
-      console.log(
+      console.info(
         `   [dry-run] a LIVE run would REFUSE this plan: ${total.toLocaleString()} > the ` +
           `--max-enqueue ceiling of ${MAX_ENQUEUE.toLocaleString()}.`,
       );
     }
-    console.log("");
+    console.info("");
   } else if (verdict === "refuse") {
     console.error(
       `[seed-backlog] REFUSING: this run would enqueue ${total.toLocaleString()} rows, ` +
@@ -729,20 +729,20 @@ async function main(): Promise<void> {
       }
       bumped += (data ?? []).length;
     }
-    console.log(`── Priority bump (existing pending PAC tag rows) ──`);
-    console.log(`   bumped ${bumped} row(s) to priority=100\n`);
+    console.info(`── Priority bump (existing pending PAC tag rows) ──`);
+    console.info(`   bumped ${bumped} row(s) to priority=100\n`);
   } else if (PACS_ONLY && DRY_RUN) {
-    console.log(`── Priority bump (existing pending PAC tag rows) — skipped in dry-run ──\n`);
+    console.info(`── Priority bump (existing pending PAC tag rows) — skipped in dry-run ──\n`);
   }
 
   // Summary report
-  console.log(`══ Seed complete ════════════════════════════════════════════`);
-  console.log(`   Proposal tags:              ${fmt(proposalTagCounts)}`);
-  console.log(`   Proposal summaries:         ${fmt(proposalSummaryCounts)}`);
-  console.log(`   Official tags:              retired (FIX-896)`);
-  console.log(`   Official summaries:         ${fmt(officialSummaryCounts)}`);
-  console.log(`   Financial entity tags:      ${fmt(feTagCounts)}`);
-  if (DRY_RUN) console.log(`   (DRY RUN — nothing inserted)`);
+  console.info(`══ Seed complete ════════════════════════════════════════════`);
+  console.info(`   Proposal tags:              ${fmt(proposalTagCounts)}`);
+  console.info(`   Proposal summaries:         ${fmt(proposalSummaryCounts)}`);
+  console.info(`   Official tags:              retired (FIX-896)`);
+  console.info(`   Official summaries:         ${fmt(officialSummaryCounts)}`);
+  console.info(`   Financial entity tags:      ${fmt(feTagCounts)}`);
+  if (DRY_RUN) console.info(`   (DRY RUN — nothing inserted)`);
 }
 
 main()

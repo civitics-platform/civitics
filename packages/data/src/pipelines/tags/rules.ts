@@ -526,7 +526,7 @@ async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } finally {
-    console.log(`    [timing] ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    console.info(`    [timing] ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 }
 
@@ -751,7 +751,7 @@ async function fetchAllPaged<T>(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function tagProposals(db: any): Promise<number> {
-  console.log("\n  [1/3] Tagging proposals...");
+  console.info("\n  [1/3] Tagging proposals...");
 
   // Paginated -- proposals is 91,302 rows (prod, as of 2026-09-04), far past
   // the 1,000-row cap (FIX-427). The comment said ~73k until FIX-976 re-counted.
@@ -775,11 +775,11 @@ async function tagProposals(db: any): Promise<number> {
   );
 
   if (proposals.length === 0) {
-    console.log("    No proposals found. Skipping.");
+    console.info("    No proposals found. Skipping.");
     return 0;
   }
 
-  console.log(`    Processing ${proposals.length} proposals`);
+  console.info(`    Processing ${proposals.length} proposals`);
   const now = new Date();
   const allTags: TagInsert[] = [];
 
@@ -885,10 +885,10 @@ async function tagProposals(db: any): Promise<number> {
       `DELETE FROM public.entity_tags
         WHERE entity_type = 'proposal' AND generated_by = 'rule'`,
     );
-    console.log(`    Cleared ${cleared.rowCount ?? 0} prior proposal rule tags`);
+    console.info(`    Cleared ${cleared.rowCount ?? 0} prior proposal rule tags`);
     return timed(`proposal tags upsert (n=${allTags.length})`, () => upsertTags(client, allTags));
   });
-  console.log(`    Upserted ${totalUpserted} proposal tags`);
+  console.info(`    Upserted ${totalUpserted} proposal tags`);
   return totalUpserted;
 }
 
@@ -906,7 +906,7 @@ export async function tagOfficials(db: any): Promise<number> {
   // [3/3] since FIX-959 — runs AFTER tagFinancialEntities + the sector-affinity
   // refresh, so the industry pills read a rollup that already reflects tonight's
   // donor tag changes.
-  console.log("\n  [3/3] Tagging officials...");
+  console.info("\n  [3/3] Tagging officials...");
 
   // Paginated -- officials is 37,294 rows (prod, as of 2026-09-04), past the
   // 1,000-row cap (FIX-427). The comment said ~27k until FIX-976 re-counted.
@@ -931,11 +931,11 @@ export async function tagOfficials(db: any): Promise<number> {
   );
 
   if (officials.length === 0) {
-    console.log("    No officials found. Skipping.");
+    console.info("    No officials found. Skipping.");
     return 0;
   }
 
-  console.log(`    Processing ${officials.length} officials`);
+  console.info(`    Processing ${officials.length} officials`);
   const now = new Date();
 
   // Donor + bipartisan rollups computed server-side (FIX-427 / FIX-426). The raw
@@ -1062,7 +1062,7 @@ export async function tagOfficials(db: any): Promise<number> {
     });
     sectorsByOfficial.set(r.official_id, list);
   }
-  console.log(
+  console.info(
     `    Industry labels: ${renderableSectorRows.length} rows across ${sectorsByOfficial.size} officials ` +
       `(top ${INDUSTRY_TOP_N} by donation dollars)` +
       (skippedIndustries.size > 0
@@ -1216,10 +1216,10 @@ export async function tagOfficials(db: any): Promise<number> {
       `DELETE FROM public.entity_tags
         WHERE entity_type = 'official' AND generated_by = 'rule'`,
     );
-    console.log(`    Cleared ${cleared.rowCount ?? 0} prior official rule tags`);
+    console.info(`    Cleared ${cleared.rowCount ?? 0} prior official rule tags`);
     return timed(`official tags upsert (n=${allTags.length})`, () => upsertTags(client, allTags));
   });
-  console.log(`    Upserted ${totalUpserted} official tags`);
+  console.info(`    Upserted ${totalUpserted} official tags`);
   return totalUpserted;
 }
 
@@ -1383,7 +1383,7 @@ export function dedupeIndustryTags<T extends { entity_id: string; tag: string; t
 export async function tagFinancialEntities(db: any): Promise<number> {
   // [2/3] since FIX-959 — the donor-side tag writes must land before the
   // sector-affinity refresh and tagOfficials read them.
-  console.log("\n  [2/3] Tagging financial entities...");
+  console.info("\n  [2/3] Tagging financial entities...");
 
   // ── Donation size tags — RELOCATED to pg_cron (FIX-716) ──────────────────
   // rebuild_financial_entity_size_tags() (the DELETE('size') + INSERT…SELECT of
@@ -1580,7 +1580,7 @@ export async function tagFinancialEntities(db: any): Promise<number> {
     if (entities.length < FE_KEYWORD_CHUNK) break;
     feAfterId = entities[entities.length - 1]!.id;
   }
-  console.log(
+  console.info(
     `    keyword pass: ${feScanned} non-individual entities scanned in chunks of ${FE_KEYWORD_CHUNK}`,
   );
 
@@ -1604,7 +1604,7 @@ export async function tagFinancialEntities(db: any): Promise<number> {
 
   const curatedCount = withOverrides.filter((t) => t.generated_by === "curated").length;
   const suppressed = overrides.filter((o) => o.industry === null).length;
-  console.log(
+  console.info(
     `    Curated overrides: ${overrides.length} resolved ` +
       `(${curatedCount} re-assigned, ${suppressed} de-tagged)`,
   );
@@ -1639,7 +1639,7 @@ export async function tagFinancialEntities(db: any): Promise<number> {
     // strand a stale tag and break the exactly-one-industry invariant. Same
     // position as the rule clear — after every read, before the upsert.
     const curatedCleared = await clearCuratedIndustryTags(client);
-    console.log(`    Cleared ${curatedCleared} prior curated industry tags`);
+    console.info(`    Cleared ${curatedCleared} prior curated industry tags`);
 
     return timed(`financial industry tags upsert (n=${withOverrides.length})`, () =>
       upsertTags(client, withOverrides),
@@ -1647,7 +1647,7 @@ export async function tagFinancialEntities(db: any): Promise<number> {
   });
   // [FIX-716] size tags moved to pg_cron run_rule_taggers('weekly'); this
   // function now returns only the industry tag count.
-  console.log(`    Wrote ${industryUpserted} industry tags (size tags now on pg_cron)`);
+  console.info(`    Wrote ${industryUpserted} industry tags (size tags now on pg_cron)`);
   return industryUpserted;
 }
 
@@ -1695,7 +1695,7 @@ async function refreshSectorAffinityFromTagChanges(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
-  console.log("\n=== Rule-based tagger ===");
+  console.info("\n=== Rule-based tagger ===");
   const logId = await startSync("tag_rules");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -1715,13 +1715,13 @@ export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
     // [FIX-716] pre-vote timing tags moved to pg_cron run_rule_taggers('daily').
     const tagsCreated      = proposalTags + officialTags + financialTags;
 
-    console.log("\n  ─────────────────────────────────────────────────");
-    console.log("  Rule-based tagger report");
-    console.log("  ─────────────────────────────────────────────────");
-    console.log(`  ${"Proposal tags:".padEnd(32)} ${proposalTags}`);
-    console.log(`  ${"Official tags:".padEnd(32)} ${officialTags}`);
-    console.log(`  ${"Financial entity tags:".padEnd(32)} ${financialTags}`);
-    console.log(`  ${"Total:".padEnd(32)} ${tagsCreated}`);
+    console.info("\n  ─────────────────────────────────────────────────");
+    console.info("  Rule-based tagger report");
+    console.info("  ─────────────────────────────────────────────────");
+    console.info(`  ${"Proposal tags:".padEnd(32)} ${proposalTags}`);
+    console.info(`  ${"Official tags:".padEnd(32)} ${officialTags}`);
+    console.info(`  ${"Financial entity tags:".padEnd(32)} ${financialTags}`);
+    console.info(`  ${"Total:".padEnd(32)} ${tagsCreated}`);
 
     await completeSync(logId, { inserted: tagsCreated, updated: 0, failed: 0, estimatedMb: 0 });
     return { tagsCreated };

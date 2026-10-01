@@ -227,7 +227,7 @@ export function stampMetadata(
  * `failed` result, so the caller records it and moves on.
  */
 export async function runLegislatorIdReport(opts: { dryRun?: boolean; db?: Db } = {}): Promise<LegislatorIdReportResult> {
-  console.log("\n=== FIX-1189 O2 — congress-legislators FEC id divergence report (read-only) ===");
+  console.info("\n=== FIX-1189 O2 — congress-legislators FEC id divergence report (read-only) ===");
   const logId = opts.dryRun ? "" : await startSync(REPORT_PIPELINE);
   try {
     const db = opts.db ?? createAdminClient();
@@ -236,13 +236,13 @@ export async function runLegislatorIdReport(opts: { dryRun?: boolean; db?: Db } 
       fetchFeed(LEGISLATORS_CURRENT_URL, CURRENT_FLOOR),
       fetchFeed(LEGISLATORS_HISTORICAL_URL, HISTORICAL_FLOOR),
     ]);
-    console.log(
+    console.info(
       `  dataset: ${current.listings.length} current (etag ${current.ref.etag ?? "?"}), ` +
         `${historical.listings.length} historical`,
     );
 
     const population = await loadFederalElectedRows(db);
-    console.log(`  population: ${population.length} federal elected rows`);
+    console.info(`  population: ${population.length} federal elected rows`);
 
     // Only ids listed for a population row's member can decide a class.
     const byBioguide = new Map(current.listings.map((l) => [l.bioguide, l]));
@@ -255,22 +255,22 @@ export async function runLegislatorIdReport(opts: { dryRun?: boolean; db?: Db } 
     const claimantRows = await loadClaimantRows(db, [...ids].sort());
     const seen = new Set(population.map((r) => r.official_id));
     const claims = buildClaimsMap([...population, ...claimantRows.filter((r) => !seen.has(r.official_id))]);
-    console.log(`  claims: ${ids.size} listed ids, ${claimantRows.length} claimant rows read`);
+    console.info(`  claims: ${ids.size} listed ids, ${claimantRows.length} claimant rows read`);
 
     const report = buildReport(population, current.listings, historical.listings, claims);
     const violations = reconcileReport(report, current.listings.length);
     if (violations.length > 0) throw new Error(`report does not reconcile (rule 116): ${violations.join("; ")}`);
 
     const metadata = stampMetadata(report, current, historical, claimantRows.length, readAt);
-    for (const [k, v] of Object.entries(report.counts)) console.log(`    ${k.padEnd(22)} ${v}`);
-    console.log(
+    for (const [k, v] of Object.entries(report.counts)) console.info(`    ${k.padEnd(22)} ${v}`);
+    console.info(
       `  unmatched dataset members: ${report.unmatched_dataset_members.count}; ` +
         `dataset ambiguous current: ${report.dataset_ambiguous_current}; via historical: ${report.matched_via_historical}`,
     );
 
     if (opts.dryRun) {
-      console.log("  --dry-run: no data_sync_log stamp written. Metadata it would carry:");
-      console.log(JSON.stringify(metadata, null, 2));
+      console.info("  --dry-run: no data_sync_log stamp written. Metadata it would carry:");
+      console.info(JSON.stringify(metadata, null, 2));
     } else {
       await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0, metadata });
     }

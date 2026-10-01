@@ -52,13 +52,13 @@ export async function runOfficialsPipeline(
 ): Promise<OfficialsPipelineResult> {
   const { apiKey, stateIds, senateId, houseId, federalId } = options;
 
-  console.log("Starting Congress.gov officials pipeline...");
+  console.info("Starting Congress.gov officials pipeline...");
   const logId = await startSync("congress_officials");
 
   try {
   // --- Fetch members from Congress.gov ---
   const members = await fetchAllMembers(apiKey);
-  console.log(`Fetched ${members.length} members from Congress.gov`);
+  console.info(`Fetched ${members.length} members from Congress.gov`);
 
   // --- Pre-fetch existing officials with a congress_gov source_id ---
   const db = createAdminClient();
@@ -85,7 +85,7 @@ export async function runOfficialsPipeline(
       existingMap.set(sourceIds.congress_gov, row.id);
     }
   }
-  console.log(
+  console.info(
     `Found ${existingMap.size} existing officials with Congress.gov IDs`
   );
 
@@ -254,9 +254,9 @@ export async function runOfficialsPipeline(
   // Flush any remaining inserts
   await flushInserts();
 
-  console.log(`Inserted ${inserted}, Updated ${updated} officials`);
+  console.info(`Inserted ${inserted}, Updated ${updated} officials`);
   if (skipped > 0) {
-    console.log(`Skipped ${skipped} officials due to errors`);
+    console.info(`Skipped ${skipped} officials due to errors`);
   }
 
   // FIX-403: dual-write external_source_refs for every processed member,
@@ -288,7 +288,7 @@ export async function runOfficialsPipeline(
       }
     }
     if (xsrFailed > 0) {
-      console.log(`  [xsr] ${xsrFailed} bindings failed to upsert (non-fatal)`);
+      console.info(`  [xsr] ${xsrFailed} bindings failed to upsert (non-fatal)`);
     }
 
     await refreshPrimarySourceForEntities(
@@ -373,7 +373,7 @@ if (require.main === module) {
         federalId,
       });
 
-      console.log("Officials pipeline complete:", result);
+      console.info("Officials pipeline complete:", result);
       process.exit(0);
     } catch (err) {
       console.error("Fatal error:", err);

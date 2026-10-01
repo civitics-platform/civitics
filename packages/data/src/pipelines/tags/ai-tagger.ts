@@ -163,7 +163,7 @@ async function classifyProposal(proposal: {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boolean): Promise<number> {
-  console.log("\n  [AI] Classifying proposals...");
+  console.info("\n  [AI] Classifying proposals...");
 
   type ProposalRow = { id: string; title: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null };
 
@@ -180,7 +180,7 @@ async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boole
       AI_CANDIDATE_LIMIT,
     );
     if (proposals.length === 0) {
-      console.log("    All proposals already have AI topic tags. Skipping.");
+      console.info("    All proposals already have AI topic tags. Skipping.");
       return 0;
     }
   } else {
@@ -203,17 +203,17 @@ async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boole
     );
     if (res.error) { console.error("    Error fetching proposals:", res.error.message); return 0; }
     const allProposals: ProposalRow[] = res.rows;
-    if (allProposals.length === 0) { console.log("    No proposals to classify."); return 0; }
+    if (allProposals.length === 0) { console.info("    No proposals to classify."); return 0; }
     proposals = allProposals;
   }
 
-  console.log(`    ${proposals.length} proposals to classify`);
+  console.info(`    ${proposals.length} proposals to classify`);
 
   let tagsInserted = 0;
 
   for (const proposal of proposals) {
     if (sessionCostCents >= maxCostCents) {
-      console.log(`    Cost limit reached ($${(maxCostCents / 100).toFixed(2)}). Stopping.`);
+      console.info(`    Cost limit reached ($${(maxCostCents / 100).toFixed(2)}). Stopping.`);
       break;
     }
 
@@ -274,7 +274,7 @@ async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boole
     }
   }
 
-  console.log(`    Inserted ${tagsInserted} AI proposal tags (cost so far: $${(sessionCostCents / 100).toFixed(4)})`);
+  console.info(`    Inserted ${tagsInserted} AI proposal tags (cost so far: $${(sessionCostCents / 100).toFixed(4)})`);
   return tagsInserted;
 }
 
@@ -415,8 +415,8 @@ export async function runAiTagger(options?: {
 }): Promise<{ tagsCreated: number; costCents: number }> {
   const onlyNew = options?.onlyNew ?? true;
 
-  console.log("\n=== AI tagger ===");
-  console.log(`  Only new: ${onlyNew} | Model: ${AI_MODEL}`);
+  console.info("\n=== AI tagger ===");
+  console.info(`  Only new: ${onlyNew} | Model: ${AI_MODEL}`);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -426,7 +426,7 @@ export async function runAiTagger(options?: {
   // instead of calling Anthropic. No cost gate, no rate-limit sleep, no
   // recency guard — staging is cheap and idempotent.
   if (FLAGS.ENRICHMENT_MODE === "queue") {
-    console.log("  Mode: queue — staging to enrichment_queue, no API calls");
+    console.info("  Mode: queue — staging to enrichment_queue, no API calls");
     const proposals = await fetchProposalsNeedingTags();
 
     const jIds = proposals.map((p) => p.jurisdiction_id).filter(Boolean) as string[];
@@ -454,8 +454,8 @@ export async function runAiTagger(options?: {
       });
       counts[action]++;
     }
-    console.log(formatSkipTally(tagSkips));
-    console.log(`  [queue] proposals=${proposals.length} ${JSON.stringify(counts)}`);
+    console.info(formatSkipTally(tagSkips));
+    console.info(`  [queue] proposals=${proposals.length} ${JSON.stringify(counts)}`);
     return { tagsCreated: counts.created + counts.retried, costCents: 0 };
   }
 
@@ -471,14 +471,14 @@ export async function runAiTagger(options?: {
   if (lastRunTs && !force) {
     const hoursSince = (Date.now() - new Date(lastRunTs).getTime()) / 3_600_000;
     if (hoursSince < 2) {
-      console.log(
+      console.info(
         `⏭  AI Tagger skipping — ran ${hoursSince.toFixed(1)}h ago. Min interval: 2h. Use --force to override.`
       );
       return { tagsCreated: 0, costCents: 0 };
     }
   }
   if (force) {
-    console.log("⚠  --force flag set: skipping recency guard");
+    console.info("⚠  --force flag set: skipping recency guard");
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -554,11 +554,11 @@ export async function runAiTagger(options?: {
 
     const totalTags = await runProposalAiTagger(db, maxCostCents, onlyNew);
 
-    console.log("\n  ─────────────────────────────────────────────────");
-    console.log("  AI tagger report");
-    console.log("  ─────────────────────────────────────────────────");
-    console.log(`  ${"Proposal tags:".padEnd(32)} ${totalTags}`);
-    console.log(`  ${"Total cost:".padEnd(32)} $${(sessionCostCents / 100).toFixed(4)}`);
+    console.info("\n  ─────────────────────────────────────────────────");
+    console.info("  AI tagger report");
+    console.info("  ─────────────────────────────────────────────────");
+    console.info(`  ${"Proposal tags:".padEnd(32)} ${totalTags}`);
+    console.info(`  ${"Total cost:".padEnd(32)} $${(sessionCostCents / 100).toFixed(4)}`);
 
     // Record actual costs via gate
     if (gate.run_id) {
@@ -611,12 +611,12 @@ async function estimateCost(db: any): Promise<void> {
 
   const totalCost = untaggedProposals * 0.000075; // ~$0.000075 each
 
-  console.log("\n  ─────────────────────────────────────────────────");
-  console.log("  AI tagger cost estimate");
-  console.log("  ─────────────────────────────────────────────────");
-  console.log(`  Proposals:  ${untaggedProposals.toLocaleString()} untagged / ${totalProposals.toLocaleString()} total → ~$${totalCost.toFixed(2)}`);
-  console.log(`  Total estimate: ~$${totalCost.toFixed(2)}`);
-  console.log(`\n  To run: pnpm --filter @civitics/data data:tag-ai -- --confirm`);
+  console.info("\n  ─────────────────────────────────────────────────");
+  console.info("  AI tagger cost estimate");
+  console.info("  ─────────────────────────────────────────────────");
+  console.info(`  Proposals:  ${untaggedProposals.toLocaleString()} untagged / ${totalProposals.toLocaleString()} total → ~$${totalCost.toFixed(2)}`);
+  console.info(`  Total estimate: ~$${totalCost.toFixed(2)}`);
+  console.info(`\n  To run: pnpm --filter @civitics/data data:tag-ai -- --confirm`);
 }
 
 // ---------------------------------------------------------------------------
@@ -634,8 +634,8 @@ if (require.main === module) {
     const db = createAdminClient() as any;
 
     if (isDryRun && !isConfirmed) {
-      console.log("\n=== AI tagger — cost estimate ===");
-      console.log("  (No API calls will be made. Pass --confirm to run.)\n");
+      console.info("\n=== AI tagger — cost estimate ===");
+      console.info("  (No API calls will be made. Pass --confirm to run.)\n");
       await estimateCost(db);
       process.exit(0);
     }

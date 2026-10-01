@@ -136,7 +136,7 @@ export async function upsertNonprofitEntity(
     // Bind EIN → existing entity. Do NOT update financial_entities.metadata —
     // preserves the existing row's source attribution. 990 financial summary
     // lands in irs990_filings via insertFiling regardless.
-    console.log(`  [irs990] EIN ${input.ein} canonical-bound to existing entity ${matchedId} (canonical="${canonical}")`);
+    console.info(`  [irs990] EIN ${input.ein} canonical-bound to existing entity ${matchedId} (canonical="${canonical}")`);
     await db.from("external_source_refs").upsert({
       source:       "irs_990",
       external_id:  input.ein,

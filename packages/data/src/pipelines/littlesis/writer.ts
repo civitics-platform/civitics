@@ -183,7 +183,7 @@ async function resolveOrInsertHop1(
     // Fall through to INSERT in degraded mode.
   }
   if (matchedId) {
-    console.log(`  [littlesis] LS:${ent.id} canonical-bound to existing entity ${matchedId} (canonical="${canonical}", entity_type=${entityType})`);
+    console.info(`  [littlesis] LS:${ent.id} canonical-bound to existing entity ${matchedId} (canonical="${canonical}", entity_type=${entityType})`);
     return { id: matchedId, created: false, rpcError: false };
   }
 
@@ -250,7 +250,7 @@ export async function upsertHop1FinancialEntities(
   const representatives = [...groups.values()].map((g) => g[0]!);
   const dupesCollapsed  = entities.length - representatives.length;
   if (dupesCollapsed > 0) {
-    console.log(`  [littlesis] intra-source dedupe: ${entities.length} entities → ${representatives.length} groups (${dupesCollapsed} duplicates folded)`);
+    console.info(`  [littlesis] intra-source dedupe: ${entities.length} entities → ${representatives.length} groups (${dupesCollapsed} duplicates folded)`);
   }
 
   // FIX-586: resolve/insert over a direct-pg Pool. RESOLVE_BATCH-wide

@@ -21,7 +21,7 @@
 import { skipSync, startSync, type PipelineResult } from "../sync-log";
 
 export async function runOpenSecretsBulkPipeline(): Promise<PipelineResult> {
-  console.log("\n=== OpenSecrets bulk pipeline (skeleton) ===");
+  console.info("\n=== OpenSecrets bulk pipeline (skeleton) ===");
   const logId = await startSync("opensecrets_bulk");
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
 
@@ -36,7 +36,7 @@ export async function runOpenSecretsBulkPipeline(): Promise<PipelineResult> {
   //   6. Delete temp files after parse completes
 
   await skipSync(logId, "not_implemented");
-  console.log("  Skeleton pipeline — no work performed (status=skipped).");
+  console.info("  Skeleton pipeline — no work performed (status=skipped).");
   return result;
 }
 

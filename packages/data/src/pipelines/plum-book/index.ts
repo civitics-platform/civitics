@@ -271,7 +271,7 @@ async function closeStaleConnections(
 // ---------------------------------------------------------------------------
 
 export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promise<PipelineResult> {
-  console.log("\n=== OPM PLUM Book pipeline ===");
+  console.info("\n=== OPM PLUM Book pipeline ===");
 
   const logId  = await startSync("plum_book");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -288,15 +288,15 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     if (lastChange && !force) {
       const stored = await getStoredState(db);
       if (stored.last_change === lastChange) {
-        console.log(`  No new OPM data since ${lastChange} — skipping`);
+        console.info(`  No new OPM data since ${lastChange} — skipping`);
         await completeSync(logId, result);
         return result;
       }
-      console.log(`  OPM data changed: ${lastChange} (was ${stored.last_change ?? "never run"})`);
+      console.info(`  OPM data changed: ${lastChange} (was ${stored.last_change ?? "never run"})`);
     } else if (force) {
-      console.log(`  --force: skipping version check${lastChange ? ` (OPM data: ${lastChange})` : ""}`);
+      console.info(`  --force: skipping version check${lastChange ? ` (OPM data: ${lastChange})` : ""}`);
     } else {
-      console.log("  Could not fetch dataset index — proceeding anyway");
+      console.info("  Could not fetch dataset index — proceeding anyway");
     }
 
     // Use the OPM last_change date as the authoritative source_date for all
@@ -304,10 +304,10 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     const sourceDate = lastChange?.slice(0, 10) ?? today;
 
     // ── Download + parse ───────────────────────────────────────────────────
-    console.log("  Downloading entities.ftm.json...");
+    console.info("  Downloading entities.ftm.json...");
     const { persons, positions, occupancies, bytes } = await downloadAndParse();
     result.estimatedMb = +(bytes / 1024 / 1024).toFixed(2);
-    console.log(
+    console.info(
       `  Parsed: ${persons.size.toLocaleString()} persons, ` +
       `${positions.size.toLocaleString()} positions, ` +
       `${occupancies.length.toLocaleString()} occupancies ` +
@@ -323,7 +323,7 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
 
     const agencies     = (agencyData ?? []) as AgencyRecord[];
     const agencyLookup = buildAgencyLookup(agencies);
-    console.log(`  ${agencies.length} federal agencies in lookup`);
+    console.info(`  ${agencies.length} federal agencies in lookup`);
 
     // ── Federal jurisdiction ───────────────────────────────────────────────
     const { data: jurData } = await db
@@ -358,7 +358,7 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
         if (plumId) officialByPlumId.set(plumId, o.id);
       }
     }
-    console.log(`  ${officialByPlumId.size} officials with plum_id already in DB`);
+    console.info(`  ${officialByPlumId.size} officials with plum_id already in DB`);
 
     // ── Filter occupancies ─────────────────────────────────────────────────
     const relevant = occupancies.filter((occ) => {
@@ -366,7 +366,7 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       const end = firstProp(occ, "endDate");
       return !!end && end >= HISTORICAL_CUTOFF;
     });
-    console.log(`  ${relevant.length.toLocaleString()} relevant occupancies (current + ended ≥ ${HISTORICAL_CUTOFF})`);
+    console.info(`  ${relevant.length.toLocaleString()} relevant occupancies (current + ended ≥ ${HISTORICAL_CUTOFF})`);
 
     // ── Phase 1: Resolve occupancies in-memory (no DB) ────────────────────
     interface ResolvedOcc {
@@ -408,7 +408,7 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       });
     }
 
-    console.log(`  Agency matches: ${matched.toLocaleString()}, unmatched: ${unmatched.toLocaleString()}`);
+    console.info(`  Agency matches: ${matched.toLocaleString()}, unmatched: ${unmatched.toLocaleString()}`);
 
     // ── Phase 2: Name-lookup for unknown persons (targeted, paginated) ─────
     // PostgREST db-max-rows=1000 means fetching all officials is impossible
@@ -627,14 +627,14 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       totalStaleClosed += await closeStaleConnections(db, agencyId, currentIds, today);
     }
     if (totalStaleClosed > 0) {
-      console.log(`  Stale connections closed: ${totalStaleClosed}`);
+      console.info(`  Stale connections closed: ${totalStaleClosed}`);
     }
 
     // ── Persist version so next weekly run can skip if unchanged ──────────
     if (datasetIdx) await storeState(db, datasetIdx);
 
     await completeSync(logId, result);
-    console.log(`\n  ✓ Done. Inserted: ${result.inserted}, updated: ${result.updated}, failed: ${result.failed}`);
+    console.info(`\n  ✓ Done. Inserted: ${result.inserted}, updated: ${result.updated}, failed: ${result.failed}`);
     return result;
   } catch (err) {
     await failSync(logId, err instanceof Error ? err.message : String(err));

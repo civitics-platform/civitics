@@ -438,7 +438,7 @@ async function bindToKeyHolders(db: Db, items: BillProposalArgs[]): Promise<KeyH
     out.bound.push(...chunk);
   }
   if (out.bound.length > 0) {
-    console.log(
+    console.info(
       `    bills.ts: bound ${out.bound.length} ref(s) to an existing bill_details key-holder instead of minting (FIX-1256): ` +
         out.bound.slice(0, 10).map(({ id, args }) => `${args.billKey}→${id}`).join(", "),
     );

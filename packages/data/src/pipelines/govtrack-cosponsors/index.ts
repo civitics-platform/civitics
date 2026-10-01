@@ -15,7 +15,7 @@
 import { skipSync, startSync, type PipelineResult } from "../sync-log";
 
 export async function runGovtrackCosponsorsPipeline(_sinceDate?: string): Promise<PipelineResult> {
-  console.log("\n=== GovTrack cosponsors pipeline (skeleton) ===");
+  console.info("\n=== GovTrack cosponsors pipeline (skeleton) ===");
   const logId = await startSync("govtrack_cosponsors");
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
 
@@ -27,7 +27,7 @@ export async function runGovtrackCosponsorsPipeline(_sinceDate?: string): Promis
   //   5. Throttle 1 req / 500 ms; paginate via next cursor
 
   await skipSync(logId, "not_implemented");
-  console.log("  Skeleton pipeline — no work performed (status=skipped).");
+  console.info("  Skeleton pipeline — no work performed (status=skipped).");
   return result;
 }
 

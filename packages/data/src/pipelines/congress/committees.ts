@@ -110,7 +110,7 @@ export interface CommitteesPipelineOptions {
 export async function runCommitteesPipeline(
   options: CommitteesPipelineOptions
 ): Promise<PipelineResult> {
-  console.log("\n=== Congress committees pipeline ===");
+  console.info("\n=== Congress committees pipeline ===");
   const logId = await startSync("congress_committees");
   const db = createAdminClient();
 
@@ -118,14 +118,14 @@ export async function runCommitteesPipeline(
 
   try {
     // ── 1. Fetch source feeds ───────────────────────────────────────────────
-    console.log("  Fetching committees-current.json...");
+    console.info("  Fetching committees-current.json...");
     const committees = await fetchJson<CommitteesFeedCommittee[]>(COMMITTEES_URL);
-    console.log(`    ${committees.length} parent committees`);
+    console.info(`    ${committees.length} parent committees`);
 
-    console.log("  Fetching committee-membership-current.json...");
+    console.info("  Fetching committee-membership-current.json...");
     const membership = await fetchJson<MembershipFeed>(MEMBERSHIP_URL);
     const membershipKeys = Object.keys(membership);
-    console.log(`    ${membershipKeys.length} committee/subcommittee membership entries`);
+    console.info(`    ${membershipKeys.length} committee/subcommittee membership entries`);
 
     // ── 2. Flatten committees + subcommittees into a single list ────────────
     type CommitteeRow = {
@@ -164,7 +164,7 @@ export async function runCommitteesPipeline(
         });
       }
     }
-    console.log(`  Flattened to ${flatCommittees.length} committees + subcommittees`);
+    console.info(`  Flattened to ${flatCommittees.length} committees + subcommittees`);
 
     // ── 3. Pre-fetch existing committees (system_code → governing_body UUID) ─
     const { data: existingCommittees, error: fetchErr } = await db
@@ -179,7 +179,7 @@ export async function runCommitteesPipeline(
       const code = row.metadata?.["system_code"];
       if (typeof code === "string") existingBySystemCode.set(code, row.id);
     }
-    console.log(`  Found ${existingBySystemCode.size} existing committees in governing_bodies`);
+    console.info(`  Found ${existingBySystemCode.size} existing committees in governing_bodies`);
 
     // ── 4. Upsert committees ────────────────────────────────────────────────
     const newCommittees: GoverningBodyInsert[] = [];
@@ -223,7 +223,7 @@ export async function runCommitteesPipeline(
         const code = row.metadata?.["system_code"];
         if (typeof code === "string") existingBySystemCode.set(code, row.id);
       }
-      console.log(`  Inserted ${inserted} new committees`);
+      console.info(`  Inserted ${inserted} new committees`);
     }
 
     // Apply updates one at a time (~230 rows total, no batch endpoint for partial-row updates)
@@ -239,7 +239,7 @@ export async function runCommitteesPipeline(
         updated++;
       }
     }
-    console.log(`  Updated ${updated} existing committees`);
+    console.info(`  Updated ${updated} existing committees`);
 
     // ── 4b. Attribution + hierarchy sidecar (FIX-478 + FIX-481) ─────────────
     // For every committee gb that resolved to an id, write:
@@ -294,7 +294,7 @@ export async function runCommitteesPipeline(
     if (resolvedForAttribution.length > 0) {
       await refreshPrimarySourceForEntities(db, "governing_body", resolvedForAttribution.map((x) => x.gbId));
     }
-    console.log(
+    console.info(
       `  Attribution: ${committeeXsrRecords.length} xsr + ${committeeExtRecords.length} institution_extensions rows`,
     );
 
@@ -311,7 +311,7 @@ export async function runCommitteesPipeline(
       const bg = row.source_ids?.["congress_gov"];
       if (bg) officialByBioguide.set(bg, row.id);
     }
-    console.log(`  Loaded ${officialByBioguide.size} officials with bioguide IDs`);
+    console.info(`  Loaded ${officialByBioguide.size} officials with bioguide IDs`);
 
     // ── 6. Build membership rows ────────────────────────────────────────────
     const membershipsToInsert: MembershipInsert[] = [];
@@ -343,8 +343,8 @@ export async function runCommitteesPipeline(
         });
       }
     }
-    console.log(`  Built ${membershipsToInsert.length} membership rows`);
-    console.log(`    (skipped: ${unmatchedCommittees} committees w/o governing_body match, ${unmatchedOfficials} bioguide IDs not in officials)`);
+    console.info(`  Built ${membershipsToInsert.length} membership rows`);
+    console.info(`    (skipped: ${unmatchedCommittees} committees w/o governing_body match, ${unmatchedOfficials} bioguide IDs not in officials)`);
 
     // ── 7. Replace current memberships for touched committees ───────────────
     // Idempotent strategy: delete existing current (ended_at IS NULL) rows for
@@ -382,7 +382,7 @@ export async function runCommitteesPipeline(
         membershipsInserted += batch.length;
       }
     }
-    console.log(`  Inserted ${membershipsInserted} memberships across ${committeeIdsTouched.size} committees`);
+    console.info(`  Inserted ${membershipsInserted} memberships across ${committeeIdsTouched.size} committees`);
 
     const estimatedMb = +(((inserted + updated + membershipsInserted) * 250) / 1024 / 1024).toFixed(2);
     const result: PipelineResult = {
@@ -392,13 +392,13 @@ export async function runCommitteesPipeline(
       estimatedMb,
     };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  Committees pipeline report");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"Committees inserted:".padEnd(32)} ${inserted}`);
-    console.log(`  ${"Committees updated:".padEnd(32)} ${updated}`);
-    console.log(`  ${"Memberships inserted:".padEnd(32)} ${membershipsInserted}`);
-    console.log(`  ${"Failed:".padEnd(32)} ${failed}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  Committees pipeline report");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Committees inserted:".padEnd(32)} ${inserted}`);
+    console.info(`  ${"Committees updated:".padEnd(32)} ${updated}`);
+    console.info(`  ${"Memberships inserted:".padEnd(32)} ${membershipsInserted}`);
+    console.info(`  ${"Failed:".padEnd(32)} ${failed}`);
 
     // FIX-492 — slugify ingest invariant: committee gbs just inserted above
     // would otherwise be stranded slugless (the FIX-475 backfill ran before the
@@ -428,7 +428,7 @@ if (require.main === module) {
     try {
       const { federalId } = await seedJurisdictions(db);
       const result = await runCommitteesPipeline({ federalId });
-      console.log("\nCommittees pipeline complete:", result);
+      console.info("\nCommittees pipeline complete:", result);
       process.exit(0);
     } catch (err) {
       console.error("Fatal error:", err);

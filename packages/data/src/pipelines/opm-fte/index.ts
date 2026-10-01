@@ -143,7 +143,7 @@ async function parseEmploymentParquet(buf: ArrayBuffer): Promise<ParsedEmploymen
     },
   });
 
-  console.log(`    Parsed ${rowCount.toLocaleString()} rows, ${fteByOpmCode.size} unique agency codes`);
+  console.info(`    Parsed ${rowCount.toLocaleString()} rows, ${fteByOpmCode.size} unique agency codes`);
   return { fteByOpmCode, opmCodeToName };
 }
 
@@ -203,7 +203,7 @@ async function applyFteToAgencies(
     }
   }
 
-  console.log(`    Matched: ${matched} agencies updated, ${unmatched} OPM codes unmatched`);
+  console.info(`    Matched: ${matched} agencies updated, ${unmatched} OPM codes unmatched`);
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ async function applyFteToAgencies(
 // ---------------------------------------------------------------------------
 
 export async function runOpmFtePipeline(): Promise<PipelineResult> {
-  console.log("\n=== OPM FedScope FTE pipeline (FIX-214) ===");
+  console.info("\n=== OPM FedScope FTE pipeline (FIX-214) ===");
 
   const logId = await startSync("opm_fte");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -223,7 +223,7 @@ export async function runOpmFtePipeline(): Promise<PipelineResult> {
     let sourceUrl: string | null = envUrl ?? null;
 
     if (!sourceUrl) {
-      console.log("  Resolving latest HuggingFace employment parquet...");
+      console.info("  Resolving latest HuggingFace employment parquet...");
       sourceUrl = await resolveLatestHfUrl();
     }
 
@@ -232,7 +232,7 @@ export async function runOpmFtePipeline(): Promise<PipelineResult> {
       return result;
     }
 
-    console.log(`  Fetching: ${sourceUrl}`);
+    console.info(`  Fetching: ${sourceUrl}`);
     const buf = await fetchParquet(sourceUrl);
     if (!buf) {
       await failSync(logId, `Failed to fetch parquet from: ${sourceUrl}`);
@@ -240,13 +240,13 @@ export async function runOpmFtePipeline(): Promise<PipelineResult> {
     }
 
     result.estimatedMb = buf.byteLength / 1024 / 1024;
-    console.log(`  Downloaded ${result.estimatedMb.toFixed(1)} MB`);
+    console.info(`  Downloaded ${result.estimatedMb.toFixed(1)} MB`);
 
     const { fteByOpmCode, opmCodeToName } = await parseEmploymentParquet(buf);
     await applyFteToAgencies(db, fteByOpmCode, opmCodeToName, result);
 
     await completeSync(logId, result);
-    console.log(`\n  ✓ Done. Updated: ${result.updated}, failed: ${result.failed}`);
+    console.info(`\n  ✓ Done. Updated: ${result.updated}, failed: ${result.failed}`);
     return result;
   } catch (err) {
     await failSync(logId, err instanceof Error ? err.message : String(err));

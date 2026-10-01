@@ -52,7 +52,7 @@ export async function fetchJson<T>(
   let gatewayErrorCount = 0;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
-      console.log(`  Retrying in 30s (attempt ${attempt + 1})...`);
+      console.info(`  Retrying in 30s (attempt ${attempt + 1})...`);
       await sleep(30_000);
     }
     // Inner loop handles per-minute 429s via adaptive back-off (outside retry budget).

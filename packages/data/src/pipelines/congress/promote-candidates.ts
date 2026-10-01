@@ -332,14 +332,14 @@ export async function runCandidateToElectedPromotion(
       votesMoved:    o.result?.votes_moved,
       totalFksMoved: o.result?.total_fks_moved,
     });
-    console.log(
+    console.info(
       `  promote-candidates: ${p.fullName} (${p.state} ${p.roleFamily}) — ` +
       `${o.result?.votes_moved ?? 0} votes + ${o.result?.total_fks_moved ?? 0} total FKs moved`
     );
   }
 
   const deferred = pairs.length - toPromote.length;
-  console.log(
+  console.info(
     `  promote-candidates: detected=${out.pairsDetected} promoted=${out.promoted} failed=${out.failed} ` +
       `skipped_bound=${out.skippedBound}` +
       (deferred > 0 ? ` deferred=${deferred} (cap ${PROMOTION_CAP}, FIX-755)` : "")

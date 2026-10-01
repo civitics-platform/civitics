@@ -260,11 +260,11 @@ async function generateProposalSummaries(
   const trulyEmpty = proposals.filter((p) => p.context_level === "truly_empty");
   skippedTrulyEmpty = trulyEmpty.length;
 
-  console.log(`\n── Step 1: Proposals ─────────────────────────────────────`);
-  console.log(`   ${proposals.length} proposals need summaries${incremental ? " (incremental)" : ""}`);
-  console.log(`     full_summary:  ${proposals.filter((p) => p.context_level === "full_summary").length}`);
-  console.log(`     title_only:    ${proposals.filter((p) => p.context_level === "title_only").length}`);
-  console.log(`     truly_empty:   ${skippedTrulyEmpty} (skipping — no usable text)`);
+  console.info(`\n── Step 1: Proposals ─────────────────────────────────────`);
+  console.info(`   ${proposals.length} proposals need summaries${incremental ? " (incremental)" : ""}`);
+  console.info(`     full_summary:  ${proposals.filter((p) => p.context_level === "full_summary").length}`);
+  console.info(`     title_only:    ${proposals.filter((p) => p.context_level === "title_only").length}`);
+  console.info(`     truly_empty:   ${skippedTrulyEmpty} (skipping — no usable text)`);
 
   for (const proposal of actionable) {
     try {
@@ -304,19 +304,19 @@ async function generateProposalSummaries(
         summarizedFull++;
         const n = summarizedFull + summarizedTitleOnly;
         if (n <= 3) {
-          console.log(`   ✓ [full] ${proposal.title.slice(0, 70)}…`);
-          console.log(`       → ${summaryText.slice(0, 100)}…`);
+          console.info(`   ✓ [full] ${proposal.title.slice(0, 70)}…`);
+          console.info(`       → ${summaryText.slice(0, 100)}…`);
         } else if (n % 10 === 0) {
-          console.log(`   ✓ ${n} proposals done so far…`);
+          console.info(`   ✓ ${n} proposals done so far…`);
         }
       } else {
         summarizedTitleOnly++;
         const n = summarizedFull + summarizedTitleOnly;
         if (n <= 3) {
-          console.log(`   ✓ [title] ${proposal.title.slice(0, 70)}…`);
-          console.log(`       → ${summaryText.slice(0, 100)}…`);
+          console.info(`   ✓ [title] ${proposal.title.slice(0, 70)}…`);
+          console.info(`       → ${summaryText.slice(0, 100)}…`);
         } else if (n % 10 === 0) {
-          console.log(`   ✓ ${n} proposals done so far…`);
+          console.info(`   ✓ ${n} proposals done so far…`);
         }
       }
     } catch (err) {
@@ -412,8 +412,8 @@ async function generateOfficialSummaries(
   const ai = createAiClient();
   let summarized = 0, failed = 0, totalCostCents = 0;
 
-  console.log(`\n── Step 2: Officials ─────────────────────────────────────`);
-  console.log(`   ${officials.length} officials need profiles${incremental ? " (incremental)" : ""}`);
+  console.info(`\n── Step 2: Officials ─────────────────────────────────────`);
+  console.info(`   ${officials.length} officials need profiles${incremental ? " (incremental)" : ""}`);
 
   for (const official of officials) {
 
@@ -473,10 +473,10 @@ async function generateOfficialSummaries(
       summarized++;
 
       if (summarized <= 3) {
-        console.log(`   ✓ ${official.full_name} (${official.role_title})`);
-        console.log(`       → ${summaryText.slice(0, 100)}…`);
+        console.info(`   ✓ ${official.full_name} (${official.role_title})`);
+        console.info(`       → ${summaryText.slice(0, 100)}…`);
       } else if (summarized % 10 === 0) {
-        console.log(`   ✓ ${summarized} officials done so far…`);
+        console.info(`   ✓ ${summarized} officials done so far…`);
       }
     } catch (err) {
       console.error(`   ✗ ${official.id} (${official.full_name}): ${err instanceof Error ? err.message : String(err)}`);
@@ -510,23 +510,23 @@ async function reportResults(
     .order("created_at", { ascending: false })
     .limit(3);
 
-  console.log(`\n══ Results ═══════════════════════════════════════════════`);
-  console.log(`   Proposals summarized:  ${proposalStats.summarized_full + proposalStats.summarized_title_only}`);
-  console.log(`     full_summary:        ${proposalStats.summarized_full}`);
-  console.log(`     title_only:          ${proposalStats.summarized_title_only}`);
-  console.log(`   Proposals skipped:     ${proposalStats.skipped_truly_empty} (truly empty — no title)`);
-  console.log(`   Proposals failed:      ${proposalStats.failed}`);
-  console.log(`   Officials summarized:  ${officialStats.summarized}`);
-  console.log(`   Officials failed:      ${officialStats.failed}`);
-  console.log(`   Cache entries created: ${totalEntries}`);
-  console.log(`   This run cost:         $${(totalCostCents / 100).toFixed(4)}`);
+  console.info(`\n══ Results ═══════════════════════════════════════════════`);
+  console.info(`   Proposals summarized:  ${proposalStats.summarized_full + proposalStats.summarized_title_only}`);
+  console.info(`     full_summary:        ${proposalStats.summarized_full}`);
+  console.info(`     title_only:          ${proposalStats.summarized_title_only}`);
+  console.info(`   Proposals skipped:     ${proposalStats.skipped_truly_empty} (truly empty — no title)`);
+  console.info(`   Proposals failed:      ${proposalStats.failed}`);
+  console.info(`   Officials summarized:  ${officialStats.summarized}`);
+  console.info(`   Officials failed:      ${officialStats.failed}`);
+  console.info(`   Cache entries created: ${totalEntries}`);
+  console.info(`   This run cost:         $${(totalCostCents / 100).toFixed(4)}`);
 
   if (samplesRes.data?.length > 0) {
-    console.log(`\n── Sample Outputs ────────────────────────────────────────`);
+    console.info(`\n── Sample Outputs ────────────────────────────────────────`);
     for (const s of samplesRes.data) {
       const level = (s.metadata as { context_level?: string } | null)?.context_level ?? "unknown";
-      console.log(`\n   Entity: ${s.entity_type} ${s.entity_id} [${level}]`);
-      console.log(`   Summary: ${s.summary_text}`);
+      console.info(`\n   Entity: ${s.entity_type} ${s.entity_id} [${level}]`);
+      console.info(`   Summary: ${s.summary_text}`);
     }
   }
 }
@@ -536,9 +536,9 @@ async function reportResults(
 // ---------------------------------------------------------------------------
 
 export async function runAiSummariesPipeline(incremental = false): Promise<void> {
-  console.log(`\n═══ AI Summaries Pipeline ════════════════════════════════`);
-  console.log(`    Mode: ${incremental ? "incremental (new entities only)" : "full (all unsummarized)"}`);
-  console.log(`    Time: ${new Date().toISOString()}`);
+  console.info(`\n═══ AI Summaries Pipeline ════════════════════════════════`);
+  console.info(`    Mode: ${incremental ? "incremental (new entities only)" : "full (all unsummarized)"}`);
+  console.info(`    Time: ${new Date().toISOString()}`);
 
   const db = createAdminClient();
 
@@ -548,7 +548,7 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
   // + active Sen/Rep with records) — the seed-backlog script is responsible
   // for widening to "everything missing."
   if (FLAGS.ENRICHMENT_MODE === "queue") {
-    console.log("    Mode: queue — staging to enrichment_queue, no API calls");
+    console.info("    Mode: queue — staging to enrichment_queue, no API calls");
     const proposals = await fetchOpenProposals(db);
     const officials = await fetchOfficials(db);
 
@@ -610,8 +610,8 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
       });
       counts[action]++;
     }
-    console.log(formatSkipTally(summarySkips));
-    console.log(
+    console.info(formatSkipTally(summarySkips));
+    console.info(
       `    [queue] proposals=${proposals.filter((p) => hasUsableSourceText(p.summary_plain, p.title)).length} officials=${officials.length} ${JSON.stringify(counts)}`,
     );
     return;
@@ -630,14 +630,14 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
   if (lastRunTs && !force) {
     const hoursSince = (Date.now() - new Date(lastRunTs).getTime()) / 3_600_000;
     if (hoursSince < 2) {
-      console.log(
+      console.info(
         `⏭  AI Summaries skipping — ran ${hoursSince.toFixed(1)}h ago. Min interval: 2h. Use --force to override.`
       );
       return;
     }
   }
   if (force) {
-    console.log("⚠  --force flag set: skipping recency guard");
+    console.info("⚠  --force flag set: skipping recency guard");
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -655,9 +655,9 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
   const totalEntities = actionableProposals.length + officials.length;
 
   if (totalEntities === 0) {
-    console.log("    ✓ Nothing to summarize — all entities are cached");
+    console.info("    ✓ Nothing to summarize — all entities are cached");
     if (proposals.some((p) => p.context_level === "truly_empty")) {
-      console.log(`    (${proposals.filter((p) => p.context_level === "truly_empty").length} truly-empty proposals skipped)`);
+      console.info(`    (${proposals.filter((p) => p.context_level === "truly_empty").length} truly-empty proposals skipped)`);
     }
     await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 });
     return;
@@ -762,8 +762,8 @@ if (require.main === module) {
   const confirmed = process.argv.includes("--confirm");
 
   if (!incremental && !confirmed) {
-    console.log("[ai-summaries] Non-incremental run against ALL entities will spend uncapped Claude credits.");
-    console.log("[ai-summaries] Re-run with --confirm to proceed, or --incremental for the daily safe path.");
+    console.info("[ai-summaries] Non-incremental run against ALL entities will spend uncapped Claude credits.");
+    console.info("[ai-summaries] Re-run with --confirm to proceed, or --incremental for the daily safe path.");
     process.exit(0);
   }
 

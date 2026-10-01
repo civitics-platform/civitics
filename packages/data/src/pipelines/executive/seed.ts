@@ -155,7 +155,7 @@ export async function runExecutiveSeed(opts: { db?: Db } = {}): Promise<Executiv
     }
   }
 
-  console.log(`  executive seed: inserted=${out.inserted} updated=${out.updated} failed=${out.failed}`);
+  console.info(`  executive seed: inserted=${out.inserted} updated=${out.updated} failed=${out.failed}`);
   return out;
 }
 
@@ -167,7 +167,7 @@ if (require.main === module) {
   const db = createAdminClient();
   runExecutiveSeed({ db })
     .then((r) => {
-      console.log("Executive seed complete:", r);
+      console.info("Executive seed complete:", r);
       process.exit(0);
     })
     .catch((e) => {

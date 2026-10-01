@@ -103,16 +103,16 @@ export async function runCourtListenerPipeline(
   apiKey: string,
   federalId: string,
 ): Promise<PipelineResult> {
-  console.log("\n=== CourtListener pipeline (public) ===");
+  console.info("\n=== CourtListener pipeline (public) ===");
   const logId = await startSync("courtlistener");
   const db = createAdminClient();
 
   try {
     const courtGovBodyMap = await resolveJudicialGovBodies(db, federalId, FEDERAL_COURTS);
-    console.log(`  Seeded/resolved ${courtGovBodyMap.size} judicial governing bodies`);
+    console.info(`  Seeded/resolved ${courtGovBodyMap.size} judicial governing bodies`);
 
     // ── Part 1: Judges ───────────────────────────────────────────────────────
-    console.log("\n  Fetching active federal judges...");
+    console.info("\n  Fetching active federal judges...");
     const judgeInputs: JudgeInput[] = [];
     const judgesSeen = new Set<number>();
     let judgesQuotaHit = false;
@@ -184,18 +184,18 @@ export async function runCourtListenerPipeline(
       if (page > 20) break;
     } while (nextUrl);
 
-    console.log(`  Judges: ${judgeInputs.length} fetched, batched upsert...`);
+    console.info(`  Judges: ${judgeInputs.length} fetched, batched upsert...`);
     const judgeRes = await upsertJudgesBatch(db, judgeInputs);
-    console.log(`  Judges — inserted: ${judgeRes.inserted}, updated: ${judgeRes.updated}, failed: ${judgeRes.failed}`);
+    console.info(`  Judges — inserted: ${judgeRes.inserted}, updated: ${judgeRes.updated}, failed: ${judgeRes.failed}`);
 
     // ── Part 2: Opinions (per-court, collected into one batch) ───────────────
-    console.log("\n  Fetching recent court opinions...");
+    console.info("\n  Fetching recent court opinions...");
     const opinionInputs: OpinionInput[] = [];
     let opinionsQuotaHit = judgesQuotaHit;
 
     for (const courtId of FEDERAL_COURTS) {
       if (opinionsQuotaHit) break;
-      console.log(`    Court: ${courtId}`);
+      console.info(`    Court: ${courtId}`);
       let nextClusters: string | null = null;
 
       for (let p = 1; p <= 2; p++) {
@@ -240,9 +240,9 @@ export async function runCourtListenerPipeline(
       }
     }
 
-    console.log(`\n  Opinions: ${opinionInputs.length} fetched, batched upsert...`);
+    console.info(`\n  Opinions: ${opinionInputs.length} fetched, batched upsert...`);
     const opinionRes = await upsertOpinionsBatch(db, opinionInputs);
-    console.log(`  Opinions — inserted: ${opinionRes.inserted}, updated: ${opinionRes.updated}, failed: ${opinionRes.failed}`);
+    console.info(`  Opinions — inserted: ${opinionRes.inserted}, updated: ${opinionRes.updated}, failed: ${opinionRes.failed}`);
 
     const totalInserted = judgeRes.inserted + opinionRes.inserted;
     const totalUpdated = judgeRes.updated + opinionRes.updated;
@@ -255,17 +255,17 @@ export async function runCourtListenerPipeline(
       estimatedMb,
     };
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  CourtListener pipeline report");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"Judges inserted:".padEnd(32)} ${judgeRes.inserted}`);
-    console.log(`  ${"Judges updated:".padEnd(32)} ${judgeRes.updated}`);
-    console.log(`  ${"Judges failed:".padEnd(32)} ${judgeRes.failed}`);
-    console.log(`  ${"Opinions inserted:".padEnd(32)} ${opinionRes.inserted}`);
-    console.log(`  ${"Opinions updated:".padEnd(32)} ${opinionRes.updated}`);
-    console.log(`  ${"Opinions failed:".padEnd(32)} ${opinionRes.failed}`);
-    console.log(`  ${"Estimated storage:".padEnd(32)} ~${estimatedMb} MB`);
-    if (opinionsQuotaHit) console.log(`  ${"Run ended on quota.".padEnd(32)}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  CourtListener pipeline report");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Judges inserted:".padEnd(32)} ${judgeRes.inserted}`);
+    console.info(`  ${"Judges updated:".padEnd(32)} ${judgeRes.updated}`);
+    console.info(`  ${"Judges failed:".padEnd(32)} ${judgeRes.failed}`);
+    console.info(`  ${"Opinions inserted:".padEnd(32)} ${opinionRes.inserted}`);
+    console.info(`  ${"Opinions updated:".padEnd(32)} ${opinionRes.updated}`);
+    console.info(`  ${"Opinions failed:".padEnd(32)} ${opinionRes.failed}`);
+    console.info(`  ${"Estimated storage:".padEnd(32)} ~${estimatedMb} MB`);
+    if (opinionsQuotaHit) console.info(`  ${"Run ended on quota.".padEnd(32)}`);
 
     // FIX-492 — slugify ingest invariant: judicial gbs (resolveJudicialGovBodies)
     // inserted this run get their slug filled. Idempotent.
