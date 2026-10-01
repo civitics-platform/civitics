@@ -1,0 +1,44 @@
+{
+  "cc": "178",
+  "prompt": "cc-prompt-178-fix1241-packages-data-lint-to-zero.md",
+  "started_at": "2026-10-01T00:24:08Z",
+  "finished_at": "2026-10-01T00:51:09Z",
+  "head_before": "c734abf3",
+  "head_after": "a3e3ddf0",
+  "commits": [
+    {
+      "sha": "a19b3fb5",
+      "subject": "chore(lint): FIX-1241 — fec-bulk: progress lines to console.info; debris deleted"
+    },
+    {
+      "sha": "71f5f8e4",
+      "subject": "chore(lint): FIX-1241 — pipelines: log → info per file; debris deleted"
+    },
+    {
+      "sha": "036954b1",
+      "subject": "chore(lint): FIX-1241 — scripts: log → info; debris deleted; the NUL byte in audit-summary-context.ts escaped"
+    },
+    {
+      "sha": "cbc8a16d",
+      "subject": "chore(lint): FIX-1241 — lib/drain/tests: log → info or deleted"
+    },
+    {
+      "sha": "a3e3ddf0",
+      "subject": "chore(lint): FIX-1241 — no-explicit-any and no-unused-vars to zero"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 6 (the flag) STOPPED. D4 lets it ride only at 0/0, and the census reads 60 warnings / 0 errors. All 60 are console.table (54) or console.dir (6) in 12 investigation scripts. Switching them to info would change what they print, and disabling them needs 60 per-site comments (or 12 file-level ones), over the prompt's >10 stop. The WARN block and the lint script are unchanged, and FIX-1241 stays OPEN. The list and the options are under 'Item 6'.",
+    "Item 7: no fixes:sync commit. Nothing closed (no Fixes: trailer rode any commit); fixes:sync:dry shows newLoggedEntries 0.",
+    "Permission prompt, denied. The rule-105 scratch-line proof, as one command: `echo 'console.log(\\\"fix1241 scratch\\\");' >> src/feature-flags.ts; pnpm -s exec eslint src … --max-warnings 0 --rule \\\"$R\\\" …; git checkout -- src/feature-flags.ts; git status --short`. Probably denied for the `git checkout --` restore. Not retried. The same proof ran without writing to the tree: ESLint's Node API lintText on a scratch string (results under Verification). git status was clean before and after.",
+    "Verification, not run: one GHA-parsed script. cancellation-census.ts --json (JSON.parsed by donor-party-bootstrap-runner's spawnCensus) reads the prod Logs API, and the posture is code-only. Checked statically: its two stdout lines (:284, :400) print the same JSON as before through console.info. receipts:daily --dry-run did run, locally."
+  ],
+  "lane": "hygiene",
+  "owed": []
+}
