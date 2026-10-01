@@ -43,7 +43,7 @@ async function main(): Promise<void> {
       FROM pg_stat_user_tables
       WHERE relname = 'financial_relationships'
     `);
-    console.log(JSON.stringify(res.rows, null, 2));
+    console.info(JSON.stringify(res.rows, null, 2));
   } finally {
     await c.end();
   }

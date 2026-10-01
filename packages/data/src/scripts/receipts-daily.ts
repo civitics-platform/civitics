@@ -164,7 +164,7 @@ function parseArgs(argv: string[]): Args {
     } else if (arg === "--dry-run") {
       a.dryRun = true;
     } else if (arg === "--help" || arg === "-h") {
-      console.log(
+      console.info(
         "receipts-daily — read-only daily receipts file (FIX-1176)\n\n" +
           "  --date YYYY-MM-DD   nominal day to report on (default: derived from now + slot offset)\n" +
           "  --local | --prod    force the target DB (default: whatever NEXT_PUBLIC_SUPABASE_URL says)\n" +
@@ -883,8 +883,8 @@ async function main(): Promise<void> {
   // disagree about which database this run reached.
   const isLocal = isLocalDsn(dsn);
   const targetLabel = isLocal ? "LOCAL (Docker)" : "PROD (Supabase Pro)";
-  console.log("[receipts] target " + targetLabel + " — " + host);
-  console.log("[receipts] nominal day " + date + " (slot offset " + slotOffsetHours + "h)");
+  console.info("[receipts] target " + targetLabel + " — " + host);
+  console.info("[receipts] nominal day " + date + " (slot offset " + slotOffsetHours + "h)");
 
   // The exact window that maps to this nominal day: a run at instant t names
   // day d iff date(t + offset) = d, i.e. t in [d - offset, d + 24h - offset).
@@ -1274,17 +1274,17 @@ async function main(): Promise<void> {
   const json = renderJson(data);
 
   if (args.dryRun) {
-    console.log("\n===== " + date + ".md =====\n");
-    console.log(md);
-    console.log("\n===== " + date + ".json (first 40 lines) =====\n");
-    console.log(json.split("\n").slice(0, 40).join("\n"));
-    console.log("\n[receipts] --dry-run — nothing written.");
+    console.info("\n===== " + date + ".md =====\n");
+    console.info(md);
+    console.info("\n===== " + date + ".json (first 40 lines) =====\n");
+    console.info(json.split("\n").slice(0, 40).join("\n"));
+    console.info("\n[receipts] --dry-run — nothing written.");
     return;
   }
 
   const { outDir, redirected } = resolveReceiptPaths(args, isLocal);
   if (redirected) {
-    console.log(
+    console.info(
       "[receipts] LOCAL target and no --out — writing under " +
         outDir +
         " so this run cannot overwrite the day's PROD receipt (FIX-1209). Pass --out to override.",
@@ -1295,8 +1295,8 @@ async function main(): Promise<void> {
   const jsonPath = join(outDir, date + ".json");
   writeFileSync(mdPath, md, "utf8");
   writeFileSync(jsonPath, json, "utf8");
-  console.log("[receipts] wrote " + mdPath);
-  console.log("[receipts] wrote " + jsonPath);
+  console.info("[receipts] wrote " + mdPath);
+  console.info("[receipts] wrote " + jsonPath);
 }
 
 /** `{a: 1, b: {c: 2}}` → rows, so a jsonb blob renders as a readable table. */

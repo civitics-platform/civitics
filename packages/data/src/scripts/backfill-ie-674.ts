@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     console.error(`Refusing to write to prod (${url}) without --allow-prod. Add --allow-prod or --dry-run.`);
     process.exit(2);
   }
-  console.log(`FIX-674 backfill — target: ${url}${dryRun ? "  [DRY RUN — no writes]" : isProd ? "  [PROD WRITE]" : "  [LOCAL WRITE]"}\n`);
+  console.info(`FIX-674 backfill — target: ${url}${dryRun ? "  [DRY RUN — no writes]" : isProd ? "  [PROD WRITE]" : "  [LOCAL WRITE]"}\n`);
 
   const db = createAdminClientWith(url, secret);
 
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   const officials = await loadOfficials(db);
   const index = buildMatchIndex(officials);
   const entityIdByCmte = await loadCommitteeEntityMap(db);
-  console.log(
+  console.info(
     `Loaded ${officials.length.toLocaleString()} active officials → ${index.byFecId.size.toLocaleString()} FEC-keyed; ` +
     `${existingByFecCandId.size.toLocaleString()} officials by-any-FEC-id; ${entityIdByCmte.size.toLocaleString()} committee entities\n`,
   );
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   let grandResolved = 0, grandMinted = 0, grandRels = 0, grandDroppedCents = 0, grandCapturedCents = 0;
 
   for (const cycle of CYCLES) {
-    console.log(`────────── Cycle ${cycle} ──────────`);
+    console.info(`────────── Cycle ${cycle} ──────────`);
     const ieName = `independent_expenditure_${cycle}.csv`;
     const iePath = path.join(tmp, `ie-674-${cycle}-${process.pid}.csv`);
     try {
@@ -157,10 +157,10 @@ async function main(): Promise<void> {
         }
       }
       grandDroppedCents += droppedCents;
-      console.log(`  Unmatched targets: ${targetById.size} distinct cand_ids, ${usd(droppedCents)}`);
+      console.info(`  Unmatched targets: ${targetById.size} distinct cand_ids, ${usd(droppedCents)}`);
 
       if (dryRun) {
-        console.log(`  [dry-run] would resolve-or-mint ${targetById.size} targets and write their IE rels\n`);
+        console.info(`  [dry-run] would resolve-or-mint ${targetById.size} targets and write their IE rels\n`);
         continue;
       }
 
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
       });
       grandResolved += mintResult.resolved;
       grandMinted   += mintResult.minted;
-      console.log(`  Targets — resolved: ${mintResult.resolved}  minted: ${mintResult.minted}  failed: ${mintResult.failed}`);
+      console.info(`  Targets — resolved: ${mintResult.resolved}  minted: ${mintResult.minted}  failed: ${mintResult.failed}`);
       for (const [candId, officialId] of mintResult.candIdToOfficialId) index.byFecId.set(candId, officialId);
 
       // SCOPE: this backfill writes ONLY the previously-unmatched-target rows
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
         if (inputs.length > 0) {
           const r = await upsertPacEntitiesBatch(inputs, /* skipAggregateOverwrite */ true);
           for (const [cmteId, id] of r.entityIdByCmte.entries()) entityIdByCmte.set(cmteId, id);
-          console.log(`  IE spenders pre-upserted (for unmatched rows): ${r.upserted}${orphan ? ` (${orphan} orphan spe_id(s) missing from cm)` : ""}`);
+          console.info(`  IE spenders pre-upserted (for unmatched rows): ${r.upserted}${orphan ? ` (${orphan} orphan spe_id(s) missing from cm)` : ""}`);
         }
       }
 
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
       const w = await upsertIndependentExpendituresBatch(ieInputs);
       grandRels += w.upserted;
       grandCapturedCents += capturedCents;
-      console.log(
+      console.info(
         `  IE relationships upserted: ${w.upserted}  (captured ${usd(capturedCents)} of ${usd(droppedCents)} dropped` +
         (orphanSpenderCents > 0 ? `; ${usd(orphanSpenderCents)} left for the spender-gap follow-up` : "") + `)\n`,
       );
@@ -230,14 +230,14 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log("════════════ FIX-674 backfill summary ════════════");
-  console.log(`  targets resolved (existing): ${grandResolved}`);
-  console.log(`  targets minted (new candidate rows): ${grandMinted}`);
-  console.log(`  IE relationships upserted: ${grandRels}`);
-  console.log(`  dropped $ seen: ${usd(grandDroppedCents)}   newly-captured $: ${usd(grandCapturedCents)}`);
-  if (dryRun) console.log(`  (dry run — nothing written)`);
-  console.log(`\n  Next: the graph + IE-total materializations pick these up on their normal cron cadence`);
-  console.log(`  (entity_connections rebuild Sun/Wed; donor rollup + IE totals nightly).`);
+  console.info("════════════ FIX-674 backfill summary ════════════");
+  console.info(`  targets resolved (existing): ${grandResolved}`);
+  console.info(`  targets minted (new candidate rows): ${grandMinted}`);
+  console.info(`  IE relationships upserted: ${grandRels}`);
+  console.info(`  dropped $ seen: ${usd(grandDroppedCents)}   newly-captured $: ${usd(grandCapturedCents)}`);
+  if (dryRun) console.info(`  (dry run — nothing written)`);
+  console.info(`\n  Next: the graph + IE-total materializations pick these up on their normal cron cadence`);
+  console.info(`  (entity_connections rebuild Sun/Wed; donor rollup + IE totals nightly).`);
 }
 
 main().catch((e) => { console.error("fatal:", e instanceof Error ? e.stack : String(e)); process.exit(1); });

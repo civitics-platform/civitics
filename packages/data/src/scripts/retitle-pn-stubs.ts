@@ -100,12 +100,12 @@ async function main(): Promise<void> {
   const { apply, limit } = parseArgs();
   const supabaseUrl = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unknown)";
 
-  console.log("=================================================");
-  console.log("  FIX-164 — Re-title presidential-nomination stubs");
-  console.log(`  Mode:     ${apply ? "APPLY" : "DRY-RUN"}`);
-  console.log(`  DB:       ${supabaseUrl}`);
-  console.log(`  Limit:    ${limit ?? "no limit"}`);
-  console.log("=================================================\n");
+  console.info("=================================================");
+  console.info("  FIX-164 — Re-title presidential-nomination stubs");
+  console.info(`  Mode:     ${apply ? "APPLY" : "DRY-RUN"}`);
+  console.info(`  DB:       ${supabaseUrl}`);
+  console.info(`  Limit:    ${limit ?? "no limit"}`);
+  console.info("=================================================\n");
 
   const db = createAdminClient();
 
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   if (!rows || rows.length === 0) {
-    console.log("No PN stubs found. Nothing to do.");
+    console.info("No PN stubs found. Nothing to do.");
     return;
   }
 
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
     PN_BILL_NUMBER_REGEX.test(String(r.metadata?.["legacy_bill_number"] ?? ""))
   );
 
-  console.log(`Found ${filtered.length} PN stubs.`);
+  console.info(`Found ${filtered.length} PN stubs.`);
 
   // Resolve one source_url per stub via votes.bill_proposal_id. The naive
   // `.in("bill_proposal_id", stubIds)` shape would fan out to ~30k vote rows
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
       return true;
     });
 
-  console.log(`Resolvable stubs (have a Senate XML URL): ${stubs.length}\n`);
+  console.info(`Resolvable stubs (have a Senate XML URL): ${stubs.length}\n`);
 
   const targets = limit ? stubs.slice(0, limit) : stubs;
   let updated = 0;
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
     const correctedBillNumber = `PN ${fields.documentNumber}`;
 
     if (!apply) {
-      console.log(
+      console.info(
         `${tag}: would set type=appointment, title → ${newTitle.slice(0, 90)}${newTitle.length > 90 ? "…" : ""}`
       );
       updated += 1;
@@ -235,16 +235,16 @@ async function main(): Promise<void> {
       continue;
     }
 
-    console.log(`${tag}: → ${newTitle.slice(0, 90)}${newTitle.length > 90 ? "…" : ""}`);
+    console.info(`${tag}: → ${newTitle.slice(0, 90)}${newTitle.length > 90 ? "…" : ""}`);
     updated += 1;
   }
 
-  console.log("\n=================================================");
-  console.log(`  Updated:  ${updated}`);
-  console.log(`  Skipped:  ${skipped}`);
-  console.log(`  Failed:   ${failed}`);
-  console.log(`  Mode:     ${apply ? "APPLIED" : "DRY-RUN (no writes)"}`);
-  console.log("=================================================");
+  console.info("\n=================================================");
+  console.info(`  Updated:  ${updated}`);
+  console.info(`  Skipped:  ${skipped}`);
+  console.info(`  Failed:   ${failed}`);
+  console.info(`  Mode:     ${apply ? "APPLIED" : "DRY-RUN (no writes)"}`);
+  console.info("=================================================");
 }
 
 main().catch((err) => {

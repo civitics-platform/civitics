@@ -123,13 +123,13 @@ async function main(): Promise<void> {
   const nonCandCmtes = buildNonCandRecipientSet(cmLookup, cmteToCand);
   const keepTx       = parseKeepTxTypes();
 
-  console.log("─".repeat(78));
-  console.log("FIX-961 phase-0 — $200 per-transaction floor vs $200 aggregate floor (PR 3b)");
-  console.log("─".repeat(78));
-  console.log(`  indiv    : ${indivTxt} (${mb(fs.statSync(indivTxt).size)})`);
-  console.log(`  scope    : ${onlyCmte ?? "ALL recipients (ccl P/A ∪ non-cand committees)"}`);
-  console.log(`  tx types : [${[...keepTx].join(",")}]`);
-  console.log("");
+  console.info("─".repeat(78));
+  console.info("FIX-961 phase-0 — $200 per-transaction floor vs $200 aggregate floor (PR 3b)");
+  console.info("─".repeat(78));
+  console.info(`  indiv    : ${indivTxt} (${mb(fs.statSync(indivTxt).size)})`);
+  console.info(`  scope    : ${onlyCmte ?? "ALL recipients (ccl P/A ∪ non-cand committees)"}`);
+  console.info(`  tx types : [${[...keepTx].join(",")}]`);
+  console.info("");
 
   const sorter = new ExternalGroupSorter<Cell>({
     tempDir: work, name: "phase0", maxBufferEntries: 400_000, ...CODEC,
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     if (linesRead >= maxLines) { rl.close(); break; }
     linesRead++;
     if (linesRead % 2_000_000 === 0) {
-      console.log(`  ... ${linesRead.toLocaleString()} lines | ${kept.toLocaleString()} kept | rss ${mb(process.memoryUsage.rss())}`);
+      console.info(`  ... ${linesRead.toLocaleString()} lines | ${kept.toLocaleString()} kept | rss ${mb(process.memoryUsage.rss())}`);
     }
 
     const cols = line.split("|");
@@ -195,8 +195,8 @@ async function main(): Promise<void> {
     })) await sorter.spill();
   }
 
-  console.log(`  streamed ${linesRead.toLocaleString()} lines · ${matchedCmte.toLocaleString()} in scope · ${kept.toLocaleString()} kept (floor OFF) · ${skippedOrg.toLocaleString()} org-shaped dropped`);
-  console.log(`  merging ${sorter.stats.runsWritten} run(s)...`);
+  console.info(`  streamed ${linesRead.toLocaleString()} lines · ${matchedCmte.toLocaleString()} in scope · ${kept.toLocaleString()} kept (floor OFF) · ${skippedOrg.toLocaleString()} org-shaped dropped`);
+  console.info(`  merging ${sorter.stats.runsWritten} run(s)...`);
   const groups = await sorter.finalize();
 
   // ── classify every (donor × recipient) cell ─────────────────────────────
@@ -240,31 +240,31 @@ async function main(): Promise<void> {
   const frToday  = emitsToday.donors;
   const frAfter  = emitsToday.donors + newlyEmits.donors;
 
-  console.log("");
-  console.log("─".repeat(78));
-  console.log(`RESULT — ${onlyCmte ?? "all recipients"} (one row per financial_relationships row)`);
-  console.log("─".repeat(78));
-  console.log(`  FR rows emitted TODAY (≥1 tx ≥ $200)   ${frToday.toLocaleString().padStart(12)}   ${usd(emitsToday.cents).padStart(16)}`);
-  console.log(`    …their TRUE cycle aggregate                        ${"".padStart(0)}   ${usd(emitsTodayTrue).padStart(16)}`);
-  console.log(`    …understatement today                              ${"".padStart(0)}   ${usd(emitsTodayTrue - emitsToday.cents).padStart(16)}  (${pct(emitsTodayTrue - emitsToday.cents, emitsTodayTrue)} of their real total)`);
-  console.log(`    …FR rows whose amount is understated   ${understatedCells.toLocaleString().padStart(12)}   ${pct(understatedCells, frToday).padStart(16)} of them`);
-  console.log("");
-  console.log(`  NEW FR rows under PR 3b (agg ≥ $200,`);
-  console.log(`    no single tx ≥ $200)                 ${newlyEmits.donors.toLocaleString().padStart(12)}   ${usd(newlyEmits.cents).padStart(16)}`);
-  console.log(`    …their tx rows                       ${newlyEmits.rows.toLocaleString().padStart(12)}`);
-  console.log("");
-  console.log(`  RESIDUAL — agg < $200, bucketed        ${residual.donors.toLocaleString().padStart(12)}   ${usd(residual.cents).padStart(16)}`);
+  console.info("");
+  console.info("─".repeat(78));
+  console.info(`RESULT — ${onlyCmte ?? "all recipients"} (one row per financial_relationships row)`);
+  console.info("─".repeat(78));
+  console.info(`  FR rows emitted TODAY (≥1 tx ≥ $200)   ${frToday.toLocaleString().padStart(12)}   ${usd(emitsToday.cents).padStart(16)}`);
+  console.info(`    …their TRUE cycle aggregate                        ${"".padStart(0)}   ${usd(emitsTodayTrue).padStart(16)}`);
+  console.info(`    …understatement today                              ${"".padStart(0)}   ${usd(emitsTodayTrue - emitsToday.cents).padStart(16)}  (${pct(emitsTodayTrue - emitsToday.cents, emitsTodayTrue)} of their real total)`);
+  console.info(`    …FR rows whose amount is understated   ${understatedCells.toLocaleString().padStart(12)}   ${pct(understatedCells, frToday).padStart(16)} of them`);
+  console.info("");
+  console.info(`  NEW FR rows under PR 3b (agg ≥ $200,`);
+  console.info(`    no single tx ≥ $200)                 ${newlyEmits.donors.toLocaleString().padStart(12)}   ${usd(newlyEmits.cents).padStart(16)}`);
+  console.info(`    …their tx rows                       ${newlyEmits.rows.toLocaleString().padStart(12)}`);
+  console.info("");
+  console.info(`  RESIDUAL — agg < $200, bucketed        ${residual.donors.toLocaleString().padStart(12)}   ${usd(residual.cents).padStart(16)}`);
   for (let i = 0; i < BRACKETS.length; i++) {
     const b = residualBrackets[i]!;
-    console.log(`    ${BRACKETS[i]!.label.padEnd(36)} ${b.donors.toLocaleString().padStart(12)}   ${usd(b.cents).padStart(16)}`);
+    console.info(`    ${BRACKETS[i]!.label.padEnd(36)} ${b.donors.toLocaleString().padStart(12)}   ${usd(b.cents).padStart(16)}`);
   }
-  console.log("");
-  console.log(`  FR row growth        ${frToday.toLocaleString()} → ${frAfter.toLocaleString()}   (+${(frAfter - frToday).toLocaleString()}, +${pct(frAfter - frToday, frToday)})`);
-  console.log(`  dollars captured     ${usd(emitsToday.cents)} → ${usd(emitsTodayTrue + newlyEmits.cents)}   (+${pct(emitsTodayTrue + newlyEmits.cents - emitsToday.cents, emitsToday.cents)})`);
-  console.log(`  dollars still unemitted (bucketed)     ${usd(residual.cents)}  (${pct(residual.cents, allCents)} of in-file itemized dollars)`);
-  console.log("");
-  console.log(`  file date span (TRANSACTION_DT): ${minDt || "—"} … ${maxDt || "—"}`);
-  console.log(`  sort: ${sorter.stats.runsWritten} run(s), ${groups.groupCount.toLocaleString()} groups, peak disk ${mb(sorter.stats.peakDiskBytes)}, peak rss ${mb(process.memoryUsage.rss())}`);
+  console.info("");
+  console.info(`  FR row growth        ${frToday.toLocaleString()} → ${frAfter.toLocaleString()}   (+${(frAfter - frToday).toLocaleString()}, +${pct(frAfter - frToday, frToday)})`);
+  console.info(`  dollars captured     ${usd(emitsToday.cents)} → ${usd(emitsTodayTrue + newlyEmits.cents)}   (+${pct(emitsTodayTrue + newlyEmits.cents - emitsToday.cents, emitsToday.cents)})`);
+  console.info(`  dollars still unemitted (bucketed)     ${usd(residual.cents)}  (${pct(residual.cents, allCents)} of in-file itemized dollars)`);
+  console.info("");
+  console.info(`  file date span (TRANSACTION_DT): ${minDt || "—"} … ${maxDt || "—"}`);
+  console.info(`  sort: ${sorter.stats.runsWritten} run(s), ${groups.groupCount.toLocaleString()} groups, peak disk ${mb(sorter.stats.peakDiskBytes)}, peak rss ${mb(process.memoryUsage.rss())}`);
 
   if (arg("json")) {
     fs.writeFileSync(arg("json")!, JSON.stringify({
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
       frRows: { today: frToday, afterPr3b: frAfter },
       sort: sorter.stats,
     }, null, 2));
-    console.log(`  json → ${arg("json")}`);
+    console.info(`  json → ${arg("json")}`);
   }
 
   await groups.dispose();

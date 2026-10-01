@@ -48,14 +48,14 @@ async function main() {
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
-  console.log("FIX-238 backfill — rewriting individual canonical_name to natural FIRST-LAST form");
-  console.log(`  Target: ${process.env["NEXT_PUBLIC_SUPABASE_URL"]}`);
+  console.info("FIX-238 backfill — rewriting individual canonical_name to natural FIRST-LAST form");
+  console.info(`  Target: ${process.env["NEXT_PUBLIC_SUPABASE_URL"]}`);
 
   const totalRes = await client.query<{ c: string }>(
     "SELECT count(*)::text AS c FROM public.financial_entities WHERE entity_type = 'individual'",
   );
   const total = Number(totalRes.rows[0]?.c ?? 0);
-  console.log(`  ${total.toLocaleString()} individuals to scan`);
+  console.info(`  ${total.toLocaleString()} individuals to scan`);
 
   let cursor: string | null = null;
   let scanned   = 0;
@@ -122,7 +122,7 @@ async function main() {
     const dtSec = (Date.now() - t0) / 1000;
     const rate  = scanned / Math.max(1, dtSec);
     const eta   = total ? Math.round((total - scanned) / Math.max(1, rate)) : null;
-    console.log(
+    console.info(
       `  scanned ${scanned.toLocaleString()} ` +
       `(updated ${updated.toLocaleString()}, unchanged ${unchanged.toLocaleString()}, failed ${failed}) ` +
       `${rate.toFixed(0)} rows/s${eta !== null ? ` eta ${eta}s` : ""}`,
@@ -134,8 +134,8 @@ async function main() {
   await client.end();
 
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log("");
-  console.log(`Done in ${dt}s — updated ${updated.toLocaleString()}, unchanged ${unchanged.toLocaleString()}, failed ${failed}`);
+  console.info("");
+  console.info(`Done in ${dt}s — updated ${updated.toLocaleString()}, unchanged ${unchanged.toLocaleString()}, failed ${failed}`);
   process.exit(failed > 0 ? 1 : 0);
 }
 

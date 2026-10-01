@@ -107,10 +107,10 @@ async function main(): Promise<void> {
   await client.connect();
   const host = new URL(cleanUrl).host;
   const isLocal = /127\.0\.0\.1|localhost/.test(host);
-  console.log(`Connected to: ${host} (${isLocal ? "local" : "prod"})\n`);
+  console.info(`Connected to: ${host} (${isLocal ? "local" : "prod"})\n`);
 
   // ─── Pass A — schema enumeration ────────────────────────────────────────
-  console.log("=== Pass A — schema enumeration ===");
+  console.info("=== Pass A — schema enumeration ===");
   const polyCols = await client.query<ColumnRow>(
     `SELECT table_name, column_name, data_type, udt_name, is_nullable
        FROM information_schema.columns
@@ -207,18 +207,18 @@ async function main(): Promise<void> {
     });
   }
 
-  console.log(`Found ${surface.length} polymorphic ref columns.`);
+  console.info(`Found ${surface.length} polymorphic ref columns.`);
   for (const s of surface) {
     const discBit = s.discriminatorColumn
       ? `${s.discriminatorColumn}:${s.discriminatorType}${s.discriminatorIsEnum ? ` ENUM(${(s.enumValues ?? []).join("|")})` : s.discriminatorConstraint ? " CHECK" : " no-constraint"}`
       : "no-discriminator";
-    console.log(
+    console.info(
       `  ${s.table}.${s.refColumn} (${s.refType}${s.refNullable ? " NULL" : ""})  →  ${discBit}`,
     );
   }
 
   // ─── Pass B — data enumeration ─────────────────────────────────────────
-  console.log("\n=== Pass B — data enumeration ===");
+  console.info("\n=== Pass B — data enumeration ===");
   interface PassBResult {
     table: string;
     discriminatorColumn: string;
@@ -267,13 +267,13 @@ async function main(): Promise<void> {
       .slice(0, 6)
       .map((r) => `${r.discriminator ?? "<null>"}:${Number(r.n).toLocaleString()}`)
       .join("  ");
-    console.log(
+    console.info(
       `  ${s.table}.${s.discriminatorColumn} (${dist.rows.length} values)  FE_rows=${feCount.toLocaleString()}  ${summary}`,
     );
   }
 
   // ─── Pass C — orphan check ─────────────────────────────────────────────
-  console.log("\n=== Pass C — orphan check on FE-bearing tables ===");
+  console.info("\n=== Pass C — orphan check on FE-bearing tables ===");
   interface PassCResult {
     table: string;
     discriminatorColumn: string;
@@ -324,7 +324,7 @@ async function main(): Promise<void> {
       totalFERefs: total,
       orphans,
     });
-    console.log(
+    console.info(
       `  ${p.table}: ${total.toLocaleString()} FE refs, ${orphans.toLocaleString()} orphans`,
     );
   }
@@ -340,10 +340,10 @@ async function main(): Promise<void> {
     passC.filter((r) => r.orphans > 0).map((r) => r.table),
   ).size;
 
-  console.log(`\nReal FE-ref-bearing tables: ${realFETables.length}`);
-  console.log(`Schema-vs-data mismatches: ${mismatches.length}`);
-  console.log(`Orphans: ${totalOrphans.toLocaleString()} across ${tablesWithOrphans} tables`);
-  console.log(`Audit wall time: ${(elapsedMs / 1000).toFixed(1)}s`);
+  console.info(`\nReal FE-ref-bearing tables: ${realFETables.length}`);
+  console.info(`Schema-vs-data mismatches: ${mismatches.length}`);
+  console.info(`Orphans: ${totalOrphans.toLocaleString()} across ${tablesWithOrphans} tables`);
+  console.info(`Audit wall time: ${(elapsedMs / 1000).toFixed(1)}s`);
 
   const today = new Date().toISOString().slice(0, 10);
   const suffix = isLocal ? "-local" : "-prod";
@@ -437,7 +437,7 @@ async function main(): Promise<void> {
   md += `**Unconstrained TEXT discriminators** (Pass A "none (free TEXT)") are drift risk — they don't fail loudly at INSERT time. Worth a constraint-tightening FIX if any such column carries FE refs that need protecting.\n`;
 
   fs.writeFileSync(outPath, md);
-  console.log(`\nWrote audit report: ${outPath}`);
+  console.info(`\nWrote audit report: ${outPath}`);
 
   await client.end();
 }

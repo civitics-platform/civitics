@@ -28,23 +28,23 @@ async function main(): Promise<void> {
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();
-  console.log(`Connected to: ${new URL(cleanUrl).host}\n`);
+  console.info(`Connected to: ${new URL(cleanUrl).host}\n`);
 
-  console.log("=== indexes on financial_relationships ===");
+  console.info("=== indexes on financial_relationships ===");
   const idx = await client.query(
     `SELECT indexname, indexdef FROM pg_indexes
       WHERE schemaname='public' AND tablename='financial_relationships'
       ORDER BY indexname`,
   );
-  for (const r of idx.rows) console.log(`  ${r.indexname}: ${r.indexdef}`);
+  for (const r of idx.rows) console.info(`  ${r.indexname}: ${r.indexdef}`);
 
   const explain = async (label: string, sql: string): Promise<void> => {
-    console.log(`\n=== ${label} ===`);
+    console.info(`\n=== ${label} ===`);
     const start = Date.now();
     const res = await client.query(`EXPLAIN (ANALYZE, BUFFERS) ${sql}`);
     const wall = Date.now() - start;
-    console.log(`-- wall-clock: ${wall} ms --`);
-    for (const r of res.rows) console.log(r["QUERY PLAN"]);
+    console.info(`-- wall-clock: ${wall} ms --`);
+    for (const r of res.rows) console.info(r["QUERY PLAN"]);
   };
 
   await explain(
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   );
 
   await client.end();
-  console.log("\nDone.");
+  console.info("\nDone.");
 }
 
 main().catch((err) => {

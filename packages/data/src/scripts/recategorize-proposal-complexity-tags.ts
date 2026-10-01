@@ -61,16 +61,16 @@ function isProd(): boolean {
 type PgResult = { command: string; rowCount: number | null; rows: Array<Record<string, unknown>> };
 
 function printRows(label: string, rows: Array<Record<string, unknown>>): void {
-  console.log(`\n  ${label}`);
+  console.info(`\n  ${label}`);
   if (rows.length === 0) {
-    console.log("    (none)");
+    console.info("    (none)");
     return;
   }
   for (const r of rows) {
     const parts = Object.entries(r)
       .filter(([k]) => k !== "phase")
       .map(([k, v]) => `${k}=${String(v)}`);
-    console.log(`    ${parts.join("  ")}`);
+    console.info(`    ${parts.join("  ")}`);
   }
 }
 
@@ -87,11 +87,11 @@ async function main(): Promise<void> {
   const sqlPath = join(__dirname, "sql", "recategorize-proposal-complexity-tags.sql");
   const sql = readFileSync(sqlPath, "utf8");
 
-  console.log(`# FIX-889 + FIX-891 — proposal tag_category drift repair`);
-  console.log(`Env:        ${prod ? "PROD (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
-  console.log(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY RUN (ROLLBACK — writes nothing)"}`);
-  console.log(`SQL:        ${sqlPath}`);
+  console.info(`# FIX-889 + FIX-891 — proposal tag_category drift repair`);
+  console.info(`Env:        ${prod ? "PROD (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
+  console.info(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY RUN (ROLLBACK — writes nothing)"}`);
+  console.info(`SQL:        ${sqlPath}`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -115,22 +115,22 @@ async function main(): Promise<void> {
     const afterModel = selects[3]?.rows ?? [];
     const residual = selects[4]?.rows ?? [];
 
-    console.log(`\n── FIX-889 · complexity tags (technical/accessible) by category ──`);
+    console.info(`\n── FIX-889 · complexity tags (technical/accessible) by category ──`);
     printRows("before:", beforeCategory);
     printRows("after: ", afterCategory);
-    console.log(`\n  rows re-categorized topic -> quality: ${updates[0]?.rowCount ?? 0}`);
+    console.info(`\n  rows re-categorized topic -> quality: ${updates[0]?.rowCount ?? 0}`);
 
-    console.log(`\n── FIX-891 · ai_model on AI proposal tag rows ──`);
+    console.info(`\n── FIX-891 · ai_model on AI proposal tag rows ──`);
     printRows("before:", beforeModel);
     printRows("after: ", afterModel);
-    console.log(
+    console.info(
       `\n  rows normalized claude-haiku-4-5 -> claude-haiku-4-5-20251001: ${updates[1]?.rowCount ?? 0}`,
     );
 
-    console.log(`\n── Residual out-of-vocabulary proposal topic tags ──`);
+    console.info(`\n── Residual out-of-vocabulary proposal topic tags ──`);
     printRows("remaining:", residual);
     if (residual.length > 0) {
-      console.log(
+      console.info(
         `\n  NOTE: these await a per-tag disposition decision (FIX-889 design\n` +
           `  decision 5). They are NOT touched by this script — no rows are\n` +
           `  deleted anywhere in this repair.`,
@@ -140,10 +140,10 @@ async function main(): Promise<void> {
     if (apply) {
       await client.query("COMMIT");
       committed = true;
-      console.log(`\n✓ COMMITTED to ${prod ? "PROD" : "local"}.`);
+      console.info(`\n✓ COMMITTED to ${prod ? "PROD" : "local"}.`);
     } else {
       await client.query("ROLLBACK");
-      console.log(`\n✓ ROLLED BACK — nothing was written. Re-run with --apply to commit.`);
+      console.info(`\n✓ ROLLED BACK — nothing was written. Re-run with --apply to commit.`);
     }
   } catch (err) {
     if (!committed) {

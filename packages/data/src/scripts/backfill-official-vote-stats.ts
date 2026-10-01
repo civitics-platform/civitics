@@ -27,8 +27,8 @@ import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`[backfill-vote-stats] target: ${url}`);
-  console.log(
+  console.info(`[backfill-vote-stats] target: ${url}`);
+  console.info(
     `[backfill-vote-stats] CALL rebuild_official_vote_stats() ` +
       `(single-txn full rebuild of the votes summary; ~2min on prod) ...`,
   );
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     "SELECT count(*)::text AS n FROM public.official_vote_stats",
   );
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(
+  console.info(
     `[backfill-vote-stats] ✓ ${Number(rows[0]?.n ?? 0).toLocaleString()} official rows in ${dur}s`,
   );
 }

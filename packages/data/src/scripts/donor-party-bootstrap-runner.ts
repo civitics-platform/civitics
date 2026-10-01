@@ -1399,7 +1399,7 @@ const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log(fs.readFileSync(__filename, "utf8").split("*/")[0]!.replace(/^\/\*\*|^ \* ?/gm, ""));
+    console.info(fs.readFileSync(__filename, "utf8").split("*/")[0]!.replace(/^\/\*\*|^ \* ?/gm, ""));
     return 0;
   }
   const parsed = parseRunnerArgs(argv);
@@ -1408,7 +1408,7 @@ async function main(): Promise<number> {
 
   const dbUrl = buildDbUrl();
   const target: "prod" | "local" = /127\.0\.0\.1|localhost/.test(dbUrl) ? "local" : "prod";
-  const log = (l: string) => console.log(`${new Date().toISOString().slice(11, 19)}Z ${l}`);
+  const log = (l: string) => console.info(`${new Date().toISOString().slice(11, 19)}Z ${l}`);
   const launchedAt = new Date().toISOString();
   const paths = receiptPaths(target, launchedAt, args.receiptTag);
 

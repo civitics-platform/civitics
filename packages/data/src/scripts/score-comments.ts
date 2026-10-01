@@ -53,9 +53,9 @@ export async function scoreComments(): Promise<ScoreCommentsResult> {
 
 // ─── CLI entry ────────────────────────────────────────────────────────────────
 async function main() {
-  console.log("[score-comments] recomputing comment bridge scores (full sweep)…");
+  console.info("[score-comments] recomputing comment bridge scores (full sweep)…");
   const { scored, ran_at } = await scoreComments();
-  console.log(`[score-comments] done — ${scored} comment(s) scored; watermark @ ${ran_at}`);
+  console.info(`[score-comments] done — ${scored} comment(s) scored; watermark @ ${ran_at}`);
 }
 
 // Run only when invoked directly (not when imported by the orchestrator).

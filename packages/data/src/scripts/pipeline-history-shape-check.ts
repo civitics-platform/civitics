@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     console.error("ERROR: no DB URL constructible from env");
     process.exit(2);
   }
-  console.log(`Connected env target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+  console.info(`Connected env target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -82,14 +82,14 @@ async function main(): Promise<void> {
     }
 
     const keys = Object.keys(history).sort();
-    console.log(`\nFetched ${rows.length} rows; bucketed into ${keys.length} pipelines.`);
-    console.log("\nPer-pipeline trimmed history (newest first per pipeline):");
+    console.info(`\nFetched ${rows.length} rows; bucketed into ${keys.length} pipelines.`);
+    console.info("\nPer-pipeline trimmed history (newest first per pipeline):");
     for (const k of keys) {
       const latest = history[k][0];
       const ageH = latest?.completed_at
         ? Math.round((Date.now() - new Date(latest.completed_at).getTime()) / 3_600_000)
         : null;
-      console.log(
+      console.info(
         `  ${k.padEnd(38)} runs=${history[k].length}  latest=${latest?.completed_at ?? "(none)"}  age=${ageH ?? "?"}h  status=${latest?.status ?? "?"}`,
       );
     }
@@ -97,11 +97,11 @@ async function main(): Promise<void> {
     // Specifically check the pipelines the FIX-381 prompt cited.
     const tiger = history["tiger_districts"];
     const bulkPeople = history["openstates_bulk_people"];
-    console.log("\nFocused checks:");
-    console.log(
+    console.info("\nFocused checks:");
+    console.info(
       `  tiger_districts present in history: ${tiger ? "YES" : "NO"} (${tiger?.length ?? 0} runs in window)`,
     );
-    console.log(
+    console.info(
       `  openstates_bulk_people present:     ${bulkPeople ? "YES" : "NO"} (${bulkPeople?.length ?? 0} runs in window)`,
     );
   } finally {

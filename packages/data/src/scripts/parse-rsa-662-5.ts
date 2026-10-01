@@ -47,13 +47,13 @@ if (require.main === module) {
       console.error("nh-house-districts-2022.json is stale — re-run without --check");
       process.exit(1);
     }
-    console.log("nh-house-districts-2022.json is current");
+    console.info("nh-house-districts-2022.json is current");
   } else {
     fs.writeFileSync(JSON_PATH, next);
     const t = JSON.parse(next) as NhHouseDistricts;
     const flot = t.districts.filter((d) => d.floterial);
-    console.log(`wrote ${path.relative(process.cwd(), JSON_PATH)}`);
-    console.log(`  districts ${t.districts.length} · floterial ${flot.length}` +
+    console.info(`wrote ${path.relative(process.cwd(), JSON_PATH)}`);
+    console.info(`  districts ${t.districts.length} · floterial ${flot.length}` +
       ` · seats ${t.districts.reduce((n, d) => n + d.seats, 0)}` +
       ` (floterial ${flot.reduce((n, d) => n + d.seats, 0)})`);
   }

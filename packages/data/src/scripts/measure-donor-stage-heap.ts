@@ -67,13 +67,13 @@ function heapMb(): number {
 }
 
 function line(label: string, mb: number): void {
-  console.log(`  ${label.padEnd(52)} ${mb.toFixed(1).padStart(8)} MB`);
+  console.info(`  ${label.padEnd(52)} ${mb.toFixed(1).padStart(8)} MB`);
 }
 
 function delta(label: string, before: number, after: number): void {
   const d = after - before;
   const pct = before > 0 ? ` (${((d / before) * 100).toFixed(1)}%)` : "";
-  console.log(`  ${label.padEnd(52)} ${d >= 0 ? "+" : ""}${d.toFixed(1).padStart(7)} MB${pct}`);
+  console.info(`  ${label.padEnd(52)} ${d >= 0 ? "+" : ""}${d.toFixed(1).padStart(7)} MB${pct}`);
 }
 
 /** Realistic field widths, sampled from the FEC indiv format. */
@@ -100,7 +100,7 @@ function fakeUuid(i: number): string {
 async function main(): Promise<void> {
   gc();
   const baseline = heapMb();
-  console.log(`\nFIX-995 donor-stage heap measurement — N = ${N.toLocaleString()} donors\n`);
+  console.info(`\nFIX-995 donor-stage heap measurement — N = ${N.toLocaleString()} donors\n`);
   line("baseline (empty process)", baseline);
 
   // ── Build the population once. This is the FLOOR: donorInputs itself is not
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
   delta("  cost of donorInputs", baseline, afterInputs);
 
   // ── A. dedupe: clone (OLD) vs by-reference (NEW) ─────────────────────────
-  console.log("\nA. writer dedupe map");
+  console.info("\nA. writer dedupe map");
   {
     // OLD: merged.set(input.fingerprint, { ...input })
     const oldMerged = new Map<string, IndividualDonorInput>();
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
   gc();
 
   // ── B. RETURNING rows: accumulate (OLD) vs per-chunk fold (NEW) ──────────
-  console.log("\nB. RETURNING rows from the financial_entities upsert");
+  console.info("\nB. RETURNING rows from the financial_entities upsert");
   const beforeB = heapMb();
   {
     // OLD: bulkUpsert pushed every chunk's rows into `returned`, then writer.ts
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   gc();
 
   // ── C. donorMetas retention ─────────────────────────────────────────────
-  console.log("\nC. indivResult.donorMetas + cycleDonorTotals retention");
+  console.info("\nC. indivResult.donorMetas + cycleDonorTotals retention");
   const beforeC = heapMb();
   {
     // Shape of streamIndiv's donorMetas map and the per-cycle totals map, both
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   }
 
   keepAlive(inputs);
-  console.log(
+  console.info(
     "\nReading these numbers:\n" +
       "  - Strings are SHARED by reference between donorInputs and every structure above,\n" +
       "    so the deltas are object headers, property slots and Map entries — not duplicated text.\n" +

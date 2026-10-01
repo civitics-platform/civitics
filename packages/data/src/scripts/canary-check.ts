@@ -1713,7 +1713,7 @@ async function main(): Promise<number> {
   // FIX-977 — the watch list is derived from the schedule, not hand-listed.
   // FIX-1011 — and from every pipeline in data_sync_log, not just pg_cron's.
   const { watches: registry, orphans } = await fetchRollupRegistry();
-  console.log(
+  console.info(
     `[canary-check] rollup registry: ${registry.length} pipeline(s) ` +
       `(was a hand-maintained literal of ${FALLBACK_ROLLUP_PIPELINES.length}); ` +
       `${orphans.length} orphaned, ` +
@@ -1735,31 +1735,31 @@ async function main(): Promise<number> {
   // Complementary to the fec_bulk entry in the registry above, not a copy of it
   // — see fetchFecDropStatus for why the registry cannot answer this.
   const fecDrop = await fetchFecDropStatus(now);
-  console.log(
+  console.info(
     `[canary-check] fec drop: ${fecDrop ? `${fecDrop.state} — ${fecDrop.detail}` : "unknown (read failed)"}`,
   );
   // FIX-950 — read BEFORE the findings are assembled so a held session is
   // visible in the log next to everything it is the explanation for.
   const prodSessionRead = await fetchProdSessionStatus();
   const prodSession = prodSessionRead.value;
-  console.log(
+  console.info(
     `[canary-check] prod session: ${
       prodSession ? `${prodSession.state} — ${prodSession.detail}` : "unknown (read failed)"
     }`,
   );
   // FIX-1218 — the dispatcher's stamps, refused or stale.
   const ghaDispatch = await fetchGhaDispatch(now);
-  console.log(
+  console.info(
     `[canary-check] gha dispatch: ${
       ghaDispatch ? `${ghaDispatch.refused.detail}; ${ghaDispatch.stale.detail}` : "unknown (read failed)"
     }`,
   );
   // FIX-1219 — is the front-door watch's Logs corroborator seeing anything?
   const frontDoor = await fetchFrontDoorWatch(now);
-  console.log(`[canary-check] front-door watch: ${frontDoor ? frontDoor.detail : "unknown (read failed)"}`);
+  console.info(`[canary-check] front-door watch: ${frontDoor ? frontDoor.detail : "unknown (read failed)"}`);
   const holdStaleRead = await fetchHoldStale();
   const holdStale = holdStaleRead.value;
-  console.log(
+  console.info(
     `[canary-check] session holds: ${holdStale ? holdStale.detail : "unknown (read failed)"}`,
   );
   // FIX-1224 — both reads above ride one DSN; a run where either read nothing
@@ -1770,7 +1770,7 @@ async function main(): Promise<number> {
   ]);
   // FIX-1194 P1-B / FIX-1125 — the probe and the memory mirror, alive or not.
   const boxHealth = await fetchBoxHealth(now);
-  console.log(
+  console.info(
     `[canary-check] box health: ${boxHealth ? `${boxHealth.probe.detail}; ${boxHealth.mem.detail}` : "unknown (read failed)"}`,
   );
   // FIX-968 — did every scheduled pg_cron job actually START? The only detector
@@ -2009,13 +2009,13 @@ async function main(): Promise<number> {
         failures.push(alertError);
       }
     } else {
-      console.log(
+      console.info(
         `[canary-check] local run — would have sent [${decision.tier}]; ` +
           `skipping Resend send, pass --send-real to actually email`,
       );
     }
   } else if (!decision.send) {
-    console.log("[canary-check] no transition since the last run — no email (the red X still stands if escalating)");
+    console.info("[canary-check] no transition since the last run — no email (the red X still stands if escalating)");
   }
 
   // -------------------------------------------------------------------------
@@ -2034,7 +2034,7 @@ async function main(): Promise<number> {
   // REPORT-ONLY, kept greppable in the workflow log so a slipping job is
   // visible before it becomes an escalation.
   if (reportOnly.length > 0) {
-    console.log(`[canary-check] report-only (${reportOnly.length}): ${reportOnly.join("; ")}`);
+    console.info(`[canary-check] report-only (${reportOnly.length}): ${reportOnly.join("; ")}`);
   }
   {
     // FIX-1135 — pipelines that have never closed a cycle in the lookback are
@@ -2042,11 +2042,11 @@ async function main(): Promise<number> {
     // "stale": hours-since-complete is undefined for them.
     const noClosure = rollups.filter((r) => !r.hasClosures).map((r) => r.pipeline);
     if (noClosure.length > 0) {
-      console.log(`[canary-check] no cycle closure in the lookback (not a finding): ${noClosure.join(", ")}`);
+      console.info(`[canary-check] no cycle closure in the lookback (not a finding): ${noClosure.join(", ")}`);
     }
     const declared = rollups.filter((r) => r.retired || r.held);
     if (declared.length > 0) {
-      console.log(
+      console.info(
         `[canary-check] declared in rollup_watch_overrides (listed, never alerted): ` +
           declared.map((r) => `${r.pipeline}=${r.retired ? "retired" : "held"}`).join(", "),
       );
@@ -2054,13 +2054,13 @@ async function main(): Promise<number> {
   }
   const rateWatch = (rateHealth?.pipelines ?? []).filter((p) => p.verdict === "intermittent");
   if (rateWatch.length > 0) {
-    console.log(
+    console.info(
       `[canary-check] intermittent rate outliers (report-only, not a trend): ` +
         `${rateWatch.map(describeRate).join("; ")}`,
     );
   }
 
-  console.log(
+  console.info(
     JSON.stringify({
       checked_days:        CHECK_DAYS,
       missing_dates:       missing,

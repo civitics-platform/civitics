@@ -43,7 +43,7 @@ let failures = 0;
 
 function assert(cond: boolean, label: string, detail?: string): void {
   if (cond) {
-    console.log(`  PASS  ${label}`);
+    console.info(`  PASS  ${label}`);
   } else {
     failures++;
     console.error(`  FAIL  ${label}${detail ? ` — ${detail}` : ""}`);
@@ -111,16 +111,16 @@ async function main(): Promise<void> {
 
   try {
     // ── Proof A: no-op — identical content → identical signature, zero work ──
-    console.log("\n=== Proof A — no-op (run the tagger's donor phase twice, no tag change) ===");
+    console.info("\n=== Proof A — no-op (run the tagger's donor phase twice, no tag change) ===");
     await tagFinancialEntities(db);
     await callHeavyProcedure("refresh_sector_affinity_from_tag_changes");
     const a1 = await lastRefreshRow(pg);
-    console.log(`  run 1: path=${a1.path} sig=${a1.sig}`);
+    console.info(`  run 1: path=${a1.path} sig=${a1.sig}`);
 
     await tagFinancialEntities(db);
     await callHeavyProcedure("refresh_sector_affinity_from_tag_changes");
     const a2 = await lastRefreshRow(pg);
-    console.log(`  run 2: path=${a2.path} sig=${a2.sig}`);
+    console.info(`  run 2: path=${a2.path} sig=${a2.sig}`);
 
     assert(a2.path === "noop", "A: second run is a no-op", `path=${a2.path}`);
     assert(a2.sig !== null && a2.sig === a1.sig, "A: signatures identical across runs",
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
       official_id: string; old_industry: string; total_cents: string; rank: string;
       donor_id: string; fec_committee_id: string; display_name: string; new_industry: string;
     };
-    console.log(
+    console.info(
       `\n=== Proofs B+C — targeted + single-run lag ===\n` +
         `  probe donor:    ${p.display_name} [${p.fec_committee_id}] (${p.old_industry} → ${p.new_industry})\n` +
         `  probe official: ${p.official_id} (sector at rank ${p.rank}, ${p.total_cents} cents, sole donor)`,
@@ -205,7 +205,7 @@ async function main(): Promise<void> {
       [p.donor_id],
     );
     const expectedN = (expectedOfficials.rows[0] as { n: number }).n;
-    console.log(`  expected officials to rebuild: ${expectedN} (this donor's distinct recipients)`);
+    console.info(`  expected officials to rebuild: ${expectedN} (this donor's distinct recipients)`);
 
     await pg.query(
       `INSERT INTO public.financial_entity_industry_overrides
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
     await conservation(pg);
 
     // ── Restore ──────────────────────────────────────────────────────────────
-    console.log("\n=== Restore — remove the probe override, one more pass ===");
+    console.info("\n=== Restore — remove the probe override, one more pass ===");
     await pg.query(
       `DELETE FROM public.financial_entity_industry_overrides WHERE source = $1`,
       [PROBE_SOURCE],
@@ -271,7 +271,7 @@ async function main(): Promise<void> {
     await conservation(pg);
 
     // ── Proof D: the alarm ───────────────────────────────────────────────────
-    console.log("\n=== Proof D — staleness alarm ===");
+    console.info("\n=== Proof D — staleness alarm ===");
     const d0 = await pg.query(`SELECT public.check_sector_affinity_tag_staleness() AS r`);
     const d0r = d0.rows[0].r as { stale: boolean; state: string };
     assert(d0r.state === "match" && d0r.stale === false, "D: quiet on a no-op night",
@@ -319,7 +319,7 @@ async function main(): Promise<void> {
     assert((probeGone.rows[0] as { n: number }).n === 0, "D: probe cleared on match");
 
     // ── FIX-923 — the tightened FIX-909 tolerance, re-runnable form ──────────
-    console.log("\n=== FIX-923 — zero out-of-vocabulary (tightened FIX-909 tolerance) ===");
+    console.info("\n=== FIX-923 — zero out-of-vocabulary (tightened FIX-909 tolerance) ===");
     const oov = await pg.query(
       `SELECT count(*) FILTER (WHERE tag = 'other')::int AS other_rows,
               count(*)::int AS oov_rows
@@ -346,9 +346,9 @@ async function main(): Promise<void> {
       JSON.stringify(hrpac.rows),
     );
 
-    console.log(`\n=== ${failures === 0 ? "ALL PROOFS PASS" : `${failures} FAILURE(S)`} ===`);
-    console.log(`  signature (steady state): ${a2.sig}`);
-    console.log(`  targeted rebuild size:    ${b.officials_affected} official(s) (expected ${expectedN})`);
+    console.info(`\n=== ${failures === 0 ? "ALL PROOFS PASS" : `${failures} FAILURE(S)`} ===`);
+    console.info(`  signature (steady state): ${a2.sig}`);
+    console.info(`  targeted rebuild size:    ${b.officials_affected} official(s) (expected ${expectedN})`);
   } finally {
     // Never leave the probe override behind, even on a failed run.
     await pg.query(

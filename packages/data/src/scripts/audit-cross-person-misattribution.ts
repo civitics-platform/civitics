@@ -140,8 +140,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const env = envLabel();
-  console.log(`# FIX-934 phase 1 — CROSS-PERSON misattribution manifest (${env})`);
-  console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}\n`);
+  console.info(`# FIX-934 phase 1 — CROSS-PERSON misattribution manifest (${env})`);
+  console.info(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}\n`);
 
   // 30 min. The decomposition scans every same-surname owner's donation rows;
   // on local Docker (256MB shared_buffers, no parallel workers) that is the
@@ -152,14 +152,14 @@ async function main(): Promise<void> {
 
   // ── Re-derive the classification live ─────────────────────────────────────
   // The FIX-930 TSV is the investigation record, not the input.
-  console.log("Re-deriving the FIX-930 classification live…");
+  console.info("Re-deriving the FIX-930 classification live…");
   const suspects = (await client.query<SuspectRow>(SUSPECT_SQL)).rows;
   const { boundary, classified } = classify(suspects);
-  console.log(
+  console.info(
     `  suspects: ${classified.length}   boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`,
   );
   for (const b of BRANCHES) {
-    console.log(`  ${b.padEnd(28)} ${String(classified.filter((e) => e.branch === b).length).padStart(4)}`);
+    console.info(`  ${b.padEnd(28)} ${String(classified.filter((e) => e.branch === b).length).padStart(4)}`);
   }
 
   const cross = classified.filter((e) => e.branch === "CROSS-PERSON MISATTRIBUTION");
@@ -172,11 +172,11 @@ async function main(): Promise<void> {
     return true;
   });
 
-  console.log(`\nCROSS-PERSON branch: ${cross.length} suspects, ${kept.length} after by-name exclusions`);
-  for (const d of dropped) console.log(`  EXCLUDED ${d.name.padEnd(32)} ${d.reason}`);
+  console.info(`\nCROSS-PERSON branch: ${cross.length} suspects, ${kept.length} after by-name exclusions`);
+  for (const d of dropped) console.info(`  EXCLUDED ${d.name.padEnd(32)} ${d.reason}`);
 
   if (kept.length === 0) {
-    console.log("\nNothing in the branch. Done.");
+    console.info("\nNothing in the branch. Done.");
     await client.end();
     return;
   }
@@ -185,7 +185,7 @@ async function main(): Promise<void> {
   await client.query(`DROP TABLE IF EXISTS _xp; CREATE TEMP TABLE _xp (suspect_id uuid PRIMARY KEY);`);
   for (const e of kept) await client.query(`INSERT INTO _xp VALUES ($1::uuid)`, [e.official_id]);
 
-  console.log("\nDecomposing holdings row-by-row against every same-surname FEC-bound official…");
+  console.info("\nDecomposing holdings row-by-row against every same-surname FEC-bound official…");
   await client.query(OWNER_SQL);
 
   // Classify each (suspect, owner) pair SAME vs CROSS before touching the money.
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
       relation,
     ]);
   }
-  console.log(
+  console.info(
     `  ${allOwners.length} (suspect, owner) pairs — ${sameOwners} SAME-person, ` +
       `${allOwners.length - sameOwners} CROSS-person`,
   );
@@ -241,7 +241,7 @@ async function main(): Promise<void> {
   // unique index adjudicate. This is the check on the analytic split: if the
   // predicted collision set were wrong, this UPDATE raises 23505 instead of
   // reporting a count. Rolled back unconditionally.
-  console.log("Running the BEGIN … ROLLBACK trial move (nothing is committed)…");
+  console.info("Running the BEGIN … ROLLBACK trial move (nothing is committed)…");
   const trial = new Map<string, { moved: number; collided: number }>();
   await client.query("BEGIN");
   try {
@@ -298,18 +298,18 @@ async function main(): Promise<void> {
     counts[k]!.cents += BigInt(m.split.total_cents);
   }
 
-  console.log("\n── Verdict split ────────────────────────────────────────");
+  console.info("\n── Verdict split ────────────────────────────────────────");
   for (const [k, v] of Object.entries(counts)) {
-    console.log(`  ${k.padEnd(12)} ${String(v.n).padStart(4)}   ${usd(v.cents.toString())}`);
+    console.info(`  ${k.padEnd(12)} ${String(v.n).padStart(4)}   ${usd(v.cents.toString())}`);
   }
 
-  console.log("\n── Manifest ─────────────────────────────────────────────");
-  console.log(
+  console.info("\n── Manifest ─────────────────────────────────────────────");
+  console.info(
     `  ${"official".padEnd(24)}${"role".padEnd(16)}${"verdict".padEnd(12)}${"total".padStart(14)}` +
       `${"own (keep)".padStart(14)}${"cross (del)".padStart(14)}${"diverted".padStart(14)}`,
   );
   for (const m of manifest) {
-    console.log(
+    console.info(
       `  ${(m.row.full_name ?? "").slice(0, 23).padEnd(24)}` +
         `${(m.row.role_title ?? "").slice(0, 15).padEnd(16)}${m.verdict.padEnd(12)}` +
         `${usd(m.split.total_cents).padStart(14)}${usd(m.split.same_cents).padStart(14)}` +
@@ -323,22 +323,22 @@ async function main(): Promise<void> {
   // raises 23505 instead of returning a count. It is expected to move FEWER rows
   // than `div_rows` where a suspect's money splits across several owners — the
   // trial targets one owner, the analysis considers all of them.
-  console.log("\n  Trial move (best owner only) vs analytic split:");
+  console.info("\n  Trial move (best owner only) vs analytic split:");
   for (const m of manifest.slice(0, 8)) {
-    console.log(
+    console.info(
       `    ${(m.row.full_name ?? "").slice(0, 22).padEnd(23)} moved ${String(m.trialMoved).padStart(6)}  ` +
         `collided ${String(m.trialCollided).padStart(6)}  (${pct(
           Number(m.split.total_rows) > 0 ? m.trialCollided / Number(m.split.total_rows) : 0,
         )} of its rows)`,
     );
   }
-  console.log(`    no unique-violation was raised by any trial move — the predicted collision set is exact`);
+  console.info(`    no unique-violation was raised by any trial move — the predicted collision set is exact`);
 
   // SELF-SPLIT: nothing here may be deleted from the suspect at all.
   const selfSplit = manifest.filter((m) => m.verdict === "SELF-SPLIT");
-  console.log(`\n── SELF-SPLIT (belongs to FIX-933, NOT this PR): ${selfSplit.length}`);
+  console.info(`\n── SELF-SPLIT (belongs to FIX-933, NOT this PR): ${selfSplit.length}`);
   for (const m of selfSplit) {
-    console.log(
+    console.info(
       `  ${(m.row.full_name ?? "").padEnd(28)} ${usd(m.split.total_cents).padStart(14)}  ` +
         `own row(s): ${m.owners.filter((o) => o.relation === "SAME").map((o) => o.fec_id).join(", ")}`,
     );
@@ -347,13 +347,13 @@ async function main(): Promise<void> {
   // ── Amount parity: is the CROSS delete actually lossless? ────────────────
   const withMismatch = manifest.filter((m) => Number(m.parity?.mismatch_rows ?? 0) > 0);
   const totalExcess = manifest.reduce((s, m) => s + BigInt(m.parity?.suspect_excess_cents ?? "0"), 0n);
-  console.log(
+  console.info(
     `\n── Amount parity on the deletable (CROSS) rows ──────────\n` +
       `  officials whose copy disagrees with the true owner's: ${withMismatch.length}\n` +
       `  dollars the suspect holds ABOVE the owner (lost by a plain delete): ${usd(totalExcess.toString())}`,
   );
   for (const m of withMismatch) {
-    console.log(
+    console.info(
       `  ${(m.row.full_name ?? "").padEnd(24)} ${String(m.parity?.mismatch_rows).padStart(6)} of ` +
         `${String(m.parity?.cross_rows).padStart(6)} rows differ   suspect +${usd(m.parity?.suspect_excess_cents ?? "0")}` +
         `   owner +${usd(m.parity?.owner_excess_cents ?? "0")}`,
@@ -362,29 +362,29 @@ async function main(): Promise<void> {
 
   // Suspects where a SAME-person owner exists — the delete-would-be-wrong set.
   const withSame = manifest.filter((m) => Number(m.split.same_rows) > 0);
-  console.log(
+  console.info(
     `\n── Suspects holding money that is their OWN (delete would be WRONG): ${withSame.length}`,
   );
   for (const m of withSame) {
-    console.log(
+    console.info(
       `  ${(m.row.full_name ?? "").padEnd(24)} own ${usd(m.split.same_cents).padStart(13)}  ` +
         `via ${m.owners.filter((o) => o.relation === "SAME").map((o) => `${o.owner_name} [${o.fec_id}]`).join("; ")}`,
     );
   }
 
-  console.log("\n── MIXED cases (per-row remediation, not per-official) ──");
+  console.info("\n── MIXED cases (per-row remediation, not per-official) ──");
   for (const m of manifest.filter((x) => x.verdict === "MIXED")) {
-    console.log(`\n  ${m.row.full_name}  [${m.row.role_title} / ${m.row.jurisdiction ?? "?"} / ${m.row.tier}]`);
-    console.log(`    total ${usd(m.split.total_cents)} in ${m.split.total_rows} rows`);
+    console.info(`\n  ${m.row.full_name}  [${m.row.role_title} / ${m.row.jurisdiction ?? "?"} / ${m.row.tier}]`);
+    console.info(`    total ${usd(m.split.total_cents)} in ${m.split.total_rows} rows`);
     for (const o of m.owners.slice(0, 6)) {
       const tag = o.relation === "SAME" ? "OWN " : "CROSS";
-      console.log(
+      console.info(
         `    ${tag} ${usd(o.shared_cents).padStart(13)}  ${o.shared_rows.padStart(6)} rows  ` +
           `cycles ${o.first_cycle}-${o.last_cycle}  → ${o.owner_name} [${o.fec_id}] holding ${usd(o.owner_donation_cents)}`,
       );
     }
     for (const d of m.diverted) {
-      console.log(
+      console.info(
         `    DIV   ${usd(d.cents).padStart(13)}  ${d.rows.padStart(6)} rows  cycle ${d.cycle_year}  ` +
           `(${d.relationship_type}, ${d.pac_rows} PAC) — held by NOBODY`,
       );
@@ -419,20 +419,20 @@ async function main(): Promise<void> {
         AND o.tier <> 'candidate'`,
   );
 
-  console.log("\n── FIX-937 overlap (non-federal-role officials holding FEC money) ──");
-  console.log(`  FIX-937 population total:      ${fed937[0]?.officials} officials, ${usd(fed937[0]?.cents ?? "0")} (${fed937[0]?.active} active)`);
-  console.log(`  covered by THIS manifest:      ${covered937[0]?.officials} officials, ${usd(covered937[0]?.cents ?? "0")}`);
-  console.log(
+  console.info("\n── FIX-937 overlap (non-federal-role officials holding FEC money) ──");
+  console.info(`  FIX-937 population total:      ${fed937[0]?.officials} officials, ${usd(fed937[0]?.cents ?? "0")} (${fed937[0]?.active} active)`);
+  console.info(`  covered by THIS manifest:      ${covered937[0]?.officials} officials, ${usd(covered937[0]?.cents ?? "0")}`);
+  console.info(
     `  left to FIX-937:               ${Number(fed937[0]?.officials ?? 0) - Number(covered937[0]?.officials ?? 0)} officials, ` +
       `${usd((BigInt(fed937[0]?.cents ?? "0") - BigInt(covered937[0]?.cents ?? "0")).toString())}`,
   );
-  console.log(`  non-federal-role rows in this manifest: ${nonFederal.length} of ${manifest.length}`);
+  console.info(`  non-federal-role rows in this manifest: ${nonFederal.length} of ${manifest.length}`);
 
   // ── Officials with no plausible owner at all ──────────────────────────────
   const noOwner = manifest.filter((m) => m.owners.length === 0 && m.zeroOwners.length === 0);
-  console.log(`\n── Suspects where NO officials row carries a candidate CAND_ID: ${noOwner.length}`);
+  console.info(`\n── Suspects where NO officials row carries a candidate CAND_ID: ${noOwner.length}`);
   for (const m of noOwner) {
-    console.log(`  ${m.row.full_name.padEnd(28)} ${usd(m.split.total_cents).padStart(14)}  ${m.row.role_title}`);
+    console.info(`  ${m.row.full_name.padEnd(28)} ${usd(m.split.total_cents).padStart(14)}  ${m.row.role_title}`);
   }
 
   // ── Artifacts ─────────────────────────────────────────────────────────────
@@ -581,7 +581,7 @@ async function main(): Promise<void> {
   }
   fs.writeFileSync(`${base}.md`, md.join("\n") + "\n");
 
-  console.log(`\nWrote:\n  ${base}.tsv\n  ${base}.md`);
+  console.info(`\nWrote:\n  ${base}.tsv\n  ${base}.md`);
   await client.end();
 }
 

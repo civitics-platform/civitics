@@ -102,12 +102,12 @@ async function main(): Promise<void> {
   }
 
   const supabaseUrl = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unknown)";
-  console.log("=================================================");
-  console.log("  FIX-162 — Re-title procedural bill stubs");
-  console.log(`  Mode:     ${apply ? "APPLY" : "DRY-RUN"}`);
-  console.log(`  DB:       ${supabaseUrl}`);
-  console.log(`  Limit:    ${limit ?? "no limit"}`);
-  console.log("=================================================\n");
+  console.info("=================================================");
+  console.info("  FIX-162 — Re-title procedural bill stubs");
+  console.info(`  Mode:     ${apply ? "APPLY" : "DRY-RUN"}`);
+  console.info(`  DB:       ${supabaseUrl}`);
+  console.info(`  Limit:    ${limit ?? "no limit"}`);
+  console.info("=================================================\n");
 
   const db = createAdminClient();
 
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   if (!rows || rows.length === 0) {
-    console.log("No procedural bill stubs found. Nothing to do.");
+    console.info("No procedural bill stubs found. Nothing to do.");
     return;
   }
 
@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     PROCEDURAL_TITLE_REGEX.test(r.title)
   );
 
-  console.log(`Found ${stubs.length} procedural-titled bill stubs.\n`);
+  console.info(`Found ${stubs.length} procedural-titled bill stubs.\n`);
 
   const targets = limit ? stubs.slice(0, limit) : stubs;
   let updated = 0;
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
     }
 
     if (!apply) {
-      console.log(`${tag}: would set title → ${title}`);
+      console.info(`${tag}: would set title → ${title}`);
       updated += 1;
       continue;
     }
@@ -210,16 +210,16 @@ async function main(): Promise<void> {
       continue;
     }
 
-    console.log(`${tag}: → ${title}`);
+    console.info(`${tag}: → ${title}`);
     updated += 1;
   }
 
-  console.log("\n=================================================");
-  console.log(`  Updated:  ${updated}`);
-  console.log(`  Skipped:  ${skipped}`);
-  console.log(`  Failed:   ${failed}`);
-  console.log(`  Mode:     ${apply ? "APPLIED" : "DRY-RUN (no writes)"}`);
-  console.log("=================================================");
+  console.info("\n=================================================");
+  console.info(`  Updated:  ${updated}`);
+  console.info(`  Skipped:  ${skipped}`);
+  console.info(`  Failed:   ${failed}`);
+  console.info(`  Mode:     ${apply ? "APPLIED" : "DRY-RUN (no writes)"}`);
+  console.info("=================================================");
 }
 
 main().catch((err) => {

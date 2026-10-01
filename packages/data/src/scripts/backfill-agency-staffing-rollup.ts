@@ -19,8 +19,8 @@ import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`[backfill-agency-staffing] target: ${url}`);
-  console.log(
+  console.info(`[backfill-agency-staffing] target: ${url}`);
+  console.info(
     `[backfill-agency-staffing] CALL refresh_agency_staffing_rollup() ` +
       `(full recompute, chunked 50 agencies/chunk, COMMIT each) ...`,
   );
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     "SELECT count(*)::text AS n FROM public.agency_staffing_rollup",
   );
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(
+  console.info(
     `[backfill-agency-staffing] ✓ ${Number(rows[0]?.n ?? 0).toLocaleString()} agency rows in ${dur}s`,
   );
 }

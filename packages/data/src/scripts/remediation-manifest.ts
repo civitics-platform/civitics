@@ -178,29 +178,29 @@ export function printTailTable(
   defer: boolean,
   owners?: ReadonlyMap<string, OwnerSchedule>,
 ): void {
-  console.log(`\n── Tail steps ${defer ? "(--defer-tails)" : "(NO --defer-tails)"} ──────────────────`);
+  console.info(`\n── Tail steps ${defer ? "(--defer-tails)" : "(NO --defer-tails)"} ──────────────────`);
   const w = Math.max(40, ...steps.map((s) => s.label.length));
   const cols = steps.map((s) => ownerColumns(s.owner, owners));
   const sw = Math.max(8, ...cols.map((c) => c.schedule.length));
   const ow = Math.max(34, ...steps.map((s) => (s.owner ?? NO_OWNER).length));
-  console.log(
+  console.info(
     `  ${"step".padEnd(w)}  ${"cost class".padEnd(24)}  ${"owner".padEnd(ow)}  ` +
       `${"schedule".padEnd(sw)}  guarded  runs`,
   );
-  console.log(
+  console.info(
     `  ${"-".repeat(w)}  ${"-".repeat(24)}  ${"-".repeat(ow)}  ` +
       `${"-".repeat(sw)}  -------  ----`,
   );
   steps.forEach((s, i) => {
     const c = cols[i]!;
-    console.log(
+    console.info(
       `  ${s.label.padEnd(w)}  ${CLASS_LABEL[s.cls].padEnd(24)}  ` +
         `${(s.owner ?? NO_OWNER).padEnd(ow)}  ${c.schedule.padEnd(sw)}  ` +
         `${c.guarded.padEnd(7)}  ${s.deferred ? "deferred" : "HERE"}`,
     );
   });
   if (!owners) {
-    console.log(
+    console.info(
       "\n  ! owner schedules NOT READ - pass readOwnerSchedules(client) to populate\n" +
         "    the schedule/guarded columns. `?` is 'nobody looked', not 'nothing owns it'.",
     );
@@ -209,35 +209,35 @@ export function printTailTable(
   const unguarded = steps.filter((s, i) => s.deferred && cols[i]!.guarded === "NO");
   const here = steps.filter((s) => !s.deferred);
   const plat = here.filter((s) => s.cls !== "manifest");
-  console.log(
+  console.info(
     `\n  ${here.length}/${steps.length} run here; ` +
       `${steps.length - here.length} deferred to scheduled owners.`,
   );
   if (plat.length > 0) {
-    console.log(
+    console.info(
       `  ! ${plat.length} PLATFORM-SCOPED step(s) will run here: ${plat.map((s) => s.label).join(", ")}`,
     );
-    console.log(
+    console.info(
       `    Their cost is independent of the manifest. On prod this is the FIX-1165\n` +
         `    shape — pass --defer-tails unless you specifically intend to pay it.`,
     );
   }
   if (orphaned.length > 0) {
-    console.log(
+    console.info(
       `  ! ${orphaned.length} deferred step(s) name an owner with NO cron.job row: ` +
         `${orphaned.map((s) => s.owner).join(", ")}`,
     );
-    console.log(
+    console.info(
       `    That is the FIX-1165 orphan caught at print time rather than by a census:\n` +
         `    deferring to a name nothing schedules is deferring to nobody.`,
     );
   }
   if (unguarded.length > 0) {
-    console.log(
+    console.info(
       `  ! ${unguarded.length} deferred step(s) go to an UNGUARDED owner: ` +
         `${unguarded.map((s) => `${s.label} -> ${s.owner}`).join(", ")}`,
     );
-    console.log(
+    console.info(
       `    An unguarded owner does not consult prod_session_state(), so it can fire\n` +
         `    INSIDE the supervised session that deferred to it (FIX-1193).`,
     );

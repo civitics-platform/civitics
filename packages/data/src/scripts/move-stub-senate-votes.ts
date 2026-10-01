@@ -110,7 +110,7 @@ async function run(
 ): Promise<number> {
   const res = await client.query(sql, params);
   const n = res.rowCount ?? 0;
-  console.log(`  ${label.padEnd(56)} ${String(n).padStart(7)}`);
+  console.info(`  ${label.padEnd(56)} ${String(n).padStart(7)}`);
   return n;
 }
 
@@ -133,11 +133,11 @@ async function main(): Promise<void> {
   }
 
   const dbUrl = buildDbUrl();
-  console.log("# FIX-940 — move Senate votes off candidate stubs");
-  console.log(`Env:        ${envLabel()}`);
-  console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}`);
-  console.log(`Diacritic-only matches: ${includeDiacritic ? "INCLUDED" : "held back (report only)"}\n`);
+  console.info("# FIX-940 — move Senate votes off candidate stubs");
+  console.info(`Env:        ${envLabel()}`);
+  console.info(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}`);
+  console.info(`Diacritic-only matches: ${includeDiacritic ? "INCLUDED" : "held back (report only)"}\n`);
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -169,10 +169,10 @@ async function main(): Promise<void> {
     ).rows;
 
     const totalVotes = stubs.reduce((a, s) => a + s.votes, 0);
-    console.log(`Candidate-tier officials holding votes: ${stubs.length} (${totalVotes} votes)\n`);
+    console.info(`Candidate-tier officials holding votes: ${stubs.length} (${totalVotes} votes)\n`);
 
     if (stubs.length === 0) {
-      console.log("Nothing to move. (Expected on a re-run after --apply.)");
+      console.info("Nothing to move. (Expected on a re-run after --apply.)");
       await client.query("ROLLBACK");
       await client.end();
       return;
@@ -243,15 +243,15 @@ async function main(): Promise<void> {
     const actionable = pairs.filter((p) => p.kind === "exact" || includeDiacritic);
     const heldBack   = pairs.filter((p) => p.kind === "diacritic" && !includeDiacritic);
 
-    console.log("── Plan ─────────────────────────────────────────────────────");
+    console.info("── Plan ─────────────────────────────────────────────────────");
     for (const p of actionable) {
-      console.log(
+      console.info(
         `  ${(p.stub.stub_name + " (" + (p.stub.state ?? "??") + ")").padEnd(30)} ` +
           `${String(p.stub.votes).padStart(5)} votes  ${p.stub.min_d}→${p.stub.max_d}  ` +
           `→ ${p.twin.full_name}${p.kind === "diacritic" ? "  [diacritic-only match]" : ""}`,
       );
     }
-    console.log(
+    console.info(
       `\n  ${actionable.length} stub(s) actionable, ` +
         `${actionable.reduce((a, p) => a + p.stub.votes, 0)} votes to move.`,
     );
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
     }
 
     if (actionable.length === 0) {
-      console.log("\nNothing actionable.");
+      console.info("\nNothing actionable.");
       await client.query("ROLLBACK");
       await client.end();
       return;
@@ -297,7 +297,7 @@ async function main(): Promise<void> {
     // was written under the correct binding, so the stub's is the one dropped.
     // Expect ~0 given the clean date split, but a re-run or a partially-repaired
     // env can produce them, so the step is mandatory rather than opportunistic.
-    console.log("\n── Rewrite ──────────────────────────────────────────────────");
+    console.info("\n── Rewrite ──────────────────────────────────────────────────");
     let deleted = 0;
     let moved = 0;
     for (const p of actionable) {
@@ -318,10 +318,10 @@ async function main(): Promise<void> {
         [p.stub.stub_id, p.twin.id],
       );
     }
-    console.log(`\n  ${moved} votes moved, ${deleted} colliding stub row(s) deleted.`);
+    console.info(`\n  ${moved} votes moved, ${deleted} colliding stub row(s) deleted.`);
 
     // ── 6. Conservation proof ──────────────────────────────────────────────
-    console.log("\n── Verification ─────────────────────────────────────────────");
+    console.info("\n── Verification ─────────────────────────────────────────────");
 
     const stray = (
       await client.query<{ n: string; ids: string }>(
@@ -333,7 +333,7 @@ async function main(): Promise<void> {
     const heldBackVotes = heldBack.reduce((a, p) => a + p.stub.votes, 0)
       + unresolved.reduce((a, u) => a + u.stub.votes, 0);
     const strayOk = Number(stray.n) === heldBackVotes;
-    console.log(
+    console.info(
       `  votes still on tier='candidate' officials: ${stray.n} ` +
         `(expected ${heldBackVotes} — the held-back/no-twin stubs)  ${strayOk ? "✓" : "✗"}`,
     );
@@ -354,7 +354,7 @@ async function main(): Promise<void> {
       )
     ).rows;
     const collateralOk = collateral.length === 0;
-    console.log(
+    console.info(
       `  officials outside the move whose count changed: ${collateral.length}  ${collateralOk ? "✓" : "✗"}`,
     );
     for (const c of collateral) {
@@ -367,14 +367,14 @@ async function main(): Promise<void> {
                 (SELECT count(*)::text FROM public.votes)        AS after`,
       )
     ).rows[0]!;
-    console.log(
+    console.info(
       `  total votes: ${totalBeforeAfter.before} → ${totalBeforeAfter.after} ` +
         `(delta ${Number(totalBeforeAfter.after) - Number(totalBeforeAfter.before)}, ` +
         `expected -${deleted})`,
     );
     const totalOk =
       Number(totalBeforeAfter.before) - Number(totalBeforeAfter.after) === deleted;
-    console.log(`  total conserved minus pre-deleted collisions: ${totalOk ? "✓" : "✗"}`);
+    console.info(`  total conserved minus pre-deleted collisions: ${totalOk ? "✓" : "✗"}`);
 
     // Per-twin before/after, the number a human actually checks.
     const twinAfter = (
@@ -386,10 +386,10 @@ async function main(): Promise<void> {
         [twinIds],
       )
     ).rows;
-    console.log("\n  Elected rows after the move:");
+    console.info("\n  Elected rows after the move:");
     for (const t of twinAfter) {
       const before = actionable.find((p) => p.twin.id === t.id)?.twin;
-      console.log(
+      console.info(
         `      ${t.full_name.padEnd(26)} ${String(before?.votes ?? "?").padStart(5)} → ` +
           `${t.n.padStart(5)} votes   max ${before?.max_d ?? "n/a"} → ${t.max_d ?? "n/a"}`,
       );
@@ -402,10 +402,10 @@ async function main(): Promise<void> {
     if (apply) {
       await client.query("ANALYZE public.votes");
       await client.query("COMMIT");
-      console.log(`\n✓ COMMITTED — ${moved} votes moved across ${actionable.length} officials.`);
+      console.info(`\n✓ COMMITTED — ${moved} votes moved across ${actionable.length} officials.`);
     } else {
       await client.query("ROLLBACK");
-      console.log("\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.");
+      console.info("\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.");
       await client.end();
       return;
     }
@@ -426,17 +426,17 @@ async function main(): Promise<void> {
   ).rows[0]!;
   await client.end();
 
-  console.log("\n── Derived state ────────────────────────────────────────────");
-  console.log(
+  console.info("\n── Derived state ────────────────────────────────────────────");
+  console.info(
     `  entity_connections vote edges still on candidate stubs: ${staleEdges.n}\n` +
       `      Not rebuilt here — entity_connections is a display cache owned by the\n` +
       `      Sun+Wed rebuild cron, which TRUNCATEs and re-derives from votes (FIX-735).`,
   );
 
-  console.log("  Rebuilding official_vote_stats (materialized off votes, FIX-837) ...");
+  console.info("  Rebuilding official_vote_stats (materialized off votes, FIX-837) ...");
   const t0 = Date.now();
   await callHeavyProcedure("rebuild_official_vote_stats");
-  console.log(`  ✓ official_vote_stats rebuilt in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ✓ official_vote_stats rebuilt in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
 runUnderProdSession(

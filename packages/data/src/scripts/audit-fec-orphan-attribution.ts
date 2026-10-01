@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const env = envLabel();
-  console.log(`[audit] FEC orphan attribution — ${env}\n`);
+  console.info(`[audit] FEC orphan attribution — ${env}\n`);
 
   const client = new Client({ connectionString: dbUrl, statement_timeout: 600_000 });
   await client.connect();
@@ -519,27 +519,27 @@ async function main(): Promise<void> {
   fs.writeFileSync(mdPath, L.join("\n"), "utf8");
 
   // ── console ───────────────────────────────────────────────────────────────
-  console.log(`suspects: ${classified.length}  holding ${usd(totalCents)}`);
-  console.log(`platform: ${usd(platformCents)} over ${Number(platform.officials).toLocaleString()} officials (${((totalCents / platformCents) * 100).toFixed(1)}% suspect)`);
-  console.log(`with same-surname FEC-bound twin: ${withTwin.length}`);
-  console.log("");
-  console.log(`boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`);
-  console.log(`  fraction gap ${boundary.gapLo.toFixed(4)} → ${boundary.gapHi.toFixed(4)} (width ${boundary.gapWidth.toFixed(4)})`);
-  console.log(`  floor gap    ${boundary.floorGapLo} → ${boundary.floorGapHi} (above-cut suspects only)`);
-  console.log(`  cleanly bimodal on fraction: ${boundary.bimodal ? "yes" : "NO"}`);
-  console.log("");
+  console.info(`suspects: ${classified.length}  holding ${usd(totalCents)}`);
+  console.info(`platform: ${usd(platformCents)} over ${Number(platform.officials).toLocaleString()} officials (${((totalCents / platformCents) * 100).toFixed(1)}% suspect)`);
+  console.info(`with same-surname FEC-bound twin: ${withTwin.length}`);
+  console.info("");
+  console.info(`boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`);
+  console.info(`  fraction gap ${boundary.gapLo.toFixed(4)} → ${boundary.gapHi.toFixed(4)} (width ${boundary.gapWidth.toFixed(4)})`);
+  console.info(`  floor gap    ${boundary.floorGapLo} → ${boundary.floorGapHi} (above-cut suspects only)`);
+  console.info(`  cleanly bimodal on fraction: ${boundary.bimodal ? "yes" : "NO"}`);
+  console.info("");
   for (const b of perBranch) {
-    console.log(`  ${b.branch.padEnd(28)} ${String(b.n).padStart(4)}   ${usd(b.cents)}`);
+    console.info(`  ${b.branch.padEnd(28)} ${String(b.n).padStart(4)}   ${usd(b.cents)}`);
   }
   if (lowVolume.length > 0) {
-    console.log(`  (${lowVolume.length} low-confidence: frac over cut, shared under floor → filed UNIQUE HOLDER)`);
+    console.info(`  (${lowVolume.length} low-confidence: frac over cut, shared under floor → filed UNIQUE HOLDER)`);
   }
-  console.log("");
-  console.log(`reference Shontel/Sherrod  → ${vShontel.observed}  ${shontelOk ? "OK" : "MISMATCH"}`);
-  console.log(`reference Ossoff/Ossoff    → ${vOssoff.observed}  ${ossoffOk ? "OK" : "MISMATCH"}`);
-  console.log("");
-  console.log(`wrote ${path.relative(process.cwd(), tsvPath)}`);
-  console.log(`wrote ${path.relative(process.cwd(), mdPath)}`);
+  console.info("");
+  console.info(`reference Shontel/Sherrod  → ${vShontel.observed}  ${shontelOk ? "OK" : "MISMATCH"}`);
+  console.info(`reference Ossoff/Ossoff    → ${vOssoff.observed}  ${ossoffOk ? "OK" : "MISMATCH"}`);
+  console.info("");
+  console.info(`wrote ${path.relative(process.cwd(), tsvPath)}`);
+  console.info(`wrote ${path.relative(process.cwd(), mdPath)}`);
 
   if (!shontelOk || !ossoffOk) {
     console.error("\nA reference case is missing or landed in the wrong branch — the signal is wrong.");

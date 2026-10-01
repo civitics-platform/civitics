@@ -35,7 +35,7 @@ import {
 const WATERMARK_KEY = "fec_indiv_watermark";
 
 function hr(title: string): void {
-  console.log(`\n${"=".repeat(78)}\n${title}\n${"=".repeat(78)}`);
+  console.info(`\n${"=".repeat(78)}\n${title}\n${"=".repeat(78)}`);
 }
 
 async function main(): Promise<void> {
@@ -62,37 +62,37 @@ async function main(): Promise<void> {
     }>;
     for (const key of [FEC_RUN_STATE_KEY, WATERMARK_KEY]) {
       const row = rows.find((r) => r.key === key);
-      console.log(`\n--- ${key} ---`);
+      console.info(`\n--- ${key} ---`);
       if (!row) {
-        console.log("  (row ABSENT)");
+        console.info("  (row ABSENT)");
         continue;
       }
-      console.log(`  updated_at: ${row.updated_at}`);
-      console.log(`  value: ${JSON.stringify(row.value, null, 2)}`);
+      console.info(`  updated_at: ${row.updated_at}`);
+      console.info(`  value: ${JSON.stringify(row.value, null, 2)}`);
     }
 
     // Interpreted view of the run state.
     const raw = rows.find((r) => r.key === FEC_RUN_STATE_KEY)?.value ?? null;
     const parsed = parseRunState(raw);
-    console.log(`\n--- interpreted run state ---`);
+    console.info(`\n--- interpreted run state ---`);
     if (!raw) {
-      console.log("  no fec_bulk_run_state row → next nightly resumes NOTHING (plan=none)");
+      console.info("  no fec_bulk_run_state row → next nightly resumes NOTHING (plan=none)");
     } else if (!parsed) {
-      console.log("  row present but FAILS parseRunState() shape validation → treated as none");
+      console.info("  row present but FAILS parseRunState() shape validation → treated as none");
     } else {
-      console.log(`  describeRunState(): ${describeRunState(parsed)}`);
-      console.log(`  version: ${parsed.version}  cycle: ${parsed.cycle}`);
-      console.log(`  fec_last_modified: "${parsed.fec_last_modified}"`);
-      console.log(`  fec_etag: ${parsed.fec_etag ?? "(null)"}`);
-      console.log(`  started_at: ${parsed.started_at}`);
-      console.log(`  updated_at: ${parsed.updated_at}`);
-      console.log(`  per-stage:`);
+      console.info(`  describeRunState(): ${describeRunState(parsed)}`);
+      console.info(`  version: ${parsed.version}  cycle: ${parsed.cycle}`);
+      console.info(`  fec_last_modified: "${parsed.fec_last_modified}"`);
+      console.info(`  fec_etag: ${parsed.fec_etag ?? "(null)"}`);
+      console.info(`  started_at: ${parsed.started_at}`);
+      console.info(`  updated_at: ${parsed.updated_at}`);
+      console.info(`  per-stage:`);
       for (const s of TRACKED_STAGES) {
         const p = parsed.stages[s];
-        if (!p) console.log(`    ${s.padEnd(26)} pending`);
-        else if (p.status === "complete") console.log(`    ${s.padEnd(26)} complete`);
+        if (!p) console.info(`    ${s.padEnd(26)} pending`);
+        else if (p.status === "complete") console.info(`    ${s.padEnd(26)} complete`);
         else
-          console.log(
+          console.info(
             `    ${s.padEnd(26)} in-progress cursor=${p.cursor ?? 0} total_rows=${
               p.total_rows ?? "?"
             }` +
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
                 : ""),
           );
       }
-      console.log(
+      console.info(
         `  allIndivWriterStagesComplete: ${allIndivWriterStagesComplete(parsed)} → ` +
           `identity-valid plan would be "${
             allIndivWriterStagesComplete(parsed) ? "skip-indiv" : "resume"
@@ -137,10 +137,10 @@ async function main(): Promise<void> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       metadata: any;
     }>;
-    console.log(`\n${rows.length} row(s) since ${since}\n`);
+    console.info(`\n${rows.length} row(s) since ${since}\n`);
     for (const r of rows) {
       const phase = r.metadata?.phase ?? null;
-      console.log(
+      console.info(
         `id=${r.id}\n` +
           `  pipeline=${r.pipeline} status=${r.status} phase=${phase}\n` +
           `  started_at=${r.started_at} completed_at=${r.completed_at}\n` +
@@ -150,11 +150,11 @@ async function main(): Promise<void> {
           )}`,
       );
       if (r.pipeline === "nightly_killed") {
-        console.log(
+        console.info(
           `  metadata (killed row, full)=${JSON.stringify(r.metadata ?? null)}`,
         );
       }
-      console.log("");
+      console.info("");
     }
   }
 }

@@ -172,11 +172,11 @@ function classifySpenders(
 
 function logSplit(label: string, s: SpenderSplit): void {
   const total = s.alreadyPresentCents + s.resolvableViaCmCents + s.orphanMintableCents + s.orphanJunkCents;
-  console.log(`  ${label} (Σ ${usd(total)}):`);
-  console.log(`    already in financial_entities: ${usd(s.alreadyPresentCents)}`);
-  console.log(`    resolvable via cm{yy} master:  ${usd(s.resolvableViaCmCents)}`);
-  console.log(`    orphan — mintable by spe_nam:  ${usd(s.orphanMintableCents)}  (${s.orphanMintableIds.size} distinct spe_id)`);
-  console.log(`    orphan — junk (blank spe_nam): ${usd(s.orphanJunkCents)}  (${s.orphanJunkIds.size} distinct spe_id)`);
+  console.info(`  ${label} (Σ ${usd(total)}):`);
+  console.info(`    already in financial_entities: ${usd(s.alreadyPresentCents)}`);
+  console.info(`    resolvable via cm{yy} master:  ${usd(s.resolvableViaCmCents)}`);
+  console.info(`    orphan — mintable by spe_nam:  ${usd(s.orphanMintableCents)}  (${s.orphanMintableIds.size} distinct spe_id)`);
+  console.info(`    orphan — junk (blank spe_nam): ${usd(s.orphanJunkCents)}  (${s.orphanJunkIds.size} distinct spe_id)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
     console.error(`Refusing to write to prod (${url}) without --allow-prod. Add --allow-prod or --dry-run.`);
     process.exit(2);
   }
-  console.log(`FIX-841 backfill — target: ${url}${dryRun ? "  [DRY RUN — no writes]" : isProd ? "  [PROD WRITE]" : "  [LOCAL WRITE]"}\n`);
+  console.info(`FIX-841 backfill — target: ${url}${dryRun ? "  [DRY RUN — no writes]" : isProd ? "  [PROD WRITE]" : "  [LOCAL WRITE]"}\n`);
 
   const db = createAdminClientWith(url, secret);
 
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
   const officials = await loadOfficials(db);
   const index = buildMatchIndex(officials);
   const entityIdByCmte = await loadCommitteeEntityMap(db);
-  console.log(
+  console.info(
     `Loaded ${officials.length.toLocaleString()} active officials → ${index.byFecId.size.toLocaleString()} FEC-keyed; ` +
     `${existingByFecCandId.size.toLocaleString()} officials by-any-FEC-id; ${entityIdByCmte.size.toLocaleString()} committee entities\n`,
   );
@@ -217,7 +217,7 @@ async function main(): Promise<void> {
   let grandRels = 0, grandCapturedCents = 0, grandOrphanJunkCents = 0, grandTargetUnresolvedCents = 0;
 
   for (const cycle of CYCLES) {
-    console.log(`────────── Cycle ${cycle} ──────────`);
+    console.info(`────────── Cycle ${cycle} ──────────`);
     const ieName = `independent_expenditure_${cycle}.csv`;
     const iePath = path.join(tmp, `ie-841-${cycle}-${process.pid}.csv`);
     try {
@@ -253,7 +253,7 @@ async function main(): Promise<void> {
         const matchedTotal = matchedSplit.alreadyPresentCents + matchedSplit.resolvableViaCmCents +
           matchedSplit.orphanMintableCents + matchedSplit.orphanJunkCents;
         logSplit("MATCHED-target spenders", matchedSplit);
-        console.log(
+        console.info(
           `    reconcile: split Σ ${usd(matchedTotal)} vs streamer keptCents ${usd(ieResult.stats.keptCents)} — ` +
           `${matchedTotal === ieResult.stats.keptCents ? "OK ✓" : "MISMATCH ✗"}`,
         );
@@ -264,15 +264,15 @@ async function main(): Promise<void> {
         const mintableIds = new Set<string>([...matchedSplit.orphanMintableIds, ...unmatchedSplit.orphanMintableIds]);
         const junkIds     = new Set<string>([...matchedSplit.orphanJunkIds, ...unmatchedSplit.orphanJunkIds]);
         const orphanIds   = new Set<string>([...mintableIds, ...junkIds]);
-        console.log(`  Orphan spe_id sample (of ${orphanIds.size} distinct — ${mintableIds.size} mintable, ${junkIds.size} junk):`);
+        console.info(`  Orphan spe_id sample (of ${orphanIds.size} distinct — ${mintableIds.size} mintable, ${junkIds.size} junk):`);
         let shown = 0;
         for (const spe of orphanIds) {
           if (shown++ >= 12) break;
           const nm = nameBySpe.get(spe);
           const tag = mintableIds.has(spe) ? "MINT" : "JUNK";
-          console.log(`    [${tag}] ${spe}  →  ${nm ? JSON.stringify(nm) : "(blank)"}`);
+          console.info(`    [${tag}] ${spe}  →  ${nm ? JSON.stringify(nm) : "(blank)"}`);
         }
-        console.log("");
+        console.info("");
         continue;
       }
 
@@ -295,7 +295,7 @@ async function main(): Promise<void> {
         grandTargetsResolved += mintResult.resolved;
         grandTargetsMinted   += mintResult.minted;
         grandTargetsFailed   += mintResult.failed;
-        console.log(`  Targets — resolved: ${mintResult.resolved}  minted: ${mintResult.minted}  failed: ${mintResult.failed}`);
+        console.info(`  Targets — resolved: ${mintResult.resolved}  minted: ${mintResult.minted}  failed: ${mintResult.failed}`);
         for (const [candId, officialId] of mintResult.candIdToOfficialId) index.byFecId.set(candId, officialId);
         for (const [key, agg] of unmatched) {
           if (!matched.has(key)) matched.set(key, agg);
@@ -337,7 +337,7 @@ async function main(): Promise<void> {
           grandOrphanMinted += r.upserted;
         }
         grandOrphanJunk += orphanJunk;
-        console.log(
+        console.info(
           `  Missing spenders: ${missingSpenders.size} → cm-present ${cmInputs.length}, orphan-minted ${orphanInputs.length}, junk-skipped ${orphanJunk}`,
         );
       }
@@ -362,7 +362,7 @@ async function main(): Promise<void> {
       grandCapturedCents += capturedCents;
       grandOrphanJunkCents += orphanJunkCents;
       grandTargetUnresolvedCents += targetUnresolvedCents;
-      console.log(
+      console.info(
         `  IE relationships upserted: ${w.upserted}  (captured ${usd(capturedCents)}` +
         (orphanJunkCents > 0 ? `; ${usd(orphanJunkCents)} orphan-junk skipped` : "") +
         (targetUnresolvedCents > 0 ? `; ${usd(targetUnresolvedCents)} target-unresolved` : "") + `)\n`,
@@ -372,22 +372,22 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log("════════════ FIX-841 backfill summary ════════════");
+  console.info("════════════ FIX-841 backfill summary ════════════");
   if (dryRun) {
-    console.log(`  (dry run — nothing written)`);
+    console.info(`  (dry run — nothing written)`);
   } else {
-    console.log(`  targets resolved (existing): ${grandTargetsResolved}`);
-    console.log(`  targets minted (new candidate rows): ${grandTargetsMinted}  failed: ${grandTargetsFailed}`);
-    console.log(`  spenders pre-upserted from cm{yy}: ${grandCmSpenders}`);
-    console.log(`  spenders minted from spe_nam (orphan): ${grandOrphanMinted}`);
-    console.log(`  orphan spe_ids skipped as junk (blank name): ${grandOrphanJunk}`);
-    console.log(`  IE relationships upserted: ${grandRels}`);
-    console.log(`  captured $: ${usd(grandCapturedCents)}`);
-    if (grandOrphanJunkCents > 0)      console.log(`  orphan-junk $ skipped: ${usd(grandOrphanJunkCents)}`);
-    if (grandTargetUnresolvedCents > 0) console.log(`  target-unresolved $ skipped: ${usd(grandTargetUnresolvedCents)}`);
+    console.info(`  targets resolved (existing): ${grandTargetsResolved}`);
+    console.info(`  targets minted (new candidate rows): ${grandTargetsMinted}  failed: ${grandTargetsFailed}`);
+    console.info(`  spenders pre-upserted from cm{yy}: ${grandCmSpenders}`);
+    console.info(`  spenders minted from spe_nam (orphan): ${grandOrphanMinted}`);
+    console.info(`  orphan spe_ids skipped as junk (blank name): ${grandOrphanJunk}`);
+    console.info(`  IE relationships upserted: ${grandRels}`);
+    console.info(`  captured $: ${usd(grandCapturedCents)}`);
+    if (grandOrphanJunkCents > 0)      console.info(`  orphan-junk $ skipped: ${usd(grandOrphanJunkCents)}`);
+    if (grandTargetUnresolvedCents > 0) console.info(`  target-unresolved $ skipped: ${usd(grandTargetUnresolvedCents)}`);
   }
-  console.log(`\n  Next: run 'pnpm --filter @civitics/data data:rebuild:ie-totals' against THIS env to`);
-  console.log(`  recompute financial_entities IE totals, then the graph + rollup crons pick the new rows up.`);
+  console.info(`\n  Next: run 'pnpm --filter @civitics/data data:rebuild:ie-totals' against THIS env to`);
+  console.info(`  recompute financial_entities IE totals, then the graph + rollup crons pick the new rows up.`);
 }
 
 main().catch((e) => { console.error("fatal:", e instanceof Error ? e.stack : String(e)); process.exit(1); });

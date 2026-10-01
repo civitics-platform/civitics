@@ -46,7 +46,7 @@ const chunkFns = [
 async function main(): Promise<void> {
   const url = buildDbUrl();
   const masked = url.replace(/:[^:@/]+@/, ":***@");
-  console.log(`Connecting: ${masked}`);
+  console.info(`Connecting: ${masked}`);
   const client = new Client({ connectionString: url });
   await client.connect();
 
@@ -65,13 +65,13 @@ async function main(): Promise<void> {
     // it never sets the flag false, so this path can only heal, never strand.
     try {
       await client.query("ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)");
-      console.log("  [reconcile] autovacuum_enabled=true on entity_connections (idempotent heal)");
+      console.info("  [reconcile] autovacuum_enabled=true on entity_connections (idempotent heal)");
     } catch (reErr) {
       console.warn(`  [reconcile] autovacuum re-enable warning: ${reErr instanceof Error ? reErr.message : String(reErr)}`);
     }
     for (const fn of chunkFns) {
       const chunkStart = Date.now();
-      console.log(`\n[${new Date().toISOString()}] running ${fn}()`);
+      console.info(`\n[${new Date().toISOString()}] running ${fn}()`);
       try {
         await client.query("SET statement_timeout = '60min'");
         const res = await client.query<{ connection_type: string; edges_upserted: string | number }>(
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
         for (const r of res.rows) {
           const edges = Number(r.edges_upserted ?? 0);
           grandTotalEdges += edges;
-          console.log(`  ${r.connection_type}: ${edges.toLocaleString()} edges (${(dur / 1000).toFixed(1)}s)`);
+          console.info(`  ${r.connection_type}: ${edges.toLocaleString()} edges (${(dur / 1000).toFixed(1)}s)`);
         }
       } catch (err) {
         const dur = Date.now() - chunkStart;
@@ -91,16 +91,16 @@ async function main(): Promise<void> {
     }
 
     const totalDur = Date.now() - t0;
-    console.log(`\nTotal: ${grandTotalEdges.toLocaleString()} edges in ${(totalDur / 1000 / 60).toFixed(2)} min`);
+    console.info(`\nTotal: ${grandTotalEdges.toLocaleString()} edges in ${(totalDur / 1000 / 60).toFixed(2)} min`);
 
     const total = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM entity_connections");
-    console.log(`entity_connections.count(*) = ${Number(total.rows[0]!.count).toLocaleString()}`);
+    console.info(`entity_connections.count(*) = ${Number(total.rows[0]!.count).toLocaleString()}`);
 
     const breakdown = await client.query<{ connection_type: string; n: string }>(
       "SELECT connection_type, count(*)::text AS n FROM entity_connections GROUP BY connection_type ORDER BY count(*) DESC"
     );
-    console.log(`\nPer-type breakdown:`);
-    for (const r of breakdown.rows) console.log(`  ${r.connection_type}: ${Number(r.n).toLocaleString()}`);
+    console.info(`\nPer-type breakdown:`);
+    for (const r of breakdown.rows) console.info(`  ${r.connection_type}: ${Number(r.n).toLocaleString()}`);
 
     // FIX-650 — reap the dead tuples this rebuild's DELETE+INSERT churn produced,
     // now that the chunks are done. Mirrors the FIX-590 post-rebuild VACUUM tail
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     try {
       await client.query("SET statement_timeout = '30min'");
       await client.query("VACUUM (ANALYZE) public.entity_connections");
-      console.log("  [post] VACUUM (ANALYZE) entity_connections — complete");
+      console.info("  [post] VACUUM (ANALYZE) entity_connections — complete");
     } catch (vacErr) {
       console.warn(`  [post] post-rebuild VACUUM — FAILED: ${vacErr instanceof Error ? vacErr.message : String(vacErr)}`);
     }

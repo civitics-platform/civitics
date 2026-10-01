@@ -81,8 +81,8 @@ async function tagRowCount(db: any, id: string): Promise<number> {
 
 async function main(): Promise<void> {
   const db = createAdminClient();
-  console.log(`# FIX-894 — source-text enqueue gate, end-to-end proof`);
-  console.log(`Mode: ${DRY_RUN ? "DRY RUN (no enqueue)" : "LIVE (real enqueue_enrichment RPC)"}\n`);
+  console.info(`# FIX-894 — source-text enqueue gate, end-to-end proof`);
+  console.info(`Mode: ${DRY_RUN ? "DRY RUN (no enqueue)" : "LIVE (real enqueue_enrichment RPC)"}\n`);
 
   const withText = await pick(db, true);
   const noText = await pick(db, false);
@@ -102,24 +102,24 @@ async function main(): Promise<void> {
 
   for (const c of cases) {
     const len = (c.p.summary_plain ?? "").trim().length;
-    console.log(`${c.label}`);
-    console.log(`   id             ${c.p.id}`);
-    console.log(`   primary_source ${c.p.primary_source ?? "(none)"}`);
-    console.log(`   summary chars  ${len}`);
-    console.log(`   gate verdict   ${hasUsableSourceText(c.p.summary_plain, c.p.title) ? "PASS" : "REFUSE"}`);
-    console.log(`   rows before    ${await tagRowCount(db, c.p.id)}`);
+    console.info(`${c.label}`);
+    console.info(`   id             ${c.p.id}`);
+    console.info(`   primary_source ${c.p.primary_source ?? "(none)"}`);
+    console.info(`   summary chars  ${len}`);
+    console.info(`   gate verdict   ${hasUsableSourceText(c.p.summary_plain, c.p.title) ? "PASS" : "REFUSE"}`);
+    console.info(`   rows before    ${await tagRowCount(db, c.p.id)}`);
   }
 
   if (DRY_RUN) {
-    console.log(`\n(dry run — no enqueue attempted)`);
+    console.info(`\n(dry run — no enqueue attempted)`);
     return;
   }
 
   // The seeder's chain: filter on the gate, then enqueue the survivors.
-  console.log(`\n── Running the gate + enqueue chain ────────────────────────`);
+  console.info(`\n── Running the gate + enqueue chain ────────────────────────`);
   for (const c of cases) {
     if (!hasUsableSourceText(c.p.summary_plain, c.p.title)) {
-      console.log(`   ${c.label.slice(0, 2)} refused by gate — enqueue not attempted`);
+      console.info(`   ${c.label.slice(0, 2)} refused by gate — enqueue not attempted`);
       continue;
     }
     const action = await enqueue(db, {
@@ -128,16 +128,16 @@ async function main(): Promise<void> {
       task_type: "tag",
       context: buildProposalTagContext(c.p),
     });
-    console.log(`   ${c.label.slice(0, 2)} enqueued → RPC returned "${action}"`);
+    console.info(`   ${c.label.slice(0, 2)} enqueued → RPC returned "${action}"`);
   }
 
-  console.log(`\n── Assertions ─────────────────────────────────────────────`);
+  console.info(`\n── Assertions ─────────────────────────────────────────────`);
   let failed = false;
   for (const c of cases) {
     const after = await tagRowCount(db, c.p.id);
     const ok = c.expectRow ? after === 1 : after === 0;
     if (!ok) failed = true;
-    console.log(
+    console.info(
       `   ${ok ? "✓" : "✗"} ${c.label} → ${after} tag row(s) ` +
         `(expected ${c.expectRow ? 1 : 0})`,
     );
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
     console.error(`\n✗ GATE PROOF FAILED`);
     process.exit(1);
   }
-  console.log(
+  console.info(
     `\n✓ Gate proven: only the proposal holding usable source text produced a task.`,
   );
 }

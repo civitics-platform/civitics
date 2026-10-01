@@ -34,7 +34,7 @@ const rssInterval = setInterval(() => {
     process.exit(2);
   }
   // Heartbeat every iteration
-  console.log(`[wrapper-heartbeat] rss=${rssMb}MB peak=${peakRssMb}MB elapsed=${Math.round((Date.now() - START) / 1000)}s`);
+  console.info(`[wrapper-heartbeat] rss=${rssMb}MB peak=${peakRssMb}MB elapsed=${Math.round((Date.now() - START) / 1000)}s`);
 }, 30_000);
 
 const START = Date.now();
@@ -44,24 +44,24 @@ process.env["FEC_CYCLES"] = process.env["FEC_CYCLES"] ?? "2024,2026";
 process.env["FEC_INDIV_CYCLES"] = process.env["FEC_INDIV_CYCLES"] ?? "2024,2026";
 
 async function main(): Promise<void> {
-  console.log("=".repeat(72));
-  console.log("FORCED-SUNDAY CRON RUN — PROD");
-  console.log("=".repeat(72));
-  console.log(`Started: ${new Date(START).toISOString()}`);
-  console.log(`FEC_CYCLES:        ${process.env["FEC_CYCLES"]}`);
-  console.log(`FEC_INDIV_CYCLES:  ${process.env["FEC_INDIV_CYCLES"]}`);
-  console.log(`NODE_OPTIONS:      ${process.env["NODE_OPTIONS"] ?? "(unset — DEFAULT 4GB!)"}`);
-  console.log(`Date.getDay stub:  ${new Date().getDay()} (expect 0)`);
-  console.log("=".repeat(72));
+  console.info("=".repeat(72));
+  console.info("FORCED-SUNDAY CRON RUN — PROD");
+  console.info("=".repeat(72));
+  console.info(`Started: ${new Date(START).toISOString()}`);
+  console.info(`FEC_CYCLES:        ${process.env["FEC_CYCLES"]}`);
+  console.info(`FEC_INDIV_CYCLES:  ${process.env["FEC_INDIV_CYCLES"]}`);
+  console.info(`NODE_OPTIONS:      ${process.env["NODE_OPTIONS"] ?? "(unset — DEFAULT 4GB!)"}`);
+  console.info(`Date.getDay stub:  ${new Date().getDay()} (expect 0)`);
+  console.info("=".repeat(72));
 
   const results = await runNightlySync();
 
   clearInterval(rssInterval);
   const elapsedMin = ((Date.now() - START) / 1000 / 60).toFixed(2);
-  console.log("=".repeat(72));
-  console.log(`COMPLETED in ${elapsedMin} min (peak RSS ${peakRssMb} MB)`);
-  console.log("=".repeat(72));
-  console.log(JSON.stringify({
+  console.info("=".repeat(72));
+  console.info(`COMPLETED in ${elapsedMin} min (peak RSS ${peakRssMb} MB)`);
+  console.info("=".repeat(72));
+  console.info(JSON.stringify({
     started_at: results.started_at,
     completed_at: results.completed_at,
     duration_ms: results.duration_ms,

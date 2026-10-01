@@ -28,43 +28,43 @@ function dbUrl(): string {
 async function main(): Promise<void> {
   const c = new Client({ connectionString: dbUrl() });
   await c.connect();
-  console.log(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}\n`);
+  console.info(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}\n`);
 
   try {
-    console.log("=== 1. Norton on canonical DC? ===");
+    console.info("=== 1. Norton on canonical DC? ===");
     const q1 = await c.query(`
       SELECT full_name, jurisdiction_id,
              to_char(updated_at, 'YYYY-MM-DD HH24:MI') AS updated
       FROM officials WHERE id = $1;
     `, [NORTON]);
     console.table(q1.rows);
-    console.log(q1.rows[0]?.jurisdiction_id === DC_CAN ? "  PASS" : "  FAIL");
+    console.info(q1.rows[0]?.jurisdiction_id === DC_CAN ? "  PASS" : "  FAIL");
 
-    console.log("\n=== 2. 34 DC FEC candidates moved to canonical DC? ===");
+    console.info("\n=== 2. 34 DC FEC candidates moved to canonical DC? ===");
     const q2 = await c.query(`
       SELECT COUNT(*)::int AS n FROM officials
       WHERE jurisdiction_id = $1
         AND metadata->>'state' = 'DC'
         AND source_ids ? 'fec_candidate_id';
     `, [DC_CAN]);
-    console.log(`  on DC canonical: ${q2.rows[0].n} (expected ≥ 34)`);
+    console.info(`  on DC canonical: ${q2.rows[0].n} (expected ≥ 34)`);
 
-    console.log("\n=== 3. 0 DC FEC candidates remain on federalId? ===");
+    console.info("\n=== 3. 0 DC FEC candidates remain on federalId? ===");
     const q3 = await c.query(`
       SELECT COUNT(*)::int AS n FROM officials
       WHERE jurisdiction_id = $1
         AND metadata->>'state' = 'DC'
         AND source_ids ? 'fec_candidate_id';
     `, [FED]);
-    console.log(`  on federalId: ${q3.rows[0].n} (expected 0)`);
-    console.log(q3.rows[0].n === 0 ? "  PASS" : "  FAIL");
+    console.info(`  on federalId: ${q3.rows[0].n} (expected 0)`);
+    console.info(q3.rows[0].n === 0 ? "  PASS" : "  FAIL");
 
-    console.log("\n=== 4. financial_relationships referencing Norton still resolve ===");
+    console.info("\n=== 4. financial_relationships referencing Norton still resolve ===");
     const q4 = await c.query(`
       SELECT COUNT(*)::int AS n FROM financial_relationships
       WHERE from_id = $1 OR to_id = $1;
     `, [NORTON]);
-    console.log(`  rows: ${q4.rows[0].n}`);
+    console.info(`  rows: ${q4.rows[0].n}`);
   } finally {
     await c.end();
   }

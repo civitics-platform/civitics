@@ -133,7 +133,7 @@ function parseArgs(argv: string[]): Args {
       }
       mode = m;
     } else if (a === "--help" || a === "-h") {
-      console.log(
+      console.info(
         "Usage: donor-rollup-bulk [--status] [--allow-prod --confirm]\n" +
           "                        [--mode dirty|full] [--chunks 16|32|64|128|256]\n" +
           "                        [--db-url URL] [--budget-seconds N] [--max-iterations N]\n" +
@@ -193,7 +193,7 @@ async function readState(client: Client): Promise<SweepState> {
 
 async function reportState(client: Client, label: string): Promise<SweepState> {
   const s = await readState(client);
-  console.log(
+  console.info(
     `[bulk] ${label}: last_status=${s.lastStatus ?? "-"} (${s.lastStartedAt ?? "never"})` +
       (s.chunkCursor !== null && s.chunkCursor >= 0
         ? ` sweep_in_flight cursor=${s.chunkCursor}/${(s.chunks ?? 32) - 1} mode=${s.mode} since ${s.sweepStartedAt}`
@@ -204,9 +204,9 @@ async function reportState(client: Client, label: string): Promise<SweepState> {
     const bits = ["targets", "target_officials", "chunks_done_this_run", "slowest_chunk_seconds", "elapsed_seconds"]
       .filter((k) => m[k] !== undefined)
       .map((k) => `${k}=${String(m[k])}`);
-    if (bits.length) console.log(`[bulk]   ${bits.join(" ")}`);
+    if (bits.length) console.info(`[bulk]   ${bits.join(" ")}`);
   }
-  if (s.lastError) console.log(`[bulk]   last_error: ${s.lastError}`);
+  if (s.lastError) console.info(`[bulk]   last_error: ${s.lastError}`);
   return s;
 }
 
@@ -219,13 +219,13 @@ async function reportState(client: Client, label: string): Promise<SweepState> {
  * every index-only scan into a per-row heap fetch.
  */
 async function vacuumArms(client: Client): Promise<void> {
-  console.log(`[bulk] VACUUM (ANALYZE) on ${REWRITTEN_ARMS.length} rewritten arms (FIX-943 rule)`);
+  console.info(`[bulk] VACUUM (ANALYZE) on ${REWRITTEN_ARMS.length} rewritten arms (FIX-943 rule)`);
   for (const table of REWRITTEN_ARMS) {
     const t0 = Date.now();
     // VACUUM cannot run inside a transaction block; node-pg sends these
     // unwrapped, and statement_timeout is already 0 for this session.
     await client.query(`VACUUM (ANALYZE) ${table}`);
-    console.log(`[bulk]   ${table} — ${Math.round((Date.now() - t0) / 1000)}s`);
+    console.info(`[bulk]   ${table} — ${Math.round((Date.now() - t0) / 1000)}s`);
   }
 }
 
@@ -296,7 +296,7 @@ async function main(): Promise<number> {
       );
       return 1;
     }
-    console.log(
+    console.info(
       `[bulk] session armed: statement_timeout=0, mode=${args.mode}, ` +
         `chunks=${args.chunks ?? "default"}, budget=${args.budgetSeconds}s`,
     );
@@ -306,14 +306,14 @@ async function main(): Promise<number> {
     let completed = false;
     for (; iteration < args.maxIterations; iteration++) {
       const t0 = Date.now();
-      console.log(`[bulk] CALL donor_rollup_rebuild_bulk() — iteration ${iteration + 1}`);
+      console.info(`[bulk] CALL donor_rollup_rebuild_bulk() — iteration ${iteration + 1}`);
       await client.query("CALL public.donor_rollup_rebuild_bulk()");
       const mins = Math.round((Date.now() - t0) / 60000);
 
       const s = await reportState(client, `after iteration ${iteration + 1} (${mins}m)`);
 
       if (s.lastStatus === "complete") {
-        console.log("[bulk] sweep COMPLETE — watermark advanced, incremental cursor cleared");
+        console.info("[bulk] sweep COMPLETE — watermark advanced, incremental cursor cleared");
         completed = true;
         break;
       }

@@ -15,11 +15,11 @@ async function main(): Promise<void> {
     console.error(`ERROR: expected prod URL, got ${url}`);
     process.exit(2);
   }
-  console.log(`target: ${url}`);
+  console.info(`target: ${url}`);
 
   const db = createAdminClient();
   const { federalId, stateIds } = await seedJurisdictions(db);
-  console.log(`federalId: ${federalId}`);
+  console.info(`federalId: ${federalId}`);
 
   const expected = [
     ["DC", "4d2aac54-6d83-4736-b446-2970e98439f5"],
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   for (const [abbr, expectedId] of expected) {
     const got = stateIds.get(abbr);
     if (got === expectedId) {
-      console.log(`  ✓ ${abbr} → ${got}`);
+      console.info(`  ✓ ${abbr} → ${got}`);
     } else {
       console.error(`  ✗ ${abbr} → ${got ?? "(undefined)"}  (expected ${expectedId})`);
       fail++;
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     console.error(`\nFAIL: ${fail} of ${expected.length} did not resolve to canonical`);
     process.exit(3);
   }
-  console.log(`\nPASS: all ${expected.length} type='district' state-equivalents resolved to canonical`);
+  console.info(`\nPASS: all ${expected.length} type='district' state-equivalents resolved to canonical`);
 }
 
 main().catch((err) => {

@@ -111,12 +111,12 @@ async function main(): Promise<void> {
   const wanted = manifest.rows.filter((r) => classes.includes(r["class"] as Cls));
   const toIds = wanted.map((r) => r["to_id"]!).filter(Boolean);
 
-  console.log(`\n-- FIX-1106 residue remediation -- ${envLabel()} -- cycle ${cycle} / ${source} --`);
-  console.log(`  manifest ${manifest.path}`);
-  console.log(`  classes  ${classes.join(",")}  ->  ${toIds.length.toLocaleString()} of ${manifest.rows.length.toLocaleString()} recipients`);
-  for (const c of manifest.comments) console.log(`  ${c}`);
+  console.info(`\n-- FIX-1106 residue remediation -- ${envLabel()} -- cycle ${cycle} / ${source} --`);
+  console.info(`  manifest ${manifest.path}`);
+  console.info(`  classes  ${classes.join(",")}  ->  ${toIds.length.toLocaleString()} of ${manifest.rows.length.toLocaleString()} recipients`);
+  for (const c of manifest.comments) console.info(`  ${c}`);
   if (toIds.length === 0) {
-    console.log("\n  Nothing selected. Done.");
+    console.info("\n  Nothing selected. Done.");
     return;
   }
 
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
     // -- Re-check, keyed on the manifest's ids -------------------------------
     // Index range scan on (to_type, to_id) plus the emit-set probe. Never a scan
     // of financial_relationships.
-    console.log("\n-- Keyed re-check on this environment ----------------------");
+    console.info("\n-- Keyed re-check on this environment ----------------------");
     const live = await q<{ to_id: string; rows: string; cents: string }>(
       client,
       `SELECT fr.to_id::text, count(*)::text AS rows, sum(fr.amount_cents)::text AS cents
@@ -195,19 +195,19 @@ async function main(): Promise<void> {
       else if (now < was) shrunk.push(id);
       else grown.push(id);
     }
-    console.log(`  match ${match.length}   shrunk ${shrunk.length}   grown ${grown.length} (SKIPPED)   gone ${gone.length}`);
+    console.info(`  match ${match.length}   shrunk ${shrunk.length}   grown ${grown.length} (SKIPPED)   gone ${gone.length}`);
     if (grown.length > 0) {
-      console.log(`  ! ${grown.length} recipient(s) have MORE residue than the manifest recorded and are skipped.`);
-      console.log(`    A manifest is an authorisation, not a description. Re-audit to widen it.`);
+      console.info(`  ! ${grown.length} recipient(s) have MORE residue than the manifest recorded and are skipped.`);
+      console.info(`    A manifest is an authorisation, not a description. Re-audit to widen it.`);
     }
 
     const actIds = [...match, ...shrunk];
     const actRows = actIds.reduce((a, id) => a + Number(byId.get(id)?.rows ?? 0), 0);
     const actCents = actIds.reduce((a, id) => a + Number(byId.get(id)?.cents ?? 0), 0);
-    console.log(`\n  TO DELETE: ${actRows.toLocaleString()} rows / ${usd(actCents)} across ${actIds.length.toLocaleString()} recipients`);
+    console.info(`\n  TO DELETE: ${actRows.toLocaleString()} rows / ${usd(actCents)} across ${actIds.length.toLocaleString()} recipients`);
 
     if (actRows > SUPERVISED_VACUUM_ROWS) {
-      console.log(
+      console.info(
         `\n  ! ${actRows.toLocaleString()} rows exceeds ${SUPERVISED_VACUUM_ROWS.toLocaleString()}.\n` +
           `    The "let fr-vacuum-analyze collect it" answer holds for the ~209k-row residue\n` +
           `    FIX-1106 measured, which sits under the 0.02 autovacuum trigger. At this size\n` +
@@ -226,18 +226,18 @@ async function main(): Promise<void> {
     printTailTable(declareRemediationTail(defer), defer, owners);
 
     if (!apply) {
-      console.log(`\n  DRY RUN -- nothing written. Re-run with --apply${prod ? " --allow-prod" : ""} --defer-tails.`);
+      console.info(`\n  DRY RUN -- nothing written. Re-run with --apply${prod ? " --allow-prod" : ""} --defer-tails.`);
       return;
     }
     if (actIds.length === 0) {
-      console.log("\n  Nothing left to act on. Done.");
+      console.info("\n  Nothing left to act on. Done.");
       return;
     }
 
     // -- Apply ---------------------------------------------------------------
     // Donors are captured BEFORE the delete: afterwards the rows that named them
     // are gone and they are unreachable (FIX-1074).
-    console.log("\n-- Applying ------------------------------------------------");
+    console.info("\n-- Applying ------------------------------------------------");
     await client.query("BEGIN");
     await client.query(
       `CREATE TEMP TABLE _affected AS
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
         RETURNING fr.id::text`,
       [actIds, cycle, source, runId],
     );
-    console.log(`  deleted ${deleted.length.toLocaleString()} financial_relationships rows`);
+    console.info(`  deleted ${deleted.length.toLocaleString()} financial_relationships rows`);
     await client.query("COMMIT");
 
     // -- The tail, via the shared FIX-1074 drain -----------------------------
@@ -301,7 +301,7 @@ async function main(): Promise<void> {
       if (isCancellation(err)) process.exit(3);
       throw err;
     }
-    console.log("\n  Done.");
+    console.info("\n  Done.");
   } finally {
     await client.end();
   }

@@ -25,12 +25,12 @@ import { runHeavyRebuild } from "../lib/heavy-rebuild";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`Rebuilding financial_entities IE totals against: ${url}`);
+  console.info(`Rebuilding financial_entities IE totals against: ${url}`);
   const t0 = Date.now();
   // Returns void → count 0; we run for the side effect.
   await runHeavyRebuild("rebuild_financial_entity_ie_totals");
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`✓ rebuild_financial_entity_ie_totals complete (${dur}s)`);
+  console.info(`✓ rebuild_financial_entity_ie_totals complete (${dur}s)`);
 }
 
 main().catch((e) => {

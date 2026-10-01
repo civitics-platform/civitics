@@ -233,7 +233,7 @@ async function q<T = Record<string, unknown>>(c: Client, sql: string, p: unknown
 async function run(c: Client, label: string, sql: string, p: unknown[] = []): Promise<number> {
   const t0 = Date.now();
   const n = (await c.query(sql, p)).rowCount ?? 0;
-  console.log(`  ${label.padEnd(50)} ${String(n).padStart(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ${label.padEnd(50)} ${String(n).padStart(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   return n;
 }
 
@@ -253,31 +253,31 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`# FIX-954 — cross-person contamination on BOUND officials`);
-  console.log(`Env:        ${envLabel()}`);
-  console.log(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}\n`);
+  console.info(`# FIX-954 — cross-person contamination on BOUND officials`);
+  console.info(`Env:        ${envLabel()}`);
+  console.info(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}\n`);
 
   const client = new Client({ connectionString: dbUrl, statement_timeout: 1_800_000 });
   await client.connect();
   await client.query("SET idle_in_transaction_session_timeout = 0");
   if (!prod) await client.query("SET max_parallel_workers_per_gather = 0");
 
-  console.log("Building CROSS-person overlap + staleness evidence…");
+  console.info("Building CROSS-person overlap + staleness evidence…");
   await client.query(BUILD_SQL);
   const evidence = await q<Evidence>(client, EVIDENCE_SQL);
 
   const rows = evidence.map((e) => ({ e, verdict: verdictOf(e) }));
   const act = rows.filter((r) => r.verdict === "ACT");
 
-  console.log(`\n── Candidates (${rows.length}) ─────────────────────────────`);
-  console.log(
+  console.info(`\n── Candidates (${rows.length}) ─────────────────────────────`);
+  console.info(
     `  ${"holder".padEnd(24)}${"role".padEnd(16)}${"verdict".padEnd(20)}` +
       `${"stale $".padStart(14)}${"stale/shared".padStart(13)}${"live".padStart(8)}  owner`,
   );
   for (const { e, verdict } of rows) {
     const shared = Number(e.shared);
     const share = shared > 0 ? (Number(e.stale_rows) / shared) * 100 : 0;
-    console.log(
+    console.info(
       `  ${(e.full_name ?? "").slice(0, 23).padEnd(24)}${(e.role_title ?? "").slice(0, 15).padEnd(16)}` +
         `${verdict.padEnd(20)}${usd(e.stale_cents).padStart(14)}` +
         `${`${e.stale_rows}/${e.shared}`.padStart(13)}${String(e.live_rows).padStart(8)}  ` +
@@ -286,9 +286,9 @@ async function main(): Promise<void> {
   }
 
   const actCents = act.reduce((s, r) => s + BigInt(r.e.stale_cents), 0n);
-  console.log(`\n  ACT: ${act.length} officials, ${usd(actCents.toString())}`);
+  console.info(`\n  ACT: ${act.length} officials, ${usd(actCents.toString())}`);
   for (const r of rows.filter((x) => x.verdict !== "ACT")) {
-    console.log(`  ${r.verdict.padEnd(20)} ${r.e.full_name} — ${usd(r.e.stale_cents)} (not acted on)`);
+    console.info(`  ${r.verdict.padEnd(20)} ${r.e.full_name} — ${usd(r.e.stale_cents)} (not acted on)`);
   }
 
   // ── Artifacts ─────────────────────────────────────────────────────────────
@@ -313,10 +313,10 @@ async function main(): Promise<void> {
     `${base}.tsv`,
     [header, ...body].map((r) => r.map((c) => c.replace(/[\t\r\n]/g, " ")).join("\t")).join("\n") + "\n",
   );
-  console.log(`\nWrote ${base}.tsv`);
+  console.info(`\nWrote ${base}.tsv`);
 
   if (act.length === 0) {
-    console.log("\nNothing to act on.");
+    console.info("\nNothing to act on.");
     await client.end();
     return;
   }
@@ -376,19 +376,19 @@ async function main(): Promise<void> {
     const [after] = await q<{ cents: string }>(client, PLATFORM_SQL);
     const drop = BigInt(before?.cents ?? "0") - BigInt(after?.cents ?? "0");
     const expected = BigInt(agg?.cents ?? "0");
-    console.log("\n── Conservation ─────────────────────────────────────────");
-    console.log(`  platform donation dollars: ${usd(before?.cents ?? "0")} → ${usd(after?.cents ?? "0")}`);
-    console.log(`  observed drop:             ${usd(drop.toString())}`);
-    console.log(`  deleted rows:              ${usd(expected.toString())}  (${deleted.toLocaleString()} rows)`);
-    console.log(`  difference (must be $0):   ${usd((drop - expected).toString())}  ${drop === expected ? "OK" : "FAIL"}`);
+    console.info("\n── Conservation ─────────────────────────────────────────");
+    console.info(`  platform donation dollars: ${usd(before?.cents ?? "0")} → ${usd(after?.cents ?? "0")}`);
+    console.info(`  observed drop:             ${usd(drop.toString())}`);
+    console.info(`  deleted rows:              ${usd(expected.toString())}  (${deleted.toLocaleString()} rows)`);
+    console.info(`  difference (must be $0):   ${usd((drop - expected).toString())}  ${drop === expected ? "OK" : "FAIL"}`);
     if (drop !== expected) throw new Error("conservation FAILED");
 
     if (apply) {
       await client.query("COMMIT");
-      console.log(`\n✓ COMMITTED — ${deleted.toLocaleString()} rows removed from ${act.length} officials.`);
+      console.info(`\n✓ COMMITTED — ${deleted.toLocaleString()} rows removed from ${act.length} officials.`);
     } else {
       await client.query("ROLLBACK");
-      console.log(`\n✓ DRY-RUN complete — rolled back. Re-run with --apply to commit.`);
+      console.info(`\n✓ DRY-RUN complete — rolled back. Re-run with --apply to commit.`);
       await client.end();
       return;
     }
@@ -400,7 +400,7 @@ async function main(): Promise<void> {
   }
 
   // ── Rollups + the standing vacuum rule ────────────────────────────────────
-  console.log("\n── Rollups ──────────────────────────────────────────────");
+  console.info("\n── Rollups ──────────────────────────────────────────────");
   const [dn] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _donor`);
   const donors = Number(dn?.n ?? 0);
   await client.query("SET statement_timeout = 0");
@@ -430,7 +430,7 @@ async function main(): Promise<void> {
     }
   }
   // Standing rule (root CLAUDE.md): a bulk rewrite ends by vacuuming what it rewrote.
-  console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
+  console.info("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
   for (const t of CHURNED_TABLES) {
     try {
       await run(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);

@@ -117,7 +117,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--status") statusOnly = true;
     else if (a === "--budget-seconds" && args[i + 1]) budgetSeconds = Number(args[++i]);
     else if (a === "--help" || a === "-h") {
-      console.log(
+      console.info(
         "Usage: donor-rollup-sweep [--status] [--allow-prod --confirm]\n" +
           "                         [--db-url URL] [--budget-seconds N]\n\n" +
           "  --status          report sweep state and exit; writes nothing\n" +
@@ -151,13 +151,13 @@ async function readState(client: Client): Promise<Freshness> {
 
 async function reportState(client: Client, label: string): Promise<Freshness> {
   const s = await readState(client);
-  console.log(
+  console.info(
     `[sweep] ${label}: last_complete=${s.last_complete_at ?? "never"} ` +
       `(${s.hours_since_complete ?? "?"}h ago, stale=${s.stale}) ` +
       `last_status=${s.last_status ?? "-"} sweep_in_progress=${s.sweep_in_progress ?? false}` +
       (s.sweep_cursor ? ` cursor=${s.sweep_cursor}` : ""),
   );
-  if (s.last_error) console.log(`[sweep]   last_error: ${s.last_error}`);
+  if (s.last_error) console.info(`[sweep]   last_error: ${s.last_error}`);
   return s;
 }
 
@@ -233,20 +233,20 @@ async function main(): Promise<number> {
       console.error(`[sweep] refusing: statement_timeout is ${armed.rows[0]?.st}, expected 0 — the sweep would be cancelled mid-flight`);
       return 1;
     }
-    console.log(`[sweep] session armed: statement_timeout=0, budget=${args.budgetSeconds}s`);
+    console.info(`[sweep] session armed: statement_timeout=0, budget=${args.budgetSeconds}s`);
 
     let iteration = 0;
     let lastCursor: string | null = before.sweep_cursor;
     for (; iteration < MAX_ITERATIONS; iteration++) {
       const t0 = Date.now();
-      console.log(`[sweep] CALL refresh_official_donor_rollup_incremental() — iteration ${iteration + 1}`);
+      console.info(`[sweep] CALL refresh_official_donor_rollup_incremental() — iteration ${iteration + 1}`);
       await client.query("CALL public.refresh_official_donor_rollup_incremental()");
       const mins = Math.round((Date.now() - t0) / 60000);
 
       const s = await reportState(client, `after iteration ${iteration + 1} (${mins}m)`);
 
       if (s.last_status === "complete") {
-        console.log("[sweep] sweep COMPLETE — watermark advanced, cursor cleared");
+        console.info("[sweep] sweep COMPLETE — watermark advanced, cursor cleared");
         break;
       }
       if (s.last_status === "failed") {

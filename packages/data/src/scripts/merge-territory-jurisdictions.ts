@@ -187,7 +187,7 @@ async function processTerritory(
   t: { name: string; fips: string },
   willExecute: boolean,
 ): Promise<TerritoryResult> {
-  console.log(`\n${"═".repeat(70)}\n${t.name} (fips ${t.fips})\n${"═".repeat(70)}`);
+  console.info(`\n${"═".repeat(70)}\n${t.name} (fips ${t.fips})\n${"═".repeat(70)}`);
 
   // ── 1. Resolve winner + loser live ────────────────────────────────────
   const winner = await resolveOne(
@@ -208,8 +208,8 @@ async function processTerritory(
   if (winner.type !== "unincorporated_territory") throw new Error(`${t.name}: winner type unexpected (${winner.type}).`);
   if (loser.type !== "district") throw new Error(`${t.name}: loser type unexpected (${loser.type}).`);
 
-  console.log(`  WINNER:  ${winner.id}  ${winner.type}  "${winner.name}"`);
-  console.log(`  LOSER:   ${loser.id}  ${loser.type}  "${loser.name}"`);
+  console.info(`  WINNER:  ${winner.id}  ${winner.type}  "${winner.name}"`);
+  console.info(`  LOSER:   ${loser.id}  ${loser.type}  "${loser.name}"`);
 
   // Loud confirmation of OTHER fips rows that must survive (county etc.).
   const survivors = await q(
@@ -219,8 +219,8 @@ async function processTerritory(
     [t.fips, winner.id, loser.id],
   );
   if (survivors.length) {
-    console.log(`  Other fips-${t.fips} rows (MUST survive untouched):`);
-    for (const r of survivors) console.log(`    ${r.id}  ${r.type}  "${r.name}"`);
+    console.info(`  Other fips-${t.fips} rows (MUST survive untouched):`);
+    for (const r of survivors) console.info(`    ${r.id}  ${r.type}  "${r.name}"`);
   }
 
   // ── 2. Resolve gb pairs + decide per-gb branch ────────────────────────
@@ -247,9 +247,9 @@ async function processTerritory(
     };
   });
 
-  console.log(`  gb handling (${loserGbs.length} loser gb(s); winner has ${winnerGbs.length}):`);
+  console.info(`  gb handling (${loserGbs.length} loser gb(s); winner has ${winnerGbs.length}):`);
   for (const p of gbPlans) {
-    console.log(
+    console.info(
       p.action === "merge"
         ? `    MERGE   ${p.gb.id} (${p.gb.type} "${p.gb.name}") → winner gb ${p.winnerGbId}`
         : `    REPOINT ${p.gb.id} (${p.gb.type} "${p.gb.name}") jurisdiction_id → winner; xsr ${p.oldXsrKey} → ${p.newXsrKey}`,
@@ -264,44 +264,44 @@ async function processTerritory(
   );
 
   // ── Live FK-surface audit of the LOSER jurisdiction ───────────────────
-  console.log(`  BEFORE — references to the loser jurisdiction:`);
+  console.info(`  BEFORE — references to the loser jurisdiction:`);
   for (const [table, col] of JURIS_REF_COLS) {
     const n = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE ${col} = $1`, [loser.id]);
-    if (n > 0) console.log(`    ${String(n).padStart(5)}  ${table}.${col}`);
+    if (n > 0) console.info(`    ${String(n).padStart(5)}  ${table}.${col}`);
   }
   const metaBefore = await count(
     client,
     `SELECT COUNT(*)::int AS n FROM public.officials WHERE metadata->>'district_jurisdiction_id' = $1`,
     [loser.id],
   );
-  if (metaBefore > 0) console.log(`    ${String(metaBefore).padStart(5)}  officials.metadata->>'district_jurisdiction_id'`);
+  if (metaBefore > 0) console.info(`    ${String(metaBefore).padStart(5)}  officials.metadata->>'district_jurisdiction_id'`);
 
   // ── Print the exact plan ──────────────────────────────────────────────
-  console.log(`  ── PLAN (params: winner=${winner.id}, loser=${loser.id}) ──`);
+  console.info(`  ── PLAN (params: winner=${winner.id}, loser=${loser.id}) ──`);
   for (const p of gbPlans) {
     if (p.action === "merge") {
       for (const [table, col] of GB_REF_COLS) {
-        console.log(`    UPDATE ${table} SET ${col}='${p.winnerGbId}' WHERE ${col}='${p.gb.id}';`);
+        console.info(`    UPDATE ${table} SET ${col}='${p.winnerGbId}' WHERE ${col}='${p.gb.id}';`);
       }
-      console.log(`    DELETE FROM external_source_refs WHERE entity_type='governing_body' AND entity_id='${p.gb.id}';`);
-      console.log(`    DELETE FROM governing_bodies WHERE id='${p.gb.id}';`);
+      console.info(`    DELETE FROM external_source_refs WHERE entity_type='governing_body' AND entity_id='${p.gb.id}';`);
+      console.info(`    DELETE FROM governing_bodies WHERE id='${p.gb.id}';`);
     } else {
-      console.log(`    UPDATE governing_bodies SET jurisdiction_id='${winner.id}' WHERE id='${p.gb.id}';`);
-      console.log(
+      console.info(`    UPDATE governing_bodies SET jurisdiction_id='${winner.id}' WHERE id='${p.gb.id}';`);
+      console.info(
         `    UPDATE external_source_refs SET external_id='${p.newXsrKey}' ` +
           `WHERE entity_type='governing_body' AND entity_id='${p.gb.id}' AND source='openstates' AND external_id='${p.oldXsrKey}';`,
       );
     }
   }
   for (const [table, col] of JURIS_REF_COLS) {
-    console.log(`    UPDATE ${table} SET ${col}='${winner.id}' WHERE ${col}='${loser.id}';`);
+    console.info(`    UPDATE ${table} SET ${col}='${winner.id}' WHERE ${col}='${loser.id}';`);
   }
-  console.log(
+  console.info(
     `    UPDATE officials SET metadata = jsonb_set(metadata,'{district_jurisdiction_id}',to_jsonb('${winner.id}'::text)) ` +
       `WHERE metadata->>'district_jurisdiction_id'='${loser.id}';`,
   );
-  console.log(`    DELETE FROM external_source_refs WHERE entity_type='jurisdiction' AND entity_id='${loser.id}';`);
-  console.log(`    DELETE FROM jurisdictions WHERE id='${loser.id}';`);
+  console.info(`    DELETE FROM external_source_refs WHERE entity_type='jurisdiction' AND entity_id='${loser.id}';`);
+  console.info(`    DELETE FROM jurisdictions WHERE id='${loser.id}';`);
 
   if (!willExecute) {
     return {
@@ -328,14 +328,14 @@ async function processTerritory(
             `UPDATE public.${table} SET ${col} = $1 WHERE ${col} = $2`,
             [p.winnerGbId, p.gb.id],
           );
-          if (res.rowCount) console.log(`    repointed ${res.rowCount} ${table}.${col} (loser gb → winner gb)`);
+          if (res.rowCount) console.info(`    repointed ${res.rowCount} ${table}.${col} (loser gb → winner gb)`);
         }
         await client.query(
           `DELETE FROM public.external_source_refs WHERE entity_type='governing_body' AND entity_id=$1`,
           [p.gb.id],
         );
         await client.query(`DELETE FROM public.governing_bodies WHERE id = $1`, [p.gb.id]);
-        console.log(`    merged + deleted loser gb ${p.gb.id}`);
+        console.info(`    merged + deleted loser gb ${p.gb.id}`);
       } else {
         await client.query(`UPDATE public.governing_bodies SET jurisdiction_id = $1 WHERE id = $2`, [winner.id, p.gb.id]);
         const xsr = await client.query(
@@ -343,14 +343,14 @@ async function processTerritory(
             WHERE entity_type='governing_body' AND entity_id = $2 AND source='openstates' AND external_id = $3`,
           [p.newXsrKey, p.gb.id, p.oldXsrKey],
         );
-        console.log(`    repointed gb ${p.gb.id} → winner; rewrote ${xsr.rowCount ?? 0} openstates xsr key`);
+        console.info(`    repointed gb ${p.gb.id} → winner; rewrote ${xsr.rowCount ?? 0} openstates xsr key`);
       }
     }
 
     for (const [table, col] of JURIS_REF_COLS) {
       const res = await client.query(`UPDATE public.${table} SET ${col} = $1 WHERE ${col} = $2`, [winner.id, loser.id]);
       if (res.rowCount) {
-        console.log(`    repointed ${res.rowCount} ${table}.${col} (→ winner jurisdiction)`);
+        console.info(`    repointed ${res.rowCount} ${table}.${col} (→ winner jurisdiction)`);
         jurisRefsRepointed += res.rowCount;
       }
     }
@@ -359,14 +359,14 @@ async function processTerritory(
         WHERE metadata->>'district_jurisdiction_id' = $2`,
       [winner.id, loser.id],
     );
-    if (metaRes.rowCount) console.log(`    repointed ${metaRes.rowCount} officials.metadata.district_jurisdiction_id`);
+    if (metaRes.rowCount) console.info(`    repointed ${metaRes.rowCount} officials.metadata.district_jurisdiction_id`);
 
     await client.query(
       `DELETE FROM public.external_source_refs WHERE entity_type='jurisdiction' AND entity_id = $1`,
       [loser.id],
     );
     const jDel = await client.query(`DELETE FROM public.jurisdictions WHERE id = $1`, [loser.id]);
-    console.log(`    deleted ${jDel.rowCount} loser jurisdiction row(s)`);
+    console.info(`    deleted ${jDel.rowCount} loser jurisdiction row(s)`);
 
     await client.query("COMMIT");
   } catch (err) {
@@ -422,14 +422,14 @@ async function processTerritory(
     officialsAfter === officialsBefore &&
     repointedGbsOnWinner === repointGbCount;
 
-  console.log(`  ── POST-MERGE (${t.name}) ──`);
-  console.log(`    loser jurisdiction remaining:        ${loserGone}   (expect 0)`);
-  console.log(`    winner jurisdiction present:         ${winnerStill}   (expect 1)`);
-  console.log(`    dangling refs to loser:              ${dangling}   (expect 0)`);
-  console.log(`    stale gb xsr keys (gb/<loser>/…):    ${staleXsr}   (expect 0)`);
-  console.log(`    repointed gbs now on winner:         ${repointedGbsOnWinner}/${repointGbCount}`);
-  console.log(`    officials (combined→winner):         ${officialsBefore} → ${officialsAfter}   (expect equal)`);
-  console.log(`    ${ok ? "✓ VERIFIED" : "✗ INCOMPLETE — investigate above"}`);
+  console.info(`  ── POST-MERGE (${t.name}) ──`);
+  console.info(`    loser jurisdiction remaining:        ${loserGone}   (expect 0)`);
+  console.info(`    winner jurisdiction present:         ${winnerStill}   (expect 1)`);
+  console.info(`    dangling refs to loser:              ${dangling}   (expect 0)`);
+  console.info(`    stale gb xsr keys (gb/<loser>/…):    ${staleXsr}   (expect 0)`);
+  console.info(`    repointed gbs now on winner:         ${repointedGbsOnWinner}/${repointGbCount}`);
+  console.info(`    officials (combined→winner):         ${officialsBefore} → ${officialsAfter}   (expect equal)`);
+  console.info(`    ${ok ? "✓ VERIFIED" : "✗ INCOMPLETE — investigate above"}`);
 
   return {
     name: t.name,
@@ -464,10 +464,10 @@ async function main(): Promise<void> {
   const env = prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker";
   const willExecute = dryRun ? false : prod ? confirm : true;
 
-  console.log(`# FIX-487 — territory jurisdiction merge (AS/GU/MP/PR/VI)`);
-  console.log(`Env:        ${env}`);
-  console.log(`Connection: ${masked}`);
-  console.log(
+  console.info(`# FIX-487 — territory jurisdiction merge (AS/GU/MP/PR/VI)`);
+  console.info(`Env:        ${env}`);
+  console.info(`Connection: ${masked}`);
+  console.info(
     `Mode:       ${
       willExecute ? (prod ? "PROD WRITE (--allow-prod --confirm given)" : "local write") : "PLAN ONLY (no writes)"
     }`,
@@ -487,18 +487,18 @@ async function main(): Promise<void> {
   }
 
   // ── Summary table ───────────────────────────────────────────────────────
-  console.log(`\n${"═".repeat(70)}\nSUMMARY\n${"═".repeat(70)}`);
+  console.info(`\n${"═".repeat(70)}\nSUMMARY\n${"═".repeat(70)}`);
   for (const r of results) {
     const merges = r.gbPlans.filter((p) => p.action === "merge").length;
     const repoints = r.gbPlans.filter((p) => p.action === "repoint").length;
-    console.log(
+    console.info(
       `  ${r.name.padEnd(26)} fips ${r.fips}  gb: ${merges} merge / ${repoints} repoint  ` +
         `officials ${r.officialsBefore}→${r.officialsAfter}  ${willExecute ? (r.ok ? "✓" : "✗") : "(plan)"}`,
     );
   }
 
   if (!willExecute) {
-    console.log(
+    console.info(
       `\n⏸  PLAN ONLY — no writes performed.` +
         (prod
           ? `\n   Prod execution is gated: re-run with the executing variant (…:prod) only after explicit confirmation.`
@@ -508,7 +508,7 @@ async function main(): Promise<void> {
   }
 
   const allOk = results.every((r) => r.ok);
-  console.log(`\n${allOk ? "✓ ALL TERRITORIES MERGED + VERIFIED" : "✗ ONE OR MORE TERRITORIES INCOMPLETE — investigate above"}`);
+  console.info(`\n${allOk ? "✓ ALL TERRITORIES MERGED + VERIFIED" : "✗ ONE OR MORE TERRITORIES INCOMPLETE — investigate above"}`);
   if (!allOk) process.exitCode = 1;
 }
 

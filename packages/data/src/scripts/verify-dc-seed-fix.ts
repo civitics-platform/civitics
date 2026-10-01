@@ -39,7 +39,7 @@ async function main(): Promise<void> {
       process.exit(2);
     }
 
-    console.log(`canonical DC id: ${canonicalDcId}`);
+    console.info(`canonical DC id: ${canonicalDcId}`);
 
     // Insert collider mimicking prod DC-98
     const ins = await pg.query(
@@ -52,13 +52,13 @@ async function main(): Promise<void> {
       ["[TEST] DC Delegate District (at Large)", "DC-98", canonicalDcId],
     );
     colliderId = ins.rows[0].id;
-    console.log(`inserted collider id: ${colliderId}`);
+    console.info(`inserted collider id: ${colliderId}`);
 
     // Sanity: pre-fix query (no parent_id filter) finds 2 rows
     const pre = await pg.query(
       `SELECT id FROM public.jurisdictions WHERE fips_code='11' AND type='district'`,
     );
-    console.log(`pre-fix shape: ${pre.rows.length} rows match (fips=11, type=district)`);
+    console.info(`pre-fix shape: ${pre.rows.length} rows match (fips=11, type=district)`);
     if (pre.rows.length < 2) {
       console.error("ERROR: collider insert didn't create the duplicate shape");
       process.exit(3);
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     const db = createAdminClient();
     const { stateIds } = await seedJurisdictions(db);
     const seededDcId = stateIds.get("DC");
-    console.log(`seedJurisdictions returned DC id: ${seededDcId}`);
+    console.info(`seedJurisdictions returned DC id: ${seededDcId}`);
 
     if (!seededDcId) {
       console.error("FAIL: stateIds.get('DC') returned undefined — seed swallowed an error");
@@ -81,11 +81,11 @@ async function main(): Promise<void> {
       process.exit(5);
     }
 
-    console.log("PASS: seedJurisdictions resolved DC to the canonical row with collider present");
+    console.info("PASS: seedJurisdictions resolved DC to the canonical row with collider present");
   } finally {
     if (colliderId) {
       await pg.query(`DELETE FROM public.jurisdictions WHERE id = $1`, [colliderId]);
-      console.log(`cleaned up collider ${colliderId}`);
+      console.info(`cleaned up collider ${colliderId}`);
     }
     await pg.end();
   }

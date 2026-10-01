@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   await client.connect();
   const host = new URL(cleanUrl).host;
   const isLocal = /127\.0\.0\.1|localhost/.test(host);
-  console.log(`Connected to: ${host} (${isLocal ? "local" : "prod"})\n`);
+  console.info(`Connected to: ${host} (${isLocal ? "local" : "prod"})\n`);
 
   // ── 1. Cluster query ────────────────────────────────────────────────────
   const clusters = await client.query<ClusterRow>(`
@@ -90,15 +90,15 @@ async function main(): Promise<void> {
 
   const totalClusters = clusters.rowCount ?? 0;
   const totalDupeRows = clusters.rows.reduce((s, r) => s + Number(r.n), 0);
-  console.log(`Total casing-dupe clusters: ${totalClusters.toLocaleString()}`);
-  console.log(`Total dupe rows: ${totalDupeRows.toLocaleString()}\n`);
+  console.info(`Total casing-dupe clusters: ${totalClusters.toLocaleString()}`);
+  console.info(`Total dupe rows: ${totalDupeRows.toLocaleString()}\n`);
 
   if (totalClusters > 0) {
-    console.log("Top 10 by cluster size:");
+    console.info("Top 10 by cluster size:");
     for (const r of clusters.rows.slice(0, 10)) {
-      console.log(`  ${r.n}× ${r.key}  (sources: ${r.sources.join(", ")})`);
+      console.info(`  ${r.n}× ${r.key}  (sources: ${r.sources.join(", ")})`);
     }
-    console.log("");
+    console.info("");
   }
 
   // ── 2. Source-key breakdown ────────────────────────────────────────────
@@ -129,11 +129,11 @@ async function main(): Promise<void> {
      ORDER BY (COUNT(*))::int DESC
   `);
 
-  console.log("Source-pipeline breakdown across dupe clusters:");
+  console.info("Source-pipeline breakdown across dupe clusters:");
   for (const r of sourceBreakdown.rows) {
-    console.log(`  ${r.source_key.padEnd(28)} ${r.cluster_count} clusters, ${r.row_count} rows`);
+    console.info(`  ${r.source_key.padEnd(28)} ${r.cluster_count} clusters, ${r.row_count} rows`);
   }
-  console.log("");
+  console.info("");
 
   // ── 3. Write markdown report ───────────────────────────────────────────
   const today = new Date().toISOString().slice(0, 10);
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
   md += `path, and merging them blind would conflate distinct identities.\n`;
 
   fs.writeFileSync(outPath, md);
-  console.log(`Wrote audit report: ${outPath}`);
+  console.info(`Wrote audit report: ${outPath}`);
 
   await client.end();
 }

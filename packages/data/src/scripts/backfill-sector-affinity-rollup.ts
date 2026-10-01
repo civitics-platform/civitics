@@ -21,8 +21,8 @@ import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`[backfill-sector-affinity] target: ${url}`);
-  console.log(
+  console.info(`[backfill-sector-affinity] target: ${url}`);
+  console.info(
     `[backfill-sector-affinity] CALL backfill_official_sector_affinity_rollup() ` +
       `(chunked, 500 officials/chunk, COMMIT each) ...`,
   );
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     "SELECT count(*)::text AS n FROM public.official_sector_affinity_rollup",
   );
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(
+  console.info(
     `[backfill-sector-affinity] ✓ ${Number(rows[0]?.n ?? 0).toLocaleString()} (official,industry) rows in ${dur}s`,
   );
 }

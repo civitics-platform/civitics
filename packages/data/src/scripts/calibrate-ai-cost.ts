@@ -68,11 +68,11 @@ async function main(): Promise<void> {
   const url = buildDbUrl();
   const isProd = /supabase\.co/i.test(process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "");
 
-  console.log(`# FIX-893 — measured AI cost calibration`);
-  console.log(`Model:   ${DEFAULT_AI_MODEL}`);
-  console.log(`Sample:  ${N} real proposals that pass the FIX-894 source-text gate`);
-  console.log(`DB:      ${isProd ? "prod (read-only)" : "local Docker (read-only)"}`);
-  console.log(`Writes:  NONE (no queue claim, no tags, no api_usage_logs)\n`);
+  console.info(`# FIX-893 — measured AI cost calibration`);
+  console.info(`Model:   ${DEFAULT_AI_MODEL}`);
+  console.info(`Sample:  ${N} real proposals that pass the FIX-894 source-text gate`);
+  console.info(`DB:      ${isProd ? "prod (read-only)" : "local Docker (read-only)"}`);
+  console.info(`Writes:  NONE (no queue claim, no tags, no api_usage_logs)\n`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     console.error("No qualifying proposals found — cannot calibrate.");
     process.exit(1);
   }
-  console.log(`Fetched ${rows.length} qualifying proposal(s).\n`);
+  console.info(`Fetched ${rows.length} qualifying proposal(s).\n`);
 
   const anthropic = createAiClient();
 
@@ -105,8 +105,8 @@ async function main(): Promise<void> {
   let totalOut = 0;
   const perItem: Array<{ in: number; out: number; usd: number }> = [];
 
-  console.log(`  #   input_tok  output_tok   cost_usd   title`);
-  console.log(`  --  ---------  ----------  ---------   -----`);
+  console.info(`  #   input_tok  output_tok   cost_usd   title`);
+  console.info(`  --  ---------  ----------  ---------   -----`);
 
   for (let i = 0; i < rows.length; i++) {
     const p = rows[i]!;
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
     totalOut += outTok;
     perItem.push({ in: inTok, out: outTok, usd });
 
-    console.log(
+    console.info(
       `  ${String(i + 1).padStart(2)}  ${String(inTok).padStart(9)}  ` +
         `${String(outTok).padStart(10)}  ${usd.toFixed(6)}   ${p.title.slice(0, 46)}`,
     );
@@ -146,47 +146,47 @@ async function main(): Promise<void> {
   const sorted = [...perItem].sort((a, b) => a.usd - b.usd);
   const median = sorted[Math.floor(n / 2)]!.usd;
 
-  console.log(`\n── Measured totals (${n} items) ─────────────────────────────`);
-  console.log(`  input tokens          ${totalIn}`);
-  console.log(`  output tokens         ${totalOut}`);
-  console.log(`  mean input/item       ${(totalIn / n).toFixed(1)}`);
-  console.log(`  mean output/item      ${(totalOut / n).toFixed(1)}`);
+  console.info(`\n── Measured totals (${n} items) ─────────────────────────────`);
+  console.info(`  input tokens          ${totalIn}`);
+  console.info(`  output tokens         ${totalOut}`);
+  console.info(`  mean input/item       ${(totalIn / n).toFixed(1)}`);
+  console.info(`  mean output/item      ${(totalOut / n).toFixed(1)}`);
 
-  console.log(`\n── Cost at CORRECTED rates ($1.00/M in, $5.00/M out) ───────`);
-  console.log(`  total                 $${totalUsd.toFixed(6)}`);
-  console.log(`  per item (mean)       $${perItemUsd.toFixed(6)}`);
-  console.log(`  per item (median)     $${median.toFixed(6)}`);
-  console.log(`  min / max per item    $${sorted[0]!.usd.toFixed(6)} / $${sorted[n - 1]!.usd.toFixed(6)}`);
+  console.info(`\n── Cost at CORRECTED rates ($1.00/M in, $5.00/M out) ───────`);
+  console.info(`  total                 $${totalUsd.toFixed(6)}`);
+  console.info(`  per item (mean)       $${perItemUsd.toFixed(6)}`);
+  console.info(`  per item (median)     $${median.toFixed(6)}`);
+  console.info(`  min / max per item    $${sorted[0]!.usd.toFixed(6)} / $${sorted[n - 1]!.usd.toFixed(6)}`);
 
-  console.log(`\n── Same measured tokens at OLD rates ($0.25/M, $1.25/M) ────`);
-  console.log(`  total                 $${oldUsd.toFixed(6)}`);
-  console.log(`  per item (mean)       $${perItemOldUsd.toFixed(6)}`);
-  console.log(`  UNDERSTATEMENT        ${(totalUsd / oldUsd).toFixed(2)}x`);
+  console.info(`\n── Same measured tokens at OLD rates ($0.25/M, $1.25/M) ────`);
+  console.info(`  total                 $${oldUsd.toFixed(6)}`);
+  console.info(`  per item (mean)       $${perItemOldUsd.toFixed(6)}`);
+  console.info(`  UNDERSTATEMENT        ${(totalUsd / oldUsd).toFixed(2)}x`);
 
   // Formula cross-check: the reported cost must equal the corrected formula
   // applied to the measured tokens, exactly.
   const recomputed = (totalIn * 1.0 + totalOut * 5.0) / 1_000_000;
   const agrees = Math.abs(recomputed - totalUsd) < 1e-12;
-  console.log(
+  console.info(
     `\n  formula cross-check    ${agrees ? "✓ agrees" : "✗ MISMATCH"} ` +
       `(hand-computed $${recomputed.toFixed(6)} vs helper $${totalUsd.toFixed(6)})`,
   );
 
-  console.log(`\n── Implied full-pass cost at the measured per-item rate ────`);
+  console.info(`\n── Implied full-pass cost at the measured per-item rate ────`);
   for (const [label, count] of [
     ["eligible proposal tag+summary backlog (prod, post-gate)", 3089],
     ["if the text-free backlog were drained anyway (prod)", 138807],
   ] as Array<[string, number]>) {
     const corrected = perItemUsd * count;
     const old = perItemOldUsd * count;
-    console.log(
+    console.info(
       `  ${label}\n` +
         `    ${count.toLocaleString()} items → $${corrected.toFixed(2)} ` +
         `(would have been reported as $${old.toFixed(2)})`,
     );
   }
 
-  console.log(`\n── Effective headroom under COST_CONFIG ────────────────────`);
+  console.info(`\n── Effective headroom under COST_CONFIG ────────────────────`);
   for (const [label, limit] of [
     ["monthly_hard_limit_usd", 3.5],
     ["per_run_limits.ai_tagger", 0.5],
@@ -194,7 +194,7 @@ async function main(): Promise<void> {
   ] as Array<[string, number]>) {
     const itemsNow = Math.floor(limit / perItemUsd);
     const itemsBefore = Math.floor(limit / perItemOldUsd);
-    console.log(
+    console.info(
       `  ${label.padEnd(32)} $${limit.toFixed(2)} → ${itemsNow.toLocaleString()} items ` +
         `(was reported as ${itemsBefore.toLocaleString()})`,
     );

@@ -27,7 +27,7 @@ import { Client } from "pg";
 
 let failures = 0;
 function check(cond: boolean, label: string, detail?: string): void {
-  if (cond) console.log(`  PASS  ${label}`);
+  if (cond) console.info(`  PASS  ${label}`);
   else {
     failures++;
     console.error(`  FAIL  ${label}${detail ? ` — ${detail}` : ""}`);
@@ -171,14 +171,14 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log("\n=== 1. fixtures through the live function ===");
+    console.info("\n=== 1. fixtures through the live function ===");
     const live = await readFunction(pg);
     for (const f of FIXTURES) {
       check(live.get(f.entity_id) === f.expected, f.name,
         `got ${live.get(f.entity_id) ?? "no element"}, want ${f.expected}`);
     }
 
-    console.log("\n=== 2. real data: live function = reference window, one element per entity ===");
+    console.info("\n=== 2. real data: live function = reference window, one element per entity ===");
     const ref = new Map<string, string>();
     for (const row of (await pg.query<{ entity_id: string; naics_code: string }>(REFERENCE)).rows) {
       ref.set(row.entity_id, row.naics_code);
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
     check(live.size === ref.size, `same entity count (live ${live.size}, reference ${ref.size})`);
     check(diff === 0, `live = reference on all ${ref.size} coded entities`, `${diff} differ`);
 
-    console.log("\n=== 3. mutant: MIN(naics_code) restored (savepoint, rolled back) ===");
+    console.info("\n=== 3. mutant: MIN(naics_code) restored (savepoint, rolled back) ===");
     await pg.query("SAVEPOINT mutant");
     await pg.query(MIN_BODY);
     const min = await readFunction(pg);
@@ -220,13 +220,13 @@ async function main(): Promise<void> {
       `${singleDiff} differ`);
     let multiDiff = 0;
     for (const [e, code] of live) if (min.get(e) !== code) multiDiff++;
-    console.log(`  info  ${multiDiff} of ${live.size} entities get a different code from MIN than from the dominant rule`);
+    console.info(`  info  ${multiDiff} of ${live.size} entities get a different code from MIN than from the dominant rule`);
   } finally {
     await pg.query("ROLLBACK").catch(() => undefined);
     await pg.end();
   }
 
-  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
+  console.info(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

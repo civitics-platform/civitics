@@ -300,10 +300,10 @@ if (require.main === module) {
       console.error(`${path.basename(MIGRATION_PATH)} is stale — re-run without --check`);
       process.exit(1);
     }
-    console.log(`${path.basename(MIGRATION_PATH)} is current`);
+    console.info(`${path.basename(MIGRATION_PATH)} is current`);
   } else {
     fs.writeFileSync(MIGRATION_PATH, next);
-    console.log(`wrote ${path.relative(process.cwd(), MIGRATION_PATH)} — ${rows.length} floterials,` +
+    console.info(`wrote ${path.relative(process.cwd(), MIGRATION_PATH)} — ${rows.length} floterials,` +
       ` ${rows.reduce((n, r) => n + r.seats, 0)} seats,` +
       ` ${rows.reduce((n, r) => n + r.base_district_ids.length, 0)} base-district references`);
   }

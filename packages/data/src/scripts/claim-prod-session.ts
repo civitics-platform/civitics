@@ -109,8 +109,8 @@ async function main(): Promise<void> {
   const dbUrl = buildDbUrl();
   // Redact the password before anything is printed.
   const target = dbUrl.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@");
-  console.log(`[prod-session] target: ${target}`);
-  console.log(`[prod-session] reason: ${reason}`);
+  console.info(`[prod-session] target: ${target}`);
+  console.info(`[prod-session] reason: ${reason}`);
 
   let lock: NamedSessionLock;
   try {
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  console.log(
+  console.info(
     `[prod-session] HELD. Every guarded writer now defers with this reason.\n` +
       (holdSeconds == null
         ? `[prod-session] Ctrl-C to release.\n`
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
     if (releasing) return;
     releasing = true;
     clearInterval(ticker);
-    console.log(`\n[prod-session] ${signal} — releasing.`);
+    console.info(`\n[prod-session] ${signal} — releasing.`);
     await lock.release();
     process.exit(0);
   };
@@ -169,11 +169,11 @@ async function main(): Promise<void> {
           clearInterval(ticker);
           process.exit(1);
         }
-        console.log(statusLine(s, expected));
+        console.info(statusLine(s, expected));
       })
       // A read failure is not evidence either way — it says the status query
       // failed, not that the hold did. Report and keep going.
-      .catch(() => console.log("  [prod-session] status read failed (the hold is unchanged)"));
+      .catch(() => console.info("  [prod-session] status read failed (the hold is unchanged)"));
   }, TICK_MS);
 
   for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {

@@ -60,7 +60,7 @@ function writeOutputs(outputs: Record<string, string>): void {
       console.warn(`[preflight] could not write $GITHUB_OUTPUT (${String(err)}) — the gates will read unset`);
     }
   }
-  for (const l of lines) console.log(`[preflight] output ${l}`);
+  for (const l of lines) console.info(`[preflight] output ${l}`);
 }
 
 async function readRows(day: string): Promise<PriorNightlyRow[]> {
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   const dispatchedBy = readDispatchedBy(process.env[DISPATCHED_BY_ENV]);
   const runId = process.env["GITHUB_RUN_ID"] || null;
   const day = nominalDay(now, slotOffsetHours);
-  console.log(
+  console.info(
     `[preflight] nominal day ${day} (${SLOT_OFFSET_ENV}=${slotOffsetHours}, now ${now.toISOString()}) ` +
       `dispatched_by=${dispatchedBy ?? "(unset)"} run=${runId ?? "(none)"}`,
   );
@@ -113,14 +113,14 @@ async function main(): Promise<void> {
 
   const verdict = decidePreflight({ nominalDay: day, dispatchedBy, runId, rows });
   for (const r of verdict.matched) {
-    console.log(
+    console.info(
       `[preflight]   row ${r.id} phase=${r.phase ?? "all"} status=${r.status} started=${r.started_at} ` +
         `run=${r.github_run_id ?? "—"} dispatched_by=${r.dispatched_by ?? "—"}`,
     );
   }
   // `::notice::` renders as an annotation on the run page, so a fallback that
   // stood down says why without anyone opening the log.
-  console.log(`${verdict.alreadyRan ? "::notice::" : ""}[preflight] ${verdict.reason}`);
+  console.info(`${verdict.alreadyRan ? "::notice::" : ""}[preflight] ${verdict.reason}`);
   writeOutputs({ already_ran: verdict.alreadyRan ? "true" : "false", nominal_day: day });
 }
 

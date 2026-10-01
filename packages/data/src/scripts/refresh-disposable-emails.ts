@@ -276,15 +276,15 @@ async function main() {
   const changed = nextJson !== currentJson;
   const pinChanged = effectiveSha !== SOURCE_COMMIT;
 
-  console.log(`curated starter:   ${curated.length}`);
-  console.log(`upstream fetched:  ${upstream.length}  (@${effectiveSha.slice(0, 7)})`);
-  console.log(`allowlist size:    ${ALLOWLIST.size}`);
-  console.log(`final list:        ${sorted.length}  (gates OK: bounds + canary)`);
+  console.info(`curated starter:   ${curated.length}`);
+  console.info(`upstream fetched:  ${upstream.length}  (@${effectiveSha.slice(0, 7)})`);
+  console.info(`allowlist size:    ${ALLOWLIST.size}`);
+  console.info(`final list:        ${sorted.length}  (gates OK: bounds + canary)`);
 
   if (!changed) {
     // Invariant (c): no content delta → write nothing (not even the pin), so
     // create-pull-request opens no PR. Pin-only churn is deliberately avoided.
-    console.log(
+    console.info(
       pinChanged
         ? `no content change vs committed JSON (upstream @${effectiveSha.slice(0, 7)} yields an identical list) — leaving pin at ${SOURCE_COMMIT.slice(0, 7)}, nothing written.`
         : "no change vs committed JSON — nothing written.",
@@ -293,15 +293,15 @@ async function main() {
   }
 
   await writeFile(TARGET_JSON, nextJson, "utf8");
-  console.log(`wrote:             ${path.relative(REPO_ROOT, TARGET_JSON)}`);
+  console.info(`wrote:             ${path.relative(REPO_ROOT, TARGET_JSON)}`);
 
   // Invariant (b): pin + JSON move together. Only bump the pin under --write-pin
   // (CI); casual local regens against a --source SHA leave the constant alone.
   if (args.writePin && pinChanged) {
     await writePin(effectiveSha);
-    console.log(`bumped SOURCE_COMMIT pin: ${SOURCE_COMMIT.slice(0, 7)} → ${effectiveSha.slice(0, 7)}`);
+    console.info(`bumped SOURCE_COMMIT pin: ${SOURCE_COMMIT.slice(0, 7)} → ${effectiveSha.slice(0, 7)}`);
   } else if (pinChanged) {
-    console.log(
+    console.info(
       `(pin NOT bumped — pass --write-pin to move SOURCE_COMMIT ${SOURCE_COMMIT.slice(0, 7)} → ${effectiveSha.slice(0, 7)})`,
     );
   }

@@ -229,7 +229,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     process.stderr.write(`[mint-local-session] tokens for ${email} (user ${userId}):\n`);
-    console.log(
+    console.info(
       JSON.stringify(
         {
           user_id: userId,
@@ -263,7 +263,7 @@ async function main(): Promise<void> {
   process.stderr.write(
     `[mint-local-session] navigate the running local dev server (pnpm dev) to:\n`,
   );
-  console.log(confirmUrl.toString());
+  console.info(confirmUrl.toString());
 }
 
 main().catch((err) => {

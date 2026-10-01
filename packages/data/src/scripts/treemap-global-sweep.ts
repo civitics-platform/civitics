@@ -89,7 +89,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--budget-seconds" && args[i + 1]) budgetSeconds = Number(args[++i]);
     else if (a === "--max-iterations" && args[i + 1]) maxIterations = Number(args[++i]);
     else if (a === "--help" || a === "-h") {
-      console.log(
+      console.info(
         "Usage: treemap-global-sweep [--status] [--allow-prod --confirm]\n" +
           "                           [--db-url URL] [--budget-seconds N] [--max-iterations N]\n\n" +
           "  --status          report sweep state and exit; writes nothing\n" +
@@ -135,11 +135,11 @@ async function readState(client: Client): Promise<SweepState> {
 
 async function reportState(client: Client, label: string): Promise<SweepState> {
   const s = await readState(client);
-  console.log(
+  console.info(
     `[sweep] ${label}: last_status=${s.lastStatus ?? "-"} (${s.lastStartedAt ?? "never"})` +
       (s.chunkCursor !== null ? ` sweep_in_flight cursor=${s.chunkCursor}/63 since ${s.sweepStartedAt}` : " no sweep in flight"),
   );
-  if (s.lastError) console.log(`[sweep]   last_error: ${s.lastError}`);
+  if (s.lastError) console.info(`[sweep]   last_error: ${s.lastError}`);
   return s;
 }
 
@@ -208,20 +208,20 @@ async function main(): Promise<number> {
       console.error(`[sweep] refusing: statement_timeout is ${armed.rows[0]?.st}, expected 0 — the sweep would be cancelled mid-flight`);
       return 1;
     }
-    console.log(`[sweep] session armed: statement_timeout=0, budget=${args.budgetSeconds}s`);
+    console.info(`[sweep] session armed: statement_timeout=0, budget=${args.budgetSeconds}s`);
 
     let iteration = 0;
     let lastCursor: number | null = before.chunkCursor;
     for (; iteration < args.maxIterations; iteration++) {
       const t0 = Date.now();
-      console.log(`[sweep] CALL refresh_treemap_individuals_global() — iteration ${iteration + 1}`);
+      console.info(`[sweep] CALL refresh_treemap_individuals_global() — iteration ${iteration + 1}`);
       await client.query("CALL public.refresh_treemap_individuals_global()");
       const mins = Math.round((Date.now() - t0) / 60000);
 
       const s = await reportState(client, `after iteration ${iteration + 1} (${mins}m)`);
 
       if (s.lastStatus === "complete") {
-        console.log("[sweep] refresh COMPLETE — global scope published, sweep state cleared");
+        console.info("[sweep] refresh COMPLETE — global scope published, sweep state cleared");
         break;
       }
       if (s.lastStatus === "failed") {

@@ -349,7 +349,7 @@ async function main(): Promise<void> {
   // pg.Client needs no schema cache, so it survives exactly that condition.
   // FIX-444 set the precedent for going direct when PostgREST is unsuitable.
   const conn = await openDb();
-  console.log(`[mark-killed] db route: ${conn.route}`);
+  console.info(`[mark-killed] db route: ${conn.route}`);
 
   let rows: SyncRow[];
   try {
@@ -366,14 +366,14 @@ async function main(): Promise<void> {
     phase,
     ownRun,
   );
-  console.log(
+  console.info(
     `[mark-killed] ${phaseLabel} — ${rows.length} row(s) in last ${windowHours}h; ` +
       `own-run binding: ${binding}` +
       (binding === "run-id" ? ` (GITHUB_RUN_ID=${ownRun.runId} attempt=${ownRun.runAttempt ?? "?"})` : "") +
       (binding === "job-start" ? ` (job started ${ownRun.jobStartedAt})` : ""),
   );
   if (finished) {
-    console.log(
+    console.info(
       `[mark-killed] ${phaseLabel} own run finished (status=${finished.status}, id=${finished.id}) — no-op`,
     );
     await conn.close();
@@ -382,13 +382,13 @@ async function main(): Promise<void> {
   // FIX-963: this is the line that used to be a no-op. Terminal rows from an
   // EARLIER run in the same window no longer suppress the marker.
   if (foreignFinished.length > 0) {
-    console.log(
+    console.info(
       `[mark-killed] ${foreignFinished.length} terminal ${phaseLabel} row(s) in window belong to other run(s) ` +
         `(${foreignFinished.map((r) => `${r.id}:${r.status}`).join(", ")}) — NOT treated as this run finishing (FIX-963)`,
     );
   }
   if (!orphan) {
-    console.log(
+    console.info(
       `[mark-killed] no '${phaseLabel}' running row in last ${windowHours}h — no-op (workflow may not have started)`,
     );
     await conn.close();
@@ -436,7 +436,7 @@ async function main(): Promise<void> {
     return;
   }
   await conn.close();
-  console.log(
+  console.info(
     `[mark-killed] wrote '${KILLED_PIPELINE}' row for orphan ${pipeline} run ` +
       `(id=${orphan.id}, started_at=${orphan.started_at}, own_run=${orphanIsOwnRun ?? false}, completed_at=NULL)`,
   );

@@ -31,14 +31,14 @@ async function main() {
     // reports its true ms rather than dying at a cap.
     await client.query("SET statement_timeout = '600s'");
 
-    const section = (t: string) => console.log(`\n${"=".repeat(78)}\n${t}\n${"=".repeat(78)}`);
+    const section = (t: string) => console.info(`\n${"=".repeat(78)}\n${t}\n${"=".repeat(78)}`);
     const explain = async (label: string, sql: string, params: unknown[] = []) => {
-      console.log(`\n--- ${label} ---`);
+      console.info(`\n--- ${label} ---`);
       try {
         const res = await client.query(`EXPLAIN (ANALYZE, BUFFERS, VERBOSE) ${sql}`, params);
-        console.log(res.rows.map((r) => r["QUERY PLAN"]).join("\n"));
+        console.info(res.rows.map((r) => r["QUERY PLAN"]).join("\n"));
       } catch (e) {
-        console.log(`ERROR: ${e instanceof Error ? e.message : String(e)}`);
+        console.info(`ERROR: ${e instanceof Error ? e.message : String(e)}`);
       }
     };
 
@@ -49,7 +49,7 @@ async function main() {
        WHERE schemaname='public' AND tablename='financial_relationships'
        ORDER BY indexname`,
     );
-    for (const r of idx.rows) console.log(`${r.indexname}\n   ${r.indexdef}`);
+    for (const r of idx.rows) console.info(`${r.indexname}\n   ${r.indexdef}`);
 
     // ── Heaviest agencies by contract/grant row count ───────────────────────
     section("Top-5 agencies by contract/grant relationship count");
@@ -59,16 +59,16 @@ async function main() {
        WHERE from_type='agency' AND relationship_type IN ('contract','grant')
        GROUP BY from_id ORDER BY c DESC LIMIT 5`,
     );
-    for (const r of heavy.rows) console.log(`${r.from_id}  ${r.c}`);
+    for (const r of heavy.rows) console.info(`${r.from_id}  ${r.c}`);
     const heavyAgency = heavy.rows[0]?.from_id;
-    console.log(`\nheaviest agency from_id = ${heavyAgency}`);
+    console.info(`\nheaviest agency from_id = ${heavyAgency}`);
 
     // Total contract/grant rows across ALL from_types (the official global scan).
     const totalCG = await client.query<{ c: string }>(
       `SELECT count(*) c FROM public.financial_relationships
        WHERE relationship_type IN ('contract','grant')`,
     );
-    console.log(`total contract/grant rows (all from_types) = ${totalCG.rows[0]?.c}`);
+    console.info(`total contract/grant rows (all from_types) = ${totalCG.rows[0]?.c}`);
 
     // ── get_agency_page.spend — SINGLE from_id ──────────────────────────────
     section("get_agency_page.spend — single from_id, current ORDER BY DESC (NULLS FIRST)");

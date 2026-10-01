@@ -166,22 +166,22 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  console.log(`\nFIX-1195 restore — target ${env.toUpperCase()}, manifest ${manifestPath}`);
-  console.log(`${plans.length} row(s), ${apply ? "APPLY" : "DRY RUN (nothing is written)"}\n`);
-  for (const c of manifest.comments.slice(0, 3)) console.log(`  ${c}`);
-  console.log();
+  console.info(`\nFIX-1195 restore — target ${env.toUpperCase()}, manifest ${manifestPath}`);
+  console.info(`${plans.length} row(s), ${apply ? "APPLY" : "DRY RUN (nothing is written)"}\n`);
+  for (const c of manifest.comments.slice(0, 3)) console.info(`  ${c}`);
+  console.info();
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
   try {
     // ── Pre-write census. Refuse unless every id is unheld everywhere. ──────
-    console.log("── Holder census BEFORE ─────────────────────────────────");
+    console.info("── Holder census BEFORE ─────────────────────────────────");
     const before = await census(client, plans.map((p) => p.restore));
     let held = 0;
     for (const r of before) {
       const n = Number(r.live) + Number(r.prior) + Number(r.merged) + Number(r.fec_id);
       if (n > 0) held++;
-      console.log(
+      console.info(
         `  ${r.cand_id}  live=${r.live} prior=${r.prior} merged=${r.merged} fec_id=${r.fec_id}` +
         (n > 0 ? "   ← ALREADY HELD" : ""),
       );
@@ -193,22 +193,22 @@ async function main(): Promise<void> {
       );
       process.exit(2);
     }
-    console.log("  ✓ all ids unheld on every surface\n");
+    console.info("  ✓ all ids unheld on every surface\n");
 
     if (!apply) {
-      console.log("── Plan ─────────────────────────────────────────────────");
+      console.info("── Plan ─────────────────────────────────────────────────");
       for (const p of plans) {
-        console.log(`  ${p.uuid}  ${p.official}`);
-        console.log(`    ${p.key} <- ${p.restore}   (asserts live id is currently ${p.expected})`);
-        if (p.key === LIVE_KEY) console.log(`    …and ${p.expected} moves into ${PRIOR_KEY}`);
-        if (p.note) console.log(`    ${p.note}`);
+        console.info(`  ${p.uuid}  ${p.official}`);
+        console.info(`    ${p.key} <- ${p.restore}   (asserts live id is currently ${p.expected})`);
+        if (p.key === LIVE_KEY) console.info(`    …and ${p.expected} moves into ${PRIOR_KEY}`);
+        if (p.note) console.info(`    ${p.note}`);
       }
-      console.log("\nDRY RUN — re-run with --apply to write.");
+      console.info("\nDRY RUN — re-run with --apply to write.");
       return;
     }
 
     // ── The write. ONE transaction; every UPDATE asserts the live id. ───────
-    console.log("── Applying ─────────────────────────────────────────────");
+    console.info("── Applying ─────────────────────────────────────────────");
     await client.query("BEGIN");
     try {
       for (const p of plans) {
@@ -248,11 +248,11 @@ async function main(): Promise<void> {
           );
         }
         const row = res.rows[0];
-        console.log(`  ✓ ${row.full_name} (${row.role_title})`);
-        console.log(`      ${JSON.stringify(row.source_ids)}`);
+        console.info(`  ✓ ${row.full_name} (${row.role_title})`);
+        console.info(`      ${JSON.stringify(row.source_ids)}`);
       }
       await client.query("COMMIT");
-      console.log("\n  COMMITTED\n");
+      console.info("\n  COMMITTED\n");
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       console.error(`\n✗ ROLLED BACK — ${err instanceof Error ? err.message : String(err)}`);
@@ -261,14 +261,14 @@ async function main(): Promise<void> {
 
     // ── Post-write census. Every id must now have exactly ONE AUTHORITATIVE
     // holder — see AUTH_CENSUS_SQL for why a retired marker elsewhere is not one.
-    console.log("── Authoritative holders AFTER ──────────────────────────");
+    console.info("── Authoritative holders AFTER ──────────────────────────");
     let bad = 0;
     const check = async (ids: string[], label: string) => {
-      console.log(`  ${label}`);
+      console.info(`  ${label}`);
       for (const r of await authCensus(client, ids)) {
         const n = Number(r.holders);
         if (n !== 1) bad++;
-        console.log(`    ${r.cand_id}  holders=${n}  ${r.who}` + (n === 1 ? "   ✓" : "   ← expected 1"));
+        console.info(`    ${r.cand_id}  holders=${n}  ${r.who}` + (n === 1 ? "   ✓" : "   ← expected 1"));
       }
     };
     await check(plans.map((p) => p.restore),  "restored ids:");
@@ -283,15 +283,15 @@ async function main(): Promise<void> {
       [plans.map((p) => p.expected)],
     );
     if (retired.rowCount) {
-      console.log("\n  retired markers on other rows (expected — set 1's merge stubs):");
-      for (const r of retired.rows) console.log(`    ${r.full_name} [${r.tier}] ${JSON.stringify(r.retired)}`);
+      console.info("\n  retired markers on other rows (expected — set 1's merge stubs):");
+      for (const r of retired.rows) console.info(`    ${r.full_name} [${r.tier}] ${JSON.stringify(r.retired)}`);
     }
 
     if (bad > 0) {
       console.error(`\n✗ ${bad} id(s) do NOT have exactly one authoritative holder. Investigate.`);
       process.exit(2);
     }
-    console.log("\n  ✓ every id has exactly one authoritative holder\n");
+    console.info("\n  ✓ every id has exactly one authoritative holder\n");
   } finally {
     await client.end().catch(() => {});
   }

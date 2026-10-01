@@ -35,8 +35,8 @@ async function main() {
       .not("metadata->>latest_action", "is", null)
       .limit(1);
     const p = rows?.[0];
-    console.log(`\n── ${src} ──`);
-    if (!p) { console.log("  (no row with metadata.latest_action found)"); continue; }
+    console.info(`\n── ${src} ──`);
+    if (!p) { console.info("  (no row with metadata.latest_action found)"); continue; }
     const ctx = buildProposalSummaryContext({
       id: p.id,
       title: p.title,
@@ -46,8 +46,8 @@ async function main() {
       agency_acronym: (p.metadata?.agency_id as string | undefined) ?? null,
       latest_action: (p.metadata?.latest_action as string | undefined) ?? null,
     });
-    console.log(JSON.stringify(ctx, null, 2));
-    console.log(`  latest_action present in context? ${ctx.latest_action != null ? "YES ✓" : "NO ✗"}`);
+    console.info(JSON.stringify(ctx, null, 2));
+    console.info(`  latest_action present in context? ${ctx.latest_action != null ? "YES ✓" : "NO ✗"}`);
   }
 }
 

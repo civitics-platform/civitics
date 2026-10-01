@@ -84,7 +84,7 @@ async function withRetry<T extends { error: { message?: string } | null }>(
     try {
       const res = await fn();
       if (res?.error && isTransient(res.error) && attempt < RETRY_ATTEMPTS) {
-        console.log(
+        console.info(
           `[retry] ${label} attempt ${attempt}/${RETRY_ATTEMPTS}: ${res.error.message}`,
         );
         await sleep(500 * 2 ** (attempt - 1));
@@ -93,7 +93,7 @@ async function withRetry<T extends { error: { message?: string } | null }>(
       return res;
     } catch (e) {
       if (isTransient(e) && attempt < RETRY_ATTEMPTS) {
-        console.log(
+        console.info(
           `[retry] ${label} attempt ${attempt}/${RETRY_ATTEMPTS}: ${(e as Error).message}`,
         );
         await sleep(500 * 2 ** (attempt - 1));
@@ -113,7 +113,7 @@ async function main() {
     process.exit(2);
   }
 
-  console.log("Target:", url);
+  console.info("Target:", url);
 
   // Read-only diagnostic, intentionally pointed at local OR prod by the
   // caller's sourced env. createAdminClientWith skips the pipeline guard
@@ -130,14 +130,14 @@ async function main() {
         .select("id", { count: "exact", head: true }),
     "xsr anon count",
   );
-  console.log(
+  console.info(
     "[xsr] anon read count:", anonXsr.count,
     "error:", anonXsr.error?.message ?? null,
   );
 
   // ── Per-table binding rate ────────────────────────────────────────────
-  console.log("\nPer-table primary_source coverage:");
-  console.log("  " + ["table", "bound", "total", "%"].map((s) => s.padEnd(22)).join(""));
+  console.info("\nPer-table primary_source coverage:");
+  console.info("  " + ["table", "bound", "total", "%"].map((s) => s.padEnd(22)).join(""));
 
   // category → table → count, plus 'other' bucket which also records the raw
   // source key for follow-up registry additions.
@@ -172,7 +172,7 @@ async function main() {
     const total = totalRes.count ?? 0;
     const bound = boundRes.count ?? 0;
     const pct   = total > 0 ? (100 * bound) / total : 0;
-    console.log(
+    console.info(
       "  " + [table, String(bound), String(total), pct.toFixed(1) + "%"]
         .map((s) => s.padEnd(22))
         .join(""),
@@ -223,28 +223,28 @@ async function main() {
   }
 
   // ── Per-category coverage ─────────────────────────────────────────────
-  console.log("\nPer-category breakdown (sample of up to 100k bound rows per table):");
+  console.info("\nPer-category breakdown (sample of up to 100k bound rows per table):");
   const CATEGORIES = ["federal", "state", "local", "community", "other"] as const;
   const header = ["table", ...CATEGORIES] as readonly string[];
-  console.log("  " + header.map((s) => s.padEnd(16)).join(""));
+  console.info("  " + header.map((s) => s.padEnd(16)).join(""));
   for (const { table } of TABLES) {
     const cats = categoryByTable[table] ?? {};
     const row = [
       table,
       ...CATEGORIES.map((c) => String(cats[c] ?? 0)),
     ];
-    console.log("  " + row.map((s) => s.padEnd(16)).join(""));
+    console.info("  " + row.map((s) => s.padEnd(16)).join(""));
   }
 
   // ── Unknown sources → candidates for resolveSource registry ──────────
   if (unknownSources.size > 0) {
-    console.log("\nSources NOT in resolveSource registry (label='other'):");
+    console.info("\nSources NOT in resolveSource registry (label='other'):");
     const sorted = [...unknownSources.entries()].sort((a, b) => b[1] - a[1]);
     for (const [key, count] of sorted) {
-      console.log(`  ${key.padEnd(40)} ${count}`);
+      console.info(`  ${key.padEnd(40)} ${count}`);
     }
   } else {
-    console.log("\nAll observed sources are in resolveSource registry. ✓");
+    console.info("\nAll observed sources are in resolveSource registry. ✓");
   }
 
   // ── Congress.gov sanity carry-over from FIX-403/408 smoke ─────────────
@@ -273,10 +273,10 @@ async function main() {
         .eq("primary_source", "congress_gov"),
     "congress primary_source count",
   );
-  console.log("\nCongress.gov officials sanity (carried from FIX-403/408 smoke):");
-  console.log("  source_ids->>congress_gov  :", congressTotal.count);
-  console.log("  xsr rows (source=congress_gov):", xsrCongress.count);
-  console.log("  primary_source=congress_gov:", materializedCongress.count);
+  console.info("\nCongress.gov officials sanity (carried from FIX-403/408 smoke):");
+  console.info("  source_ids->>congress_gov  :", congressTotal.count);
+  console.info("  xsr rows (source=congress_gov):", xsrCongress.count);
+  console.info("  primary_source=congress_gov:", materializedCongress.count);
 }
 
 main().catch((e) => {

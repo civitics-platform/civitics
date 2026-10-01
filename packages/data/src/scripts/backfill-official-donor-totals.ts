@@ -27,15 +27,15 @@ import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`[backfill-donor-totals] target: ${url}`);
-  console.log(
+  console.info(`[backfill-donor-totals] target: ${url}`);
+  console.info(
     `[backfill-donor-totals] CALL official_donor_totals_backfill() ` +
       `(TRUNCATE + whole-table donation aggregation; ~16min on prod) ...`,
   );
   const t0 = Date.now();
   const count = await runHeavyRebuild("official_donor_totals_backfill");
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[backfill-donor-totals] ✓ ${count.toLocaleString()} official rows in ${dur}s`);
+  console.info(`[backfill-donor-totals] ✓ ${count.toLocaleString()} official rows in ${dur}s`);
 }
 
 runUnderProdSession(

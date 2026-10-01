@@ -135,24 +135,24 @@ const SHAPE_SQL = `
 `;
 
 function printShape(label: string, rows: ShapeRow[]): void {
-  console.log(`\n${label}`);
+  console.info(`\n${label}`);
   if (rows.length === 0) {
-    console.log("  (no rows)");
+    console.info("  (no rows)");
     return;
   }
   const w = Math.max(6, ...rows.map((r) => r.source.length));
-  console.log(`  ${"source".padEnd(w)}  ${"task".padEnd(8)}  ${"rows".padStart(7)}  ${"has_text".padStart(9)}  ${"no_text".padStart(8)}`);
-  console.log(`  ${"-".repeat(w)}  ${"-".repeat(8)}  ${"-".repeat(7)}  ${"-".repeat(9)}  ${"-".repeat(8)}`);
+  console.info(`  ${"source".padEnd(w)}  ${"task".padEnd(8)}  ${"rows".padStart(7)}  ${"has_text".padStart(9)}  ${"no_text".padStart(8)}`);
+  console.info(`  ${"-".repeat(w)}  ${"-".repeat(8)}  ${"-".repeat(7)}  ${"-".repeat(9)}  ${"-".repeat(8)}`);
   let tp = 0, tq = 0, tn = 0;
   for (const r of rows) {
     tp += Number(r.pending); tq += Number(r.qualifies); tn += Number(r.no_text);
-    console.log(
+    console.info(
       `  ${r.source.padEnd(w)}  ${r.task_type.padEnd(8)}  ` +
       `${String(r.pending).padStart(7)}  ${String(r.qualifies).padStart(9)}  ${String(r.no_text).padStart(8)}`,
     );
   }
-  console.log(`  ${"-".repeat(w)}  ${"-".repeat(8)}  ${"-".repeat(7)}  ${"-".repeat(9)}  ${"-".repeat(8)}`);
-  console.log(`  ${"TOTAL".padEnd(w)}  ${"".padEnd(8)}  ${String(tp).padStart(7)}  ${String(tq).padStart(9)}  ${String(tn).padStart(8)}`);
+  console.info(`  ${"-".repeat(w)}  ${"-".repeat(8)}  ${"-".repeat(7)}  ${"-".repeat(9)}  ${"-".repeat(8)}`);
+  console.info(`  ${"TOTAL".padEnd(w)}  ${"".padEnd(8)}  ${String(tp).padStart(7)}  ${String(tq).padStart(9)}  ${String(tn).padStart(8)}`);
 }
 
 async function main(): Promise<void> {
@@ -169,13 +169,13 @@ async function main(): Promise<void> {
   const url = buildDbUrl();
   const direction = REVERSE ? "REVERSE (marked → pending)" : "FORWARD (pending → marked)";
 
-  console.log(`# FIX-895 — enrichment backlog source-text sweep`);
-  console.log(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
-  console.log(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(`Direction:  ${direction}`);
-  console.log(`Mode:       ${DRY_RUN ? "DRY RUN (BEGIN → count → ROLLBACK, writes nothing)" : "LIVE WRITE"}`);
-  console.log(`Predicate:  summary_plain > 100 chars AND not a copy of the title`);
-  console.log(`Status:     ${NO_SOURCE_TEXT_STATUS}`);
+  console.info(`# FIX-895 — enrichment backlog source-text sweep`);
+  console.info(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
+  console.info(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(`Direction:  ${direction}`);
+  console.info(`Mode:       ${DRY_RUN ? "DRY RUN (BEGIN → count → ROLLBACK, writes nothing)" : "LIVE WRITE"}`);
+  console.info(`Predicate:  summary_plain > 100 chars AND not a copy of the title`);
+  console.info(`Status:     ${NO_SOURCE_TEXT_STATUS}`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -195,17 +195,17 @@ async function main(): Promise<void> {
     const res = await client.query(sqlBlock(REVERSE ? "reverse" : "forward"));
     const affected = res.rowCount ?? 0;
 
-    console.log(
+    console.info(
       `\n${DRY_RUN ? "WOULD UPDATE" : "UPDATED"}: ${affected} enrichment_queue row(s) ` +
         `→ ${REVERSE ? "pending" : NO_SOURCE_TEXT_STATUS}`,
     );
 
     if (DRY_RUN) {
       await client.query("ROLLBACK");
-      console.log("ROLLBACK — nothing was written.");
+      console.info("ROLLBACK — nothing was written.");
     } else {
       await client.query("COMMIT");
-      console.log("COMMIT — sweep applied.");
+      console.info("COMMIT — sweep applied.");
 
       const after = (await client.query(SHAPE_SQL, [readStatus])).rows as ShapeRow[];
       printShape(`AFTER — proposal tasks still in status '${readStatus}', by source:`, after);
@@ -222,7 +222,7 @@ async function main(): Promise<void> {
           );
           process.exitCode = 1;
         } else {
-          console.log(
+          console.info(
             `\n✓ Post-condition: every remaining pending proposal task satisfies the text predicate.`,
           );
         }
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
       const total = await client.query(
         `SELECT count(*)::bigint AS n FROM public.enrichment_queue`,
       );
-      console.log(`✓ enrichment_queue total rows (nothing deleted): ${total.rows[0].n}`);
+      console.info(`✓ enrichment_queue total rows (nothing deleted): ${total.rows[0].n}`);
     }
   } finally {
     await client.end();

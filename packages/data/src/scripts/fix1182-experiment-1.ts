@@ -131,17 +131,17 @@ function main(): void {
   const aDropped = A.rows.filter((r) => r.cls === "DROPPED-OUT").length;
   const bDropped = B.rows.filter((r) => r.cls === "DROPPED-OUT").length;
 
-  console.log(`\n-- FIX-1182 experiment (1) -- cycle ${A.cycle} / ${A.source} --`);
-  console.log(`   set A ${A.runId}  generated ${A.generated.toISOString()}  DROPPED-OUT ${aDropped}`);
-  console.log(`   set B ${B.runId}  generated ${B.generated.toISOString()}  DROPPED-OUT ${bDropped}`);
-  console.log(`\n   (i)   UNPROVEN  (dropped in both)   ${i.recipients} recipients  ${i.rows.toLocaleString()} rows  ${usd(i.cents)}`);
-  console.log(`   (ii)  RETRACTION (A had, B dropped) ${ii.recipients} recipients  ${ii.rows.toLocaleString()} rows  ${usd(ii.cents)}`);
-  console.log(`   (iii) RE-EMITTED (A dropped, B has) ${iii.recipients} recipients  ${iii.rows.toLocaleString()} rows  ${usd(iii.cents)}`);
+  console.info(`\n-- FIX-1182 experiment (1) -- cycle ${A.cycle} / ${A.source} --`);
+  console.info(`   set A ${A.runId}  generated ${A.generated.toISOString()}  DROPPED-OUT ${aDropped}`);
+  console.info(`   set B ${B.runId}  generated ${B.generated.toISOString()}  DROPPED-OUT ${bDropped}`);
+  console.info(`\n   (i)   UNPROVEN  (dropped in both)   ${i.recipients} recipients  ${i.rows.toLocaleString()} rows  ${usd(i.cents)}`);
+  console.info(`   (ii)  RETRACTION (A had, B dropped) ${ii.recipients} recipients  ${ii.rows.toLocaleString()} rows  ${usd(ii.cents)}`);
+  console.info(`   (iii) RE-EMITTED (A dropped, B has) ${iii.recipients} recipients  ${iii.rows.toLocaleString()} rows  ${usd(iii.cents)}`);
 
   const demoted = classified.filter((r) => r.demotedReason !== undefined);
   if (demoted.length > 0) {
-    console.log(`\n   ! ${demoted.length} candidate retraction(s) DEMOTED to unproven by the provenance check:`);
-    for (const d of demoted) console.log(`     ${d.to_id} ${d.name} — ${d.demotedReason}`);
+    console.info(`\n   ! ${demoted.length} candidate retraction(s) DEMOTED to unproven by the provenance check:`);
+    for (const d of demoted) console.info(`     ${d.to_id} ${d.name} — ${d.demotedReason}`);
   }
 
   // Reconciliation — stated as an assertion, because a mismatch means the join
@@ -149,7 +149,7 @@ function main(): void {
   const undemotedI = classified.filter((r) => r.klass === "unproven-both" && r.demotedReason === undefined).length;
   const okA = undemotedI + iii.recipients === aDropped;
   const okB = i.recipients + ii.recipients === bDropped;
-  console.log(
+  console.info(
     `\n   reconcile: A ${aDropped} = (i undemoted) ${undemotedI} + (iii) ${iii.recipients} ${okA ? "OK" : "MISMATCH"}` +
       `   |   B ${bDropped} = (i) ${i.recipients} + (ii) ${ii.recipients} ${okB ? "OK" : "MISMATCH"}`,
   );
@@ -158,8 +158,8 @@ function main(): void {
   // -- the derived RETRACTED manifest ---------------------------------------
   const retractions = classified.filter((r) => r.klass === "retraction");
   if (retractions.length === 0) {
-    console.log(`\n   Class (ii) is EMPTY — no manifest cut. The residue for this source is UNPROVEN`);
-    console.log(`   and the apply is EMPTY.`);
+    console.info(`\n   Class (ii) is EMPTY — no manifest cut. The residue for this source is UNPROVEN`);
+    console.info(`   and the apply is EMPTY.`);
     return;
   }
 
@@ -197,7 +197,7 @@ function main(): void {
     ].join("\n") + "\n",
     "utf8",
   );
-  console.log(`\n   -> ${out}`);
+  console.info(`\n   -> ${out}`);
 }
 
 main();

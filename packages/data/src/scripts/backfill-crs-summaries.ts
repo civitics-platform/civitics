@@ -135,12 +135,12 @@ async function main(): Promise<void> {
 
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unknown)";
   const isLocal = /127\.0\.0\.1:54321|localhost:54321/.test(url);
-  console.log("=================================================");
-  console.log("  FIX-435 Phase 2 — Backfill CRS summaries → summary_plain");
-  console.log(`  Mode:   ${apply ? "APPLY" : "DRY-RUN"}`);
-  console.log(`  DB:     ${isLocal ? "local" : "PROD"}  (${url})`);
-  console.log(`  Limit:  ${limit ?? "no limit"}`);
-  console.log("=================================================\n");
+  console.info("=================================================");
+  console.info("  FIX-435 Phase 2 — Backfill CRS summaries → summary_plain");
+  console.info(`  Mode:   ${apply ? "APPLY" : "DRY-RUN"}`);
+  console.info(`  DB:     ${isLocal ? "local" : "PROD"}  (${url})`);
+  console.info(`  Limit:  ${limit ?? "no limit"}`);
+  console.info("=================================================\n");
 
   const db = createAdminClient();
 
@@ -168,7 +168,7 @@ async function main(): Promise<void> {
     if (rows.length < 1000) break;
     afterExternalId = rows[rows.length - 1]!.external_id;
   }
-  console.log(`  congress_gov proposal refs: ${refs.length}`);
+  console.info(`  congress_gov proposal refs: ${refs.length}`);
 
   // ── 2. Restrict to rows still missing summary_plain (resumable) ────────────
   const byId = new Map<string, string>();
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
       actionable.push({ id: r.id, billKey: byId.get(r.id)! });
     }
   }
-  console.log(`  actionable (summary_plain IS NULL): ${actionable.length}\n`);
+  console.info(`  actionable (summary_plain IS NULL): ${actionable.length}\n`);
 
   const targets = limit ? actionable.slice(0, limit) : actionable;
 
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
     }
 
     if (!apply) {
-      console.log(`${tag}: would set summary_plain (${text.length} chars): ${text.slice(0, 90)}...`);
+      console.info(`${tag}: would set summary_plain (${text.length} chars): ${text.slice(0, 90)}...`);
       updated += 1;
       continue;
     }
@@ -259,17 +259,17 @@ async function main(): Promise<void> {
       continue;
     }
     updated += 1;
-    if (updated % 100 === 0) console.log(`  ...${updated} updated so far (${i + 1}/${targets.length})`);
+    if (updated % 100 === 0) console.info(`  ...${updated} updated so far (${i + 1}/${targets.length})`);
   }
 
-  console.log("\n=================================================");
-  console.log(`  Updated (summary_plain set):  ${updated}`);
-  console.log(`  No summary available:         ${noSummary}`);
-  console.log(`  404 (bill not found):         ${notFound}`);
-  console.log(`  Unparseable billKey:          ${unparseable}`);
-  console.log(`  Failed:                       ${failed}`);
-  console.log(`  Mode:                         ${apply ? "APPLIED" : "DRY-RUN (no writes)"}`);
-  console.log("=================================================");
+  console.info("\n=================================================");
+  console.info(`  Updated (summary_plain set):  ${updated}`);
+  console.info(`  No summary available:         ${noSummary}`);
+  console.info(`  404 (bill not found):         ${notFound}`);
+  console.info(`  Unparseable billKey:          ${unparseable}`);
+  console.info(`  Failed:                       ${failed}`);
+  console.info(`  Mode:                         ${apply ? "APPLIED" : "DRY-RUN (no writes)"}`);
+  console.info("=================================================");
 }
 
 main()

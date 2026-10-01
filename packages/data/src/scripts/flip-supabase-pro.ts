@@ -21,7 +21,7 @@ import { createAdminClient } from "@civitics/db";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "<unknown>";
-  console.log(`[flip-supabase-pro] target: ${url}`);
+  console.info(`[flip-supabase-pro] target: ${url}`);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -38,10 +38,10 @@ async function main(): Promise<void> {
   }
 
   const current = (existing?.value as Record<string, string> | null) ?? {};
-  console.log("[flip-supabase-pro] current platform_plan:", JSON.stringify(current));
+  console.info("[flip-supabase-pro] current platform_plan:", JSON.stringify(current));
 
   if (current["supabase"] === "pro") {
-    console.log("[flip-supabase-pro] already on pro — no-op");
+    console.info("[flip-supabase-pro] already on pro — no-op");
     return;
   }
 
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log("[flip-supabase-pro] updated platform_plan:", JSON.stringify(updated));
+  console.info("[flip-supabase-pro] updated platform_plan:", JSON.stringify(updated));
 }
 
 main().catch((err) => {

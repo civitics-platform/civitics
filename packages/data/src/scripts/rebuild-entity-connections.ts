@@ -145,7 +145,7 @@ async function runDonationsFullWindowed(client: any): Promise<number> {
       );
       const n = Number(r.rows[0]?.n ?? 0);
       total += n;
-      console.log(
+      console.info(
         `    [donations] window ${i + 1}/16 [${lo.slice(0, 8)}..${hi ? hi.slice(0, 8) : "end"}) — ${n} edges in ${((Date.now() - wStart) / 1000).toFixed(1)}s`,
       );
     } catch (err) {
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
   let total = 0;
 
   const dbUrl = buildDbUrl();
-  console.log(
+  console.info(
     `[rebuild] mode=${mode} (${dbUrl ? "direct pg, per-chunk" : "PostgREST RPC umbrella"})`,
   );
 
@@ -273,7 +273,7 @@ async function main(): Promise<void> {
           await client.query(
             "ALTER TABLE public.entity_connections SET (autovacuum_enabled = false)",
           );
-          console.log("  [rebuild] autovacuum paused on entity_connections (full rebuild)");
+          console.info("  [rebuild] autovacuum paused on entity_connections (full rebuild)");
         }
         for (const fn of fns) {
           const chunkStart = Date.now();
@@ -304,7 +304,7 @@ async function main(): Promise<void> {
               breakdown.push({ ...r, duration_ms: chunkDur });
               total += Number(r.edges_upserted ?? 0);
             }
-            console.log(`  [chunk] ${fn} — complete in ${(chunkDur / 1000).toFixed(1)}s`);
+            console.info(`  [chunk] ${fn} — complete in ${(chunkDur / 1000).toFixed(1)}s`);
           } catch (chunkErr) {
             const chunkDur = Date.now() - chunkStart;
             const msg = errMsg(chunkErr);
@@ -321,7 +321,7 @@ async function main(): Promise<void> {
         // failure doesn't mask a successful rebuild — the next run picks up.
         try {
           await client.query("SELECT public.refresh_connection_type_counts()");
-          console.log("  [post] refresh_connection_type_counts — complete");
+          console.info("  [post] refresh_connection_type_counts — complete");
         } catch (refreshErr) {
           console.warn(
             `  [post] refresh_connection_type_counts — FAILED: ${errMsg(refreshErr)}`,
@@ -342,7 +342,7 @@ async function main(): Promise<void> {
           const r = await client.query<{ refresh_group_donor_rollup: unknown }>(
             "SELECT public.refresh_group_donor_rollup()",
           );
-          console.log(
+          console.info(
             `  [post] refresh_group_donor_rollup — complete: ${JSON.stringify(r.rows[0]?.refresh_group_donor_rollup ?? {})}`,
           );
         } catch (rollupErr) {
@@ -362,7 +362,7 @@ async function main(): Promise<void> {
         try {
           await client.query("SET statement_timeout = '1800s'");
           await client.query("CALL public.rebuild_entity_connection_stats()");
-          console.log("  [post] rebuild_entity_connection_stats — complete");
+          console.info("  [post] rebuild_entity_connection_stats — complete");
         } catch (statsErr) {
           console.warn(
             `  [post] rebuild_entity_connection_stats — FAILED: ${errMsg(statsErr)}`,
@@ -381,7 +381,7 @@ async function main(): Promise<void> {
           const r = await client.query<{ refresh_jurisdiction_page_cache: number }>(
             "SELECT public.refresh_jurisdiction_page_cache()",
           );
-          console.log(
+          console.info(
             `  [post] refresh_jurisdiction_page_cache — complete: ${r.rows[0]?.refresh_jurisdiction_page_cache ?? 0} rows`,
           );
         } catch (jpcErr) {
@@ -399,7 +399,7 @@ async function main(): Promise<void> {
           const r = await client.query<{ refresh_agency_page_cache: number }>(
             "SELECT public.refresh_agency_page_cache()",
           );
-          console.log(
+          console.info(
             `  [post] refresh_agency_page_cache — complete: ${r.rows[0]?.refresh_agency_page_cache ?? 0} rows`,
           );
         } catch (apcErr) {
@@ -412,7 +412,7 @@ async function main(): Promise<void> {
           const r = await client.query<{ refresh_gb_page_cache: number }>(
             "SELECT public.refresh_gb_page_cache()",
           );
-          console.log(
+          console.info(
             `  [post] refresh_gb_page_cache — complete: ${r.rows[0]?.refresh_gb_page_cache ?? 0} rows`,
           );
         } catch (gpcErr) {
@@ -433,7 +433,7 @@ async function main(): Promise<void> {
           const r = await client.query<{ refresh_official_content_ids: number }>(
             "SELECT public.refresh_official_content_ids()",
           );
-          console.log(
+          console.info(
             `  [post] refresh_official_content_ids — complete: ${r.rows[0]?.refresh_official_content_ids ?? 0} rows`,
           );
         } catch (ociErr) {
@@ -452,7 +452,7 @@ async function main(): Promise<void> {
             );
             await client.query("SET statement_timeout = '30min'");
             await client.query("VACUUM (ANALYZE) public.entity_connections");
-            console.log("  [post] autovacuum re-enabled + VACUUM ANALYZE entity_connections — complete");
+            console.info("  [post] autovacuum re-enabled + VACUUM ANALYZE entity_connections — complete");
           } catch (vacErr) {
             console.warn(`  [post] post-rebuild VACUUM — FAILED: ${errMsg(vacErr)}`);
           }
@@ -496,7 +496,7 @@ async function main(): Promise<void> {
       try {
         const { error: rollupErr } = await admin.rpc("refresh_group_donor_rollup");
         if (rollupErr) throw rollupErr;
-        console.log("  [post] refresh_group_donor_rollup — complete");
+        console.info("  [post] refresh_group_donor_rollup — complete");
       } catch (rollupErr) {
         console.warn(
           `  [post] refresh_group_donor_rollup — FAILED: ${errMsg(rollupErr)}`,
@@ -508,7 +508,7 @@ async function main(): Promise<void> {
       try {
         const { error: statsErr } = await admin.rpc("refresh_entity_connection_stats_mv");
         if (statsErr) throw statsErr;
-        console.log("  [post] refresh_entity_connection_stats_mv — complete");
+        console.info("  [post] refresh_entity_connection_stats_mv — complete");
       } catch (statsErr) {
         console.warn(
           `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
@@ -520,7 +520,7 @@ async function main(): Promise<void> {
       try {
         const { error: jpcErr } = await admin.rpc("refresh_jurisdiction_page_cache");
         if (jpcErr) throw jpcErr;
-        console.log("  [post] refresh_jurisdiction_page_cache — complete");
+        console.info("  [post] refresh_jurisdiction_page_cache — complete");
       } catch (jpcErr) {
         console.warn(
           `  [post] refresh_jurisdiction_page_cache — FAILED: ${errMsg(jpcErr)}`,
@@ -532,7 +532,7 @@ async function main(): Promise<void> {
       try {
         const { error: apcErr } = await admin.rpc("refresh_agency_page_cache");
         if (apcErr) throw apcErr;
-        console.log("  [post] refresh_agency_page_cache — complete");
+        console.info("  [post] refresh_agency_page_cache — complete");
       } catch (apcErr) {
         console.warn(
           `  [post] refresh_agency_page_cache — FAILED: ${errMsg(apcErr)}`,
@@ -541,7 +541,7 @@ async function main(): Promise<void> {
       try {
         const { error: gpcErr } = await admin.rpc("refresh_gb_page_cache");
         if (gpcErr) throw gpcErr;
-        console.log("  [post] refresh_gb_page_cache — complete");
+        console.info("  [post] refresh_gb_page_cache — complete");
       } catch (gpcErr) {
         console.warn(
           `  [post] refresh_gb_page_cache — FAILED: ${errMsg(gpcErr)}`,
@@ -553,7 +553,7 @@ async function main(): Promise<void> {
       try {
         const { error: ociErr } = await admin.rpc("refresh_official_content_ids");
         if (ociErr) throw ociErr;
-        console.log("  [post] refresh_official_content_ids — complete");
+        console.info("  [post] refresh_official_content_ids — complete");
       } catch (ociErr) {
         console.warn(
           `  [post] refresh_official_content_ids — FAILED: ${errMsg(ociErr)}`,
@@ -563,13 +563,13 @@ async function main(): Promise<void> {
 
     const dur = Date.now() - t0;
     const statusLabel = chunkFailures.length > 0 ? "PARTIAL" : "complete";
-    console.log(
+    console.info(
       `[rebuild] ${statusLabel} in ${(dur / 1000).toFixed(1)}s, ${total} edges` +
         (chunkFailures.length > 0 ? ` (${chunkFailures.length} chunk failures)` : ""),
     );
     for (const r of breakdown) {
       const durStr = r.duration_ms > 0 ? ` (${(r.duration_ms / 1000).toFixed(1)}s)` : "";
-      console.log(`  ${r.connection_type}: ${r.edges_upserted}${durStr}`);
+      console.info(`  ${r.connection_type}: ${r.edges_upserted}${durStr}`);
     }
 
     if (chunkFailures.length > 0) {

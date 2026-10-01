@@ -33,10 +33,10 @@ async function main(): Promise<void> {
     ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
   });
   await client.connect();
-  console.log(`Connected to: ${new URL(cleanUrl).host}\n`);
+  console.info(`Connected to: ${new URL(cleanUrl).host}\n`);
 
   // Sample senator with full jurisdiction join
-  console.log("=== senators_per_state: sample JOIN to jurisdictions ===");
+  console.info("=== senators_per_state: sample JOIN to jurisdictions ===");
   const senJoin = await client.query(
     `SELECT o.id, o.full_name, j.id AS juris_id, j.name AS juris_name, j.metadata AS juris_metadata
        FROM officials o
@@ -47,12 +47,12 @@ async function main(): Promise<void> {
       LIMIT 6`,
   );
   for (const row of senJoin.rows) {
-    console.log(`-- ${row.full_name} (juris=${row.juris_name}) --`);
-    console.log("  juris_metadata:", JSON.stringify(row.juris_metadata));
+    console.info(`-- ${row.full_name} (juris=${row.juris_name}) --`);
+    console.info("  juris_metadata:", JSON.stringify(row.juris_metadata));
   }
 
   // Try the grouping with jurisdictions.metadata->>'state_abbr' or similar
-  console.log("\n=== senators_per_state: explore jurisdiction metadata keys ===");
+  console.info("\n=== senators_per_state: explore jurisdiction metadata keys ===");
   const jurisKeys = await client.query(
     `SELECT k, COUNT(*)::int AS n
        FROM officials o
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   console.table(jurisKeys.rows);
 
   // Look at jurisdictions table top-level columns
-  console.log("\n=== jurisdictions: columns ===");
+  console.info("\n=== jurisdictions: columns ===");
   const jCols = await client.query(
     `SELECT column_name, data_type
        FROM information_schema.columns
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   console.table(jCols.rows);
 
   // Now try grouping
-  console.log("\n=== senators_per_state: group by jurisdictions.metadata->>'state_abbr' (or whatever) ===");
+  console.info("\n=== senators_per_state: group by jurisdictions.metadata->>'state_abbr' (or whatever) ===");
   const senGrouped = await client.query(
     `SELECT j.metadata->>'state_abbr' AS state_abbr,
             j.metadata->>'state' AS state,
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   console.table(senGrouped.rows);
 
   // Look at congress.gov officials pipeline — what jurisdiction is each senator mapped to?
-  console.log("\n=== Senator -> jurisdiction.name list ===");
+  console.info("\n=== Senator -> jurisdiction.name list ===");
   const jurisList = await client.query(
     `SELECT j.name, COUNT(*)::int AS n
        FROM officials o
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
   console.table(jurisList.rows);
 
   // Rep state breakdown via JOIN
-  console.log("\n=== rep_count: jurisdiction breakdown ===");
+  console.info("\n=== rep_count: jurisdiction breakdown ===");
   const repJuris = await client.query(
     `SELECT j.name AS juris_name, COUNT(*)::int AS n
        FROM officials o
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
   console.table(repJuris.rows);
 
   // Total reps without congress_gov filter to see if any non-matched delegates exist
-  console.log("\n=== rep_count: any other 'Representative' rows missing congress_gov source? ===");
+  console.info("\n=== rep_count: any other 'Representative' rows missing congress_gov source? ===");
   const repNoFed = await client.query(
     `SELECT role_title, tier, COUNT(*)::int AS n,
             COUNT(*) FILTER (WHERE source_ids ? 'openstates_id') AS w_openstates,
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
   console.table(repNoFed.rows);
 
   await client.end();
-  console.log("\nDone.");
+  console.info("\nDone.");
 }
 
 main().catch((err) => {

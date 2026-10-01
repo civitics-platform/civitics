@@ -160,14 +160,14 @@ async function run(client: Client, label: string, sql: string, params: unknown[]
   const t0 = Date.now();
   const res = await client.query(sql, params);
   const n = res.rowCount ?? 0;
-  console.log(`  ${label.padEnd(52)} ${String(n).padStart(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${String(n).padStart(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   return n;
 }
 
 async function step(client: Client, label: string, sql: string): Promise<void> {
   const t0 = Date.now();
   await client.query(sql);
-  console.log(`  ${label.padEnd(52)} ${" ".repeat(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${" ".repeat(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
 async function budgeted(client: Client, label: string, sql: string, budgetS: number, params: unknown[] = []): Promise<void> {
@@ -184,7 +184,7 @@ async function budgeted(client: Client, label: string, sql: string, budgetS: num
     await client.query("SET statement_timeout = 0");
   }
   const s = (Date.now() - t0) / 1000;
-  console.log(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
   if (s > budgetS) throw new BudgetExceeded(`${label} took ${s.toFixed(0)}s against a ${budgetS}s budget`);
 }
 
@@ -195,7 +195,7 @@ async function runVacuum(client: Client, defer = false): Promise<void> {
     printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;
   }
-  console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
+  console.info("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
   for (const t of CHURNED_TABLES) {
     try {
       await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
@@ -226,7 +226,7 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
     return;
   }
 
-  console.log("\n── Phase 3: materialized views + vacuum ─────────────────");
+  console.info("\n── Phase 3: materialized views + vacuum ─────────────────");
   for (const fn of MV_REFRESH_FNS) {
     try {
       await budgeted(client, `${fn}()`, `SELECT ${fn}()`, STEP_BUDGET_S["mv"]!);
@@ -244,18 +244,18 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
  * because every rollup is a pure function of the committed rows.
  */
 async function runRollups(client: Client, prod: boolean, defer = false): Promise<void> {
-  console.log("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
+  console.info("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
 
   const [offCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _affected`);
   const officials = Number(offCount?.n ?? 0);
-  console.log(`  affected officials: ${officials.toLocaleString()}`);
+  console.info(`  affected officials: ${officials.toLocaleString()}`);
 
   // Donors whose OUTFLOW changed. Read off the DONOR side of the deleted rows,
   // captured before the delete — a DELETE bumps no updated_at, so the
   // incremental pg_cron paths would silently skip exactly these.
   const [donorCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _donor`);
   const donors = Number(donorCount?.n ?? 0);
-  console.log(`  affected donors:    ${donors.toLocaleString()}`);
+  console.info(`  affected donors:    ${donors.toLocaleString()}`);
 
   try {
     // FIX-1074 — the manifest-scoped drain is now ONE shared helper
@@ -438,8 +438,8 @@ export function parseOfficialsArg(argv: string[]): string[] {
  * the apply path runs, so a resume finishes the run rather than half of it.
  */
 async function runRollupsResume(client: Client, prod: boolean, officialIds: string[], defer = false): Promise<void> {
-  console.log("\n── RESUME (--rollups-only): no derivation, no delete ────");
-  console.log(`  officials handed in: ${officialIds.length}`);
+  console.info("\n── RESUME (--rollups-only): no derivation, no delete ────");
+  console.info(`  officials handed in: ${officialIds.length}`);
   await client.query(`
     DROP TABLE IF EXISTS _affected;
     CREATE TEMP TABLE _affected (id uuid PRIMARY KEY);
@@ -501,10 +501,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`# FIX-934 phase 2 — remediate CROSS-PERSON misattribution`);
-  console.log(`Env:        ${envLabel()}`);
-  console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(
+  console.info(`# FIX-934 phase 2 — remediate CROSS-PERSON misattribution`);
+  console.info(`Env:        ${envLabel()}`);
+  console.info(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(
     `Mode:       ${mode}` +
       (mode === "full" ? ` — ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}` : " — resume, no derivation, no delete") +
       "\n",
@@ -538,30 +538,30 @@ async function main(): Promise<void> {
   let suspects: SuspectRow[];
   if (manifest) {
     const ids = manifestColumn(manifest, "official_id");
-    console.log(`Manifest: ${manifest.path}`);
-    console.log(`  ${ids.length} suspects — re-measuring their FIX-930 facts here, keyed.`);
+    console.info(`Manifest: ${manifest.path}`);
+    console.info(`  ${ids.length} suspects — re-measuring their FIX-930 facts here, keyed.`);
     suspects = (await client.query<SuspectRow>(suspectSqlKeyed(), [ids])).rows;
     if (suspects.length !== ids.length) {
-      console.log(
+      console.info(
         `  note: ${ids.length - suspects.length} manifest id(s) no longer satisfy the suspect` +
           ` predicate here — already remediated, or the twin moved. They drop out.`,
       );
     }
   } else {
-    console.log("Re-deriving the FIX-930 classification live…  (clone-only path)");
+    console.info("Re-deriving the FIX-930 classification live…  (clone-only path)");
     suspects = (await client.query<SuspectRow>(SUSPECT_SQL)).rows;
   }
   const { boundary, classified } = classify(suspects);
-  console.log(
+  console.info(
     `  suspects: ${classified.length}   boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`,
   );
 
   const cross = classified.filter((e) => e.branch === "CROSS-PERSON MISATTRIBUTION");
   const kept = cross.filter((e) => !(e.twin_fec_id && EXCLUDED_FEC_IDS.has(e.twin_fec_id)));
-  console.log(`  CROSS-PERSON: ${cross.length} suspects, ${kept.length} after by-name exclusions`);
+  console.info(`  CROSS-PERSON: ${cross.length} suspects, ${kept.length} after by-name exclusions`);
 
   if (kept.length === 0) {
-    console.log("\nNothing to remediate. (Expected on a re-run after --apply.)");
+    console.info("\nNothing to remediate. (Expected on a re-run after --apply.)");
     await client.end();
     return;
   }
@@ -574,7 +574,7 @@ async function main(): Promise<void> {
   await client.query(`DROP TABLE IF EXISTS _xp; CREATE TEMP TABLE _xp (suspect_id uuid PRIMARY KEY);`);
   for (const e of kept) await client.query(`INSERT INTO _xp VALUES ($1::uuid)`, [e.official_id]);
 
-  console.log("\nDecomposing holdings row-by-row…");
+  console.info("\nDecomposing holdings row-by-row…");
   await client.query(OWNER_SQL);
 
   const suspectById = new Map(kept.map((e) => [e.official_id, e]));
@@ -592,7 +592,7 @@ async function main(): Promise<void> {
     if (relation === "SAME") sameOwners++;
     await client.query(`INSERT INTO _ownrel VALUES ($1::uuid, $2::uuid, $3)`, [o.suspect_id, o.owner_id, relation]);
   }
-  console.log(`  ${allOwners.length} (suspect, owner) pairs — ${sameOwners} SAME-person, ${allOwners.length - sameOwners} CROSS-person`);
+  console.info(`  ${allOwners.length} (suspect, owner) pairs — ${sameOwners} SAME-person, ${allOwners.length - sameOwners} CROSS-person`);
 
   await client.query(ROWHIT_SQL);
   await client.query(ROWCLASS_SQL);
@@ -608,13 +608,13 @@ async function main(): Promise<void> {
     }),
     { total: 0n, own: 0n, cross: 0n, div: 0n, crossRows: 0 },
   );
-  console.log(`\n  total    ${usd(totals.total.toString()).padStart(16)}`);
-  console.log(`  OWN      ${usd(totals.own.toString()).padStart(16)}  (kept — FIX-953)`);
-  console.log(`  CROSS    ${usd(totals.cross.toString()).padStart(16)}  (${totals.crossRows.toLocaleString()} rows — DELETED here)`);
-  console.log(`  DIVERTED ${usd(totals.div.toString()).padStart(16)}  (kept — FIX-952)`);
+  console.info(`\n  total    ${usd(totals.total.toString()).padStart(16)}`);
+  console.info(`  OWN      ${usd(totals.own.toString()).padStart(16)}  (kept — FIX-953)`);
+  console.info(`  CROSS    ${usd(totals.cross.toString()).padStart(16)}  (${totals.crossRows.toLocaleString()} rows — DELETED here)`);
+  console.info(`  DIVERTED ${usd(totals.div.toString()).padStart(16)}  (kept — FIX-952)`);
 
   if (totals.crossRows === 0) {
-    console.log("\nNo CROSS rows to remediate. Nothing to do.");
+    console.info("\nNo CROSS rows to remediate. Nothing to do.");
     await client.end();
     return;
   }
@@ -686,7 +686,7 @@ async function main(): Promise<void> {
     );
     const doomedCents = BigInt(doomedAgg?.cents ?? "0");
 
-    console.log("\nRemediation (rows affected):");
+    console.info("\nRemediation (rows affected):");
 
     // 1. FRESHER-WINS: where the suspect's copy is strictly newer than the
     //    owner's counterpart, propagate its value onto the owner BEFORE the
@@ -829,19 +829,19 @@ async function main(): Promise<void> {
               count(*) FILTER (WHERE class='DIVERTED')::text AS div FROM _rowclass`,
     );
 
-    console.log("\n── Conservation ─────────────────────────────────────────");
-    console.log(`  platform donation dollars: ${usd(beforeCents.toString())} → ${usd(afterCents.toString())}`);
-    console.log(`  observed drop:             ${usd(observedDrop.toString())}`);
-    console.log(`  deleted CROSS rows:        ${usd(doomedCents.toString())}  (${deleted.toLocaleString()} rows)`);
-    console.log(`  fresher-wins propagations: ${refreshed}  (value moved onto owners, net ${usd(refreshDelta.toString())})`);
-    console.log(`  difference (must be $0):   ${usd(dropDelta.toString())}  ${dropDelta === 0n ? "OK" : "CHECK"}`);
-    console.log(`  OWN rows still resident:      ${survivors?.own} / ${expected?.own}  ${survivors?.own === expected?.own ? "OK" : "FAIL"}`);
-    console.log(`  DIVERTED rows still resident: ${survivors?.div} / ${expected?.div}  ${survivors?.div === expected?.div ? "OK" : "FAIL"}`);
-    console.log(`  official_donor_totals diffs outside the affected set: ${strays.length}  ${strays.length === 0 ? "OK" : "FAIL"}`);
+    console.info("\n── Conservation ─────────────────────────────────────────");
+    console.info(`  platform donation dollars: ${usd(beforeCents.toString())} → ${usd(afterCents.toString())}`);
+    console.info(`  observed drop:             ${usd(observedDrop.toString())}`);
+    console.info(`  deleted CROSS rows:        ${usd(doomedCents.toString())}  (${deleted.toLocaleString()} rows)`);
+    console.info(`  fresher-wins propagations: ${refreshed}  (value moved onto owners, net ${usd(refreshDelta.toString())})`);
+    console.info(`  difference (must be $0):   ${usd(dropDelta.toString())}  ${dropDelta === 0n ? "OK" : "CHECK"}`);
+    console.info(`  OWN rows still resident:      ${survivors?.own} / ${expected?.own}  ${survivors?.own === expected?.own ? "OK" : "FAIL"}`);
+    console.info(`  DIVERTED rows still resident: ${survivors?.div} / ${expected?.div}  ${survivors?.div === expected?.div ? "OK" : "FAIL"}`);
+    console.info(`  official_donor_totals diffs outside the affected set: ${strays.length}  ${strays.length === 0 ? "OK" : "FAIL"}`);
     for (const s of strays.slice(0, 20)) {
-      console.log(`    STRAY ${s.official_id} ${(s.full_name ?? "?").padEnd(28)} ${s.before_cents} → ${s.after_cents}`);
+      console.info(`    STRAY ${s.official_id} ${(s.full_name ?? "?").padEnd(28)} ${s.before_cents} → ${s.after_cents}`);
     }
-    console.log(`  retired misattributed fec_id on ${retired} official(s)`);
+    console.info(`  retired misattributed fec_id on ${retired} official(s)`);
 
     const ok =
       survivors?.own === expected?.own &&
@@ -852,10 +852,10 @@ async function main(): Promise<void> {
 
     if (apply) {
       await client.query("COMMIT");
-      console.log(`\n✓ COMMITTED — ${deleted.toLocaleString()} mis-bound rows removed from ${kept.length} officials.`);
+      console.info(`\n✓ COMMITTED — ${deleted.toLocaleString()} mis-bound rows removed from ${kept.length} officials.`);
     } else {
       await client.query("ROLLBACK");
-      console.log(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);
+      console.info(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);
       await client.end();
       return;
     }
@@ -869,7 +869,7 @@ async function main(): Promise<void> {
   await runRollups(client, prod, defer);
   await runMvsAndVacuum(client, defer);
 
-  console.log(
+  console.info(
     "\nSTALE UNTIL THEIR OWN SCHEDULE:\n" +
       // FIX-1201 — no clock in an operator-facing string. This one's owner is a
       // GitHub Actions schedule, not a cron.job row, so there is nothing to read

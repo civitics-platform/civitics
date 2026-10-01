@@ -229,9 +229,9 @@ async function main(): Promise<void> {
   await client.query("SET statement_timeout = 0");
 
   try {
-    console.log(`\n══ FIX-859 · state-legislature district_jurisdiction_id backfill ══`);
-    console.log(`   target : ${prod ? "PRODUCTION (Supabase Pro)" : "LOCAL (Docker)"}`);
-    console.log(
+    console.info(`\n══ FIX-859 · state-legislature district_jurisdiction_id backfill ══`);
+    console.info(`   target : ${prod ? "PRODUCTION (Supabase Pro)" : "LOCAL (Docker)"}`);
+    console.info(
       `   mode   : ${
         willExecute ? (prod ? "PROD WRITE (--allow-prod --confirm given)" : "EXECUTE") : "DRY RUN — no writes"
       }\n`,
@@ -249,10 +249,10 @@ async function main(): Promise<void> {
         AND o.is_active AND NOT COALESCE(o.is_synthetic, false)`)
     ).rows[0] as { total: number; linked: number };
     const pct = (n: number) => `${((n / base.total) * 100).toFixed(1)}%`;
-    console.log(`── BEFORE ──`);
-    console.log(`   state legislators (active, non-synthetic): ${base.total}`);
-    console.log(`   already linked:                            ${base.linked}  (${pct(base.linked)})`);
-    console.log(`   unlinked:                                  ${base.total - base.linked}\n`);
+    console.info(`── BEFORE ──`);
+    console.info(`   state legislators (active, non-synthetic): ${base.total}`);
+    console.info(`   already linked:                            ${base.linked}  (${pct(base.linked)})`);
+    console.info(`   unlinked:                                  ${base.total - base.linked}\n`);
 
     // ── Match ─────────────────────────────────────────────────────────────
     const rows = (await client.query(MATCH_SQL)).rows as MatchRow[];
@@ -260,7 +260,7 @@ async function main(): Promise<void> {
     const ambiguous = rows.filter((r) => r.tier !== null && r.n > 1);
     const unresolved = rows.filter((r) => r.tier === null);
 
-    console.log(`── MATCH PASS (pool = ${rows.length} unlinked) ──`);
+    console.info(`── MATCH PASS (pool = ${rows.length} unlinked) ──`);
     const byTier = Object.keys(TIER_LABEL)
       .map(Number)
       .map((t) => ({
@@ -269,16 +269,16 @@ async function main(): Promise<void> {
         ambiguous: ambiguous.filter((r) => r.tier === t).length,
       }))
       .filter((r) => r.resolved > 0 || r.ambiguous > 0);
-    console.log(table(byTier, ["tier", "resolved", "ambiguous"]));
-    console.log(
+    console.info(table(byTier, ["tier", "resolved", "ambiguous"]));
+    console.info(
       `\n   resolved (exactly 1 match): ${resolved.length}` +
         `\n   ambiguous (>1, NOT written): ${ambiguous.length}` +
         `\n   unresolved (0 matches):      ${unresolved.length}\n`,
     );
 
     if (ambiguous.length > 0) {
-      console.log(`── AMBIGUOUS — skipped, need a rule ──`);
-      console.log(
+      console.info(`── AMBIGUOUS — skipped, need a rule ──`);
+      console.info(
         table(
           ambiguous.slice(0, 40).map((r) => ({
             state: r.state,
@@ -290,8 +290,8 @@ async function main(): Promise<void> {
           ["state", "chamber", "district_name", "tier", "matches"],
         ),
       );
-      if (ambiguous.length > 40) console.log(`    … and ${ambiguous.length - 40} more`);
-      console.log("");
+      if (ambiguous.length > 40) console.info(`    … and ${ambiguous.length - 40} more`);
+      console.info("");
     }
 
     if (unresolved.length > 0) {
@@ -303,8 +303,8 @@ async function main(): Promise<void> {
         if (g.samples.length < 3) g.samples.push(r.district_name);
         grouped.set(k, g);
       }
-      console.log(`── UNRESOLVED — by state × chamber ──`);
-      console.log(
+      console.info(`── UNRESOLVED — by state × chamber ──`);
+      console.info(
         table(
           [...grouped.values()]
             .sort((a, b) => b.n - a.n)
@@ -312,12 +312,12 @@ async function main(): Promise<void> {
           ["state", "chamber", "n", "samples"],
         ),
       );
-      console.log("");
+      console.info("");
     }
 
     // ── Write ─────────────────────────────────────────────────────────────
     if (!willExecute) {
-      console.log(
+      console.info(
         `── NO WRITES ──\n   ${resolved.length} link(s) would be added.` +
           (prod
             ? `\n   Prod execution is gated: re-run with the executing variant (…:prod, which\n` +
@@ -342,7 +342,7 @@ async function main(): Promise<void> {
         [slice.map((r) => r.official_id), slice.map((r) => r.jur_id)],
       );
       written += res.rowCount ?? 0;
-      console.log(`   wrote ${written}/${resolved.length}…`);
+      console.info(`   wrote ${written}/${resolved.length}…`);
     }
 
     // ── Verify ────────────────────────────────────────────────────────────
@@ -357,15 +357,15 @@ async function main(): Promise<void> {
         AND o.is_active AND NOT COALESCE(o.is_synthetic, false)`)
     ).rows[0] as { total: number; linked: number };
 
-    console.log(`\n── AFTER ──`);
-    console.log(`   rows written:  ${written}  (expected ${resolved.length})`);
-    console.log(`   linked:        ${after.linked} / ${after.total}  (${((after.linked / after.total) * 100).toFixed(1)}%)`);
-    console.log(`   delta:         +${after.linked - base.linked}`);
+    console.info(`\n── AFTER ──`);
+    console.info(`   rows written:  ${written}  (expected ${resolved.length})`);
+    console.info(`   linked:        ${after.linked} / ${after.total}  (${((after.linked / after.total) * 100).toFixed(1)}%)`);
+    console.info(`   delta:         +${after.linked - base.linked}`);
     if (written !== resolved.length) {
       console.error(`\n✗ write count ${written} != resolved ${resolved.length} — investigate before trusting this run.`);
       process.exitCode = 1;
     } else {
-      console.log(`\n✓ backfill complete.`);
+      console.info(`\n✓ backfill complete.`);
     }
   } finally {
     await client.end();

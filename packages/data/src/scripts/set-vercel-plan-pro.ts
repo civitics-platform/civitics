@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     .select("value")
     .eq("key", "platform_plan")
     .maybeSingle();
-  console.log("[set-vercel-plan-pro] before:", JSON.stringify(before?.value ?? null));
+  console.info("[set-vercel-plan-pro] before:", JSON.stringify(before?.value ?? null));
 
   await upgradeServicePlan(db, "vercel", "pro");
 
@@ -41,14 +41,14 @@ async function main(): Promise<void> {
     .select("value")
     .eq("key", "platform_plan")
     .maybeSingle();
-  console.log("[set-vercel-plan-pro] after: ", JSON.stringify(after?.value ?? null));
+  console.info("[set-vercel-plan-pro] after: ", JSON.stringify(after?.value ?? null));
 
   const ok = (after?.value as Record<string, string> | null)?.["vercel"] === "pro";
   if (!ok) {
     console.error("[set-vercel-plan-pro] FAILED — vercel is not 'pro' after write");
     process.exit(1);
   }
-  console.log("[set-vercel-plan-pro] OK — vercel = pro");
+  console.info("[set-vercel-plan-pro] OK — vercel = pro");
 }
 
 runUnderProdSession(

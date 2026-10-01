@@ -206,12 +206,12 @@ async function auditRefs(
 }
 
 function printAudit(title: string, rows: Array<{ ref: string; n: number }>): void {
-  console.log(`\n${title}`);
+  console.info(`\n${title}`);
   for (const r of rows) {
-    if (r.n > 0) console.log(`  ${String(r.n).padStart(5)}  ${r.ref}`);
+    if (r.n > 0) console.info(`  ${String(r.n).padStart(5)}  ${r.ref}`);
   }
   const zero = rows.filter((r) => r.n === 0).length;
-  console.log(`  (+ ${zero} reference site(s) with 0 rows)`);
+  console.info(`  (+ ${zero} reference site(s) with 0 rows)`);
 }
 
 async function main(): Promise<void> {
@@ -236,10 +236,10 @@ async function main(): Promise<void> {
   // Execute by default on local; on prod require --confirm (the chat gate).
   const willExecute = dryRun ? false : prod ? confirm : true;
 
-  console.log(`# FIX-482 — DC jurisdiction merge`);
-  console.log(`Env:        ${env}`);
-  console.log(`Connection: ${masked}`);
-  console.log(
+  console.info(`# FIX-482 — DC jurisdiction merge`);
+  console.info(`Env:        ${env}`);
+  console.info(`Connection: ${masked}`);
+  console.info(
     `Mode:       ${
       willExecute
         ? prod
@@ -275,8 +275,8 @@ async function main(): Promise<void> {
     if (winner.id === loser.id) throw new Error("winner and loser resolved to the same row — aborting.");
     if (loser.fips_code === "11001") throw new Error("loser is the county row (fips 11001) — aborting.");
 
-    console.log(`\nWINNER (canonical):  ${winner.id}  ${winner.type}  "${winner.name}" (${winner.short_name})`);
-    console.log(`LOSER  (to merge):   ${loser.id}  ${loser.type}  "${loser.name}" (${loser.short_name})`);
+    console.info(`\nWINNER (canonical):  ${winner.id}  ${winner.type}  "${winner.name}" (${winner.short_name})`);
+    console.info(`LOSER  (to merge):   ${loser.id}  ${loser.type}  "${loser.name}" (${loser.short_name})`);
 
     // Loud confirmation that the explicitly-out-of-scope rows are visible and untouched.
     const survivors = await q(
@@ -287,9 +287,9 @@ async function main(): Promise<void> {
         ORDER BY type, name`,
       [loser.id],
     );
-    console.log(`\nOther fips-11* DC-area rows (MUST survive untouched):`);
+    console.info(`\nOther fips-11* DC-area rows (MUST survive untouched):`);
     for (const r of survivors) {
-      console.log(`  ${r.id}  ${r.type}  fips=${r.fips_code}  "${r.name}"`);
+      console.info(`  ${r.id}  ${r.type}  fips=${r.fips_code}  "${r.name}"`);
     }
 
     // ── Resolve gb pairs + build the type-map ──────────────────────────────
@@ -313,10 +313,10 @@ async function main(): Promise<void> {
         );
       }
     }
-    console.log(`\ngb type-map (loser → winner, repointed House→House / Senate→Senate):`);
+    console.info(`\ngb type-map (loser → winner, repointed House→House / Senate→Senate):`);
     for (const lg of loserGbs) {
       const wg = winnerByType.get(lg.type)!;
-      console.log(`  ${lg.id} (${lg.type}) → ${wg.id}`);
+      console.info(`  ${lg.id} (${lg.type}) → ${wg.id}`);
     }
     const loserGbIds = loserGbs.map((g) => g.id);
 
@@ -325,30 +325,30 @@ async function main(): Promise<void> {
     printAudit("BEFORE — references to the LOSER (jurisdiction + gbs):", before.rows);
 
     // ── Print the exact plan (statements + bound params) ───────────────────
-    console.log(`\n── PLAN — exact statements (params: winner=${winner.id}, loser=${loser.id}) ──`);
+    console.info(`\n── PLAN — exact statements (params: winner=${winner.id}, loser=${loser.id}) ──`);
     for (const [table, col] of GB_REF_COLS) {
-      console.log(
+      console.info(
         `  UPDATE ${table} t SET ${col} = w.id FROM governing_bodies l ` +
           `JOIN governing_bodies w ON w.jurisdiction_id='${winner.id}' AND w.type=l.type ` +
           `WHERE l.jurisdiction_id='${loser.id}' AND t.${col}=l.id;`,
       );
     }
     for (const [table, col] of JURIS_REF_COLS) {
-      console.log(`  UPDATE ${table} SET ${col}='${winner.id}' WHERE ${col}='${loser.id}';`);
+      console.info(`  UPDATE ${table} SET ${col}='${winner.id}' WHERE ${col}='${loser.id}';`);
     }
-    console.log(
+    console.info(
       `  UPDATE officials SET metadata = jsonb_set(metadata,'{district_jurisdiction_id}',to_jsonb('${winner.id}'::text)) ` +
         `WHERE metadata->>'district_jurisdiction_id'='${loser.id}';`,
     );
-    console.log(
+    console.info(
       `  DELETE FROM external_source_refs WHERE (entity_type='governing_body' AND entity_id = ANY('{${loserGbIds.join(",")}}')) ` +
         `OR (entity_type='jurisdiction' AND entity_id='${loser.id}');`,
     );
-    console.log(`  DELETE FROM governing_bodies WHERE id = ANY('{${loserGbIds.join(",")}}');`);
-    console.log(`  DELETE FROM jurisdictions WHERE id='${loser.id}';`);
+    console.info(`  DELETE FROM governing_bodies WHERE id = ANY('{${loserGbIds.join(",")}}');`);
+    console.info(`  DELETE FROM jurisdictions WHERE id='${loser.id}';`);
 
     if (!willExecute) {
-      console.log(
+      console.info(
         `\n⏸  PLAN ONLY — no writes performed.` +
           (prod
             ? `\n   Prod execution is gated: re-run with the executing variant (…:prod, which adds --confirm)\n   only after explicit confirmation of the statements above.`
@@ -372,7 +372,7 @@ async function main(): Promise<void> {
           [winner.id, loser.id],
         );
         if (res.rowCount) {
-          console.log(`  repointed ${res.rowCount} ${table}.${col} (gb → winner gb of same type)`);
+          console.info(`  repointed ${res.rowCount} ${table}.${col} (gb → winner gb of same type)`);
           totalRepointed += res.rowCount;
         }
       }
@@ -382,7 +382,7 @@ async function main(): Promise<void> {
           [winner.id, loser.id],
         );
         if (res.rowCount) {
-          console.log(`  repointed ${res.rowCount} ${table}.${col} (→ winner jurisdiction)`);
+          console.info(`  repointed ${res.rowCount} ${table}.${col} (→ winner jurisdiction)`);
           totalRepointed += res.rowCount;
         }
       }
@@ -392,7 +392,7 @@ async function main(): Promise<void> {
           WHERE metadata->>'district_jurisdiction_id' = $2`,
         [winner.id, loser.id],
       );
-      if (metaRes.rowCount) console.log(`  repointed ${metaRes.rowCount} officials.metadata.district_jurisdiction_id`);
+      if (metaRes.rowCount) console.info(`  repointed ${metaRes.rowCount} officials.metadata.district_jurisdiction_id`);
 
       const xsrRes = await client.query(
         `DELETE FROM public.external_source_refs
@@ -400,23 +400,23 @@ async function main(): Promise<void> {
              OR (entity_type = 'jurisdiction' AND entity_id = $2)`,
         [loserGbIds, loser.id],
       );
-      if (xsrRes.rowCount) console.log(`  deleted ${xsrRes.rowCount} external_source_refs row(s) for loser gbs/jurisdiction`);
+      if (xsrRes.rowCount) console.info(`  deleted ${xsrRes.rowCount} external_source_refs row(s) for loser gbs/jurisdiction`);
 
       const gbDel = await client.query(
         `DELETE FROM public.governing_bodies WHERE id = ANY($1::uuid[])`,
         [loserGbIds],
       );
-      console.log(`  deleted ${gbDel.rowCount} loser governing_bodies row(s)`);
+      console.info(`  deleted ${gbDel.rowCount} loser governing_bodies row(s)`);
 
       const jDel = await client.query(`DELETE FROM public.jurisdictions WHERE id = $1`, [loser.id]);
-      console.log(`  deleted ${jDel.rowCount} loser jurisdiction row(s)`);
+      console.info(`  deleted ${jDel.rowCount} loser jurisdiction row(s)`);
 
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
     }
-    console.log(`\n  total references repointed: ${totalRepointed}`);
+    console.info(`\n  total references repointed: ${totalRepointed}`);
 
     // ── 5. Re-audit ────────────────────────────────────────────────────────
     const loserGone = (await q(client, `SELECT COUNT(*)::int AS n FROM public.jurisdictions WHERE id = $1`, [loser.id]))[0]
@@ -430,11 +430,11 @@ async function main(): Promise<void> {
       .n as number;
     const after = await auditRefs(client, loser.id, loserGbIds);
 
-    console.log(`\n── POST-MERGE verification ──`);
-    console.log(`  loser jurisdiction rows remaining:        ${loserGone}   (expect 0)`);
-    console.log(`  loser gb rows remaining:                  ${loserGbsGone}   (expect 0)`);
-    console.log(`  winner jurisdiction rows present:         ${winnerStill}   (expect 1)`);
-    console.log(`  dangling references to loser remaining:   ${after.totalLoser}   (expect 0)`);
+    console.info(`\n── POST-MERGE verification ──`);
+    console.info(`  loser jurisdiction rows remaining:        ${loserGone}   (expect 0)`);
+    console.info(`  loser gb rows remaining:                  ${loserGbsGone}   (expect 0)`);
+    console.info(`  winner jurisdiction rows present:         ${winnerStill}   (expect 1)`);
+    console.info(`  dangling references to loser remaining:   ${after.totalLoser}   (expect 0)`);
     printAudit("AFTER — references to the loser (expect all-zero):", after.rows);
 
     const ok = loserGone === 0 && loserGbsGone === 0 && winnerStill === 1 && after.totalLoser === 0;
@@ -444,10 +444,10 @@ async function main(): Promise<void> {
       `SELECT id, type, name FROM public.jurisdictions
         WHERE fips_code = '11' AND type IN ('state','federal_district')`,
     );
-    console.log(`\n  state-level fips-11 DC rows remaining: ${stateLevel.length}   (expect 1: the federal_district winner)`);
-    for (const r of stateLevel) console.log(`    ${r.id}  ${r.type}  "${r.name}"`);
+    console.info(`\n  state-level fips-11 DC rows remaining: ${stateLevel.length}   (expect 1: the federal_district winner)`);
+    for (const r of stateLevel) console.info(`    ${r.id}  ${r.type}  "${r.name}"`);
 
-    console.log(`\n${ok && stateLevel.length === 1 ? "✓ MERGE VERIFIED" : "✗ MERGE INCOMPLETE — investigate above"}`);
+    console.info(`\n${ok && stateLevel.length === 1 ? "✓ MERGE VERIFIED" : "✗ MERGE INCOMPLETE — investigate above"}`);
     if (!(ok && stateLevel.length === 1)) process.exitCode = 1;
   } finally {
     await client.end();

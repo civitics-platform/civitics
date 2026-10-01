@@ -110,7 +110,7 @@ async function resolveText(
   if (direct) return direct;
   if (!zip) throw new Error(`need --${path.basename(dest, ".txt")} or --${path.basename(dest, ".txt")}-zip`);
   if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
-    console.log(`  reusing extracted ${path.basename(dest)}`);
+    console.info(`  reusing extracted ${path.basename(dest)}`);
     return dest;
   }
   const ok = await extractZipEntryToDisk(zip, match, dest);
@@ -155,16 +155,16 @@ async function main(): Promise<void> {
     for (const k of [...nonCandCmtes])      if (k !== onlyCmte) nonCandCmtes.delete(k);
   }
 
-  console.log("─".repeat(78));
-  console.log("PR 3b — indiv stage acceptance ($200 AGGREGATE floor, applied at emit)");
-  console.log("─".repeat(78));
-  console.log(`  indiv     : ${indivTxt} (${mb(fs.statSync(indivTxt).size)})`);
-  console.log(`  scope     : ${onlyCmte ?? "ALL recipients (ccl P/A ∪ non-cand committees)"}`);
-  console.log(`  lines     : ${LINES === Infinity ? "all" : LINES.toLocaleString()}   sort buffer: ${BUFFER.toLocaleString()} keys`);
-  console.log(`  recipients: ${cmteToCand.size.toLocaleString()} cand cmtes / ${candidateSet.size.toLocaleString()} cand ids / ${nonCandCmtes.size.toLocaleString()} non-cand cmtes`);
-  console.log(`  tx types  : [${[...parseKeepTxTypes()].join(",")}]`);
-  console.log(`  floor     : ${usd(MIN_AGGREGATE_CENTS)} per (donor × recipient × cycle)`);
-  console.log("");
+  console.info("─".repeat(78));
+  console.info("PR 3b — indiv stage acceptance ($200 AGGREGATE floor, applied at emit)");
+  console.info("─".repeat(78));
+  console.info(`  indiv     : ${indivTxt} (${mb(fs.statSync(indivTxt).size)})`);
+  console.info(`  scope     : ${onlyCmte ?? "ALL recipients (ccl P/A ∪ non-cand committees)"}`);
+  console.info(`  lines     : ${LINES === Infinity ? "all" : LINES.toLocaleString()}   sort buffer: ${BUFFER.toLocaleString()} keys`);
+  console.info(`  recipients: ${cmteToCand.size.toLocaleString()} cand cmtes / ${candidateSet.size.toLocaleString()} cand ids / ${nonCandCmtes.size.toLocaleString()} non-cand cmtes`);
+  console.info(`  tx types  : [${[...parseKeepTxTypes()].join(",")}]`);
+  console.info(`  floor     : ${usd(MIN_AGGREGATE_CENTS)} per (donor × recipient × cycle)`);
+  console.info("");
 
   const sampler = new RssSampler();
   sampler.start();
@@ -212,24 +212,24 @@ async function main(): Promise<void> {
   const frRows = cand.groups + cmte.groups;
   const frCents = cand.cents + cmte.cents;
 
-  console.log("");
-  console.log("─".repeat(78));
-  console.log(`EMITTED — ${onlyCmte ?? "all recipients"} (one group = one financial_relationships row)`);
-  console.log("─".repeat(78));
-  console.log(`  donor × candidate rows        ${pad(cand.groups.toLocaleString(), 14)}   ${pad(usd(cand.cents), 18)}   ${pad(cand.tx.toLocaleString(), 12)} tx`);
-  console.log(`  donor × committee rows        ${pad(cmte.groups.toLocaleString(), 14)}   ${pad(usd(cmte.cents), 18)}   ${pad(cmte.tx.toLocaleString(), 12)} tx`);
-  console.log(`  ── FR rows total              ${pad(frRows.toLocaleString(), 14)}   ${pad(usd(frCents), 18)}`);
-  console.log(`  donor entity rows             ${pad(donorRows.toLocaleString(), 14)}   ${pad(usd(donorCents), 18)}`);
-  console.log(`  (donors in file, pre-floor)   ${pad(stats.uniqueDonors.toLocaleString(), 14)}`);
-  console.log("");
-  console.log(`  RESIDUAL — aggregate < ${usd(MIN_AGGREGATE_CENTS)}, bracketed not emitted`);
-  console.log(`    ${"total".padEnd(24)} ${pad(residualGroups.toLocaleString(), 14)}   ${pad(usd(residualCents), 18)}`);
+  console.info("");
+  console.info("─".repeat(78));
+  console.info(`EMITTED — ${onlyCmte ?? "all recipients"} (one group = one financial_relationships row)`);
+  console.info("─".repeat(78));
+  console.info(`  donor × candidate rows        ${pad(cand.groups.toLocaleString(), 14)}   ${pad(usd(cand.cents), 18)}   ${pad(cand.tx.toLocaleString(), 12)} tx`);
+  console.info(`  donor × committee rows        ${pad(cmte.groups.toLocaleString(), 14)}   ${pad(usd(cmte.cents), 18)}   ${pad(cmte.tx.toLocaleString(), 12)} tx`);
+  console.info(`  ── FR rows total              ${pad(frRows.toLocaleString(), 14)}   ${pad(usd(frCents), 18)}`);
+  console.info(`  donor entity rows             ${pad(donorRows.toLocaleString(), 14)}   ${pad(usd(donorCents), 18)}`);
+  console.info(`  (donors in file, pre-floor)   ${pad(stats.uniqueDonors.toLocaleString(), 14)}`);
+  console.info("");
+  console.info(`  RESIDUAL — aggregate < ${usd(MIN_AGGREGATE_CENTS)}, bracketed not emitted`);
+  console.info(`    ${"total".padEnd(24)} ${pad(residualGroups.toLocaleString(), 14)}   ${pad(usd(residualCents), 18)}`);
   for (const b of SMALL_DOLLAR_BRACKETS) {
     const v = byBracket.get(b.code)!;
-    console.log(`    ${b.label.padEnd(24)} ${pad(v.groups.toLocaleString(), 14)}   ${pad(usd(v.cents), 18)}`);
+    console.info(`    ${b.label.padEnd(24)} ${pad(v.groups.toLocaleString(), 14)}   ${pad(usd(v.cents), 18)}`);
   }
-  console.log(`    rollup rows (recipient × bracket): ${brackets.length.toLocaleString()}`);
-  console.log("");
+  console.info(`    rollup rows (recipient × bracket): ${brackets.length.toLocaleString()}`);
+  console.info("");
 
   // Internal consistency — the stage's own counters must agree with what the
   // accessors actually yielded. A divergence here means the finalize pass and
@@ -244,13 +244,13 @@ async function main(): Promise<void> {
     ["Σ donor totals       vs Σ FR",     donorCents,           frCents],
   ];
   let mismatches = 0;
-  console.log("─".repeat(78));
-  console.log("SELF-CONSISTENCY");
-  console.log("─".repeat(78));
+  console.info("─".repeat(78));
+  console.info("SELF-CONSISTENCY");
+  console.info("─".repeat(78));
   for (const [label, a, b] of checks) {
     const ok = a === b;
     if (!ok) mismatches++;
-    console.log(`  ${label.padEnd(34)} ${pad(a.toLocaleString(), 16)} ${pad(b.toLocaleString(), 16)}  ${ok ? "✓" : "✗"}`);
+    console.info(`  ${label.padEnd(34)} ${pad(a.toLocaleString(), 16)} ${pad(b.toLocaleString(), 16)}  ${ok ? "✓" : "✗"}`);
   }
   // Every bracketed group must actually fall in its band.
   let misbracketed = 0;
@@ -258,25 +258,25 @@ async function main(): Promise<void> {
     const avg = Math.round(r.totalCents / Math.max(1, r.donorCount));
     if (assignSmallDollarBracket(avg) === null && r.donorCount === 1) misbracketed++;
   }
-  console.log(`  ${"singleton groups in-band".padEnd(34)} ${pad(brackets.length - misbracketed, 16)} ${pad(brackets.length, 16)}  ${misbracketed === 0 ? "✓" : "✗"}`);
+  console.info(`  ${"singleton groups in-band".padEnd(34)} ${pad(brackets.length - misbracketed, 16)} ${pad(brackets.length, 16)}  ${misbracketed === 0 ? "✓" : "✗"}`);
   if (misbracketed > 0) mismatches++;
-  console.log("");
+  console.info("");
 
-  console.log("─".repeat(78));
-  console.log("COST");
-  console.log("─".repeat(78));
-  console.log(`  lines read              ${pad(stats.linesRead.toLocaleString(), 16)}`);
-  console.log(`  admitted (amount > 0)   ${pad(stats.passedAmount.toLocaleString(), 16)}`);
-  console.log(`  peak RSS (stream)       ${pad(mb(streamPeakRss), 16)}`);
-  console.log(`  peak RSS (incl. drain)  ${pad(mb(sampler.peakRss), 16)}${stageOnly ? "   ← bounded-heap proof" : ""}`);
-  console.log(`  peak heapUsed           ${pad(mb(sampler.peakHeapUsed), 16)}`);
-  console.log(`  stream ms               ${pad(streamMs.toLocaleString(), 16)}`);
-  console.log(`  stream+drain ms         ${pad(totalMs.toLocaleString(), 16)}`);
+  console.info("─".repeat(78));
+  console.info("COST");
+  console.info("─".repeat(78));
+  console.info(`  lines read              ${pad(stats.linesRead.toLocaleString(), 16)}`);
+  console.info(`  admitted (amount > 0)   ${pad(stats.passedAmount.toLocaleString(), 16)}`);
+  console.info(`  peak RSS (stream)       ${pad(mb(streamPeakRss), 16)}`);
+  console.info(`  peak RSS (incl. drain)  ${pad(mb(sampler.peakRss), 16)}${stageOnly ? "   ← bounded-heap proof" : ""}`);
+  console.info(`  peak heapUsed           ${pad(mb(sampler.peakHeapUsed), 16)}`);
+  console.info(`  stream ms               ${pad(streamMs.toLocaleString(), 16)}`);
+  console.info(`  stream+drain ms         ${pad(totalMs.toLocaleString(), 16)}`);
   if (stats.sort) {
-    console.log(`  sort runs (agg/meta)    ${pad(`${stats.sort.agg.runsWritten}/${stats.sort.meta.runsWritten}`, 16)}`);
-    console.log(`  peak sort disk          ${pad(mb(stats.sort.peakDiskBytes), 16)}`);
+    console.info(`  sort runs (agg/meta)    ${pad(`${stats.sort.agg.runsWritten}/${stats.sort.meta.runsWritten}`, 16)}`);
+    console.info(`  peak sort disk          ${pad(mb(stats.sort.peakDiskBytes), 16)}`);
   }
-  console.log("");
+  console.info("");
 
   if (arg("json")) {
     fs.writeFileSync(arg("json")!, JSON.stringify({
@@ -298,12 +298,12 @@ async function main(): Promise<void> {
         streamMs, totalMs,
       },
     }, null, 2));
-    console.log(`  json → ${arg("json")}`);
+    console.info(`  json → ${arg("json")}`);
   }
 
   await res.dispose();
 
-  console.log(mismatches === 0
+  console.info(mismatches === 0
     ? "✓ SELF-CONSISTENT — compare the EMITTED block against the phase-0 audit for acceptance"
     : `✗ ${mismatches} internal inconsistency(ies) — the numbers above are NOT trustworthy`);
   process.exit(mismatches === 0 ? 0 : 1);

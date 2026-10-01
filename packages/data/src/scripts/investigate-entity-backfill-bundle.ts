@@ -209,14 +209,14 @@ async function ensureLsDump(lsCache: string | null, keepDump: boolean): Promise<
     if (!fs.existsSync(lsCache)) {
       console.warn(`  --ls-cache ${lsCache} does not exist — downloading fresh.`);
     } else {
-      console.log(`  Using LS cache: ${lsCache}`);
+      console.info(`  Using LS cache: ${lsCache}`);
       return lsCache;
     }
   }
   const dest = path.join(tmpdir(), `littlesis-entities-investigate-${process.pid}.json.gz`);
-  console.log(`  Downloading LittleSis entities dump to ${dest} ...`);
+  console.info(`  Downloading LittleSis entities dump to ${dest} ...`);
   const dl = await downloadAndFingerprint(LITTLESIS_ENTITIES_URL, dest);
-  console.log(`    ${(dl.bytes / 1024 / 1024).toFixed(1)} MB, sha256 ${dl.sha256.slice(0, 12)}…`);
+  console.info(`    ${(dl.bytes / 1024 / 1024).toFixed(1)} MB, sha256 ${dl.sha256.slice(0, 12)}…`);
   if (!keepDump) {
     // Schedule unlink on process exit so the caller can re-use the dump
     // mid-run (FIX-313 scan happens once); if --keep-dump is passed, leave it.
@@ -273,7 +273,7 @@ async function scopeFix313(
       }
     }
     if (totalScanned % 100_000 === 0) {
-      console.log(`    … LS scanned ${totalScanned.toLocaleString()} (merged_into=${withMergedInto.toLocaleString()})`);
+      console.info(`    … LS scanned ${totalScanned.toLocaleString()} (merged_into=${withMergedInto.toLocaleString()})`);
     }
   }
 
@@ -436,16 +436,16 @@ async function main(): Promise<void> {
   await client.connect();
   const host = new URL(cleanUrl).host;
   const isLocal = /127\.0\.0\.1|localhost/.test(host);
-  console.log(`Connected to: ${host} (${isLocal ? "local" : "prod"})\n`);
+  console.info(`Connected to: ${host} (${isLocal ? "local" : "prod"})\n`);
 
   // ── FIX-312 ─────────────────────────────────────────────────────────────
-  console.log("==> FIX-312: org-misclassified individual cluster scan");
+  console.info("==> FIX-312: org-misclassified individual cluster scan");
   const fix312 = await scopeFix312(client);
-  console.log(`    ${fix312.length} (canonical, has-org-row, has-individual-row) tuples`);
+  console.info(`    ${fix312.length} (canonical, has-org-row, has-individual-row) tuples`);
   for (const c of fix312.slice(0, 10)) {
     const xsrCount = c.non_indiv_has_xsr.filter(Boolean).length;
     const fecCount = c.non_indiv_has_fec.filter(Boolean).length;
-    console.log(
+    console.info(
       `      ${c.canonical_name.padEnd(50)} indiv=${c.indiv_ids.length} non-indiv=${c.non_indiv_ids.length} types=${[...new Set(c.non_indiv_types)].join("/")} xsr=${xsrCount}/${c.non_indiv_ids.length} fec=${fecCount}/${c.non_indiv_ids.length}`,
     );
   }
@@ -453,7 +453,7 @@ async function main(): Promise<void> {
   // with an xsr binding.
   const allHaveXsr = fix312.every((c) => c.non_indiv_has_xsr.some(Boolean));
   const fix312GateMet = fix312.length < 500 && allHaveXsr && fix312.length > 0;
-  console.log(`    GATE FIX-312 (strict): tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr (${allHaveXsr}) → SHIP=${fix312GateMet}`);
+  console.info(`    GATE FIX-312 (strict): tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr (${allHaveXsr}) → SHIP=${fix312GateMet}`);
 
   // FIX-379 relaxed gate: every tuple has at least one non-individual row
   // with EITHER xsr binding OR fec_committee_id present.
@@ -464,51 +464,51 @@ async function main(): Promise<void> {
   );
   const allHaveXsrOrFec = fix312.length > 0 && fix379Qualifying.length === fix312.length;
   const fix379GateMet = fix312.length < 500 && allHaveXsrOrFec && fix312.length > 0;
-  console.log(`    GATE FIX-379 (relaxed): tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr OR fec_committee_id (${allHaveXsrOrFec}; qualifying=${fix379Qualifying.length}/${fix312.length}) → SHIP=${fix379GateMet}`);
-  console.log("");
+  console.info(`    GATE FIX-379 (relaxed): tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr OR fec_committee_id (${allHaveXsrOrFec}; qualifying=${fix379Qualifying.length}/${fix312.length}) → SHIP=${fix379GateMet}`);
+  console.info("");
 
   // ── FIX-313 ─────────────────────────────────────────────────────────────
   let fix313: Awaited<ReturnType<typeof scopeFix313>> | null = null;
   if (args.skipLs) {
-    console.log("==> FIX-313: SKIPPED (--skip-ls)\n");
+    console.info("==> FIX-313: SKIPPED (--skip-ls)\n");
   } else {
-    console.log("==> FIX-313: LittleSis merged_into scan");
+    console.info("==> FIX-313: LittleSis merged_into scan");
     const dumpPath = await ensureLsDump(args.lsCache, args.keepDump);
     if (dumpPath) {
       fix313 = await scopeFix313(client, dumpPath);
-      console.log(`    Scanned ${fix313.totalScanned.toLocaleString()} LS entities; field detected: ${fix313.fieldName ?? "(none)"}`);
-      console.log(`    Records with non-self merged_into: ${fix313.withMergedInto.toLocaleString()}`);
-      console.log(`    Pairs where BOTH ls_ids bound to FE rows: ${fix313.pairsBothBound.length.toLocaleString()}`);
-      console.log(`    First record's keys: ${fix313.sampleRecordKeys.join(", ")}`);
+      console.info(`    Scanned ${fix313.totalScanned.toLocaleString()} LS entities; field detected: ${fix313.fieldName ?? "(none)"}`);
+      console.info(`    Records with non-self merged_into: ${fix313.withMergedInto.toLocaleString()}`);
+      console.info(`    Pairs where BOTH ls_ids bound to FE rows: ${fix313.pairsBothBound.length.toLocaleString()}`);
+      console.info(`    First record's keys: ${fix313.sampleRecordKeys.join(", ")}`);
       if (!args.keepDump && !args.lsCache) safeUnlink(dumpPath);
     }
     const fix313GateMet =
       fix313 !== null &&
       fix313.fieldName !== null &&
       fix313.pairsBothBound.length >= 100;
-    console.log(`    GATE FIX-313: merged_into field present (${fix313?.fieldName ?? "no"}) && bound-pair count >= 100 (${fix313?.pairsBothBound.length ?? 0}>=100) → SHIP=${fix313GateMet}`);
-    console.log("");
+    console.info(`    GATE FIX-313: merged_into field present (${fix313?.fieldName ?? "no"}) && bound-pair count >= 100 (${fix313?.pairsBothBound.length ?? 0}>=100) → SHIP=${fix313GateMet}`);
+    console.info("");
   }
 
   // ── FIX-245 ─────────────────────────────────────────────────────────────
-  console.log("==> FIX-245: particle-prefix surname residue scan");
+  console.info("==> FIX-245: particle-prefix surname residue scan");
   const fix245 = await scopeFix245(client);
-  console.log(`    ${fix245.total} rows match ^[OD]\\s or ^(DE|ST|MC)\\s in donor_fingerprint`);
-  console.log("");
+  console.info(`    ${fix245.total} rows match ^[OD]\\s or ^(DE|ST|MC)\\s in donor_fingerprint`);
+  console.info("");
 
   // ── FIX-320 ─────────────────────────────────────────────────────────────
-  console.log("==> FIX-320: orphan entity_tags scan");
+  console.info("==> FIX-320: orphan entity_tags scan");
   const fix320 = await scopeFix320(client);
-  console.log(`    ${fix320.total} orphan entity_tags rows (entity_type='financial_entity')`);
+  console.info(`    ${fix320.total} orphan entity_tags rows (entity_type='financial_entity')`);
   for (const b of fix320.byGeneratedBy) {
-    console.log(`      generated_by=${b.generated_by}: ${b.n}`);
+    console.info(`      generated_by=${b.generated_by}: ${b.n}`);
   }
   const handCuratedCount = fix320.byGeneratedBy
     .filter((b) => b.generated_by === "manual")
     .reduce((s, b) => s + b.n, 0);
   const fix320GatePathA = handCuratedCount <= 10;
-  console.log(`    GATE FIX-320: manual count <= 10 (${handCuratedCount}<=10) → PATH=${fix320GatePathA ? "(a) bare DELETE" : "(b) re-resolve required"}`);
-  console.log("");
+  console.info(`    GATE FIX-320: manual count <= 10 (${handCuratedCount}<=10) → PATH=${fix320GatePathA ? "(a) bare DELETE" : "(b) re-resolve required"}`);
+  console.info("");
 
   // ── Write audit markdown ────────────────────────────────────────────────
   const today = new Date().toISOString().slice(0, 10);
@@ -615,7 +615,7 @@ async function main(): Promise<void> {
   }
 
   fs.writeFileSync(outPath, md);
-  console.log(`Wrote audit report: ${outPath}`);
+  console.info(`Wrote audit report: ${outPath}`);
 
   await client.end();
 }

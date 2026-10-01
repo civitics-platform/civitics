@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  console.log(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+  console.info(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -40,8 +40,8 @@ async function main(): Promise<void> {
     // Reproduces exactly what seedJurisdictions() does in us-states.ts:144-152
     // for each STATE_DATA entry: existence check is (fips_code, type).
     // We want to find every entry whose existence check would return >1 row.
-    console.log("\n=== STATE_DATA-shaped existence-check collisions ===");
-    console.log("(matches (fips_code, type) ignoring parent_id/country_code)");
+    console.info("\n=== STATE_DATA-shaped existence-check collisions ===");
+    console.info("(matches (fips_code, type) ignoring parent_id/country_code)");
     const dupes = await client.query(`
       WITH state_data(fips, type) AS (
         VALUES
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     `);
     console.table(dupes.rows);
 
-    console.log("\n=== effect of adding parent_id = federal filter ===");
+    console.info("\n=== effect of adding parent_id = federal filter ===");
     const narrowed = await client.query(`
       WITH fed AS (
         SELECT id FROM public.jurisdictions WHERE fips_code = '00' AND type = 'country'
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     `);
     console.table(narrowed.rows);
 
-    console.log("\n=== DC sub-district row (the collider) ===");
+    console.info("\n=== DC sub-district row (the collider) ===");
     const sub = await client.query(`
       SELECT id, name, short_name, type, fips_code, parent_id, country_code,
              metadata, created_at

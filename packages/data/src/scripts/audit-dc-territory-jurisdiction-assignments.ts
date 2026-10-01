@@ -15,7 +15,7 @@ const TERRITORY_ABBRS = ["DC", "AS", "GU", "MP", "PR", "VI"] as const;
 
 async function main(): Promise<void> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  console.log(`target: ${url}`);
+  console.info(`target: ${url}`);
 
   const db = createAdminClient();
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const federalId = fed.id;
-  console.log(`federalId: ${federalId}\n`);
+  console.info(`federalId: ${federalId}\n`);
 
   // reads-ok: audit report read — zero territories renders visibly in the report output
   const { data: terrs } = await db
@@ -38,9 +38,9 @@ async function main(): Promise<void> {
     .select("id, short_name, name")
     .in("short_name", [...TERRITORY_ABBRS])
     .eq("parent_id", federalId);
-  console.log("canonical state-equivalent rows:");
-  for (const t of terrs ?? []) console.log(`  ${t.short_name} ${t.id}  ${t.name}`);
-  console.log("");
+  console.info("canonical state-equivalent rows:");
+  for (const t of terrs ?? []) console.info(`  ${t.short_name} ${t.id}  ${t.name}`);
+  console.info("");
 
   // Officials whose metadata.state matches a territory abbr but who are
   // currently parked on the federal jurisdiction (the silent-degradation
@@ -63,17 +63,17 @@ async function main(): Promise<void> {
       acc[t] = (acc[t] ?? 0) + 1;
       return acc;
     }, {});
-    console.log(`${abbr}: ${rows.length} officials on federalId (by tier: ${JSON.stringify(byTier)})`);
+    console.info(`${abbr}: ${rows.length} officials on federalId (by tier: ${JSON.stringify(byTier)})`);
     for (const r of rows.slice(0, 5)) {
-      console.log(`  - ${r.full_name} | ${r.role_title} | tier=${r.tier} | src=${JSON.stringify(r.source_ids)}`);
+      console.info(`  - ${r.full_name} | ${r.role_title} | tier=${r.tier} | src=${JSON.stringify(r.source_ids)}`);
     }
-    if (rows.length > 5) console.log(`  … +${rows.length - 5} more`);
+    if (rows.length > 5) console.info(`  … +${rows.length - 5} more`);
   }
 
   // Congress.gov-sourced rows currently on federalId. These are elected
   // members; House delegates from DC + 5 territories are the only legit
   // candidates for this state. Senators are never on these jurisdictions.
-  console.log("\n--- congress.gov-sourced officials currently on federalId ---");
+  console.info("\n--- congress.gov-sourced officials currently on federalId ---");
   const { data: cgFed, error: cgErr } = await db
     .from("officials")
     .select("id, full_name, role_title, district_name, source_ids")
@@ -82,9 +82,9 @@ async function main(): Promise<void> {
     .limit(50);
   if (cgErr) console.error(cgErr.message);
   else {
-    console.log(`count: ${(cgFed ?? []).length}`);
+    console.info(`count: ${(cgFed ?? []).length}`);
     for (const r of cgFed ?? []) {
-      console.log(`  - ${r.full_name} | ${r.role_title} | dist=${r.district_name} | src=${JSON.stringify(r.source_ids)}`);
+      console.info(`  - ${r.full_name} | ${r.role_title} | dist=${r.district_name} | src=${JSON.stringify(r.source_ids)}`);
     }
   }
 }

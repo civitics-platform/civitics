@@ -67,9 +67,9 @@ async function main(): Promise<void> {
   }
 
   const url = buildDbUrl();
-  console.log(`# FIX-496 — state-chamber seat_count backfill`);
-  console.log(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
-  console.log(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(`# FIX-496 — state-chamber seat_count backfill`);
+  console.info(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
+  console.info(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
       );
       if (res.rowCount) {
         filled++;
-        console.log(`  filled ${abbr} ${row.type} "${row.name}" → ${seats}`);
+        console.info(`  filled ${abbr} ${row.type} "${row.name}" → ${seats}`);
       }
     }
 
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
           AND j.type IN ('state','federal_district','unincorporated_territory')`,
     );
 
-    console.log(`\nSeat backfill: ${filled} filled, ${skippedNoData} skipped (no constant), ${remaining.rows[0].n} still NULL`);
+    console.info(`\nSeat backfill: ${filled} filled, ${skippedNoData} skipped (no constant), ${remaining.rows[0].n} still NULL`);
   } finally {
     await client.end();
   }

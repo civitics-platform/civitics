@@ -65,10 +65,10 @@ function argValue(flag: string): string | null {
 async function reportState(c: Client, label: string): Promise<string | null> {
   const st = await c.query(STATE_SQL, [WATERMARK_KEY, PIPELINE]);
   const row = st.rows[0] as { watermark: string | null; last_complete: string | null; hours_stale: string | null };
-  console.log(`[fe-drain] ${label}: watermark=${row.watermark ?? "(none)"} last_complete=${row.last_complete ?? "(none)"} hours_stale=${row.hours_stale ?? "?"}`);
+  console.info(`[fe-drain] ${label}: watermark=${row.watermark ?? "(none)"} last_complete=${row.last_complete ?? "(none)"} hours_stale=${row.hours_stale ?? "?"}`);
   if (row.watermark) {
     const d = await c.query(DIRTY_SQL, [row.watermark]);
-    console.log(`[fe-drain] ${label}: dirty_donors=${Number((d.rows[0] as { dirty_donors: string }).dirty_donors).toLocaleString()}`);
+    console.info(`[fe-drain] ${label}: dirty_donors=${Number((d.rows[0] as { dirty_donors: string }).dirty_donors).toLocaleString()}`);
   }
   return row.watermark;
 }
@@ -81,7 +81,7 @@ async function main(): Promise<number> {
     return 1;
   }
   const timeout = argValue("--timeout") ?? "5h";
-  console.log(`[fe-drain] target: ${isProd ? "PROD (Supabase Pro)" : "LOCAL Docker"}  statement_timeout=${timeout}`);
+  console.info(`[fe-drain] target: ${isProd ? "PROD (Supabase Pro)" : "LOCAL Docker"}  statement_timeout=${timeout}`);
 
   const c = new Client({ connectionString: dsn });
   await c.connect();
@@ -89,7 +89,7 @@ async function main(): Promise<number> {
     const before = await reportState(c, "BEFORE");
     if (process.argv.includes("--status")) return 0;
     if (!before) {
-      console.log("[fe-drain] no watermark — the procedure will bootstrap (16-window full pass).");
+      console.info("[fe-drain] no watermark — the procedure will bootstrap (16-window full pass).");
     }
 
     // Session-level, and it survives the procedure's internal COMMITs. The cron
@@ -102,12 +102,12 @@ async function main(): Promise<number> {
       await c.query("SET max_parallel_workers_per_gather = 0");
     }
 
-    console.log(`[fe-drain] CALL public.refresh_financial_entity_totals_incremental() ...`);
+    console.info(`[fe-drain] CALL public.refresh_financial_entity_totals_incremental() ...`);
     const t0 = Date.now();
     // Autocommit at top level: the procedure COMMITs per window, which is
     // illegal inside an explicit transaction block.
     await c.query("CALL public.refresh_financial_entity_totals_incremental()");
-    console.log(`[fe-drain] done in ${((Date.now() - t0) / 1000 / 60).toFixed(1)} min`);
+    console.info(`[fe-drain] done in ${((Date.now() - t0) / 1000 / 60).toFixed(1)} min`);
 
     await reportState(c, "AFTER ");
 
@@ -117,15 +117,15 @@ async function main(): Promise<number> {
         ORDER BY started_at DESC LIMIT 1`,
       [PIPELINE],
     );
-    console.log(`[fe-drain] last run row: ${JSON.stringify(log.rows[0])}`);
+    console.info(`[fe-drain] last run row: ${JSON.stringify(log.rows[0])}`);
 
     // FIX-975 / FIX-943 standing rule: this procedure mass-UPDATEs
     // financial_entities across every dirty window, so the pass owns its
     // vacuum tail. VACUUM cannot run inside the procedure.
-    console.log("[fe-drain] VACUUM (ANALYZE) public.financial_entities (FIX-943 rule)");
+    console.info("[fe-drain] VACUUM (ANALYZE) public.financial_entities (FIX-943 rule)");
     const t1 = Date.now();
     await c.query("VACUUM (ANALYZE) public.financial_entities");
-    console.log(`[fe-drain] vacuum done in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
+    console.info(`[fe-drain] vacuum done in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
     return 0;
   } finally {
     await c.end();

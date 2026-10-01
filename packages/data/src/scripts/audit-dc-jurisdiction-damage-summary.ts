@@ -30,15 +30,15 @@ function dbUrl(): string {
 async function main(): Promise<void> {
   const c = new Client({ connectionString: dbUrl() });
   await c.connect();
-  console.log(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
-  console.log(`window: ${WIN_LO} → ${WIN_HI} (exclusive)\n`);
+  console.info(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+  console.info(`window: ${WIN_LO} → ${WIN_HI} (exclusive)\n`);
 
   try {
     // 1. Officials on federalId broken down by source — federalId is correct
     //    for federal judges/executives/SCOTUS/presidents/VP. The signature of
     //    FIX-383 misattribution: 'elected' + role_title in (Senator, Representative,
     //    Delegate) but on federalId.
-    console.log("=== 1. Suspected mis-attributed officials on federalId ===");
+    console.info("=== 1. Suspected mis-attributed officials on federalId ===");
     const q1 = await c.query(`
       SELECT role_title, tier, party,
              COUNT(*)::int AS n,
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
 
     // 2. Full per-row list of those suspects (small set — likely just Norton + Plaskett +
     //    some candidates)
-    console.log("\n=== 2. Suspect rows (full list) ===");
+    console.info("\n=== 2. Suspect rows (full list) ===");
     const q2 = await c.query(`
       SELECT id, full_name, role_title, tier, party, district_name,
              source_ids->>'congress_gov' AS bioguide,
@@ -70,13 +70,13 @@ async function main(): Promise<void> {
                             'Candidate for Senator','Candidate for Representative')
       ORDER BY role_title, full_name;
     `, [FED]);
-    console.log(`  ${q2.rowCount} rows`);
+    console.info(`  ${q2.rowCount} rows`);
     console.table(q2.rows);
 
     // 3. Officials with metadata->>'state'='DC' or fec_office_state='DC' that
     //    are on federalId rather than DC canonical — direct mis-attribution
     //    signature, regardless of role_title.
-    console.log("\n=== 3. Officials whose metadata says DC but jurisdiction_id ≠ DC ===");
+    console.info("\n=== 3. Officials whose metadata says DC but jurisdiction_id ≠ DC ===");
     const q3 = await c.query(`
       SELECT o.id, o.full_name, o.role_title, o.tier, o.party,
              o.jurisdiction_id, j.name AS jname,
@@ -94,12 +94,12 @@ async function main(): Promise<void> {
         AND o.jurisdiction_id <> $1
       ORDER BY o.role_title, o.full_name;
     `, [DC_CAN]);
-    console.log(`  ${q3.rowCount} rows`);
+    console.info(`  ${q3.rowCount} rows`);
     console.table(q3.rows);
 
     // 4. Same as 3 but inverted: any officials currently on DC canonical that
     //    look NOT-DC.
-    console.log("\n=== 4. Officials on DC canonical (sanity) ===");
+    console.info("\n=== 4. Officials on DC canonical (sanity) ===");
     const q4 = await c.query(`
       SELECT id, full_name, role_title, tier, district_name,
              metadata->>'state' AS meta_state,
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     console.table(q4.rows);
 
     // 5. NULL jurisdiction_id rows in the window
-    console.log("\n=== 5. NULL jurisdiction_id in window ===");
+    console.info("\n=== 5. NULL jurisdiction_id in window ===");
     for (const t of ["officials", "bill_proposals", "votes", "governing_bodies"]) {
       try {
         const q = await c.query(`
@@ -120,14 +120,14 @@ async function main(): Promise<void> {
                  COUNT(*) FILTER (WHERE jurisdiction_id IS NULL AND updated_at >= $1 AND updated_at < $2)::int AS null_win
           FROM ${t};
         `, [WIN_LO, WIN_HI]);
-        console.log(`  ${t}: null_all=${q.rows[0].null_all}, null_in_window=${q.rows[0].null_win}`);
+        console.info(`  ${t}: null_all=${q.rows[0].null_all}, null_in_window=${q.rows[0].null_win}`);
       } catch (e) {
-        console.log(`  ${t}: ${(e as Error).message.split("\n")[0]}`);
+        console.info(`  ${t}: ${(e as Error).message.split("\n")[0]}`);
       }
     }
 
     // 6. data_sync_log DC error scan (in window)
-    console.log("\n=== 6. data_sync_log entries with DC-error signature ===");
+    console.info("\n=== 6. data_sync_log entries with DC-error signature ===");
     const q6 = await c.query(`
       SELECT * FROM (
         SELECT * FROM data_sync_log
@@ -139,11 +139,11 @@ async function main(): Promise<void> {
       ORDER BY started_at
       LIMIT 50;
     `, [WIN_LO, WIN_HI]);
-    console.log(`  rows: ${q6.rowCount}`);
+    console.info(`  rows: ${q6.rowCount}`);
     console.table(q6.rows);
 
     // 7. FK tables: do any rows reference DC-related FKs?
-    console.log("\n=== 7. financial_relationships referencing officials on federalId in window ===");
+    console.info("\n=== 7. financial_relationships referencing officials on federalId in window ===");
     const q7 = await c.query(`
       SELECT COUNT(*)::int AS n
       FROM financial_relationships fr
@@ -153,10 +153,10 @@ async function main(): Promise<void> {
         AND o.role_title IN ('Senator','Representative','Delegate')
         AND fr.updated_at >= $2 AND fr.updated_at < $3;
     `, [FED, WIN_LO, WIN_HI]);
-    console.log(`  rows in window flowing into officials-on-federalId (Sen/Rep/Del): ${q7.rows[0].n}`);
+    console.info(`  rows in window flowing into officials-on-federalId (Sen/Rep/Del): ${q7.rows[0].n}`);
 
     // 8. votes by officials currently on federalId who are Sen/Rep/Del
-    console.log("\n=== 8. votes by suspect officials in window ===");
+    console.info("\n=== 8. votes by suspect officials in window ===");
     const q8 = await c.query(`
       SELECT COUNT(*)::int AS n
       FROM votes v
@@ -165,10 +165,10 @@ async function main(): Promise<void> {
         AND o.role_title IN ('Senator','Representative','Delegate')
         AND v.voted_at >= $2 AND v.voted_at < $3;
     `, [FED, WIN_LO, WIN_HI]);
-    console.log(`  votes cast in window by Sen/Rep/Del-on-federalId: ${q8.rows[0].n}`);
+    console.info(`  votes cast in window by Sen/Rep/Del-on-federalId: ${q8.rows[0].n}`);
 
     // 9. Norton-specific: full history of jurisdiction_id and source of writes
-    console.log("\n=== 9. Norton (N000147) row state ===");
+    console.info("\n=== 9. Norton (N000147) row state ===");
     const q9 = await c.query(`
       SELECT id, full_name, role_title, jurisdiction_id, source_ids,
              metadata, to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created,
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     console.dir(q9.rows, { depth: null });
 
     // 10. Plaskett-specific
-    console.log("\n=== 10. Plaskett (P000610) row state ===");
+    console.info("\n=== 10. Plaskett (P000610) row state ===");
     const q10 = await c.query(`
       SELECT id, full_name, role_title, jurisdiction_id, source_ids,
              metadata, to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created,
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
     console.dir(q10.rows, { depth: null });
 
     // 11. Other House delegates (territories) — bioguides for AS/GU/MP/PR/VI
-    console.log("\n=== 11. All territorial delegates (AS/GU/MP/PR/VI/DC) ===");
+    console.info("\n=== 11. All territorial delegates (AS/GU/MP/PR/VI/DC) ===");
     const q11 = await c.query(`
       SELECT o.id, o.full_name, o.role_title,
              j.name AS jname, j.short_name, j.type,
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
     console.table(q11.rows);
 
     // 12. Total FEC candidates updated in window with office state DC, on federalId
-    console.log("\n=== 12. FEC candidates with office_state=DC ===");
+    console.info("\n=== 12. FEC candidates with office_state=DC ===");
     const q12 = await c.query(`
       SELECT COUNT(*)::int AS n,
              COUNT(*) FILTER (WHERE jurisdiction_id = $1)::int AS on_fed,

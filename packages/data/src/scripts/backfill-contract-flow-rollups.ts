@@ -29,8 +29,8 @@ import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`[backfill-contract-flow-rollups] target: ${url}`);
-  console.log(
+  console.info(`[backfill-contract-flow-rollups] target: ${url}`);
+  console.info(
     `[backfill-contract-flow-rollups] CALL refresh_contract_flow_rollups() ` +
       `(single-txn full rebuild of both contract-flow rollups; ~1-2min on prod) ...`,
   );
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
       "       (SELECT count(*)::text FROM public.contract_agency_sector_rollup) AS flows",
   );
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(
+  console.info(
     `[backfill-contract-flow-rollups] ✓ ${Number(rows[0]?.recipients ?? 0).toLocaleString()} recipient rows, ` +
       `${Number(rows[0]?.flows ?? 0).toLocaleString()} agency×sector rows in ${dur}s`,
   );

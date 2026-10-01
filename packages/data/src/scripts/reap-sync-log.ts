@@ -26,8 +26,8 @@ function parseStaleMinutes(argv: string[]): number {
 async function main(): Promise<void> {
   const staleMinutes = parseStaleMinutes(process.argv.slice(2));
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "<unknown>";
-  console.log(`[reap] target: ${url}`);
-  console.log(`[reap] stale_minutes: ${staleMinutes}`);
+  console.info(`[reap] target: ${url}`);
+  console.info(`[reap] stale_minutes: ${staleMinutes}`);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -38,13 +38,13 @@ async function main(): Promise<void> {
   }
   const rows = Array.isArray(data) ? data : [];
   if (rows.length === 0) {
-    console.log("[reap] nothing to reap");
+    console.info("[reap] nothing to reap");
     return;
   }
-  console.log(`[reap] reaped ${rows.length} row(s):`);
+  console.info(`[reap] reaped ${rows.length} row(s):`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const r of rows as any[]) {
-    console.log(`  ${r.pipeline.padEnd(32)} ${r.id}  ${r.reaped_at}`);
+    console.info(`  ${r.pipeline.padEnd(32)} ${r.id}  ${r.reaped_at}`);
   }
 }
 

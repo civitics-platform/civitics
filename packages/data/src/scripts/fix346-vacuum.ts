@@ -34,10 +34,10 @@ async function main(): Promise<void> {
     // VACUUM cannot run in a transaction block. node-postgres executes
     // simple queries outside an explicit transaction by default, which is
     // what we want here.
-    console.log("Running VACUUM (ANALYZE, VERBOSE) public.financial_relationships ...");
+    console.info("Running VACUUM (ANALYZE, VERBOSE) public.financial_relationships ...");
     const start = Date.now();
     await c.query("VACUUM (ANALYZE, VERBOSE) public.financial_relationships");
-    console.log(`VACUUM done in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+    console.info(`VACUUM done in ${((Date.now() - start) / 1000).toFixed(1)}s`);
 
     const res = await c.query(`
       SELECT
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       FROM pg_stat_user_tables
       WHERE relname = 'financial_relationships'
     `);
-    console.log("Post-VACUUM:", JSON.stringify(res.rows, null, 2));
+    console.info("Post-VACUUM:", JSON.stringify(res.rows, null, 2));
   } finally {
     await c.end();
   }

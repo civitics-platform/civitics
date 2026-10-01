@@ -19,7 +19,7 @@ import { FIX918_FIXTURES } from "./fix918-primary-industry-fixtures";
 
 let failures = 0;
 function check(cond: boolean, label: string, detail?: string): void {
-  if (cond) console.log(`  PASS  ${label}`);
+  if (cond) console.info(`  PASS  ${label}`);
   else {
     failures++;
     console.error(`  FAIL  ${label}${detail ? ` — ${detail}` : ""}`);
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log("\n=== 1. fixtures through SQL ===");
+    console.info("\n=== 1. fixtures through SQL ===");
     const byArray = await sqlPicks(pg, ids, ids);
     const byNull = await sqlPicks(pg, null, ids);
     for (const f of FIX918_FIXTURES) {
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
         `NULL:  ${f.name}`, `got ${byNull.get(f.entity_id) ?? "no row"}, want ${f.expected ?? "no row"}`);
     }
 
-    console.log("\n=== 2. TS = SQL on the fixtures (two reads) ===");
+    console.info("\n=== 2. TS = SQL on the fixtures (two reads) ===");
     for (const pass of [1, 2]) {
       const ts = await fetchIndustryTagsByEntityId(db, ids);
       for (const f of FIX918_FIXTURES) {
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log("\n=== 3. real multi-tag donors: array = NULL = TS ===");
+    console.info("\n=== 3. real multi-tag donors: array = NULL = TS ===");
     const multi = (await pg.query<{ entity_id: string }>(
       `SELECT entity_id FROM public.entity_tags
         WHERE entity_type = 'financial_entity' AND tag_category = 'industry'
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     await pg.end();
   }
 
-  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
+  console.info(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

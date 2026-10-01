@@ -27,8 +27,8 @@ import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
-  console.log(`[backfill-small-dollar] target: ${url}`);
-  console.log(
+  console.info(`[backfill-small-dollar] target: ${url}`);
+  console.info(
     `[backfill-small-dollar] CALL backfill_official_small_dollar_rollup() ` +
       `(chunked, 500 officials/chunk, COMMIT each) ...`,
   );
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     "SELECT count(*)::text AS n FROM public.official_small_dollar_rollup",
   );
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(
+  console.info(
     `[backfill-small-dollar] ✓ ${Number(rows[0]?.n ?? 0).toLocaleString()} official rows in ${dur}s`,
   );
 }

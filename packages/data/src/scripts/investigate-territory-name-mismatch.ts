@@ -28,7 +28,7 @@ function dbUrl(): string {
 async function main(): Promise<void> {
   const c = new Client({ connectionString: dbUrl() });
   await c.connect();
-  console.log(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}\n`);
+  console.info(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}\n`);
 
   try {
     // Resolve federal + territory canonical UUIDs from the live DB so this
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
       WHERE (fips_code = '00' AND type = 'country')
          OR (short_name IN ('DC','AS','GU','MP','PR','VI') AND type = 'district');
     `);
-    console.log("=== Canonical reference jurisdictions ===");
+    console.info("=== Canonical reference jurisdictions ===");
     console.table(refs.rows);
 
     const federal = refs.rows.find((r) => r.fips_code === "00" && r.type === "country");
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     const federalId = federal.id as string;
 
     // (1) Plaskett + any other current Congress.gov-sourced delegates on federalId
-    console.log("\n=== 1. Congress.gov-sourced reps/delegates currently on federalId ===");
+    console.info("\n=== 1. Congress.gov-sourced reps/delegates currently on federalId ===");
     const q1 = await c.query(`
       SELECT o.id, o.full_name, o.role_title, o.district_name,
              o.source_ids->>'congress_gov' AS bioguide,
@@ -57,12 +57,12 @@ async function main(): Promise<void> {
         AND o.source_ids ? 'congress_gov'
       ORDER BY o.full_name;
     `, [federalId]);
-    console.log(`  ${q1.rowCount} rows`);
+    console.info(`  ${q1.rowCount} rows`);
     console.table(q1.rows);
 
     // (2) FEC-bulk candidates with metadata.state in territory abbrs that
     //     landed on federalId. metadata.state for FEC rows comes from CAND_OFFICE_ST.
-    console.log("\n=== 2. FEC candidates on federalId with territory metadata.state ===");
+    console.info("\n=== 2. FEC candidates on federalId with territory metadata.state ===");
     const q2 = await c.query(`
       SELECT metadata->>'state' AS office_state, COUNT(*)::int AS n
       FROM officials
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     console.table(q2.rows);
 
     // (2b) Per-row listing
-    console.log("\n=== 2b. FEC candidate rows on federalId with territory metadata.state ===");
+    console.info("\n=== 2b. FEC candidate rows on federalId with territory metadata.state ===");
     const q2b = await c.query(`
       SELECT id, full_name, role_title, district_name,
              metadata->>'state' AS office_state,
@@ -88,12 +88,12 @@ async function main(): Promise<void> {
         AND metadata->>'state' IN ('VI','PR','GU','AS','MP','DC')
       ORDER BY metadata->>'state', full_name;
     `, [federalId]);
-    console.log(`  ${q2b.rowCount} rows`);
+    console.info(`  ${q2b.rowCount} rows`);
     console.table(q2b.rows);
 
     // (3) Inspect each territory short_name's full canonical name on this DB —
     //     these are the strings stateIds.get(member.state) is keyed off.
-    console.log("\n=== 3. Canonical short_name → name mapping for each territory ===");
+    console.info("\n=== 3. Canonical short_name → name mapping for each territory ===");
     const q3 = await c.query(`
       SELECT short_name, name FROM jurisdictions
       WHERE short_name IN ('DC','AS','GU','MP','PR','VI') AND type = 'district'
@@ -102,22 +102,22 @@ async function main(): Promise<void> {
     console.table(q3.rows);
 
     // (4) For comparison: how many territory candidates are correctly placed?
-    console.log("\n=== 4. Territory candidates correctly on canonical territory jurisdictions ===");
+    console.info("\n=== 4. Territory candidates correctly on canonical territory jurisdictions ===");
     for (const abbr of ["VI","PR","GU","AS","MP","DC"]) {
       const terr = refs.rows.find((r) => r.short_name === abbr && r.type === "district");
-      if (!terr) { console.log(`  ${abbr}: canonical not resolved`); continue; }
+      if (!terr) { console.info(`  ${abbr}: canonical not resolved`); continue; }
       const q = await c.query(`
         SELECT COUNT(*)::int AS n_total,
                COUNT(*) FILTER (WHERE source_ids ? 'fec_candidate_id')::int AS n_fec,
                COUNT(*) FILTER (WHERE source_ids ? 'congress_gov')::int AS n_congress
         FROM officials WHERE jurisdiction_id = $1;
       `, [terr.id]);
-      console.log(`  ${abbr} (${terr.id}): total=${q.rows[0].n_total} fec=${q.rows[0].n_fec} congress=${q.rows[0].n_congress}`);
+      console.info(`  ${abbr} (${terr.id}): total=${q.rows[0].n_total} fec=${q.rows[0].n_fec} congress=${q.rows[0].n_congress}`);
     }
 
     // (5) Officials with metadata.state in territory list whose jurisdiction
     //     is NOT the territory canonical — broader "misattribution suspects".
-    console.log("\n=== 5. metadata.state ∈ territories but jurisdiction_id NOT on canonical territory ===");
+    console.info("\n=== 5. metadata.state ∈ territories but jurisdiction_id NOT on canonical territory ===");
     const territoryIds = refs.rows
       .filter((r) => ["VI","PR","GU","AS","MP","DC"].includes(r.short_name) && r.type === "district")
       .map((r) => r.id);

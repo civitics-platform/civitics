@@ -129,7 +129,7 @@ async function q<T = Record<string, unknown>>(
 async function run(client: Client, label: string, sql: string): Promise<number> {
   const res = await client.query(sql);
   const n = res.rowCount ?? 0;
-  console.log(`  ${label.padEnd(52)} ${String(n).padStart(8)}`);
+  console.info(`  ${label.padEnd(52)} ${String(n).padStart(8)}`);
   return n;
 }
 
@@ -268,10 +268,10 @@ async function main(): Promise<void> {
 
   const url = buildDbUrl();
   const masked = url.replace(/:[^:@/]+@/, ":***@");
-  console.log(`# FIX-544 — cross-source FE collision merge (org-only, gated)`);
-  console.log(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
-  console.log(`Connection: ${masked}`);
-  console.log(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}`);
+  console.info(`# FIX-544 — cross-source FE collision merge (org-only, gated)`);
+  console.info(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
+  console.info(`Connection: ${masked}`);
+  console.info(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -299,13 +299,13 @@ async function main(): Promise<void> {
               (SELECT count(DISTINCT winner_id) FROM _loser_remap)::text AS winners`,
     );
     const loserCount = Number(counts?.losers ?? 0);
-    console.log(
+    console.info(
       `\nEligible: P3(committee)=${counts?.p3} losers, P2(org)=${counts?.p2} losers, ` +
         `total losers=${counts?.losers} → winners=${counts?.winners}`,
     );
 
     if (loserCount === 0) {
-      console.log("\nNo eligible clusters — nothing to merge. Rolling back.");
+      console.info("\nNo eligible clusters — nothing to merge. Rolling back.");
       await client.query("ROLLBACK");
       await client.end();
       return;
@@ -325,10 +325,10 @@ async function main(): Promise<void> {
          JOIN financial_entities w ON w.id=lw.winner_id
          ORDER BY w.canonical_name LIMIT 12`,
     );
-    console.log("\nSample winners:");
-    for (const s of sample) console.log(`  ${s.canonical_name.padEnd(36)} ${s.entity_type}  ${s.role}`);
+    console.info("\nSample winners:");
+    for (const s of sample) console.info(`  ${s.canonical_name.padEnd(36)} ${s.entity_type}  ${s.role}`);
 
-    console.log("\nFK rewrites (rows affected):");
+    console.info("\nFK rewrites (rows affected):");
 
     // ── financial_relationships — FIX-379 pre-delete-collider + UPDATE ──
     await run(client, "financial_relationships from-collider delete", `
@@ -511,7 +511,7 @@ async function main(): Promise<void> {
       DELETE FROM financial_entities WHERE id IN (SELECT loser_id FROM _loser_remap)`);
 
     // ── Delete-affected from derived / re-derivable rollups ─────────────
-    console.log("\nDerived rollup delete-affected (rebuilds repopulate winners):");
+    console.info("\nDerived rollup delete-affected (rebuilds repopulate winners):");
     await run(client, "entity_connections (from/to affected)", `
       DELETE FROM entity_connections
        WHERE from_id IN (SELECT id FROM _affected) OR to_id IN (SELECT id FROM _affected)`);
@@ -604,12 +604,12 @@ async function main(): Promise<void> {
     const residueOk = residue?.p3 === "0" && residue?.p2 === "0";
     const orphOk = orph?.orphans === "0";
 
-    console.log("\n── Verification ─────────────────────────────────────────");
-    console.log(`  total_donated_cents  invariant: ${donOk ? "OK" : "FAIL"}  (${pre?.don} → ${post?.don})`);
-    console.log(`  total_received_cents invariant: ${recOk ? "OK" : "FAIL"}  (${pre?.rec} → ${post?.rec})`);
-    console.log(`  FE row count: ${pre?.n} − ${deleted} deleted = ${post?.n}  ${nOk ? "OK" : "FAIL"}`);
-    console.log(`  post-merge eligible residue: P3=${residue?.p3} P2=${residue?.p2}  ${residueOk ? "OK" : "FAIL"}`);
-    console.log(`  loser-id orphans across core FK tables: ${orph?.orphans}  ${orphOk ? "OK" : "FAIL"}`);
+    console.info("\n── Verification ─────────────────────────────────────────");
+    console.info(`  total_donated_cents  invariant: ${donOk ? "OK" : "FAIL"}  (${pre?.don} → ${post?.don})`);
+    console.info(`  total_received_cents invariant: ${recOk ? "OK" : "FAIL"}  (${pre?.rec} → ${post?.rec})`);
+    console.info(`  FE row count: ${pre?.n} − ${deleted} deleted = ${post?.n}  ${nOk ? "OK" : "FAIL"}`);
+    console.info(`  post-merge eligible residue: P3=${residue?.p3} P2=${residue?.p2}  ${residueOk ? "OK" : "FAIL"}`);
+    console.info(`  loser-id orphans across core FK tables: ${orph?.orphans}  ${orphOk ? "OK" : "FAIL"}`);
 
     const allOk = donOk && recOk && nOk && residueOk && orphOk;
     if (!allOk) {
@@ -618,15 +618,15 @@ async function main(): Promise<void> {
 
     if (apply) {
       await client.query("COMMIT");
-      console.log(`\n✓ COMMITTED. Merged ${counts?.losers} loser rows into ${counts?.winners} winners.`);
-      console.log(
+      console.info(`\n✓ COMMITTED. Merged ${counts?.losers} loser rows into ${counts?.winners} winners.`);
+      console.info(
         "  NOTE: entity_connections / entity_search_index / group_donor_rollup rows for the\n" +
           "  affected ids were deleted; the scheduled rebuild_entity_connections (Sun+Wed) and\n" +
           "  pg_cron rollup refreshes will repopulate the surviving winner ids.",
       );
     } else {
       await client.query("ROLLBACK");
-      console.log(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);
+      console.info(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);
     }
   } catch (err) {
     await client.query("ROLLBACK");

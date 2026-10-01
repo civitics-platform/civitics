@@ -53,9 +53,9 @@ async function fetchAllRows<T extends { id: string }>(
 }
 
 async function section(title: string, fn: () => Promise<void>): Promise<void> {
-  console.log("\n" + "─".repeat(72));
-  console.log(title);
-  console.log("─".repeat(72));
+  console.info("\n" + "─".repeat(72));
+  console.info(title);
+  console.info("─".repeat(72));
   try { await fn(); } catch (e) { console.error("  ERROR:", e instanceof Error ? e.message : String(e)); }
 }
 
@@ -70,8 +70,8 @@ async function main(): Promise<void> {
       .ilike("display_name", "%MUSK%ELON%")
       .or("display_name.ilike.%ELON%MUSK%")
       .limit(10);
-    console.log("  matching financial_entities (LIKE %MUSK%ELON% or %ELON%MUSK%):");
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" type=${e.entity_type} total=${fmt$(e.total_donated_cents)}`);
+    console.info("  matching financial_entities (LIKE %MUSK%ELON% or %ELON%MUSK%):");
+    for (const e of (ents ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" type=${e.entity_type} total=${fmt$(e.total_donated_cents)}`);
 
     if (!ents || ents.length === 0) return;
     // .in() bounded: the entity probe above is .limit(10), max 10 -- FIX-1037
@@ -84,14 +84,14 @@ async function main(): Promise<void> {
       .in("from_id", muskIds)
       .order("amount_cents", { ascending: false })
       .limit(20);
-    if (outErr) { console.log("  outflow query failed:", outErr.message); return; }
-    console.log(`  outflow relationships (top 20 by amount):`);
+    if (outErr) { console.info("  outflow query failed:", outErr.message); return; }
+    console.info(`  outflow relationships (top 20 by amount):`);
     let total = 0;
     for (const r of (outs ?? [])) {
       total += Number(r.amount_cents ?? 0);
-      console.log(`    type=${r.relationship_type} to_type=${r.to_type} to_id=${r.to_id} cycle=${r.cycle_year} src=${r.source} ${fmt$(r.amount_cents)}`);
+      console.info(`    type=${r.relationship_type} to_type=${r.to_type} to_id=${r.to_id} cycle=${r.cycle_year} src=${r.source} ${fmt$(r.amount_cents)}`);
     }
-    console.log(`  sum-of-top-20: ${fmt$(total)}`);
+    console.info(`  sum-of-top-20: ${fmt$(total)}`);
 
     // Aggregate outflow by relationship_type.
     // PostgREST can't group; pull ALL rows for the entity and sum client-side,
@@ -109,9 +109,9 @@ async function main(): Promise<void> {
       byType[k].count++;
       byType[k].sum += Number(r.amount_cents ?? 0);
     }
-    console.log(`  total outflow rows (full, paged): ${allOut.length}`);
+    console.info(`  total outflow rows (full, paged): ${allOut.length}`);
     for (const [k, v] of Object.entries(byType).sort((a, b) => b[1].sum - a[1].sum)) {
-      console.log(`    ${k.padEnd(50)} count=${v.count.toString().padStart(5)} sum=${fmt$(v.sum)}`);
+      console.info(`    ${k.padEnd(50)} count=${v.count.toString().padStart(5)} sum=${fmt$(v.sum)}`);
     }
   });
 
@@ -122,8 +122,8 @@ async function main(): Promise<void> {
       .select("id, display_name, total_donated_cents")
       .or("display_name.ilike.%SIMONS%ELIZABETH%,display_name.ilike.%ELIZABETH%SIMONS%")
       .limit(10);
-    console.log(`  matching donor entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
+    console.info(`  matching donor entities: ${(ents ?? []).length}`);
+    for (const e of (ents ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
 
     if (!ents || ents.length === 0) return;
     const ids = ents.map((e: { id: string }) => e.id);
@@ -134,8 +134,8 @@ async function main(): Promise<void> {
       .select("id, display_name")
       .or("display_name.ilike.%DCCC%,display_name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
       .limit(10);
-    console.log(`  DCCC candidate entities: ${(dccc ?? []).length}`);
-    for (const e of (dccc ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}"`);
+    console.info(`  DCCC candidate entities: ${(dccc ?? []).length}`);
+    for (const e of (dccc ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}"`);
 
     // .in() bounded: the DCCC probe above is .limit(10), max 10 -- FIX-1037
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
@@ -149,8 +149,8 @@ async function main(): Promise<void> {
       .in("to_id", dcccIds);
     let sum = 0;
     for (const r of (rels ?? [])) sum += Number(r.amount_cents ?? 0);
-    console.log(`  Simons → DCCC: ${(rels ?? []).length} relationships, total=${fmt$(sum)}`);
-    for (const r of (rels ?? [])) console.log(`    type=${r.relationship_type} src=${r.source} cycle=${r.cycle_year} ${fmt$(r.amount_cents)}`);
+    console.info(`  Simons → DCCC: ${(rels ?? []).length} relationships, total=${fmt$(sum)}`);
+    for (const r of (rels ?? [])) console.info(`    type=${r.relationship_type} src=${r.source} cycle=${r.cycle_year} ${fmt$(r.amount_cents)}`);
   });
 
   await section("DONOR — Jon Stryker → DCCC (FIX-236 anchor, expect ~$310K)", async () => {
@@ -160,8 +160,8 @@ async function main(): Promise<void> {
       .select("id, display_name, total_donated_cents")
       .or("display_name.ilike.%STRYKER%JON%,display_name.ilike.%JON%STRYKER%")
       .limit(10);
-    console.log(`  matching donor entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
+    console.info(`  matching donor entities: ${(ents ?? []).length}`);
+    for (const e of (ents ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
     if (!ents || ents.length === 0) return;
     const ids = ents.map((e: { id: string }) => e.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
       .in("to_id", dcccIds);
     let sum = 0;
     for (const r of (rels ?? [])) sum += Number(r.amount_cents ?? 0);
-    console.log(`  Stryker → DCCC: ${(rels ?? []).length} relationships, total=${fmt$(sum)}`);
+    console.info(`  Stryker → DCCC: ${(rels ?? []).length} relationships, total=${fmt$(sum)}`);
   });
 
   await section("DONOR — Stephen Schwarzman (FIX-239 dedup — expect ONE row)", async () => {
@@ -191,8 +191,8 @@ async function main(): Promise<void> {
       .select("id, display_name, canonical_name, donor_fingerprint, total_donated_cents")
       .ilike("display_name", "%SCHWARZMAN%")
       .limit(20);
-    console.log(`  Schwarzman entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" fp="${e.donor_fingerprint}" total=${fmt$(e.total_donated_cents)}`);
+    console.info(`  Schwarzman entities: ${(ents ?? []).length}`);
+    for (const e of (ents ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" fp="${e.donor_fingerprint}" total=${fmt$(e.total_donated_cents)}`);
   });
 
   await section("DONOR — high-volume small-donor THOMPSON (FIX-236 anchor — 1,889 matches)", async () => {
@@ -203,8 +203,8 @@ async function main(): Promise<void> {
     const { count, error } = await (db as any).from("financial_entities")
       .select("id", { count: "estimated", head: true })
       .ilike("display_name", "THOMPSON,%");
-    console.log(`  entities with display_name starting THOMPSON, (estimated): ${count} (expected ~1889)`);
-    if (error) console.log("  error:", error.message);
+    console.info(`  entities with display_name starting THOMPSON, (estimated): ${count} (expected ~1889)`);
+    if (error) console.info("  error:", error.message);
 
     // pick one and confirm it resolves
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -215,8 +215,8 @@ async function main(): Promise<void> {
       .gt("total_donated_cents", 50000)
       .order("total_donated_cents", { ascending: false })
       .limit(5);
-    console.log("  top THOMPSON donors by total_donated_cents:");
-    for (const e of (sample ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
+    console.info("  top THOMPSON donors by total_donated_cents:");
+    for (const e of (sample ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
   });
 
   await section("DONOR — apostrophe surnames (FIX-244 + FIX-245)", async () => {
@@ -232,8 +232,8 @@ async function main(): Promise<void> {
         .select("id, display_name, canonical_name")
         .ilike("display_name", `${surname},%`)
         .limit(3);
-      console.log(`  ${surname},*  present: ${(sample ?? []).length > 0 ? "yes" : "NO — anchor missing"}`);
-      for (const e of (sample ?? [])) console.log(`    sample: display_name="${e.display_name}" canonical="${e.canonical_name}"`);
+      console.info(`  ${surname},*  present: ${(sample ?? []).length > 0 ? "yes" : "NO — anchor missing"}`);
+      for (const e of (sample ?? [])) console.info(`    sample: display_name="${e.display_name}" canonical="${e.canonical_name}"`);
     }
   });
 
@@ -244,8 +244,8 @@ async function main(): Promise<void> {
       .select("id, full_name, tier, party, role_title, source_ids")
       .or("full_name.ilike.%DONALD%TRUMP%,full_name.ilike.%TRUMP%DONALD%")
       .limit(10);
-    console.log(`  matching officials: ${(off ?? []).length}`);
-    for (const o of (off ?? [])) console.log(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} role="${o.role_title}" fec=${o.source_ids?.fec_candidate_id ?? "-"}`);
+    console.info(`  matching officials: ${(off ?? []).length}`);
+    for (const o of (off ?? [])) console.info(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} role="${o.role_title}" fec=${o.source_ids?.fec_candidate_id ?? "-"}`);
 
     if (!off || off.length === 0) return;
     const ids = off.map((o: { id: string }) => o.id);
@@ -265,9 +265,9 @@ async function main(): Promise<void> {
       byType[k].count++;
       byType[k].sum += Number(r.amount_cents ?? 0);
     }
-    console.log(`  inflow rows: ${ins.length}`);
+    console.info(`  inflow rows: ${ins.length}`);
     for (const [k, v] of Object.entries(byType).sort((a, b) => b[1].sum - a[1].sum)) {
-      console.log(`    ${k.padEnd(50)} count=${v.count.toString().padStart(5)} sum=${fmt$(v.sum)}`);
+      console.info(`    ${k.padEnd(50)} count=${v.count.toString().padStart(5)} sum=${fmt$(v.sum)}`);
     }
   });
 
@@ -278,8 +278,8 @@ async function main(): Promise<void> {
       .select("id, full_name, tier, party, role_title, source_ids")
       .or("full_name.ilike.%VANCE%J%,full_name.ilike.%VANCE,%J%")
       .limit(10);
-    console.log(`  Vance officials: ${(off ?? []).length}`);
-    for (const o of (off ?? [])) console.log(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} fec=${o.source_ids?.fec_candidate_id ?? "-"}`);
+    console.info(`  Vance officials: ${(off ?? []).length}`);
+    for (const o of (off ?? [])) console.info(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} fec=${o.source_ids?.fec_candidate_id ?? "-"}`);
   });
 
   await section("RECIPIENT — Senate Majority PAC inflow (FIX-240 IE)", async () => {
@@ -289,8 +289,8 @@ async function main(): Promise<void> {
       .select("id, display_name, fec_committee_id")
       .ilike("display_name", "%SENATE MAJORITY PAC%")
       .limit(5);
-    console.log(`  SMP entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" fec_cmte=${e.fec_committee_id ?? "-"}`);
+    console.info(`  SMP entities: ${(ents ?? []).length}`);
+    for (const e of (ents ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" fec_cmte=${e.fec_committee_id ?? "-"}`);
 
     // ie_support / ie_oppose total rows in prod
     // FIX-511: magnitude display — estimated; the exact per-type numbers come
@@ -299,15 +299,15 @@ async function main(): Promise<void> {
     const { count: ieS } = await (db as any).from("financial_relationships").select("id", { count: "estimated", head: true }).eq("relationship_type", "ie_support");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count: ieO } = await (db as any).from("financial_relationships").select("id", { count: "estimated", head: true }).eq("relationship_type", "ie_oppose");
-    console.log(`  global ie_support rows (estimated): ${ieS}`);
-    console.log(`  global ie_oppose rows (estimated):  ${ieO}`);
+    console.info(`  global ie_support rows (estimated): ${ieS}`);
+    console.info(`  global ie_oppose rows (estimated):  ${ieO}`);
   });
 
   await section("CONNECTION GRAPH — entity_connections totals + Musk/America-PAC chain", async () => {
     // FIX-511: magnitude display — estimated instead of an exact full count.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count: total } = await (db as any).from("entity_connections").select("id", { count: "estimated", head: true });
-    console.log(`  entity_connections total rows (estimated): ${total}`);
+    console.info(`  entity_connections total rows (estimated): ${total}`);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
@@ -315,7 +315,7 @@ async function main(): Promise<void> {
       .select("id, display_name")
       .ilike("display_name", "%AMERICA PAC%")
       .limit(5);
-    for (const e of (ap ?? [])) console.log(`    America PAC: [${e.id}] display_name="${e.display_name}"`);
+    for (const e of (ap ?? [])) console.info(`    America PAC: [${e.id}] display_name="${e.display_name}"`);
 
     // .in() bounded: the America PAC probe above is .limit(5), max 5 -- FIX-1037
     const apIds = (ap ?? []).map((e: { id: string }) => e.id);
@@ -328,14 +328,14 @@ async function main(): Promise<void> {
         .select("id", { count: "exact", head: true })
         .in("to_id", apIds)
         .eq("connection_type", "donation");
-      console.log(`  donations INTO America PAC (entity_connections): ${muskIn}`);
+      console.info(`  donations INTO America PAC (entity_connections): ${muskIn}`);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { count: apOut } = await (db as any).from("entity_connections")
         .select("id", { count: "exact", head: true })
         .in("from_id", apIds)
         .eq("connection_type", "donation");
-      console.log(`  donations OUT of America PAC (entity_connections, includes ie_support fold-in): ${apOut}`);
+      console.info(`  donations OUT of America PAC (entity_connections, includes ie_support fold-in): ${apOut}`);
     }
   });
 
@@ -361,10 +361,10 @@ async function main(): Promise<void> {
        GROUP BY GROUPING SETS ((metadata->>'source'), (relationship_type))
        ORDER BY 1 NULLS LAST, 2 NULLS LAST`);
     for (const r of rows.filter((r) => r.g_source === 0)) {
-      console.log(`  source=${(r.source ?? "(null)").padEnd(35)} count=${r.n}`);
+      console.info(`  source=${(r.source ?? "(null)").padEnd(35)} count=${r.n}`);
     }
     for (const r of rows.filter((r) => r.g_type === 0)) {
-      console.log(`  type=${(r.relationship_type ?? "(null)").padEnd(15)}  count=${r.n}`);
+      console.info(`  type=${(r.relationship_type ?? "(null)").padEnd(15)}  count=${r.n}`);
     }
   });
 
@@ -377,10 +377,10 @@ async function main(): Promise<void> {
         .select("id, display_name, canonical_name", { count: "estimated" })
         .ilike("canonical_name", `%${q.toLowerCase()}%`)
         .limit(3);
-      if (error) console.log(`  q="${q.padEnd(15)}"  error: ${error.message}`);
+      if (error) console.info(`  q="${q.padEnd(15)}"  error: ${error.message}`);
       else {
-        console.log(`  q="${q.padEnd(15)}" matches≈${count} examples:`);
-        for (const r of (data ?? [])) console.log(`    [${r.id}] display_name="${r.display_name}" canonical="${r.canonical_name}"`);
+        console.info(`  q="${q.padEnd(15)}" matches≈${count} examples:`);
+        for (const r of (data ?? [])) console.info(`    [${r.id}] display_name="${r.display_name}" canonical="${r.canonical_name}"`);
       }
     }
   });

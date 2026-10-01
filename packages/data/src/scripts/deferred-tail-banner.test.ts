@@ -87,12 +87,12 @@ test("TAIL_OWNERS carries job names and what they collect — never a schedule",
 // ── rendering: the same stub shape the printTailTable unit test uses ─────────
 function capture(fn: () => void): string {
   const lines: string[] = [];
-  const orig = console.log;
-  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  const orig = console.info;
+  console.info = (...a: unknown[]) => void lines.push(a.join(" "));
   try {
     fn();
   } finally {
-    console.log = orig;
+    console.info = orig;
   }
   return lines.join("\n");
 }

@@ -22,20 +22,20 @@ async function main(): Promise<void> {
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();
-  console.log(`Connected to: ${new URL(constructDbUrlFromEnv()).host}\n`);
+  console.info(`Connected to: ${new URL(constructDbUrlFromEnv()).host}\n`);
 
   const explain = async (label: string, sql: string): Promise<void> => {
-    console.log(`=== ${label} ===`);
+    console.info(`=== ${label} ===`);
     const start = Date.now();
     try {
       const res = await client.query(`EXPLAIN (ANALYZE, BUFFERS) ${sql}`);
       const wall = Date.now() - start;
-      console.log(`-- wall-clock: ${wall} ms --`);
-      for (const r of res.rows) console.log(r["QUERY PLAN"]);
+      console.info(`-- wall-clock: ${wall} ms --`);
+      for (const r of res.rows) console.info(r["QUERY PLAN"]);
     } catch (e) {
-      console.log(`ERROR: ${(e as Error).message}`);
+      console.info(`ERROR: ${(e as Error).message}`);
     }
-    console.log("");
+    console.info("");
   };
 
   // EXISTS variants — should be sub-ms with indexed predicate
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   );
 
   // Also: actually call it and measure wall-clock end-to-end
-  console.log("=== wall-clock: composite EXISTS query (no EXPLAIN) ===");
+  console.info("=== wall-clock: composite EXISTS query (no EXPLAIN) ===");
   const start = Date.now();
   const res = await client.query(
     `
@@ -85,11 +85,11 @@ async function main(): Promise<void> {
     `,
   );
   const wall = Date.now() - start;
-  console.log(`-- wall-clock: ${wall} ms --`);
+  console.info(`-- wall-clock: ${wall} ms --`);
   console.table(res.rows);
 
   await client.end();
-  console.log("Done.");
+  console.info("Done.");
 }
 
 main().catch((err) => {

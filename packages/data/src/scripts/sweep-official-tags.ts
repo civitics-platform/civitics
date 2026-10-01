@@ -106,21 +106,21 @@ const SHAPE_SQL = `
 `;
 
 function printShape(label: string, rows: ShapeRow[]): void {
-  console.log(`\n${label}`);
+  console.info(`\n${label}`);
   if (rows.length === 0) {
-    console.log("  (no rows)");
+    console.info("  (no rows)");
     return;
   }
   const w = Math.max(8, ...rows.map((r) => r.status.length));
-  console.log(`  ${"task".padEnd(8)}  ${"status".padEnd(w)}  ${"rows".padStart(7)}`);
-  console.log(`  ${"-".repeat(8)}  ${"-".repeat(w)}  ${"-".repeat(7)}`);
+  console.info(`  ${"task".padEnd(8)}  ${"status".padEnd(w)}  ${"rows".padStart(7)}`);
+  console.info(`  ${"-".repeat(8)}  ${"-".repeat(w)}  ${"-".repeat(7)}`);
   let total = 0;
   for (const r of rows) {
     total += Number(r.n);
-    console.log(`  ${r.task_type.padEnd(8)}  ${r.status.padEnd(w)}  ${String(r.n).padStart(7)}`);
+    console.info(`  ${r.task_type.padEnd(8)}  ${r.status.padEnd(w)}  ${String(r.n).padStart(7)}`);
   }
-  console.log(`  ${"-".repeat(8)}  ${"-".repeat(w)}  ${"-".repeat(7)}`);
-  console.log(`  ${"TOTAL".padEnd(8)}  ${"".padEnd(w)}  ${String(total).padStart(7)}`);
+  console.info(`  ${"-".repeat(8)}  ${"-".repeat(w)}  ${"-".repeat(7)}`);
+  console.info(`  ${"TOTAL".padEnd(8)}  ${"".padEnd(w)}  ${String(total).padStart(7)}`);
 }
 
 function pick(rows: ShapeRow[], task: string, status: string): number {
@@ -141,13 +141,13 @@ async function main(): Promise<void> {
   const url = buildDbUrl();
   const direction = REVERSE ? "REVERSE (marked → pending)" : "FORWARD (pending → marked)";
 
-  console.log(`# FIX-898 — official TAG backlog sweep (feature retired, FIX-896)`);
-  console.log(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
-  console.log(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(`Direction:  ${direction}`);
-  console.log(`Mode:       ${DRY_RUN ? "DRY RUN (BEGIN → count → ROLLBACK, writes nothing)" : "LIVE WRITE"}`);
-  console.log(`Scope:      entity_type='official' AND task_type='tag'`);
-  console.log(`Status:     ${FEATURE_RETIRED_STATUS}`);
+  console.info(`# FIX-898 — official TAG backlog sweep (feature retired, FIX-896)`);
+  console.info(`Env:        ${prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker"}`);
+  console.info(`Connection: ${url.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(`Direction:  ${direction}`);
+  console.info(`Mode:       ${DRY_RUN ? "DRY RUN (BEGIN → count → ROLLBACK, writes nothing)" : "LIVE WRITE"}`);
+  console.info(`Scope:      entity_type='official' AND task_type='tag'`);
+  console.info(`Status:     ${FEATURE_RETIRED_STATUS}`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -170,19 +170,19 @@ async function main(): Promise<void> {
     const res = await client.query(sqlBlock(REVERSE ? "reverse" : "forward"));
     const affected = res.rowCount ?? 0;
 
-    console.log(
+    console.info(
       `\n${DRY_RUN ? "WOULD UPDATE" : "UPDATED"}: ${affected} enrichment_queue row(s) ` +
         `→ ${REVERSE ? "pending" : FEATURE_RETIRED_STATUS}`,
     );
 
     if (DRY_RUN) {
       await client.query("ROLLBACK");
-      console.log("ROLLBACK — nothing was written.");
+      console.info("ROLLBACK — nothing was written.");
       return;
     }
 
     await client.query("COMMIT");
-    console.log("COMMIT — sweep applied.");
+    console.info("COMMIT — sweep applied.");
 
     const after = (await client.query(SHAPE_SQL)).rows as ShapeRow[];
     printShape("AFTER — enrichment_queue, entity_type='official':", after);
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
         console.error(`\n✗ POST-CONDITION FAILED: ${leftover} official tag row(s) still pending. Expected 0.`);
         failed = true;
       } else {
-        console.log(`\n✓ Post-condition: zero pending official tag rows remain.`);
+        console.info(`\n✓ Post-condition: zero pending official tag rows remain.`);
       }
     }
 
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
       );
       failed = true;
     } else {
-      console.log(`✓ Post-condition: pending official summary rows unchanged (${summaryPendingAfter}).`);
+      console.info(`✓ Post-condition: pending official summary rows unchanged (${summaryPendingAfter}).`);
     }
 
     // 3. Nothing is ever deleted — prove the row count is conserved.
@@ -225,7 +225,7 @@ async function main(): Promise<void> {
       );
       failed = true;
     } else {
-      console.log(`✓ enrichment_queue total rows (nothing deleted): ${totalAfter}`);
+      console.info(`✓ enrichment_queue total rows (nothing deleted): ${totalAfter}`);
     }
 
     if (failed) process.exitCode = 1;

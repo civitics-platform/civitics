@@ -160,7 +160,7 @@ async function runVacuum(client: Client, defer = false): Promise<void> {
     printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;
   }
-  console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
+  console.info("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
   for (const t of CHURNED_TABLES) {
     try {
       await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
@@ -192,7 +192,7 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
     return;
   }
 
-  console.log("\n── Phase 3: materialized views + vacuum ─────────────────");
+  console.info("\n── Phase 3: materialized views + vacuum ─────────────────");
   for (const fn of MV_REFRESH_FNS) {
     try {
       await step(client, `${fn}()`, `SELECT ${fn}()`);
@@ -221,7 +221,7 @@ async function run(client: Client, label: string, sql: string, params: unknown[]
   const t0 = Date.now();
   const res = await client.query(sql, params);
   const n = res.rowCount ?? 0;
-  console.log(`  ${label.padEnd(50)} ${String(n).padStart(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ${label.padEnd(50)} ${String(n).padStart(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   return n;
 }
 
@@ -229,7 +229,7 @@ async function run(client: Client, label: string, sql: string, params: unknown[]
 async function step(client: Client, label: string, sql: string, params: unknown[] = []): Promise<void> {
   const t0 = Date.now();
   await client.query(sql, params);
-  console.log(`  ${label.padEnd(50)} ${" ".repeat(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ${label.padEnd(50)} ${" ".repeat(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1154,10 +1154,10 @@ async function renderTrioRows(client: Client): Promise<number> {
        LEFT JOIN financial_entities fe ON fe.id = fr.from_id
       ORDER BY 1, fr.cycle_year, fr.amount_cents DESC`,
   );
-  console.log(`\nTrio revert — full row set (${rows.length} rows):`);
-  console.log(`  ${"stub".padEnd(22)}${"type".padEnd(12)}${"from".padEnd(38)}${"cycle".padStart(6)}${"amount".padStart(13)}  created_at`);
+  console.info(`\nTrio revert — full row set (${rows.length} rows):`);
+  console.info(`  ${"stub".padEnd(22)}${"type".padEnd(12)}${"from".padEnd(38)}${"cycle".padStart(6)}${"amount".padStart(13)}  created_at`);
   for (const r of rows) {
-    console.log(
+    console.info(
       `  ${r.stub_name.slice(0, 21).padEnd(22)}${r.relationship_type.padEnd(12)}` +
         `${r.from_name.slice(0, 37).padEnd(38)}${(r.cycle_year ?? "?").padStart(6)}` +
         `${usd(r.amount_cents).padStart(13)}  ${r.created_at}`,
@@ -1171,7 +1171,7 @@ async function renderTrioRows(client: Client): Promise<number> {
  * Returns the donation cents it deleted, for the conservation proof.
  */
 async function runTrioRevert(client: Client): Promise<bigint> {
-  console.log("\nTrio revert (rows affected):");
+  console.info("\nTrio revert (rows affected):");
 
   // (i) Delete the theft. The predicate re-asserts window + counterpart even
   // though verifyTrioInDb proved both — if the two ever disagree, the leftover
@@ -1194,7 +1194,7 @@ async function runTrioRevert(client: Client): Promise<bigint> {
   for (const r of res.rows as Array<{ relationship_type: string; amount_cents: string }>) {
     if (r.relationship_type === "donation") deletedDonationCents += BigInt(r.amount_cents);
   }
-  console.log(`  ${"FR delete stolen copies (trio stubs)".padEnd(50)} ${String(res.rowCount ?? 0).padStart(9)}`);
+  console.info(`  ${"FR delete stolen copies (trio stubs)".padEnd(50)} ${String(res.rowCount ?? 0).padStart(9)}`);
 
   const [leftover] = await q<{ n: string }>(
     client,
@@ -1430,7 +1430,7 @@ async function budgeted(
     await client.query("SET statement_timeout = 0");
   }
   const s = (Date.now() - t0) / 1000;
-  console.log(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
   if (s > budgetS) {
     throw new BudgetExceeded(
       `${label} took ${s.toFixed(0)}s against a ${budgetS}s budget — prod I/O is degraded, ` +
@@ -1446,7 +1446,7 @@ async function budgeted(
 type RollupOutcome = "ok" | "aborted";
 
 async function runRollups(client: Client, prod: boolean, defer = false): Promise<RollupOutcome> {
-  console.log("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
+  console.info("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
 
   // Affected officials come from _manifest when the merge just ran, and are
   // re-derived from the committed state when this is a --rollups-only resume:
@@ -1475,7 +1475,7 @@ async function runRollups(client: Client, prod: boolean, defer = false): Promise
     client,
     `SELECT count(*)::text AS n FROM _affected_officials`,
   );
-  console.log(`  affected officials: ${offCount?.n}`);
+  console.info(`  affected officials: ${offCount?.n}`);
 
   // Donors whose OUTFLOW changed. Read off the survivor side after the move:
   // every deleted loser had a surviving counterpart on the same
@@ -1499,7 +1499,7 @@ async function runRollups(client: Client, prod: boolean, defer = false): Promise
   `);
   const [donorCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _donor`);
   const donors = Number(donorCount?.n ?? 0);
-  console.log(`  affected donors:    ${donors.toLocaleString()}`);
+  console.info(`  affected donors:    ${donors.toLocaleString()}`);
 
   try {
     // FIX-1074 — the manifest-scoped drain is now ONE shared helper
@@ -1726,10 +1726,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`# FIX-933 — merge SAME-PERSON duplicate officials`);
-  console.log(`Env:        ${envLabel()}`);
-  console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(
+  console.info(`# FIX-933 — merge SAME-PERSON duplicate officials`);
+  console.info(`Env:        ${envLabel()}`);
+  console.info(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
+  console.info(
     `Mode:       ${
       repairResplit
         ? "REPAIR-RESPLIT (FIX-955 re-merge)"
@@ -1789,7 +1789,7 @@ async function main(): Promise<void> {
            AND s.source_ids ? 'fec_candidate_id';
     `);
     const [n] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _manifest`);
-    console.log(`Resuming rollups for ${n?.n} merged pair(s) derived from committed state.\n`);
+    console.info(`Resuming rollups for ${n?.n} merged pair(s) derived from committed state.\n`);
     if (n?.n === "0") {
       console.error("No merged pairs found — nothing to rebuild. Did the merge actually commit?");
       await client.end();
@@ -1877,11 +1877,11 @@ async function main(): Promise<void> {
     const reconciled = await run(client, "retire duplicate claim on CAND_ID", reconcileSql);
     if (apply) {
       await client.query("COMMIT");
-      if (reconciled > 0) console.log(`  ↳ committed (${reconciled} already-merged duplicates finished)`);
+      if (reconciled > 0) console.info(`  ↳ committed (${reconciled} already-merged duplicates finished)`);
     } else {
       await client.query("ROLLBACK");
       if (reconciled > 0) {
-        console.log(`  ↳ ${reconciled} already-merged duplicate(s) still claim their CAND_ID — --apply retires it`);
+        console.info(`  ↳ ${reconciled} already-merged duplicate(s) still claim their CAND_ID — --apply retires it`);
       }
     }
   }
@@ -1960,17 +1960,17 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    console.log("");
-    console.log("PAIR (FIX-1165 manifest path) — no derivation ran");
+    console.info("");
+    console.info("PAIR (FIX-1165 manifest path) — no derivation ran");
     for (const [label, r] of [["dup     ", dupRow], ["survivor", survivorRow]] as const) {
-      console.log(
+      console.info(
         `  ${label} ${r.full_name.padEnd(30)} ${(r.role_title ?? "").padEnd(30)} ` +
           `${(r.tier ?? "").padEnd(10)} cand_id=${r.fec_candidate_id ?? "-"}  ` +
           `${Number(r.fr_rows).toLocaleString()} rows  ${usd(r.fr_cents)}`,
       );
     }
-    console.log(`  merging on fec_candidate_id ${dupRow.fec_candidate_id}`);
-    console.log(
+    console.info(`  merging on fec_candidate_id ${dupRow.fec_candidate_id}`);
+    console.info(
       `  CONSERVATION TARGET ${usd(Number(dupRow.fr_cents) + Number(survivorRow.fr_cents))} ` +
         `= dup ${usd(dupRow.fr_cents)} + survivor ${usd(survivorRow.fr_cents)}. ` +
         `All of it must be resident on the survivor afterwards; this is a MOVE, not a delete.`,
@@ -1988,32 +1988,32 @@ async function main(): Promise<void> {
     candidates = await q<Pair>(client, REPAIR_MANIFEST_SQL);
     const trioRows = await q<TrioCandidate>(client, TRIO_SQL);
     await client.query("COMMIT");
-    console.log(
+    console.info(
       `\nFIX-955/960 repair → ${candidates.length} previously-merged pair(s) hold money on the ` +
         `retired stub again`,
     );
     for (const p of candidates) {
-      console.log(`  RE-MERGE ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`);
+      console.info(`  RE-MERGE ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`);
     }
     const grouped = groupTrioRows(trioRows);
     trioCandidates = grouped.trio;
-    console.log(
+    console.info(
       `FIX-960 trio → ${trioCandidates.length} stub(s) carrying a stolen SECOND id also claimed elsewhere`,
     );
     for (const t of trioCandidates) {
-      console.log(
+      console.info(
         `  REVERT   ${t.stubName.padEnd(30)} stolen ${t.liveId} (retired ${t.retiredId}) ` +
           `← also claimed by ${t.claimantName} [${t.claimantTier}]`,
       );
     }
-    for (const d of grouped.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+    for (const d of grouped.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
   } else if (sharedIdManifestPath || promoteManifestPath) {
     // FIX-1187 — the manifest IS the population. No derivation runs; every fact
     // is re-read keyed on the two ids inside the merge transaction
     // (verifySharedIdInDb), so this path costs nothing like SUSPECT_SQL's
     // 81-minute scan and is safe on prod.
     const m = readManifest((sharedIdManifestPath ?? promoteManifestPath)!);
-    for (const c of m.comments) console.log(`  # ${c.replace(/^#\s*/, "")}`);
+    for (const c of m.comments) console.info(`  # ${c.replace(/^#\s*/, "")}`);
     if (promoteManifestPath) {
       const REQUIRED = ["survivor", "senate_stub", "current_id", "prior_id", "evidence"];
       const missing = REQUIRED.filter((c) => !m.header.includes(c));
@@ -2022,7 +2022,7 @@ async function main(): Promise<void> {
         await client.end();
         process.exit(1);
       }
-      console.log(`\nOFFICE-PROMOTION manifest → ${m.rows.length} row(s) from ${m.path}`);
+      console.info(`\nOFFICE-PROMOTION manifest → ${m.rows.length} row(s) from ${m.path}`);
       const pairs: Pair[] = [];
       for (const r of m.rows) {
         const label = `${r["survivor_name"] ?? r["survivor"]}  ←  ${r["senate_stub_name"] ?? r["senate_stub"]}`;
@@ -2030,7 +2030,7 @@ async function main(): Promise<void> {
         // The manifest is an AUTHORISATION, and the evidence string (the
         // fec.gov candidate record for the Senate id) is what authorises it.
         if (!(r["evidence"] ?? "").trim()) {
-          console.log(`  REFUSED  ${label.padEnd(50)} empty evidence column — shape B requires it`);
+          console.info(`  REFUSED  ${label.padEnd(50)} empty evidence column — shape B requires it`);
           continue;
         }
         promotions.push({
@@ -2050,9 +2050,9 @@ async function main(): Promise<void> {
       const unique = enforceOneToOne(pairs);
       candidates = unique.kept;
       for (const p of candidates) {
-        console.log(`  PROMOTE  ${p.name.padEnd(52)} ${p.fecId}  (prior → array)`);
+        console.info(`  PROMOTE  ${p.name.padEnd(52)} ${p.fecId}  (prior → array)`);
       }
-      for (const d of unique.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+      for (const d of unique.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
     } else {
       const REQUIRED = ["survivor", "dup", "fec_id"];
       const missing = REQUIRED.filter((c) => !m.header.includes(c));
@@ -2061,7 +2061,7 @@ async function main(): Promise<void> {
         await client.end();
         process.exit(1);
       }
-      console.log(`\nSHARED-CAND_ID manifest → ${m.rows.length} row(s) from ${m.path}`);
+      console.info(`\nSHARED-CAND_ID manifest → ${m.rows.length} row(s) from ${m.path}`);
       const pairs: Pair[] = m.rows.map((r) => ({
         survivor: r["survivor"]!,
         dup: r["dup"]!,
@@ -2071,8 +2071,8 @@ async function main(): Promise<void> {
       }));
       const unique = enforceOneToOne(pairs);
       candidates = unique.kept;
-      console.log(`  ${candidates.length} pair(s) selected; gates re-applied server-side below.`);
-      for (const d of unique.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+      console.info(`  ${candidates.length} pair(s) selected; gates re-applied server-side below.`);
+      for (const d of unique.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
     }
   } else if (ownSeat) {
     // FIX-953 — structural selection, no overlap ranking. See
@@ -2084,39 +2084,39 @@ async function main(): Promise<void> {
     // selected, so a run can never quietly understate what it found.
     const census = new Map<string, number>();
     for (const p of raw) census.set(p.cls ?? "?", (census.get(p.cls ?? "?") ?? 0) + 1);
-    console.log(`\nOWN-SEAT census → ${raw.length} structural pair(s) platform-wide:`);
-    for (const [k, v] of [...census].sort()) console.log(`  ${k.padEnd(20)} ${String(v).padStart(4)}`);
+    console.info(`\nOWN-SEAT census → ${raw.length} structural pair(s) platform-wide:`);
+    for (const [k, v] of [...census].sort()) console.info(`  ${k.padEnd(20)} ${String(v).padStart(4)}`);
     const wanted =
       ownSeatClass === "both"
         ? raw
         : raw.filter((p) => p.cls === (ownSeatClass === "orphan" ? "orphan-survivor" : "double-claim"));
-    console.log(`Selected class '${ownSeatClass}' → ${wanted.length} pair(s)`);
+    console.info(`Selected class '${ownSeatClass}' → ${wanted.length} pair(s)`);
     const unique = enforceOneToOne(wanted);
     candidates = unique.kept;
     for (const p of candidates) {
-      console.log(`  MERGE    ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`);
+      console.info(`  MERGE    ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`);
     }
-    for (const d of unique.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+    for (const d of unique.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
   } else {
-    console.log("\nRe-deriving the FIX-930 classification live…");
+    console.info("\nRe-deriving the FIX-930 classification live…");
     await client.query("BEGIN TRANSACTION READ ONLY");
     const suspects = (await client.query<SuspectRow>(SUSPECT_SQL)).rows;
     await client.query("COMMIT");
     const { boundary, classified } = classify(suspects);
-    console.log(`  suspects: ${classified.length}   boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`);
+    console.info(`  suspects: ${classified.length}   boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`);
     for (const b of ["CROSS-PERSON MISATTRIBUTION", "SAME-PERSON DUPLICATE", "UNIQUE HOLDER"]) {
       const n = classified.filter((e) => e.branch === b).length;
-      console.log(`  ${b.padEnd(28)} ${String(n).padStart(4)}`);
+      console.info(`  ${b.padEnd(28)} ${String(n).padStart(4)}`);
     }
 
     const built = buildManifest(classified);
     candidates = built.pairs;
-    console.log(`\nSAME-PERSON DUPLICATE → ${candidates.length} pairs pass the client-side gates`);
-    for (const d of built.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+    console.info(`\nSAME-PERSON DUPLICATE → ${candidates.length} pairs pass the client-side gates`);
+    for (const d of built.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
   }
 
   if (candidates.length === 0 && trioCandidates.length === 0) {
-    console.log("\nNothing to merge. (If this is a re-run after --apply, that is the expected result.)");
+    console.info("\nNothing to merge. (If this is a re-run after --apply, that is the expected result.)");
     await client.end();
     return;
   }
@@ -2226,7 +2226,7 @@ async function main(): Promise<void> {
         : ownSeat
           ? await verifyOwnSeatInDb(client, candidates)
           : await verifyManifestInDb(client, candidates);
-    for (const r of rejected) console.log(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
+    for (const r of rejected) console.info(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
     if (rejected.length > 0) {
       await client.query(
         `DELETE FROM _manifest WHERE survivor <> ALL($1::uuid[])`,
@@ -2264,17 +2264,17 @@ async function main(): Promise<void> {
 
       const trioVerdict = await verifyTrioInDb(client, trioCandidates);
       trioLive = trioVerdict.ok;
-      for (const r of trioVerdict.rejected) console.log(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
+      for (const r of trioVerdict.rejected) console.info(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
       if (trioLive.length > 0) await renderTrioRows(client);
     }
 
     if (pairs.length === 0 && trioLive.length === 0) {
-      console.log("\nNo pair survived the server-side re-check. Rolling back.");
+      console.info("\nNo pair survived the server-side re-check. Rolling back.");
       await client.query("ROLLBACK");
       await client.end();
       return;
     }
-    console.log(
+    console.info(
       `\nManifest: ${pairs.length} pairs confirmed against live state.` +
         (repairResplit ? ` Trio revert: ${trioLive.length} stub(s).` : ""),
     );
@@ -2390,11 +2390,11 @@ async function main(): Promise<void> {
               COALESCE(sum(CASE WHEN keep_dup THEN surv_cents ELSE dup_cents END), 0)::text AS loser_cents
          FROM _collision GROUP BY 1 ORDER BY 1`,
     );
-    console.log("\nColliding (relationship_type, from_id, cycle_year) pairs — keep the fresher row:");
-    console.log(`  ${"type".padEnd(14)}${"pairs".padStart(9)}${"dup+".padStart(9)}${"surv+".padStart(9)}${"ties".padStart(7)}   loser dollars`);
+    console.info("\nColliding (relationship_type, from_id, cycle_year) pairs — keep the fresher row:");
+    console.info(`  ${"type".padEnd(14)}${"pairs".padStart(9)}${"dup+".padStart(9)}${"surv+".padStart(9)}${"ties".padStart(7)}   loser dollars`);
     let deletedDonationCents = 0n;
     for (const c of collisions) {
-      console.log(
+      console.info(
         `  ${c.relationship_type.padEnd(14)}${c.pairs.padStart(9)}${c.dup_fresher.padStart(9)}` +
           `${c.surv_fresher.padStart(9)}${c.ties.padStart(7)}   ${usd(c.loser_cents)}`,
       );
@@ -2402,7 +2402,7 @@ async function main(): Promise<void> {
     }
 
     // ── The merge ───────────────────────────────────────────────────────
-    console.log("\nMerge (rows affected):");
+    console.info("\nMerge (rows affected):");
 
     // 1. FEC identity onto the survivor FIRST — otherwise the next cn{yy} run
     //    re-mints the candidate row and re-splits the money. Same server-side
@@ -2618,10 +2618,10 @@ async function main(): Promise<void> {
         ORDER BY pb.surv_donation_cents + pb.dup_donation_cents DESC`,
     );
 
-    console.log("\nPer-pair donation dollars (survivor before + duplicate before → survivor after):");
-    console.log(`  ${"official".padEnd(26)}${"surv before".padStart(15)}${"dup before".padStart(15)}${"surv after".padStart(15)}${"dup after".padStart(12)}`);
+    console.info("\nPer-pair donation dollars (survivor before + duplicate before → survivor after):");
+    console.info(`  ${"official".padEnd(26)}${"surv before".padStart(15)}${"dup before".padStart(15)}${"surv after".padStart(15)}${"dup after".padStart(12)}`);
     for (const r of report) {
-      console.log(
+      console.info(
         `  ${(r.full_name ?? "").slice(0, 25).padEnd(26)}${usd(r.surv_before).padStart(15)}` +
           `${usd(r.dup_before).padStart(15)}${usd(r.surv_after).padStart(15)}${usd(r.dup_after).padStart(12)}`,
       );
@@ -2630,24 +2630,24 @@ async function main(): Promise<void> {
     const sumBefore = report.reduce((s, r) => s + BigInt(r.surv_before) + BigInt(r.dup_before), 0n);
     const sumAfter = report.reduce((s, r) => s + BigInt(r.surv_after) + BigInt(r.dup_after), 0n);
 
-    console.log("\n── Conservation ─────────────────────────────────────────");
-    console.log(`  manifest-scoped donation dollars:      ${usd(beforeCents.toString())} → ${usd(afterCents.toString())}`);
-    console.log(`  observed drop:                          ${usd(observedDrop.toString())}`);
-    console.log(`  deleted colliding losers:               ${usd(deletedDonationCents.toString())}`);
-    console.log(`  deleted trio stolen copies:             ${usd(trioDeletedCents.toString())}`);
-    console.log(`  difference (must be $0):                ${usd(dropDelta.toString())}  ${dropDelta === 0n ? "OK" : "FAIL"}`);
-    console.log(`  manifest pair dollars:                  ${usd(sumBefore.toString())} → ${usd(sumAfter.toString())}`);
-    console.log(`  FR rows moved onto survivors:           ${moved.toLocaleString()}`);
-    console.log(`  duplicates still holding money:         0  OK`);
-    console.log(`  official_donor_totals diffs outside the manifest: ${strays.length}  ${strays.length === 0 ? "OK" : "FAIL"}`);
+    console.info("\n── Conservation ─────────────────────────────────────────");
+    console.info(`  manifest-scoped donation dollars:      ${usd(beforeCents.toString())} → ${usd(afterCents.toString())}`);
+    console.info(`  observed drop:                          ${usd(observedDrop.toString())}`);
+    console.info(`  deleted colliding losers:               ${usd(deletedDonationCents.toString())}`);
+    console.info(`  deleted trio stolen copies:             ${usd(trioDeletedCents.toString())}`);
+    console.info(`  difference (must be $0):                ${usd(dropDelta.toString())}  ${dropDelta === 0n ? "OK" : "FAIL"}`);
+    console.info(`  manifest pair dollars:                  ${usd(sumBefore.toString())} → ${usd(sumAfter.toString())}`);
+    console.info(`  FR rows moved onto survivors:           ${moved.toLocaleString()}`);
+    console.info(`  duplicates still holding money:         0  OK`);
+    console.info(`  official_donor_totals diffs outside the manifest: ${strays.length}  ${strays.length === 0 ? "OK" : "FAIL"}`);
     for (const s of strays.slice(0, 20)) {
-      console.log(`    STRAY ${s.official_id} ${(s.full_name ?? "?").padEnd(28)} ${s.before_cents} → ${s.after_cents}`);
+      console.info(`    STRAY ${s.official_id} ${(s.full_name ?? "?").padEnd(28)} ${s.before_cents} → ${s.after_cents}`);
     }
 
     const dropOk = dropDelta === 0n;
     const strayOk = strays.length === 0;
     const pairOk = sumAfter === sumBefore - deletedDonationCents;
-    console.log(`  manifest pair conservation:             ${pairOk ? "OK" : "FAIL"}`);
+    console.info(`  manifest pair conservation:             ${pairOk ? "OK" : "FAIL"}`);
 
     if (!dropOk || !strayOk || !pairOk) {
       throw new Error("conservation proof FAILED — rolling back (see report above)");
@@ -2658,13 +2658,13 @@ async function main(): Promise<void> {
         await client.query(`ANALYZE public.${t}`);
       }
       await client.query("COMMIT");
-      console.log(
+      console.info(
         `\n✓ COMMITTED — ${pairs.length} pairs merged.` +
           (trioLive.length > 0 ? ` ${trioLive.length} trio stub(s) reverted.` : ""),
       );
     } else {
       await client.query("ROLLBACK");
-      console.log(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);
+      console.info(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);
       await client.end();
       return;
     }
@@ -2691,7 +2691,7 @@ async function main(): Promise<void> {
   }
   await runMvsAndVacuum(client, defer);
 
-  console.log(
+  console.info(
     "\nSTALE UNTIL THEIR OWN SCHEDULE (not rebuildable here at reasonable cost):\n" +
       // FIX-1201 — no clock in an operator-facing string. This one's owner is a
       // GitHub Actions schedule, not a cron.job row, so there is nothing to read

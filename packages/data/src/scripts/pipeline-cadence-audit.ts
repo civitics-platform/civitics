@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "(unset)";
-  console.log(`Connected env target: ${supabaseUrl}`);
+  console.info(`Connected env target: ${supabaseUrl}`);
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -69,16 +69,16 @@ async function main(): Promise<void> {
       ORDER BY avg_gap_hours DESC NULLS LAST, pipeline;
     `);
 
-    console.log("\nPer-pipeline cadence (last 90d):");
-    console.log("pipeline | runs_90d | days_since_last | avg_gap_hours | first_run | last_run");
-    console.log("---------|----------|-----------------|---------------|-----------|---------");
+    console.info("\nPer-pipeline cadence (last 90d):");
+    console.info("pipeline | runs_90d | days_since_last | avg_gap_hours | first_run | last_run");
+    console.info("---------|----------|-----------------|---------------|-----------|---------");
     for (const r of rows) {
-      console.log(
+      console.info(
         `${r.pipeline} | ${r.runs_90d} | ${r.days_since_last ?? "-"} | ${r.avg_gap_hours ?? "-"} | ${r.first_run ?? "-"} | ${r.last_run ?? "-"}`,
       );
     }
 
-    console.log(
+    console.info(
       `\nTotal distinct pipeline names in last 90d: ${rows.length}`,
     );
 
@@ -102,12 +102,12 @@ async function main(): Promise<void> {
       ORDER BY MAX(completed_at) DESC;
     `);
 
-    console.log("\nPipelines whose latest run is >90 days old (outside main window):");
+    console.info("\nPipelines whose latest run is >90 days old (outside main window):");
     if (stale.length === 0) {
-      console.log("  (none)");
+      console.info("  (none)");
     } else {
       for (const r of stale) {
-        console.log(`  ${r.pipeline} | last_run=${r.last_run} | ${r.days_since_last}d ago`);
+        console.info(`  ${r.pipeline} | last_run=${r.last_run} | ${r.days_since_last}d ago`);
       }
     }
   } finally {

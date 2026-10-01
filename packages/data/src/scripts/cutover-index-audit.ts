@@ -464,12 +464,12 @@ async function main(): Promise<void> {
   });
   await client.connect();
   const dbHost = new URL(cleanUrl).host;
-  console.log(`Connected to: ${dbHost}`);
-  console.log(`Pre-cutover migrations scanned: ${preCutover.length}`);
-  console.log(`Pre-cutover CREATE INDEX (deduped by name): ${dedupedPreCutover.length}`);
+  console.info(`Connected to: ${dbHost}`);
+  console.info(`Pre-cutover migrations scanned: ${preCutover.length}`);
+  console.info(`Pre-cutover CREATE INDEX (deduped by name): ${dedupedPreCutover.length}`);
 
   const live = await listLiveIndexes(client);
-  console.log(`Live public indexes: ${live.size}`);
+  console.info(`Live public indexes: ${live.size}`);
   const liveColumns = await listLiveColumns(client);
 
   const classifications: ClassifiedRow[] = dedupedPreCutover.map((idx) => {
@@ -502,16 +502,16 @@ async function main(): Promise<void> {
   const missing = classifications.filter(
     (c) => c.classification === "MISSING_UNEXPLAINED",
   );
-  console.log(`\nResults written:`);
-  console.log(`  ${mdPath}`);
-  console.log(`  ${jsonPath}`);
-  console.log(`\nMISSING_UNEXPLAINED: ${missing.length}`);
+  console.info(`\nResults written:`);
+  console.info(`  ${mdPath}`);
+  console.info(`  ${jsonPath}`);
+  console.info(`\nMISSING_UNEXPLAINED: ${missing.length}`);
   if (missing.length > 0) {
     for (const r of missing) {
-      console.log(`  - ${r.index_name}  on ${r.table_name}(${r.columns.join(", ")})  [${r.source_migration}]`);
+      console.info(`  - ${r.index_name}  on ${r.table_name}(${r.columns.join(", ")})  [${r.source_migration}]`);
     }
   }
-  console.log("\nDone.");
+  console.info("\nDone.");
 }
 
 main().catch((err) => {

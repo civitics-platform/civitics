@@ -224,7 +224,7 @@ async function main(): Promise<void> {
   if (!prod) await client.query("SET max_parallel_workers_per_gather = 0");
 
   try {
-    console.log(`\n-- FIX-1106 emit-set residue audit -- ${envLabel()} -- cycle ${cycle} / ${source} --\n`);
+    console.info(`\n-- FIX-1106 emit-set residue audit -- ${envLabel()} -- cycle ${cycle} / ${source} --\n`);
 
     // -- Guard 1: resolve which run may judge this slice (FIX-1184) ----------
     const verdict = await resolveRun(client, cycle, source);
@@ -279,7 +279,7 @@ async function main(): Promise<void> {
     );
 
     // The first line, as promised: the emit set against the slice it judges.
-    console.log(
+    console.info(
       `  emit set: ${actual.toLocaleString()} keys (recorded ${recorded.toLocaleString()})   ` +
         `slice: ${Number(sliceRow?.rows ?? 0).toLocaleString()} rows / ${usd(sliceRow?.cents ?? 0)}   ` +
         `run ${run.run_id} complete ${run.complete_at}`,
@@ -306,15 +306,15 @@ async function main(): Promise<void> {
         `EXPLAIN ${RESIDUE_SQL}`,
         [run.run_id, cycle, source],
       );
-      console.log("\n-- EXPLAIN --");
-      for (const p of plan) console.log("  " + p["QUERY PLAN"]);
+      console.info("\n-- EXPLAIN --");
+      for (const p of plan) console.info("  " + p["QUERY PLAN"]);
       const seq = plan.some((p) => /Seq Scan on financial_relationships/.test(p["QUERY PLAN"] ?? ""));
-      console.log(`\n  seq scan on financial_relationships: ${seq ? "YES -- the plan is wrong" : "no"}`);
+      console.info(`\n  seq scan on financial_relationships: ${seq ? "YES -- the plan is wrong" : "no"}`);
     }
 
     const t0 = Date.now();
     const rows = await q<ResidueRow>(client, RESIDUE_SQL, [run.run_id, cycle, source]);
-    console.log(`  anti-join: ${rows.length.toLocaleString()} recipients in ${((Date.now() - t0) / 1000).toFixed(1)}s\n`);
+    console.info(`  anti-join: ${rows.length.toLocaleString()} recipients in ${((Date.now() - t0) / 1000).toFixed(1)}s\n`);
 
     // -- Classify ------------------------------------------------------------
     // DROPPED-OUT is "this run emitted nothing at all to this recipient". It is
@@ -335,9 +335,9 @@ async function main(): Promise<void> {
     const dropped = summarise("DROPPED-OUT");
     const partial = summarise("PARTIAL");
 
-    console.log(`  DROPPED-OUT  ${dropped.recipients.toLocaleString()} recipients  ${dropped.rows.toLocaleString()} rows  ${usd(dropped.cents)}`);
-    console.log(`  PARTIAL      ${partial.recipients.toLocaleString()} recipients  ${partial.rows.toLocaleString()} rows  ${usd(partial.cents)}`);
-    console.log(
+    console.info(`  DROPPED-OUT  ${dropped.recipients.toLocaleString()} recipients  ${dropped.rows.toLocaleString()} rows  ${usd(dropped.cents)}`);
+    console.info(`  PARTIAL      ${partial.recipients.toLocaleString()} recipients  ${partial.rows.toLocaleString()} rows  ${usd(partial.cents)}`);
+    console.info(
       `\n  FIX-1106 measured 3,416 / 209,017 / $1,481,928,516 on prod 2026-08-25 by the\n` +
         `  bracket-row proxy. Decomposition is the check, not magnitude -- a clone is stale.`,
     );
@@ -365,8 +365,8 @@ async function main(): Promise<void> {
       ].join("\n") + "\n",
       "utf8",
     );
-    console.log(`\n  -> ${out}`);
-    console.log(`\n  Next: remediate-fec-emit-residue.ts --manifest ${out} (dry run first; --classes DROPPED-OUT is the default).`);
+    console.info(`\n  -> ${out}`);
+    console.info(`\n  Next: remediate-fec-emit-residue.ts --manifest ${out} (dry run first; --classes DROPPED-OUT is the default).`);
   } finally {
     await client.end();
   }

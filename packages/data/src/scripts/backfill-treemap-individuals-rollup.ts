@@ -28,22 +28,22 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const globalOnly = argv.includes("--global-only");
   const focusedOnly = argv.includes("--focused-only");
-  console.log(`[backfill-treemap-individuals] target: ${url}${globalOnly ? " (global-only)" : focusedOnly ? " (focused-only)" : ""}`);
+  console.info(`[backfill-treemap-individuals] target: ${url}${globalOnly ? " (global-only)" : focusedOnly ? " (focused-only)" : ""}`);
 
   const t0 = Date.now();
   if (!globalOnly) {
-    console.log(`[backfill-treemap-individuals] CALL backfill_treemap_individuals_focused() (chunked 300 officials/chunk) ...`);
+    console.info(`[backfill-treemap-individuals] CALL backfill_treemap_individuals_focused() (chunked 300 officials/chunk) ...`);
     await callHeavyProcedure("backfill_treemap_individuals_focused");
     const tf = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[backfill-treemap-individuals]   focused done in ${tf}s`);
+    console.info(`[backfill-treemap-individuals]   focused done in ${tf}s`);
   }
 
   if (!focusedOnly) {
     const t1 = Date.now();
-    console.log(`[backfill-treemap-individuals] CALL refresh_treemap_individuals_global() (uncapped global aggregate) ...`);
+    console.info(`[backfill-treemap-individuals] CALL refresh_treemap_individuals_global() (uncapped global aggregate) ...`);
     await callHeavyProcedure("refresh_treemap_individuals_global");
     const tg = ((Date.now() - t1) / 1000).toFixed(1);
-    console.log(`[backfill-treemap-individuals]   global done in ${tg}s`);
+    console.info(`[backfill-treemap-individuals]   global done in ${tg}s`);
   }
 
   const rows = await selectDirect<{ n: string; g: string }>(
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       "FROM public.treemap_individuals_rollup",
   );
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(
+  console.info(
     `[backfill-treemap-individuals] ✓ ${Number(rows[0]?.n ?? 0).toLocaleString()} rows ` +
       `(${Number(rows[0]?.g ?? 0).toLocaleString()} global) in ${dur}s`,
   );

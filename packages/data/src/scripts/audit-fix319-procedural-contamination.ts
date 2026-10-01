@@ -27,9 +27,9 @@ function constructDbUrlFromEnv(): string {
 }
 
 function header(title: string): void {
-  console.log("\n" + "=".repeat(78));
-  console.log(title);
-  console.log("=".repeat(78));
+  console.info("\n" + "=".repeat(78));
+  console.info(title);
+  console.info("=".repeat(78));
 }
 
 async function main(): Promise<void> {
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  console.log(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+  console.info(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -63,9 +63,9 @@ async function main(): Promise<void> {
     let total = 0;
     for (const r of q1.rows) {
       total += Number(r.n);
-      console.log(`  ${r.source.padEnd(28)} ${r.type.padEnd(20)} ${String(r.n).padStart(6)}`);
+      console.info(`  ${r.source.padEnd(28)} ${r.type.padEnd(20)} ${String(r.n).padStart(6)}`);
     }
-    console.log(`  -------------------------------- TOTAL ${String(total).padStart(6)}`);
+    console.info(`  -------------------------------- TOTAL ${String(total).padStart(6)}`);
 
     // ----- Q3: regex-arm split (run before Q2 so the summary is visible early) -----
     header("Q3 — regex-arm split");
@@ -78,9 +78,9 @@ async function main(): Promise<void> {
        WHERE title ~* '^on ' OR title ~* ' v\\.'`,
     );
     const r3 = q3.rows[0];
-    console.log(`  on_only   (title starts with "On ", no " v.")     ${r3.on_only}`);
-    console.log(`  vdot_only (contains " v.", no "On " prefix)        ${r3.vdot_only}`);
-    console.log(`  both                                                ${r3.both}`);
+    console.info(`  on_only   (title starts with "On ", no " v.")     ${r3.on_only}`);
+    console.info(`  vdot_only (contains " v.", no "On " prefix)        ${r3.vdot_only}`);
+    console.info(`  both                                                ${r3.both}`);
 
     // ----- Q4: ` v. ` arm by jurisdiction type + source -----
     header("Q4 — ' v.' arm by (jurisdictions.type, source)");
@@ -96,7 +96,7 @@ async function main(): Promise<void> {
        ORDER BY COUNT(*) DESC`,
     );
     for (const r of q4.rows) {
-      console.log(`  ${r.juris_type.padEnd(18)} ${r.source.padEnd(28)} ${String(r.n).padStart(6)}`);
+      console.info(`  ${r.juris_type.padEnd(18)} ${r.source.padEnd(28)} ${String(r.n).padStart(6)}`);
     }
 
     // ----- Q4b: ` ^on ` arm by jurisdiction type + source -----
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
        ORDER BY COUNT(*) DESC`,
     );
     for (const r of q4b.rows) {
-      console.log(`  ${r.juris_type.padEnd(18)} ${r.source.padEnd(28)} ${String(r.n).padStart(6)}`);
+      console.info(`  ${r.juris_type.padEnd(18)} ${r.source.padEnd(28)} ${String(r.n).padStart(6)}`);
     }
 
     // ----- Q2: 5-row sample per (source, type) bucket -----
@@ -145,11 +145,11 @@ async function main(): Promise<void> {
     for (const r of q2.rows) {
       const bucket = `${r.source} | ${r.type}`;
       if (bucket !== cursor) {
-        console.log(`\n  [${bucket}]`);
+        console.info(`\n  [${bucket}]`);
         cursor = bucket;
       }
       const title = r.title.length > 110 ? r.title.slice(0, 107) + "..." : r.title;
-      console.log(`    ${r.id.slice(0, 8)}  ${title}`);
+      console.info(`    ${r.id.slice(0, 8)}  ${title}`);
     }
 
     // ----- Extra: any (source IS NULL) rows? if so what do they look like -----
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
         WHERE (title ~* '^on ' OR title ~* ' v\\.')
           AND metadata->>'source' IS NULL`,
     );
-    console.log(`  count: ${qx.rows[0].n}`);
+    console.info(`  count: ${qx.rows[0].n}`);
     if (Number(qx.rows[0].n) > 0) {
       const qxs = await client.query<{ id: string; type: string; title: string; jurisdiction_id: string | null }>(
         `SELECT id, type::text AS type, title, jurisdiction_id
@@ -172,7 +172,7 @@ async function main(): Promise<void> {
       );
       for (const r of qxs.rows) {
         const title = r.title.length > 90 ? r.title.slice(0, 87) + "..." : r.title;
-        console.log(`    ${r.id.slice(0, 8)}  type=${r.type.padEnd(10)} juris=${(r.jurisdiction_id ?? "(null)").slice(0, 8)}  ${title}`);
+        console.info(`    ${r.id.slice(0, 8)}  type=${r.type.padEnd(10)} juris=${(r.jurisdiction_id ?? "(null)").slice(0, 8)}  ${title}`);
       }
     }
   } finally {

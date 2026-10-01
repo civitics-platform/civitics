@@ -267,14 +267,14 @@ const COMMITTEE_EXTENSIONS_SQL = `
   RETURNING governing_body_id, parent_id`;
 
 function printCohortTable(title: string, rows: Row[]): void {
-  console.log(`\n${title}`);
-  console.log("  cohort                       total  null_primary_source");
-  console.log("  ---------------------------  -----  -------------------");
+  console.info(`\n${title}`);
+  console.info("  cohort                       total  null_primary_source");
+  console.info("  ---------------------------  -----  -------------------");
   for (const r of rows) {
     const cohort = String(r.cohort).padEnd(27);
     const total = String(r.total).padStart(5);
     const nullPs = String(r.null_ps).padStart(19);
-    console.log(`  ${cohort}  ${total}  ${nullPs}`);
+    console.info(`  ${cohort}  ${total}  ${nullPs}`);
   }
 }
 
@@ -295,10 +295,10 @@ async function main(): Promise<void> {
   const masked = url.replace(/:[^:@/]+@/, ":***@");
   const env = prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker";
 
-  console.log(`# FIX-477 — governing_bodies attribution backfill`);
-  console.log(`Env:        ${env}`);
-  console.log(`Connection: ${masked}`);
-  console.log(`Mode:       ${prod ? "PROD WRITE (--allow-prod given)" : "local write"}`);
+  console.info(`# FIX-477 — governing_bodies attribution backfill`);
+  console.info(`Env:        ${env}`);
+  console.info(`Connection: ${masked}`);
+  console.info(`Mode:       ${prod ? "PROD WRITE (--allow-prod given)" : "local write"}`);
 
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -316,7 +316,7 @@ async function main(): Promise<void> {
       const res = await client.query(cohort.sql);
       const n = res.rows.length;
       for (const r of res.rows as Array<{ entity_id: string }>) touched.add(r.entity_id);
-      console.log(`\n  cohort ${cohort.key}: ${n} xsr row(s) upserted`);
+      console.info(`\n  cohort ${cohort.key}: ${n} xsr row(s) upserted`);
     }
 
     const ids = [...touched];
@@ -326,18 +326,18 @@ async function main(): Promise<void> {
         `SELECT public.refresh_primary_source_for_entities('governing_body', $1::uuid[]) AS n`,
         [ids],
       );
-      console.log(
+      console.info(
         `\n  refresh_primary_source_for_entities('governing_body', ${ids.length} ids) → ${refreshed[0]?.n} row(s) updated`,
       );
     } else {
-      console.log(`\n  (no entity ids touched — skipping refresh)`);
+      console.info(`\n  (no entity ids touched — skipping refresh)`);
     }
 
     // FIX-478: committee hierarchy sidecar (institution_extensions). Same
     // transaction so the xsr + extensions land atomically.
     const extRes = await client.query(COMMITTEE_EXTENSIONS_SQL);
     const extWithParent = (extRes.rows as Array<{ parent_id: string | null }>).filter((r) => r.parent_id).length;
-    console.log(
+    console.info(
       `\n  institution_extensions: ${extRes.rows.length} committee row(s) upserted ` +
       `(${extWithParent} with a parent link, ${extRes.rows.length - extWithParent} top-level)`,
     );
@@ -361,11 +361,11 @@ async function main(): Promise<void> {
         AND source IN ('openstates','congress_gov','courtlistener')
       GROUP BY source ORDER BY source`,
   );
-  console.log(`\nGoverning-body xsr rows by source (re-run leaves these identical):`);
-  for (const r of xsrCounts) console.log(`  ${String(r.source).padEnd(14)} ${r.n}`);
+  console.info(`\nGoverning-body xsr rows by source (re-run leaves these identical):`);
+  for (const r of xsrCounts) console.info(`  ${String(r.source).padEnd(14)} ${r.n}`);
 
   const remainingNull = (after.find((r) => r.cohort === "other_or_intentional_null")?.null_ps as number) ?? 0;
-  console.log(
+  console.info(
     `\nRemaining NULL primary_source (intentional — executive/judiciary seed rows with no external source): ${remainingNull}`,
   );
 

@@ -92,7 +92,7 @@ async function probe(c: Client): Promise<{ heapFetches: number; rows: number; ms
 
 function summarize(label: string, p: { heapFetches: number; rows: number; ms: number }): void {
   const pct = p.rows > 0 ? ((100 * p.heapFetches) / p.rows).toFixed(1) : "?";
-  console.log(
+  console.info(
     `[fix975] ${label}: Heap Fetches ${p.heapFetches.toLocaleString()} / ${p.rows.toLocaleString()} rows ` +
       `= ${pct}%   Execution ${(p.ms / 1000).toFixed(1)}s`,
   );
@@ -106,7 +106,7 @@ async function main(): Promise<number> {
     console.error("[fix975] refusing to run against PROD without --allow-prod");
     return 1;
   }
-  console.log(`[fix975] target: ${isProd ? "PROD (Supabase Pro)" : "LOCAL Docker"}`);
+  console.info(`[fix975] target: ${isProd ? "PROD (Supabase Pro)" : "LOCAL Docker"}`);
 
   const c = new Client({ connectionString: dsn });
   await c.connect();
@@ -116,7 +116,7 @@ async function main(): Promise<number> {
     // clean skip would have.
     await c.query("SET statement_timeout = '90min'");
 
-    console.log("[fix975] --- BEFORE ---");
+    console.info("[fix975] --- BEFORE ---");
     console.table(await stats(c));
     const before = await probe(c);
     summarize("BEFORE", before);
@@ -127,17 +127,17 @@ async function main(): Promise<number> {
       // simple queries in autocommit, which is what makes this legal here and
       // illegal inside the 13 plpgsql writers.
       await c.query(`VACUUM (ANALYZE) ${table}`);
-      console.log(`[fix975] VACUUM (ANALYZE) ${table} — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      console.info(`[fix975] VACUUM (ANALYZE) ${table} — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     }
 
-    console.log("[fix975] --- AFTER ---");
+    console.info("[fix975] --- AFTER ---");
     console.table(await stats(c));
     const after = await probe(c);
     summarize("AFTER ", after);
 
     const bPct = (100 * before.heapFetches) / before.rows;
     const aPct = (100 * after.heapFetches) / after.rows;
-    console.log(
+    console.info(
       `[fix975] heap-fetch rate ${bPct.toFixed(1)}% -> ${aPct.toFixed(1)}%  ` +
         `(FR benchmark, owned since FIX-974: 4.8%)`,
     );

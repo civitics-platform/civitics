@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SECRET_KEY");
     process.exit(2);
   }
-  console.log(`IE drop analysis — target DB: ${url}\n`);
+  console.info(`IE drop analysis — target DB: ${url}\n`);
 
   const db = createAdminClientWith(url, secret);
 
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const officials   = await loadOfficials(db);
   const index       = buildMatchIndex(officials);
   const candidateSet = new Set<string>(index.byFecId.keys());
-  console.log(
+  console.info(
     `Loaded ${officials.length.toLocaleString()} active officials → ` +
     `${candidateSet.size.toLocaleString()} matched FEC candidate ids\n`,
   );
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     const url2 = `https://www.fec.gov/files/bulk-downloads/${CYCLE}/${name}`;
     const dest = path.join(os.tmpdir(), `ie-drop-${CYCLE}-${process.pid}.csv`);
 
-    console.log(`────────── Cycle ${CYCLE} ──────────`);
+    console.info(`────────── Cycle ${CYCLE} ──────────`);
     try {
       await downloadFile(url2, dest);
     } catch (err) {
@@ -94,23 +94,23 @@ async function main(): Promise<void> {
         ? ((stats.droppedUnmatchedCents / validCents) * 100).toFixed(1)
         : "0.0";
 
-      console.log(`  total IE $ in file (incl. junk):  ${usd(totalCents)}`);
-      console.log(`  junk stripped (> bound, ${stats.rejectedHighAmount} rows): ${usd(stats.rejectedHighCents)}`);
-      console.log(`  $ with valid amount:              ${usd(validCents)}`);
-      console.log(`  $ kept (target matched):          ${usd(stats.keptCents)}  (${stats.passedCand.toLocaleString()} rows)`);
-      console.log(`  $ dropped (target unmatched):     ${usd(stats.droppedUnmatchedCents)}`);
-      console.log(`  → ${pctHidden}% of valid IE $ hidden by the matched-official filter`);
+      console.info(`  total IE $ in file (incl. junk):  ${usd(totalCents)}`);
+      console.info(`  junk stripped (> bound, ${stats.rejectedHighAmount} rows): ${usd(stats.rejectedHighCents)}`);
+      console.info(`  $ with valid amount:              ${usd(validCents)}`);
+      console.info(`  $ kept (target matched):          ${usd(stats.keptCents)}  (${stats.passedCand.toLocaleString()} rows)`);
+      console.info(`  $ dropped (target unmatched):     ${usd(stats.droppedUnmatchedCents)}`);
+      console.info(`  → ${pctHidden}% of valid IE $ hidden by the matched-official filter`);
 
       if (droppedByCand && droppedByCand.size > 0) {
         const top = [...droppedByCand.entries()]
           .sort((a, b) => b[1] - a[1])
           .slice(0, 10);
-        console.log(`  top dropped target cand_ids by $ (not in our officials):`);
+        console.info(`  top dropped target cand_ids by $ (not in our officials):`);
         for (const [candId, cents] of top) {
-          console.log(`    ${candId.padEnd(12)} ${usd(cents)}`);
+          console.info(`    ${candId.padEnd(12)} ${usd(cents)}`);
         }
       }
-      console.log("");
+      console.info("");
 
       grandKept    += stats.keptCents;
       grandDropped += stats.droppedUnmatchedCents;
@@ -123,10 +123,10 @@ async function main(): Promise<void> {
   const grandPct = grandValid > 0
     ? ((grandDropped / grandValid) * 100).toFixed(1)
     : "0.0";
-  console.log("════════════ ALL CYCLES ════════════");
-  console.log(`  kept:    ${usd(grandKept)}`);
-  console.log(`  dropped: ${usd(grandDropped)}`);
-  console.log(`  → ${grandPct}% of valid IE $ hidden by the matched-official filter`);
+  console.info("════════════ ALL CYCLES ════════════");
+  console.info(`  kept:    ${usd(grandKept)}`);
+  console.info(`  dropped: ${usd(grandDropped)}`);
+  console.info(`  → ${grandPct}% of valid IE $ hidden by the matched-official filter`);
 }
 
 main().catch((e) => {

@@ -45,10 +45,10 @@ async function main(): Promise<void> {
     ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
   });
   await client.connect();
-  console.log(`Connected to: ${new URL(cleanUrl).host}\n`);
+  console.info(`Connected to: ${new URL(cleanUrl).host}\n`);
 
   // === Probe 1: connection_type_counts table populated and fresh? ===
-  console.log("=== Probe 1: connection_type_counts row count + freshness ===");
+  console.info("=== Probe 1: connection_type_counts row count + freshness ===");
   const probe1 = await client.query(
     `SELECT COUNT(*)::int AS row_count,
             MAX(refreshed_at) AS most_recent_refresh,
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   );
   console.table(probe1.rows);
 
-  console.log("\n=== Probe 1b: connection_type_counts contents ===");
+  console.info("\n=== Probe 1b: connection_type_counts contents ===");
   const probe1b = await client.query(
     `SELECT connection_type, total
        FROM public.connection_type_counts
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   console.table(probe1b.rows);
 
   // === Probe 2: RPC body — does it read the materialized table? ===
-  console.log("\n=== Probe 2: get_connection_type_counts() body ===");
+  console.info("\n=== Probe 2: get_connection_type_counts() body ===");
   const probe2 = await client.query(
     `SELECT prosrc
        FROM pg_proc
@@ -74,10 +74,10 @@ async function main(): Promise<void> {
         AND pronamespace = 'public'::regnamespace`,
   );
   for (const row of probe2.rows) {
-    console.log(row.prosrc);
+    console.info(row.prosrc);
   }
 
-  console.log("\n=== Probe 2b: refresh_connection_type_counts() body + config ===");
+  console.info("\n=== Probe 2b: refresh_connection_type_counts() body + config ===");
   const probe2b = await client.query(
     `SELECT proname, proconfig, prosrc
        FROM pg_proc
@@ -85,28 +85,28 @@ async function main(): Promise<void> {
         AND pronamespace = 'public'::regnamespace`,
   );
   for (const row of probe2b.rows) {
-    console.log(`config: ${JSON.stringify(row.proconfig)}`);
-    console.log(`body:\n${row.prosrc}`);
+    console.info(`config: ${JSON.stringify(row.proconfig)}`);
+    console.info(`body:\n${row.prosrc}`);
   }
 
   // === Probe 3: EXPLAIN ANALYZE on RPC — 3 runs (cold + 2 warm) ===
-  console.log("\n=== Probe 3: EXPLAIN ANALYZE get_connection_type_counts() (3 runs) ===");
+  console.info("\n=== Probe 3: EXPLAIN ANALYZE get_connection_type_counts() (3 runs) ===");
   for (let i = 1; i <= 3; i++) {
     const start = Date.now();
     const probe3 = await client.query(
       `EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM public.get_connection_type_counts()`,
     );
     const elapsed = Date.now() - start;
-    console.log(`-- run ${i} (wall-clock ${elapsed} ms) --`);
+    console.info(`-- run ${i} (wall-clock ${elapsed} ms) --`);
     for (const row of probe3.rows) {
-      console.log(row["QUERY PLAN"]);
+      console.info(row["QUERY PLAN"]);
     }
   }
 
   // === Probe 6: recent section_times for derived_drift + rebuild_last_run ===
   // Column is `fetched_at` (not created_at). `section_times` is a top-level JSONB
   // column added by 20260522000000_status_snapshot_section_times.sql (FIX-328).
-  console.log("\n=== Probe 6: last 10 status_snapshot rows — derived_drift vs rebuild_last_run ===");
+  console.info("\n=== Probe 6: last 10 status_snapshot rows — derived_drift vs rebuild_last_run ===");
   const probe6 = await client.query(
     `SELECT fetched_at,
             section_times->>'self_tests:derived_drift'   AS derived_drift_ms,
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
   console.table(probe6.rows);
 
   // Per-rule sub-key dump from the most recent row (FIX-332 instrumentation)
-  console.log("\n=== Probe 6b: latest status_snapshot — full section_times keys ===");
+  console.info("\n=== Probe 6b: latest status_snapshot — full section_times keys ===");
   const probe6b = await client.query(
     `SELECT fetched_at,
             jsonb_pretty(section_times) AS section_times
@@ -128,12 +128,12 @@ async function main(): Promise<void> {
       LIMIT 1`,
   );
   for (const row of probe6b.rows) {
-    console.log(`fetched_at: ${row.fetched_at}`);
-    console.log(row.section_times);
+    console.info(`fetched_at: ${row.fetched_at}`);
+    console.info(row.section_times);
   }
 
   await client.end();
-  console.log("\nDone.");
+  console.info("\nDone.");
 }
 
 main().catch((err) => {

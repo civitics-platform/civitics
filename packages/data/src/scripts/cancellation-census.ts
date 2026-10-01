@@ -221,7 +221,7 @@ function parseArgs(argv: readonly string[]): Args {
         // which every consumer reads as DARK. Measured cc-155.
         break;
       case "--help":
-        console.log(
+        console.info(
           "Usage: cancellation-census [--minutes N | --start <iso>] [--end <iso>] [--baseline <per-min>]\n" +
             "                           [--baseline-renders <per-min>] [--p0 <fraction>] [--json]\n" +
             "       cancellation-census --renders-only [--minutes N | --start <iso>] [--end <iso>] [--json]\n" +
@@ -281,8 +281,8 @@ function exitUnavailable(
   json: boolean,
   detail?: string,
 ): void {
-  if (json) console.log(JSON.stringify(unavailableJson(status, window, detail), null, 2));
-  else console.log(`\n[census] ${unavailableSummary(status, detail)} — no verdict, no attribution. (exit 8)`);
+  if (json) console.info(JSON.stringify(unavailableJson(status, window, detail), null, 2));
+  else console.info(`\n[census] ${unavailableSummary(status, detail)} — no verdict, no attribution. (exit 8)`);
   process.exitCode = CENSUS_EXIT.unavailable;
 }
 
@@ -297,12 +297,12 @@ function bySecond(rows: readonly RenderSecond[]) {
 
 function printSeconds(rows: readonly RenderSecond[]): void {
   if (rows.length === 0) {
-    console.log("  no statement-timeout cancellation in any second of the window");
+    console.info("  no statement-timeout cancellation in any second of the window");
     return;
   }
-  console.log(`  ${"second".padEnd(22)}  events  page`);
-  for (const r of rows) console.log(`  ${iso(r.startMs).padEnd(22)}  ${String(r.events).padStart(6)}  ${r.sampleQuery}`);
-  console.log(`  ${rows.length} render(s) lost, ${rows.reduce((n, r) => n + r.events, 0)} event(s)`);
+  console.info(`  ${"second".padEnd(22)}  events  page`);
+  for (const r of rows) console.info(`  ${iso(r.startMs).padEnd(22)}  ${String(r.events).padStart(6)}  ${r.sampleQuery}`);
+  console.info(`  ${rows.length} render(s) lost, ${rows.reduce((n, r) => n + r.events, 0)} event(s)`);
 }
 
 async function main(): Promise<void> {
@@ -341,7 +341,7 @@ async function main(): Promise<void> {
     }
     const parsed: AttributionRow[] = a.rows;
     if (args.json) {
-      console.log(
+      console.info(
         JSON.stringify(
           {
             window: { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes },
@@ -356,7 +356,7 @@ async function main(): Promise<void> {
         ),
       );
     } else {
-      console.log(
+      console.info(
         `\n${formatAttribution({
           rows: parsed,
           field: args.by,
@@ -397,11 +397,11 @@ async function main(): Promise<void> {
     }
     const events = r.rows.reduce((n, x) => n + x.events, 0);
     if (args.json) {
-      console.log(JSON.stringify({ window, renders: { renders: r.rows.length, events, by_second: bySecond(r.rows), pages: topPages(r.rows) }, gate: null }, null, 2));
+      console.info(JSON.stringify({ window, renders: { renders: r.rows.length, events, by_second: bySecond(r.rows), pages: topPages(r.rows) }, gate: null }, null, 2));
     } else {
-      console.log(`\n── renders lost ── ${window.start} → ${window.end} (${args.minutes.toFixed(2)} min)`);
+      console.info(`\n── renders lost ── ${window.start} → ${window.end} (${args.minutes.toFixed(2)} min)`);
       printSeconds(r.rows);
-      console.log("\n   NOT A GATE — a renders reading only; this exits 0 whatever it finds.");
+      console.info("\n   NOT A GATE — a renders reading only; this exits 0 whatever it finds.");
     }
     process.exitCode = 0;
     return;
@@ -438,7 +438,7 @@ async function main(): Promise<void> {
   const ev = edgeVerdictFor(edge, args.p0);
 
   if (args.json) {
-    console.log(
+    console.info(
       JSON.stringify(
         {
           window: { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes },
@@ -464,31 +464,31 @@ async function main(): Promise<void> {
       ),
     );
   } else {
-    console.log(`\n── 57014 census ── ${iso(startMs)} → ${iso(args.endMs)} (${args.minutes} min) — in RENDERS (FIX-1232)`);
+    console.info(`\n── 57014 census ── ${iso(startMs)} → ${iso(args.endMs)} (${args.minutes} min) — in RENDERS (FIX-1232)`);
     printSeconds(renders);
-    console.log(
+    console.info(
       `\n  renders ${v.renders}  baseline ${v.baseline_renders}/min  ratio ${v.ratio_renders.toFixed(2)}x  ` +
         `λ ${v.lambda_renders.toFixed(2)}  P99 floor ${v.floor_renders}  ` +
         `(fails iff ratio > ${RATIO_GATE}x AND renders > floor)  → ${v.pass ? "PASS" : "FAIL"}`,
     );
-    console.log(`  ${v.note}`);
-    console.log(`  events ${v.events} (ratio ${v.ratio_events.toFixed(2)}x at ${v.baseline}/min) — the old unit, reported, not gated`);
-    console.log("  cancelled by hand: not read since FIX-1232 (the renders read counts statement timeouts only; --by sql_state_code sees them)");
+    console.info(`  ${v.note}`);
+    console.info(`  events ${v.events} (ratio ${v.ratio_events.toFixed(2)}x at ${v.baseline}/min) — the old unit, reported, not gated`);
+    console.info("  cancelled by hand: not read since FIX-1232 (the renders read counts statement timeouts only; --by sql_state_code sees them)");
 
-    console.log(`\n── front door ── ${iso(edgeStart)} → ${iso(edgeEnd)} (15-min buckets)`);
-    console.log(`  ${"bucket".padEnd(22)}  requests   5xx      %`);
+    console.info(`\n── front door ── ${iso(edgeStart)} → ${iso(edgeEnd)} (15-min buckets)`);
+    console.info(`  ${"bucket".padEnd(22)}  requests   5xx      %`);
     for (const b of edge) {
       const pct = b.requests > 0 ? ((b.n5xx / b.requests) * 100).toFixed(2) : "—";
-      console.log(
+      console.info(
         `  ${iso(b.startMs).padEnd(22)}  ${String(b.requests).padStart(8)}  ${String(b.n5xx).padStart(4)}  ${String(pct).padStart(6)}`,
       );
     }
-    console.log(
+    console.info(
       `\n  last closed bucket: ${ev.lastClosed ? `${ev.lastClosed.n5xx} / ${ev.lastClosed.requests}` : "—"}  p0 ${(ev.p0 * 100).toFixed(2)} %  ` +
         `P99 floor ${ev.floor_5xx ?? "—"}  (fails iff > ${PCT_5XX_GATE} % AND 5xx > floor; n < ${MIN_EDGE_REQUESTS} proves nothing)  → ${ev.pass ? "PASS" : "FAIL"}`,
     );
-    console.log(`  ${ev.note}`);
-    console.log(
+    console.info(`  ${ev.note}`);
+    console.info(
       `\n  VERDICT: ${v.pass && ev.pass ? "PASS" : "FAIL"} — cc-131 read 7 (f), the drain-and-wait\n` +
         `  gate in docs/cc/PROMPT_TEMPLATE.md. Quote both numbers WITH this window.`,
     );

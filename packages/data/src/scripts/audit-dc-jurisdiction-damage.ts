@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     console.error("ERROR: no DB URL constructible");
     process.exit(2);
   }
-  console.log(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+  console.info(`target: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 1. Identify eb075dd5 — full row + parent chain
     // -------------------------------------------------------------------
-    console.log("\n=== 1. eb075dd5 identity ===");
+    console.info("\n=== 1. eb075dd5 identity ===");
     const mystery = await client.query(`
       SELECT id, name, short_name, type, fips_code, parent_id, country_code,
              metadata, created_at
@@ -68,14 +68,14 @@ async function main(): Promise<void> {
       const parent = await client.query(`
         SELECT id, name, short_name, type, fips_code FROM jurisdictions WHERE id = $1;
       `, [mystery.rows[0].parent_id]);
-      console.log("\n  parent of eb075dd5:");
+      console.info("\n  parent of eb075dd5:");
       console.dir(parent.rows[0], { depth: null });
     }
 
     // -------------------------------------------------------------------
     // 2. Canonical references for comparison
     // -------------------------------------------------------------------
-    console.log("\n=== 2. Reference jurisdictions ===");
+    console.info("\n=== 2. Reference jurisdictions ===");
     const refs = await client.query(`
       SELECT id, name, short_name, type, fips_code, parent_id, created_at
       FROM jurisdictions
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
     //      - never used stateIds at all (votes, committees, regulations,
     //        courtlistener — these only use federalId regardless)
     // -------------------------------------------------------------------
-    console.log("\n=== 3. Officials updated in window (2026-05-09 → 2026-05-25) ===");
+    console.info("\n=== 3. Officials updated in window (2026-05-09 → 2026-05-25) ===");
     const officialsInWindow = await client.query(`
       SELECT o.jurisdiction_id, j.name AS jname, j.short_name, j.type,
              COUNT(*)::int AS n,
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 4. Officials *currently* on the mystery + federal + DC ids
     // -------------------------------------------------------------------
-    console.log("\n=== 4. Officials currently on each candidate fallback id ===");
+    console.info("\n=== 4. Officials currently on each candidate fallback id ===");
     const targets = [
       { id: MYSTERY,       label: "eb075dd5 (mystery)" },
       { id: DC_CANONICAL,  label: "DC canonical (4d2aac54)" },
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
         ORDER BY updated_at DESC NULLS LAST
         LIMIT 25;
       `, [t.id]);
-      console.log(`\n  -- ${t.label} -- (${q.rowCount} rows shown, capped at 25)`);
+      console.info(`\n  -- ${t.label} -- (${q.rowCount} rows shown, capped at 25)`);
       console.table(q.rows.map((r) => ({
         id: r.id,
         full_name: r.full_name,
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 5. Total counts per fallback bucket
     // -------------------------------------------------------------------
-    console.log("\n=== 5. Officials count per candidate jurisdiction (total) ===");
+    console.info("\n=== 5. Officials count per candidate jurisdiction (total) ===");
     const totals = await client.query(`
       SELECT j.id, j.name AS jname, j.short_name, j.type, COUNT(o.id)::int AS officials
       FROM jurisdictions j
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 6. Federal jurisdiction id (so we can check fallback-to-federal flow)
     // -------------------------------------------------------------------
-    console.log("\n=== 6. Federal jurisdiction (fallback target for officials/fec-bulk callers) ===");
+    console.info("\n=== 6. Federal jurisdiction (fallback target for officials/fec-bulk callers) ===");
     const fed = await client.query(`
       SELECT id, name, type, fips_code FROM jurisdictions
       WHERE fips_code = '00' AND type = 'country';
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 7. Norton's specific row
     // -------------------------------------------------------------------
-    console.log("\n=== 7. Eleanor Holmes Norton — current state ===");
+    console.info("\n=== 7. Eleanor Holmes Norton — current state ===");
     const norton = await client.query(`
       SELECT o.id, o.full_name, o.role_title, o.party, o.district_name,
              o.jurisdiction_id, j.name AS jurisdiction_name, j.short_name, j.type,
@@ -198,14 +198,14 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 8. Rows landing on `eb075dd5` — cluster details
     // -------------------------------------------------------------------
-    console.log("\n=== 8. All officials on eb075dd5 ===");
+    console.info("\n=== 8. All officials on eb075dd5 ===");
     const cluster = await client.query(`
       SELECT id, full_name, role_title, tier, party, district_name,
              source_ids, metadata, created_at, updated_at
       FROM officials WHERE jurisdiction_id = $1
       ORDER BY created_at;
     `, [MYSTERY]);
-    console.log(`  total rows: ${cluster.rowCount}`);
+    console.info(`  total rows: ${cluster.rowCount}`);
     console.table(cluster.rows.map((r) => ({
       id: r.id,
       full_name: r.full_name,
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
     //    candidates from FEC. Anyone else is a misattribution suspect.
     // -------------------------------------------------------------------
     if (federalId) {
-      console.log("\n=== 9. Officials on federalId by source — fallback signature ===");
+      console.info("\n=== 9. Officials on federalId by source — fallback signature ===");
       const fedOfficials = await client.query(`
         SELECT
           role_title,
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
       `, [federalId, WINDOW_START, WINDOW_END]);
       console.table(fedOfficials.rows);
 
-      console.log("\n=== 9b. Specific suspect rows on federalId in window ===");
+      console.info("\n=== 9b. Specific suspect rows on federalId in window ===");
       const fedSusp = await client.query(`
         SELECT id, full_name, role_title, tier, district_name,
                source_ids->>'congress_gov' AS bioguide,
@@ -257,7 +257,7 @@ async function main(): Promise<void> {
         ORDER BY created_at
         LIMIT 50;
       `, [federalId, WINDOW_START, WINDOW_END]);
-      console.log(`  rows in window on federalId: ${fedSusp.rowCount}`);
+      console.info(`  rows in window on federalId: ${fedSusp.rowCount}`);
       console.table(fedSusp.rows);
     }
 
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
     //    officials.jurisdiction_id) or have their own jurisdiction_id column.
     //    Check whether any FK columns directly reference jurisdiction_id.
     // -------------------------------------------------------------------
-    console.log("\n=== 10. Tables with jurisdiction_id column ===");
+    console.info("\n=== 10. Tables with jurisdiction_id column ===");
     const tables = await client.query(`
       SELECT table_schema, table_name, column_name
       FROM information_schema.columns
@@ -280,7 +280,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------
     // 11. Counts of NULL jurisdiction_id in window (case b)
     // -------------------------------------------------------------------
-    console.log("\n=== 11. NULL jurisdiction_id rows in window by table ===");
+    console.info("\n=== 11. NULL jurisdiction_id rows in window by table ===");
     const nullableTables = ["officials", "bill_proposals", "votes", "governing_bodies"];
     for (const t of nullableTables) {
       try {
@@ -291,16 +291,16 @@ async function main(): Promise<void> {
           FROM ${t}
           WHERE 1 = 1;
         `, [WINDOW_START, WINDOW_END]);
-        console.log(`  ${t}: ${JSON.stringify(q.rows[0])}`);
+        console.info(`  ${t}: ${JSON.stringify(q.rows[0])}`);
       } catch (e) {
-        console.log(`  ${t}: skipped (${(e as Error).message.split("\n")[0]})`);
+        console.info(`  ${t}: skipped (${(e as Error).message.split("\n")[0]})`);
       }
     }
 
     // -------------------------------------------------------------------
     // 12. data_sync_log scan for DC-related errors in window
     // -------------------------------------------------------------------
-    console.log("\n=== 12. data_sync_log errors in window referencing 'DC' or 'District of Columbia' ===");
+    console.info("\n=== 12. data_sync_log errors in window referencing 'DC' or 'District of Columbia' ===");
     const errs = await client.query(`
       SELECT id, source, started_at, finished_at, status, errors
       FROM data_sync_log
@@ -313,13 +313,13 @@ async function main(): Promise<void> {
         )
       ORDER BY started_at;
     `, [WINDOW_START, WINDOW_END]);
-    console.log(`  matching sync_log rows: ${errs.rowCount}`);
+    console.info(`  matching sync_log rows: ${errs.rowCount}`);
     console.table(errs.rows);
 
     // -------------------------------------------------------------------
     // 13. proposals tied to DC?
     // -------------------------------------------------------------------
-    console.log("\n=== 13. proposal-like tables on each fallback id (created in window) ===");
+    console.info("\n=== 13. proposal-like tables on each fallback id (created in window) ===");
     const proposalTables = ["bill_proposals", "proposals"];
     for (const t of proposalTables) {
       try {
@@ -328,9 +328,9 @@ async function main(): Promise<void> {
           WHERE jurisdiction_id IN ($1, $2, $3)
             AND created_at >= $4 AND created_at < $5;
         `, [MYSTERY, DC_CANONICAL, DC_SUBDISTRICT, WINDOW_START, WINDOW_END]);
-        console.log(`  ${t} on any fallback id, created in window: ${q.rows[0].n}`);
+        console.info(`  ${t} on any fallback id, created in window: ${q.rows[0].n}`);
       } catch (e) {
-        console.log(`  ${t}: skipped (${(e as Error).message.split("\n")[0]})`);
+        console.info(`  ${t}: skipped (${(e as Error).message.split("\n")[0]})`);
       }
     }
   } finally {

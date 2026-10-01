@@ -210,8 +210,8 @@ async function main(): Promise<void> {
 
   const dbUrl = buildDbUrl();
   const censusMode = resolveCensusMode(args.census, dbUrl);
-  console.log(`[gate] target: ${dbUrl.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@")}`);
-  console.log(`[gate] expected ${args.expectedMinutes} min · poll ${args.pollSeconds} s · max wait ${args.maxWaitMinutes} min` +
+  console.info(`[gate] target: ${dbUrl.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@")}`);
+  console.info(`[gate] expected ${args.expectedMinutes} min · poll ${args.pollSeconds} s · max wait ${args.maxWaitMinutes} min` +
     ` · census ${censusMode}${args.census === null ? " (default)" : ""}`);
 
   try {
@@ -220,9 +220,9 @@ async function main(): Promise<void> {
       expectedSeconds: args.expectedMinutes * 60,
       pollSeconds: args.pollSeconds,
       maxWaitSeconds: args.maxWaitMinutes * 60,
-      ...censusWaitOptions(censusMode, () => runCensus(GATE_CENSUS_MINUTES, (l) => console.log(l))),
+      ...censusWaitOptions(censusMode, () => runCensus(GATE_CENSUS_MINUTES, (l) => console.info(l))),
     });
-    if (opened.also) console.log(`[gate] open: gate ok at ${opened.gate.checked_at}; census ${opened.also.summary}`);
+    if (opened.also) console.info(`[gate] open: gate ok at ${opened.gate.checked_at}; census ${opened.also.summary}`);
   } catch (err) {
     if (err instanceof GateTimeout) {
       console.error(`✗ ${err.message}`);
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
   }
 
   if (args.then === null) {
-    console.log("[gate] clear — nothing to run (no --then).");
+    console.info("[gate] clear — nothing to run (no --then).");
     process.exit(0);
   }
 
@@ -249,7 +249,7 @@ async function main(): Promise<void> {
         console.error(`✗ the session is not held by this process (${s ? s.reason_text : "unreadable"}) — not running --then`);
         return 2;
       }
-      console.log(`[gate] claimed — running: ${args.then} (cwd ${THEN_CWD})`);
+      console.info(`[gate] claimed — running: ${args.then} (cwd ${THEN_CWD})`);
       return await new Promise<number>((resolve) => {
         const child = spawn(args.then!, {
           shell: true,
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
     }
     throw err;
   }
-  console.log(`[gate] released; --then exited ${code}`);
+  console.info(`[gate] released; --then exited ${code}`);
   process.exit(code);
 }
 

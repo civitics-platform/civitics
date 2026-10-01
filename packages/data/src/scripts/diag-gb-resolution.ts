@@ -64,10 +64,10 @@ async function main(): Promise<void> {
   const after = await chamberGbCount(db);
 
   const converged = map.size >= govBodyKeys.length && after === before;
-  console.log(`Phase-0 keys requested:   ${govBodyKeys.length}`);
-  console.log(`Resolved:                 ${map.size}`);
-  console.log(`Chamber gbs before/after: ${before} → ${after}`);
-  console.log(converged ? "✓ CONVERGED — zero inserts" : "✗ NOT CONVERGED — inserts occurred or keys unresolved");
+  console.info(`Phase-0 keys requested:   ${govBodyKeys.length}`);
+  console.info(`Resolved:                 ${map.size}`);
+  console.info(`Chamber gbs before/after: ${before} → ${after}`);
+  console.info(converged ? "✓ CONVERGED — zero inserts" : "✗ NOT CONVERGED — inserts occurred or keys unresolved");
   if (!converged) process.exitCode = 1;
   // createAdminClient keeps the event loop alive briefly; mirror the pipeline entrypoint.
   setTimeout(() => process.exit(process.exitCode ?? 0), 500);

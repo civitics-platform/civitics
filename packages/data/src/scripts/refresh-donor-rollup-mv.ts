@@ -53,7 +53,7 @@ function buildDbUrl(): string {
 async function main(): Promise<void> {
   const url = buildDbUrl();
   const masked = url.replace(/:[^:@/]+@/, ":***@");
-  console.log(`Connecting: ${masked}`);
+  console.info(`Connecting: ${masked}`);
   const client = new Client({ connectionString: url, application_name: "refresh_donor_rollup_mv" });
   await client.connect();
 
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
         "(SELECT value->>'last_indexed_at' FROM pipeline_state WHERE key = 'donor_rollup_watermark') AS watermark " +
         "FROM official_donor_rollup_mv"
     );
-    console.log(
+    console.info(
       `Before: official_donor_rollup_mv = ${Number(before.rows[0]!.count).toLocaleString()} rows, ` +
         `watermark = ${before.rows[0]!.watermark ?? "NULL (bootstrap)"}`
     );
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     // (FIX-703). 6h covers the full chunked bootstrap on a cache-starved Micro.
     await client.query("SET statement_timeout = '6h'");
     const t0 = Date.now();
-    console.log(`[${new Date().toISOString()}] CALL public.refresh_official_donor_rollup_incremental() ...`);
+    console.info(`[${new Date().toISOString()}] CALL public.refresh_official_donor_rollup_incremental() ...`);
     await client.query("CALL public.refresh_official_donor_rollup_incremental()");
     const dur = ((Date.now() - t0) / 1000).toFixed(1);
 
@@ -81,11 +81,11 @@ async function main(): Promise<void> {
         "(SELECT value->>'last_indexed_at' FROM pipeline_state WHERE key = 'donor_rollup_watermark') AS watermark " +
         "FROM official_donor_rollup_mv"
     );
-    console.log(
+    console.info(
       `After:  official_donor_rollup_mv = ${Number(after.rows[0]!.count).toLocaleString()} rows, ` +
         `watermark = ${after.rows[0]!.watermark ?? "NULL"} (${dur}s)`
     );
-    console.log(`Done.`);
+    console.info(`Done.`);
   } finally {
     await client.end();
   }

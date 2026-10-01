@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < 3; i++) {
     const start = Date.now();
     const r = await c.query("SELECT * FROM public.get_drift_source_presence()");
-    console.log(`run ${i + 1}: ${Date.now() - start} ms, rows=${r.rows.length}`);
+    console.info(`run ${i + 1}: ${Date.now() - start} ms, rows=${r.rows.length}`);
     if (i === 0) console.table(r.rows);
   }
   await c.end();

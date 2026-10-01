@@ -177,7 +177,7 @@ async function processTarget(
   polyTables: string[],
   willExecute: boolean,
 ): Promise<TargetResult> {
-  console.log(`\n${"═".repeat(70)}\n${t.name} (${t.abbr}, fips ${t.fips})\n${"═".repeat(70)}`);
+  console.info(`\n${"═".repeat(70)}\n${t.name} (${t.abbr}, fips ${t.fips})\n${"═".repeat(70)}`);
 
   const shape = LEGISLATURE_SHAPES[t.abbr];
   if (!shape || shape.shape !== "unicameral" || !shape.unicameralName || !shape.unicameralShortName) {
@@ -208,7 +208,7 @@ async function processTarget(
   if (already) {
     // Idempotent re-run: conversion already applied. Verify no lower sibling.
     const lowers = gbRows.filter((g) => g.type === "legislature_lower");
-    console.log(`  ALREADY CONVERTED: ${already.id} "${already.name}" (slug ${already.slug}); ${lowers.length} lower sibling(s) remaining`);
+    console.info(`  ALREADY CONVERTED: ${already.id} "${already.name}" (slug ${already.slug}); ${lowers.length} lower sibling(s) remaining`);
     const n = await count(client, `SELECT COUNT(*)::int AS n FROM public.officials WHERE governing_body_id = $1`, [already.id]);
     return {
       abbr: t.abbr, winnerId: already.id, loserId: "(none)", oldSlug: null,
@@ -226,9 +226,9 @@ async function processTarget(
     );
   }
 
-  console.log(`  WINNER (convert in place): ${winner.id}  ${winner.type}  "${winner.name}"  slug=${winner.slug}`);
-  console.log(`  LOSER  (delete):           ${loser.id}  ${loser.type}  "${loser.name}"  slug=${loser.slug}`);
-  console.log(`  → legislature_unicameral "${shape.unicameralName}" / "${shape.unicameralShortName}"`);
+  console.info(`  WINNER (convert in place): ${winner.id}  ${winner.type}  "${winner.name}"  slug=${winner.slug}`);
+  console.info(`  LOSER  (delete):           ${loser.id}  ${loser.type}  "${loser.name}"  slug=${loser.slug}`);
+  console.info(`  → legislature_unicameral "${shape.unicameralName}" / "${shape.unicameralShortName}"`);
 
   // ── 2. Populated-row guard — the model says the upper row holds the roster ─
   const winnerOfficials = await count(client, `SELECT COUNT(*)::int AS n FROM public.officials WHERE governing_body_id = $1`, [winner.id]);
@@ -242,26 +242,26 @@ async function processTarget(
   const officialsBefore = winnerOfficials + loserOfficials;
 
   // ── 3. Full ref audit — every discovered surface, winner AND loser ────────
-  console.log(`  BEFORE — refs per surface (winner / loser):`);
+  console.info(`  BEFORE — refs per surface (winner / loser):`);
   const loserPolyCounts = new Map<string, number>();
   const loserFkCounts = new Map<string, number>();
 
   for (const [table, col] of fkCols) {
     const w = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE ${col} = $1`, [winner.id]);
     const l = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE ${col} = $1`, [loser.id]);
-    if (w > 0 || l > 0) console.log(`    ${String(w).padStart(6)} / ${String(l).padEnd(5)} ${table}.${col} [fk]`);
+    if (w > 0 || l > 0) console.info(`    ${String(w).padStart(6)} / ${String(l).padEnd(5)} ${table}.${col} [fk]`);
     loserFkCounts.set(`${table}.${col}`, l);
   }
   for (const table of polyTables) {
     const w = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE entity_id::text = $1`, [winner.id]);
     const l = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE entity_id::text = $1`, [loser.id]);
-    if (w > 0 || l > 0) console.log(`    ${String(w).padStart(6)} / ${String(l).padEnd(5)} ${table}.entity_id [poly]`);
+    if (w > 0 || l > 0) console.info(`    ${String(w).padStart(6)} / ${String(l).padEnd(5)} ${table}.entity_id [poly]`);
     loserPolyCounts.set(table, l);
   }
   for (const table of GB_ID_ROLLUP_TABLES) {
     const w = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE gb_id = $1`, [winner.id]);
     const l = await count(client, `SELECT COUNT(*)::int AS n FROM public.${table} WHERE gb_id = $1`, [loser.id]);
-    if (w > 0 || l > 0) console.log(`    ${String(w).padStart(6)} / ${String(l).padEnd(5)} ${table}.gb_id [rollup]`);
+    if (w > 0 || l > 0) console.info(`    ${String(w).padStart(6)} / ${String(l).padEnd(5)} ${table}.gb_id [rollup]`);
   }
   const winnerXsr = await count(
     client,
@@ -273,7 +273,7 @@ async function processTarget(
     `SELECT COUNT(*)::int AS n FROM public.external_source_refs WHERE entity_type = 'governing_body' AND entity_id = $1`,
     [loser.id],
   );
-  console.log(`    ${String(winnerXsr).padStart(6)} / ${String(loserXsr).padEnd(5)} external_source_refs.entity_id [xsr]`);
+  console.info(`    ${String(winnerXsr).padStart(6)} / ${String(loserXsr).padEnd(5)} external_source_refs.entity_id [xsr]`);
 
   // Every surface above is handled (fk repoint / poly repoint / rollup delete /
   // xsr delete-or-rewrite). The refusal case is a loser ref on a surface NOT in
@@ -285,29 +285,29 @@ async function processTarget(
   const newXsrKey = `gb/${jurisId}/legislature_unicameral`;
 
   // ── 4. Print the exact plan ────────────────────────────────────────────────
-  console.log(`  ── PLAN (winner=${winner.id}, loser=${loser.id}) ──`);
+  console.info(`  ── PLAN (winner=${winner.id}, loser=${loser.id}) ──`);
   for (const [table, col] of fkCols) {
     if ((loserFkCounts.get(`${table}.${col}`) ?? 0) > 0)
-      console.log(`    UPDATE ${table} SET ${col}='${winner.id}' WHERE ${col}='${loser.id}';`);
+      console.info(`    UPDATE ${table} SET ${col}='${winner.id}' WHERE ${col}='${loser.id}';`);
   }
   for (const table of polyTables) {
     if ((loserPolyCounts.get(table) ?? 0) > 0)
-      console.log(`    UPDATE ${table} SET entity_id='${winner.id}' WHERE entity_id='${loser.id}';`);
+      console.info(`    UPDATE ${table} SET entity_id='${winner.id}' WHERE entity_id='${loser.id}';`);
   }
   for (const table of GB_ID_ROLLUP_TABLES) {
-    console.log(`    DELETE FROM ${table} WHERE gb_id='${loser.id}';`);
+    console.info(`    DELETE FROM ${table} WHERE gb_id='${loser.id}';`);
   }
-  console.log(`    DELETE FROM external_source_refs WHERE entity_type='governing_body' AND entity_id='${loser.id}';`);
-  console.log(`    DELETE FROM governing_bodies WHERE id='${loser.id}';`);
-  console.log(
+  console.info(`    DELETE FROM external_source_refs WHERE entity_type='governing_body' AND entity_id='${loser.id}';`);
+  console.info(`    DELETE FROM governing_bodies WHERE id='${loser.id}';`);
+  console.info(
     `    UPDATE governing_bodies SET type='legislature_unicameral', name='${shape.unicameralName}', ` +
       `short_name='${shape.unicameralShortName}', slug=NULL, updated_at=NOW() WHERE id='${winner.id}';`,
   );
-  console.log(
+  console.info(
     `    UPDATE external_source_refs SET external_id='${newXsrKey}' WHERE entity_type='governing_body' ` +
       `AND entity_id='${winner.id}' AND source='openstates' AND external_id='${oldXsrKey}';`,
   );
-  console.log(`    SELECT backfill_governing_body_slugs();  -- refills winner slug from new short_name`);
+  console.info(`    SELECT backfill_governing_body_slugs();  -- refills winner slug from new short_name`);
 
   if (!willExecute) {
     return {
@@ -322,25 +322,25 @@ async function processTarget(
   try {
     for (const [table, col] of fkCols) {
       const res = await client.query(`UPDATE public.${table} SET ${col} = $1 WHERE ${col} = $2`, [winner.id, loser.id]);
-      if (res.rowCount) console.log(`    repointed ${res.rowCount} ${table}.${col}`);
+      if (res.rowCount) console.info(`    repointed ${res.rowCount} ${table}.${col}`);
     }
     for (const table of polyTables) {
       const res = await client.query(
         `UPDATE public.${table} SET entity_id = $1 WHERE entity_id::text = $2`,
         [winner.id, loser.id],
       );
-      if (res.rowCount) console.log(`    repointed ${res.rowCount} ${table}.entity_id`);
+      if (res.rowCount) console.info(`    repointed ${res.rowCount} ${table}.entity_id`);
     }
     for (const table of GB_ID_ROLLUP_TABLES) {
       const res = await client.query(`DELETE FROM public.${table} WHERE gb_id = $1`, [loser.id]);
-      if (res.rowCount) console.log(`    deleted ${res.rowCount} ${table} loser row(s)`);
+      if (res.rowCount) console.info(`    deleted ${res.rowCount} ${table} loser row(s)`);
     }
     await client.query(
       `DELETE FROM public.external_source_refs WHERE entity_type = 'governing_body' AND entity_id = $1`,
       [loser.id],
     );
     const del = await client.query(`DELETE FROM public.governing_bodies WHERE id = $1`, [loser.id]);
-    console.log(`    deleted ${del.rowCount} loser gb row(s)`);
+    console.info(`    deleted ${del.rowCount} loser gb row(s)`);
 
     await client.query(
       `UPDATE public.governing_bodies
@@ -353,10 +353,10 @@ async function processTarget(
         WHERE entity_type = 'governing_body' AND entity_id = $2 AND source = 'openstates' AND external_id = $3`,
       [newXsrKey, winner.id, oldXsrKey],
     );
-    console.log(`    converted winner in place; rewrote ${xsr.rowCount ?? 0} openstates xsr key`);
+    console.info(`    converted winner in place; rewrote ${xsr.rowCount ?? 0} openstates xsr key`);
 
     const slugRes = await client.query(`SELECT public.backfill_governing_body_slugs() AS filled`);
-    console.log(`    slug backfill filled ${slugRes.rows[0]?.filled ?? 0} slug(s)`);
+    console.info(`    slug backfill filled ${slugRes.rows[0]?.filled ?? 0} slug(s)`);
 
     await client.query("COMMIT");
   } catch (err) {
@@ -409,14 +409,14 @@ async function processTarget(
     staleXsr === 0 &&
     officialsAfter === officialsBefore;
 
-  console.log(`  ── POST-MERGE (${t.abbr}) ──`);
-  console.log(`    loser gb remaining:                ${loserGone}   (expect 0)`);
-  console.log(`    legislature_lower rows in juris:   ${lowersLeft}   (expect 0)`);
-  console.log(`    winner: ${winnerRow?.type}  "${winnerRow?.name}"  slug=${winnerRow?.slug}`);
-  console.log(`    dangling refs to loser:            ${dangling}   (expect 0)`);
-  console.log(`    stale upper/lower xsr keys:        ${staleXsr}   (expect 0)`);
-  console.log(`    officials (combined→winner):       ${officialsBefore} → ${officialsAfter}   (expect equal)`);
-  console.log(`    ${ok ? "✓ VERIFIED" : "✗ INCOMPLETE — investigate above"}`);
+  console.info(`  ── POST-MERGE (${t.abbr}) ──`);
+  console.info(`    loser gb remaining:                ${loserGone}   (expect 0)`);
+  console.info(`    legislature_lower rows in juris:   ${lowersLeft}   (expect 0)`);
+  console.info(`    winner: ${winnerRow?.type}  "${winnerRow?.name}"  slug=${winnerRow?.slug}`);
+  console.info(`    dangling refs to loser:            ${dangling}   (expect 0)`);
+  console.info(`    stale upper/lower xsr keys:        ${staleXsr}   (expect 0)`);
+  console.info(`    officials (combined→winner):       ${officialsBefore} → ${officialsAfter}   (expect equal)`);
+  console.info(`    ${ok ? "✓ VERIFIED" : "✗ INCOMPLETE — investigate above"}`);
 
   return {
     abbr: t.abbr, winnerId: winner.id, loserId: loser.id, oldSlug: winner.slug,
@@ -445,10 +445,10 @@ async function main(): Promise<void> {
   const env = prod ? "prod (xsazcoxinpgttgquwvuf)" : "local Docker";
   const willExecute = dryRun ? false : prod ? confirm : true;
 
-  console.log(`# FIX-489/FIX-548 — unicameral legislature conversion (DC/NE/GU/VI)`);
-  console.log(`Env:        ${env}`);
-  console.log(`Connection: ${masked}`);
-  console.log(
+  console.info(`# FIX-489/FIX-548 — unicameral legislature conversion (DC/NE/GU/VI)`);
+  console.info(`Env:        ${env}`);
+  console.info(`Connection: ${masked}`);
+  console.info(
     `Mode:       ${
       willExecute ? (prod ? "PROD WRITE (--allow-prod --confirm given)" : "local write") : "PLAN ONLY (no writes)"
     }`,
@@ -462,10 +462,10 @@ async function main(): Promise<void> {
   try {
     const fkCols = await discoverGbFkCols(client);
     const polyTables = await discoverPolymorphicTables(client);
-    console.log(`\nDiscovered ref surface (live information_schema):`);
-    console.log(`  FK cols:     ${fkCols.map(([t, c]) => `${t}.${c}`).join(", ")}`);
-    console.log(`  Polymorphic: ${polyTables.join(", ")}`);
-    console.log(`  gb_id:       ${GB_ID_ROLLUP_TABLES.join(", ")}`);
+    console.info(`\nDiscovered ref surface (live information_schema):`);
+    console.info(`  FK cols:     ${fkCols.map(([t, c]) => `${t}.${c}`).join(", ")}`);
+    console.info(`  Polymorphic: ${polyTables.join(", ")}`);
+    console.info(`  gb_id:       ${GB_ID_ROLLUP_TABLES.join(", ")}`);
 
     for (const t of TARGETS) {
       results.push(await processTarget(client, t, fkCols, polyTables, willExecute));
@@ -474,16 +474,16 @@ async function main(): Promise<void> {
     await client.end();
   }
 
-  console.log(`\n${"═".repeat(70)}\nSUMMARY\n${"═".repeat(70)}`);
+  console.info(`\n${"═".repeat(70)}\nSUMMARY\n${"═".repeat(70)}`);
   for (const r of results) {
-    console.log(
+    console.info(
       `  ${r.abbr}  "${r.newName}"  slug ${r.oldSlug ?? "?"} → ${r.newSlug ?? "(pending)"}  ` +
         `officials ${r.officialsBefore}→${r.officialsAfter}  ${willExecute ? (r.ok ? "✓" : "✗") : "(plan)"}`,
     );
   }
 
   if (!willExecute) {
-    console.log(
+    console.info(
       `\n⏸  PLAN ONLY — no writes performed.` +
         (prod
           ? `\n   Prod execution is gated: re-run with the executing variant (…:prod) only after explicit confirmation.`
@@ -493,7 +493,7 @@ async function main(): Promise<void> {
   }
 
   const allOk = results.every((r) => r.ok);
-  console.log(`\n${allOk ? "✓ ALL FOUR CONVERTED + VERIFIED" : "✗ ONE OR MORE INCOMPLETE — investigate above"}`);
+  console.info(`\n${allOk ? "✓ ALL FOUR CONVERTED + VERIFIED" : "✗ ONE OR MORE INCOMPLETE — investigate above"}`);
   if (!allOk) process.exitCode = 1;
 }
 

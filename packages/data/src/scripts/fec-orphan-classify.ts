@@ -1094,33 +1094,33 @@ export function printDeferredTail(
       : kind === "mvs"
         ? "materialized-view refreshes (phase 3)"
         : "platform-scoped rebuilds (search index, treemap, IE totals, group rollup)";
-  console.log(`\n── ${what} — DEFERRED (--defer-tails) ──`);
-  console.log("  Skipped here; collected by:");
+  console.info(`\n── ${what} — DEFERRED (--defer-tails) ──`);
+  console.info("  Skipped here; collected by:");
   const rows = TAIL_OWNERS[kind].map((o) => ({ ...o, ...ownerColumns(o.job, owners) }));
   const jw = Math.max(...rows.map((r) => r.job.length));
   const cw = Math.max(...rows.map((r) => r.collects.length));
   const sw = Math.max(8, ...rows.map((r) => r.schedule.length));
-  console.log(
+  console.info(
     `    ${"job".padEnd(jw)}  ${"collects".padEnd(cw)}  ${"schedule".padEnd(sw)}  guarded`,
   );
   for (const r of rows) {
-    console.log(
+    console.info(
       `    ${r.job.padEnd(jw)}  ${r.collects.padEnd(cw)}  ${r.schedule.padEnd(sw)}  ${r.guarded}`,
     );
   }
   if (!owners) {
-    console.log(
+    console.info(
       "    ! owner schedules NOT READ — `?` is 'nobody looked', not 'nothing owns it'.",
     );
   }
   if (kind === "vacuum") {
-    console.log("  On prod this is not an optimisation — a script-run VACUUM of these tables");
-    console.log("  is a front-door incident (FIX-1144). The scheduled owners are the path.");
+    console.info("  On prod this is not an optimisation — a script-run VACUUM of these tables");
+    console.info("  is a front-door incident (FIX-1144). The scheduled owners are the path.");
   }
   if (kind === "mvs") {
-    console.log("  Not an optimisation either: the FIX-953 apply (2026-08-10/11) ran this phase");
-    console.log("  and took prod fully unresponsive for 30+ minutes. These scripts also refresh");
-    console.log("  the chord MVs WITHOUT the FIX-1129 max_parallel_workers_per_gather=0 guard,");
-    console.log("  which they only set on local — so this is the unguarded configuration.");
+    console.info("  Not an optimisation either: the FIX-953 apply (2026-08-10/11) ran this phase");
+    console.info("  and took prod fully unresponsive for 30+ minutes. These scripts also refresh");
+    console.info("  the chord MVs WITHOUT the FIX-1129 max_parallel_workers_per_gather=0 guard,");
+    console.info("  which they only set on local — so this is the unguarded configuration.");
   }
 }

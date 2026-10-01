@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   });
   await client.connect();
   const dbHost = new URL(dbUrl).host;
-  console.log(`[iowait-diagnosis] connected to ${dbHost}`);
+  console.info(`[iowait-diagnosis] connected to ${dbHost}`);
 
   // ── Section A ────────────────────────────────────────────────────────────
   const settingsSql = (name: string) =>
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
      ORDER BY shared_blks_read DESC
      LIMIT 25`,
   );
-  console.log(`[iowait-diagnosis] pg_stat_statements top 25: ${sectionB.length} rows`);
+  console.info(`[iowait-diagnosis] pg_stat_statements top 25: ${sectionB.length} rows`);
 
   // ── Section C — pg_stat_activity samples ─────────────────────────────────
   // Take 6 samples ~5s apart so we span 30s of wall clock. If we miss a cron
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
     contentionSamples.push({ sample_at: ts, row: contention[0] });
     if (i < 5) await sleep(5_000);
   }
-  console.log(`[iowait-diagnosis] activity/contention samples: ${activitySamples.length}`);
+  console.info(`[iowait-diagnosis] activity/contention samples: ${activitySamples.length}`);
 
   // ── Section D — top tables by total size + hot table proxy ──────────────
   const sectionDSize = await q(
@@ -295,7 +295,7 @@ async function main(): Promise<void> {
   await mkdir(AUDITS_DIR, { recursive: true });
   const outPath = join(AUDITS_DIR, "2026-05-24-iowait-diagnosis.json");
   await writeFile(outPath, JSON.stringify(dump, null, 2), "utf8");
-  console.log(`[iowait-diagnosis] wrote ${outPath}`);
+  console.info(`[iowait-diagnosis] wrote ${outPath}`);
 }
 
 main().catch((err) => {

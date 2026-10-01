@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const unfiltered = process.argv.includes("--unfiltered");
   const label = unfiltered ? "BEFORE (unfiltered)" : "AFTER (FIX-1159 key-set filter)";
 
-  console.log(`\n=== ${label} ===`);
+  console.info(`\n=== ${label} ===`);
 
   // Pass 1 — always run it, so its cost is on the record for both arms even
   // when the result is discarded. It is the price the filter charges.
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
 
   const peakRssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
 
-  console.log(
+  console.info(
     JSON.stringify(
       {
         arm: unfiltered ? "unfiltered" : "filtered",

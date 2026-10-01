@@ -28,7 +28,7 @@ function parseArgs(argv: string[]): { hours: number; json: boolean } {
     else if (a === "--hours") hours = Number(argv[++i]);
     else if (a.startsWith("--hours=")) hours = Number(a.slice("--hours=".length));
     else if (a === "--help" || a === "-h") {
-      console.log("usage: data:box-health:series [--hours N (default 24, max 24)] [--json]");
+      console.info("usage: data:box-health:series [--hours N (default 24, max 24)] [--json]");
       process.exit(0);
     } else {
       console.error(`[box-health] unknown argument ${JSON.stringify(a)}`);
@@ -58,11 +58,11 @@ async function main(): Promise<void> {
   const rows = seriesRows(ring.samples, { hours, now });
   const stats = seriesStats(rows, ring.samples);
   if (json) {
-    console.log(JSON.stringify({ read_at: now.toISOString(), hours, ring_len: ring.samples.length, unparseable: ring.unparseable, stats, rows }, null, 2));
+    console.info(JSON.stringify({ read_at: now.toISOString(), hours, ring_len: ring.samples.length, unparseable: ring.unparseable, stats, rows }, null, 2));
     return;
   }
-  console.log(formatSeries(rows, stats, hours));
-  console.log(`[box-health] ring holds ${ring.samples.length} sample(s)${ring.unparseable > 0 ? `, ${ring.unparseable} unparseable` : ""}; read at ${now.toISOString()}`);
+  console.info(formatSeries(rows, stats, hours));
+  console.info(`[box-health] ring holds ${ring.samples.length} sample(s)${ring.unparseable > 0 ? `, ${ring.unparseable} unparseable` : ""}; read at ${now.toISOString()}`);
 }
 
 main().catch((err) => {

@@ -14,7 +14,7 @@ import { selectDirect } from "../lib/heavy-rebuild";
 async function main(): Promise<void> {
   const db = createAdminClient();
 
-  console.log("=== pipeline_runtime_stats_mv (p50/p95/max in ms) ===");
+  console.info("=== pipeline_runtime_stats_mv (p50/p95/max in ms) ===");
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -24,11 +24,11 @@ async function main(): Promise<void> {
     if (error) {
       console.error("  (MV query failed:", error.message, "—", error.details, ")");
     } else {
-      for (const r of (data ?? [])) console.log(" ", JSON.stringify(r));
+      for (const r of (data ?? [])) console.info(" ", JSON.stringify(r));
     }
   }
 
-  console.log("\n=== data_sync_log — last 30 rows ===");
+  console.info("\n=== data_sync_log — last 30 rows ===");
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -37,10 +37,10 @@ async function main(): Promise<void> {
       .order("started_at", { ascending: false })
       .limit(30);
     if (error) { console.error("  failed:", error.message); }
-    else for (const r of (data ?? [])) console.log(" ", JSON.stringify(r));
+    else for (const r of (data ?? [])) console.info(" ", JSON.stringify(r));
   }
 
-  console.log("\n=== data_sync_log — fec_bulk history (last 10) ===");
+  console.info("\n=== data_sync_log — fec_bulk history (last 10) ===");
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -50,10 +50,10 @@ async function main(): Promise<void> {
       .order("started_at", { ascending: false })
       .limit(10);
     if (error) { console.error("  failed:", error.message); }
-    else for (const r of (data ?? [])) console.log(" ", JSON.stringify(r));
+    else for (const r of (data ?? [])) console.info(" ", JSON.stringify(r));
   }
 
-  console.log("\n=== anchor counts ===");
+  console.info("\n=== anchor counts ===");
   // FIX-511 triage — every number here is a delta-baseline magnitude, not a
   // boolean probe or a precision anchor:
   //   - table totals + the single entity_type filter → count:'estimated'
@@ -79,13 +79,13 @@ async function main(): Promise<void> {
       counts[label] = `throw: ${(e as Error).message}`;
     }
   }
-  for (const [k, v] of Object.entries(counts)) console.log(`  ${k.padEnd(40)} ${v}`);
+  for (const [k, v] of Object.entries(counts)) console.info(`  ${k.padEnd(40)} ${v}`);
 
   try {
     const tierRows = await selectDirect<{ tier: string | null; n: string }>(
       "SELECT tier, count(*) AS n FROM officials GROUP BY tier ORDER BY 1 NULLS LAST",
     );
-    for (const r of tierRows) console.log(`  ${("officials_tier_" + (r.tier ?? "null")).padEnd(40)} ${r.n}`);
+    for (const r of tierRows) console.info(`  ${("officials_tier_" + (r.tier ?? "null")).padEnd(40)} ${r.n}`);
 
     // `source` is a metadata JSONB key, NOT a column (the prior labels
     // fr_source_* were PostgREST 42703 errors, not counts).
@@ -103,16 +103,16 @@ async function main(): Promise<void> {
        GROUP BY GROUPING SETS ((metadata->>'source'), (relationship_type))
        ORDER BY 1 NULLS LAST, 2 NULLS LAST`);
     for (const r of frRows.filter((r) => r.g_type === 0)) {
-      console.log(`  ${("fr_type_" + (r.relationship_type ?? "null")).padEnd(40)} ${r.n}`);
+      console.info(`  ${("fr_type_" + (r.relationship_type ?? "null")).padEnd(40)} ${r.n}`);
     }
     for (const r of frRows.filter((r) => r.g_source === 0)) {
-      console.log(`  ${("fr_source_" + (r.source ?? "null")).padEnd(40)} ${r.n}`);
+      console.info(`  ${("fr_source_" + (r.source ?? "null")).padEnd(40)} ${r.n}`);
     }
   } catch (e) {
     console.error("  group-by breakdown failed:", e instanceof Error ? e.message : String(e));
   }
 
-  console.log("\n=== pipeline_state — cron_last_run ===");
+  console.info("\n=== pipeline_state — cron_last_run ===");
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (db as any)
@@ -121,19 +121,19 @@ async function main(): Promise<void> {
       .eq("key", "cron_last_run")
       .maybeSingle();
     if (error) console.error("  failed:", error.message);
-    else if (!data) console.log("  (no row)");
+    else if (!data) console.info("  (no row)");
     else {
-      console.log("  updated_at:", data.updated_at);
+      console.info("  updated_at:", data.updated_at);
       const v = (data as { value?: { status?: string; started_at?: string; completed_at?: string; results?: { duration_ms?: number; errors?: string[] } } }).value ?? {};
-      console.log("  status:    ", v.status);
-      console.log("  started_at:", v.started_at);
-      console.log("  completed: ", v.completed_at);
-      console.log("  duration_ms:", v.results?.duration_ms);
-      console.log("  errors:    ", JSON.stringify(v.results?.errors));
+      console.info("  status:    ", v.status);
+      console.info("  started_at:", v.started_at);
+      console.info("  completed: ", v.completed_at);
+      console.info("  duration_ms:", v.results?.duration_ms);
+      console.info("  errors:    ", JSON.stringify(v.results?.errors));
     }
   }
 
-  console.log("\n=== Sunday cron prediction inputs ===");
+  console.info("\n=== Sunday cron prediction inputs ===");
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: fecLm, error: fecErr } = await (db as any)
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
       .select("key, value, updated_at")
       .ilike("key", "fec_bulk%");
     if (fecErr) console.error("  fec_bulk* failed:", fecErr.message);
-    else for (const r of (fecLm ?? [])) console.log(" ", JSON.stringify(r));
+    else for (const r of (fecLm ?? [])) console.info(" ", JSON.stringify(r));
   }
 
   setTimeout(() => process.exit(0), 250);

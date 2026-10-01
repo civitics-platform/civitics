@@ -349,14 +349,14 @@ async function run(client: Client, label: string, sql: string, params: unknown[]
   const t0 = Date.now();
   const res = await client.query(sql, params);
   const s = (Date.now() - t0) / 1000;
-  console.log(`  ${label.padEnd(52)} ${String(res.rowCount ?? 0).padStart(9)} rows  ${s.toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${String(res.rowCount ?? 0).padStart(9)} rows  ${s.toFixed(1)}s`);
   return res.rowCount ?? 0;
 }
 
 async function step(client: Client, label: string, sql: string, params: unknown[] = []): Promise<void> {
   const t0 = Date.now();
   await client.query(sql, params);
-  console.log(`  ${label.padEnd(52)} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
 async function budgeted(
@@ -379,7 +379,7 @@ async function budgeted(
     await client.query("SET statement_timeout = 0");
   }
   const s = (Date.now() - t0) / 1000;
-  console.log(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
+  console.info(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
   if (s > budgetS) throw new BudgetExceeded(`${label} took ${s.toFixed(0)}s against a ${budgetS}s budget`);
 }
 
@@ -388,7 +388,7 @@ async function runVacuum(client: Client, defer = false): Promise<void> {
     printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;
   }
-  console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
+  console.info("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
   for (const t of CHURNED_TABLES) {
     try {
       await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
@@ -419,7 +419,7 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
     return;
   }
 
-  console.log("\n── Phase 3: materialized views + vacuum ─────────────────");
+  console.info("\n── Phase 3: materialized views + vacuum ─────────────────");
   for (const fn of MV_REFRESH_FNS) {
     try {
       await budgeted(client, `${fn}()`, `SELECT ${fn}()`, STEP_BUDGET_S["mv"]!);
@@ -437,13 +437,13 @@ async function runMvsAndVacuum(client: Client, defer = false): Promise<void> {
  * committed rows.
  */
 async function runRollups(client: Client, prod: boolean, defer = false): Promise<void> {
-  console.log("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
+  console.info("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
   try {
     const [offCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _affected`);
     const officials = Number(offCount?.n ?? 0);
     const [donorCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _donor`);
     const donors = Number(donorCount?.n ?? 0);
-    console.log(`  affected officials: ${officials.toLocaleString()}   donors: ${donors.toLocaleString()}`);
+    console.info(`  affected officials: ${officials.toLocaleString()}   donors: ${donors.toLocaleString()}`);
 
     // FIX-1074 — the manifest-scoped drain is now ONE shared helper. The three
     // remediation scripts carried a byte-for-byte identical copy of these steps
@@ -575,7 +575,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(
+  console.info(
     `[fix1153] role-ineligible holders — ${envLabel()} — ${apply ? "APPLY" : "DRY RUN"}` +
       `${defer ? " (--defer-tails)" : ""}\n`,
   );
@@ -617,8 +617,8 @@ async function main(): Promise<void> {
 
   if (manifest) {
     const ids = manifestColumn(manifest, "official_id");
-    console.log(`Manifest: ${manifest.path}`);
-    console.log(`  ${ids.length} officials — recomputing their facts on ${envLabel()}, keyed.`);
+    console.info(`Manifest: ${manifest.path}`);
+    console.info(`  ${ids.length} officials — recomputing their facts on ${envLabel()}, keyed.`);
     pop = await q<PopRow>(client, KEYED_POPULATION_SQL, [ids]);
 
     // The clone-vs-here diff. A clone dry run is stale the moment prod moves, so
@@ -638,14 +638,14 @@ async function main(): Promise<void> {
     });
 
     const moved = diffs.filter((x) => x.v !== "match");
-    console.log(`  diff vs manifest: ${diffs.length - moved.length} match, ${moved.length} moved`);
+    console.info(`  diff vs manifest: ${diffs.length - moved.length} match, ${moved.length} moved`);
     for (const { r, d, v } of moved) {
-      console.log(`    ${(r.full_name ?? "").slice(0, 30).padEnd(30)} ${formatDiffLine(d, v)}`);
+      console.info(`    ${(r.full_name ?? "").slice(0, 30).padEnd(30)} ${formatDiffLine(d, v)}`);
     }
 
     const blocked = diffs.filter((x) => !diffActionable(x.v) && x.v !== "gone");
     if (blocked.length > 0) {
-      console.log(
+      console.info(
         `  ! ${blocked.length} official(s) hold MORE rows here than the manifest recorded.` +
           ` They are SKIPPED — the manifest did not authorise those rows.` +
           ` Re-derive on a fresh clone and re-authorise them.`,
@@ -657,15 +657,15 @@ async function main(): Promise<void> {
     // an illegitimate fec_id, and the retire step is keyed on the OFFICIAL, not
     // on its rows — so it stays in the population. This is FIX-1164's 55.
     const gone = diffs.filter((x) => x.v === "gone").length;
-    if (gone > 0) console.log(`  ${gone} official(s) hold no FR rows here — id-retire only.`);
+    if (gone > 0) console.info(`  ${gone} official(s) hold no FR rows here — id-retire only.`);
   } else {
-    console.log("Deriving the role-ineligible holder population…  (clone-only path)");
-    console.log(`  electable roles (from ROLE_TO_OFFICE): ${ELECTABLE_ROLES.join(", ")}\n`);
+    console.info("Deriving the role-ineligible holder population…  (clone-only path)");
+    console.info(`  electable roles (from ROLE_TO_OFFICE): ${ELECTABLE_ROLES.join(", ")}\n`);
     pop = await q<PopRow>(client, POPULATION_SQL, [ELECTABLE_ROLES]);
   }
 
   if (pop.length === 0) {
-    console.log("Nothing to remediate — 0 role-ineligible officials hold fec_bulk money.");
+    console.info("Nothing to remediate — 0 role-ineligible officials hold fec_bulk money.");
     await client.end();
     return;
   }
@@ -677,7 +677,7 @@ async function main(): Promise<void> {
 
   const totalRows = pop.reduce((s, r) => s + Number(r.fec_rows), 0);
   const totalCents = pop.reduce((s, r) => s + Number(r.fec_cents), 0);
-  console.log(`  ${pop.length} officials, ${totalRows.toLocaleString()} FR rows, ${usd(totalCents)}`);
+  console.info(`  ${pop.length} officials, ${totalRows.toLocaleString()} FR rows, ${usd(totalCents)}`);
 
   const byRole = new Map<string, { n: number; cents: number }>();
   for (const r of pop) {
@@ -685,9 +685,9 @@ async function main(): Promise<void> {
     const cur = byRole.get(k) ?? { n: 0, cents: 0 };
     byRole.set(k, { n: cur.n + 1, cents: cur.cents + Number(r.fec_cents) });
   }
-  console.log("\n  by role:");
+  console.info("\n  by role:");
   for (const [role, v] of [...byRole].sort((a, b) => b[1].cents - a[1].cents)) {
-    console.log(`    ${role.padEnd(28)} ${String(v.n).padStart(4)}  ${usd(v.cents)}`);
+    console.info(`    ${role.padEnd(28)} ${String(v.n).padStart(4)}  ${usd(v.cents)}`);
   }
 
   // ── Reconciliation against the classifier and the FIX-937 manifests ───────
@@ -710,9 +710,9 @@ async function main(): Promise<void> {
     `SELECT row_class, count(*)::text AS rows, COALESCE(sum(amount_cents),0)::text AS cents
        FROM _doomed GROUP BY row_class ORDER BY row_class`,
   );
-  console.log("\n  row classes:");
+  console.info("\n  row classes:");
   for (const c of classSplit) {
-    console.log(`    ${c.row_class.padEnd(12)} ${Number(c.rows).toLocaleString().padStart(9)} rows  ${usd(c.cents)}`);
+    console.info(`    ${c.row_class.padEnd(12)} ${Number(c.rows).toLocaleString().padStart(9)} rows  ${usd(c.cents)}`);
   }
 
   const perOfficial = await q<{
@@ -760,7 +760,7 @@ async function main(): Promise<void> {
     ];
   });
   fs.writeFileSync(tsvPath, tsv([header, ...body]), "utf8");
-  console.log(`\nwrote ${tsvPath}`);
+  console.info(`\nwrote ${tsvPath}`);
 
   // FIX-1165 (c) — the tail's cost table, printed BEFORE the go-ahead so the
   // trade is visible at decision time rather than discovered at minute 28.
@@ -768,7 +768,7 @@ async function main(): Promise<void> {
   printTailTable(declareRemediationTail(defer), defer, owners);
 
   if (!apply) {
-    console.log("\nDRY RUN — nothing written to the database. Re-run with --apply to commit.");
+    console.info("\nDRY RUN — nothing written to the database. Re-run with --apply to commit.");
     await client.end();
     return;
   }
@@ -803,7 +803,7 @@ async function main(): Promise<void> {
   );
   const propagatedCents = Number(pd?.cents ?? 0);
 
-  console.log("\n── Phase 1: the delete (one transaction) ────────────────");
+  console.info("\n── Phase 1: the delete (one transaction) ────────────────");
   await client.query("BEGIN");
   try {
     // Donor + official sets, captured BEFORE the delete — after it they are gone.
@@ -871,7 +871,7 @@ async function main(): Promise<void> {
     );
 
     await client.query("COMMIT");
-    console.log(`\n  committed — ${deleted.toLocaleString()} FR rows deleted, ${retired} id(s) retired, ${refreshed} owner row(s) refreshed`);
+    console.info(`\n  committed — ${deleted.toLocaleString()} FR rows deleted, ${retired} id(s) retired, ${refreshed} owner row(s) refreshed`);
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(`\n✗ ROLLED BACK — ${err instanceof Error ? err.message : String(err)}`);
@@ -887,9 +887,9 @@ async function main(): Promise<void> {
   const scope = manifest ? `affected donors (${donorIds.length.toLocaleString()})` : "platform";
   const before = Number(conservationBefore?.cents ?? 0);
   const after = Number(conservationAfter?.cents ?? 0);
-  console.log(`\n  ${scope} donation total: ${usd(before)} → ${usd(after)}`);
+  console.info(`\n  ${scope} donation total: ${usd(before)} → ${usd(after)}`);
   const expected = before - deletedCents + propagatedCents;
-  console.log(
+  console.info(
     `  deleted ${usd(-deletedCents)}; fresher-wins propagation ${usd(propagatedCents)}; ` +
       `expected ${usd(expected)}`,
   );
@@ -900,7 +900,7 @@ async function main(): Promise<void> {
         `Investigate before reporting.`,
     );
   } else {
-    console.log(`  conservation OK`);
+    console.info(`  conservation OK`);
   }
 
   await runRollups(client, prod, defer);
@@ -916,8 +916,8 @@ async function main(): Promise<void> {
       popIds,
       ELECTABLE_ROLES,
     ]);
-    console.log(`  manifest officials still holding fec_bulk money: ${c?.still_money}`);
-    console.log(`  manifest officials still carrying an fec_id:     ${c?.still_id}`);
+    console.info(`  manifest officials still holding fec_bulk money: ${c?.still_money}`);
+    console.info(`  manifest officials still carrying an fec_id:     ${c?.still_id}`);
     if (c?.still_money !== "0" || c?.still_id !== "0") {
       console.error("  ! expected 0 and 0 — the class is NOT closed for this manifest.");
     }
@@ -932,7 +932,7 @@ async function main(): Promise<void> {
         WHERE COALESCE(o.role_title,'') <> ALL($1::text[])`,
       [ELECTABLE_ROLES],
     );
-    console.log(`  officials with a role-ineligible title still holding fec_bulk money: ${left?.n}`);
+    console.info(`  officials with a role-ineligible title still holding fec_bulk money: ${left?.n}`);
     if (left?.n !== "0") {
       console.error("  ! expected 0 — the class is NOT closed. Investigate before reporting.");
     }
@@ -947,7 +947,7 @@ async function main(): Promise<void> {
  * return is a premise contradiction to REPORT, not to force.
  */
 async function reconcile(client: Client, pop: PopRow[]): Promise<void> {
-  console.log("\n── Reconciliation ───────────────────────────────────────");
+  console.info("\n── Reconciliation ───────────────────────────────────────");
   const predicate = new Set(pop.map((r) => r.official_id));
 
   // (a) the classifier's own ROLE-INELIGIBLE branch, re-derived live.
@@ -955,18 +955,18 @@ async function reconcile(client: Client, pop: PopRow[]): Promise<void> {
   const { classified } = classify(suspects);
   const branch = classified.filter((e) => e.branch === "ROLE-INELIGIBLE HOLDER");
   const branchIds = new Set(branch.map((e) => e.official_id));
-  console.log(`  classifier ROLE-INELIGIBLE branch: ${branch.length}`);
+  console.info(`  classifier ROLE-INELIGIBLE branch: ${branch.length}`);
 
   const inBranchNotPredicate = branch.filter((e) => !predicate.has(e.official_id));
   const inPredicateNotBranch = pop.filter((r) => !branchIds.has(r.official_id));
-  console.log(`    in branch but NOT in the predicate: ${inBranchNotPredicate.length}`);
-  for (const e of inBranchNotPredicate) console.log(`      ! ${e.full_name} (${e.role_title})`);
-  console.log(`    in the predicate but NOT in the branch: ${inPredicateNotBranch.length}`);
+  console.info(`    in branch but NOT in the predicate: ${inBranchNotPredicate.length}`);
+  for (const e of inBranchNotPredicate) console.info(`      ! ${e.full_name} (${e.role_title})`);
+  console.info(`    in the predicate but NOT in the branch: ${inPredicateNotBranch.length}`);
   for (const r of inPredicateNotBranch.slice(0, 40)) {
-    console.log(`      + ${r.full_name} (${r.role_title}, ${r.jurisdiction ?? "—"}, ${usd(r.fec_cents)})`);
+    console.info(`      + ${r.full_name} (${r.role_title}, ${r.jurisdiction ?? "—"}, ${usd(r.fec_cents)})`);
   }
   if (inPredicateNotBranch.length > 40) {
-    console.log(`      … and ${inPredicateNotBranch.length - 40} more (see the manifest TSV)`);
+    console.info(`      … and ${inPredicateNotBranch.length - 40} more (see the manifest TSV)`);
   }
 
   // (b) the FIX-937 manifests, if they are still on disk.
@@ -978,7 +978,7 @@ async function reconcile(client: Client, pop: PopRow[]): Promise<void> {
   ]) {
     const p = path.join(auditDir, f);
     if (!fs.existsSync(p)) {
-      console.log(`  ${f}: not on disk — skipped`);
+      console.info(`  ${f}: not on disk — skipped`);
       continue;
     }
     // These manifests carry a leading `#` banner (counts, provenance, refusal
@@ -992,13 +992,13 @@ async function reconcile(client: Client, pop: PopRow[]): Promise<void> {
     const head = lines[0]!.split("\t");
     const idCol = head.findIndex((c) => /official_id|^id$/i.test(c));
     if (idCol < 0) {
-      console.log(`  ${f}: no official_id column — skipped`);
+      console.info(`  ${f}: no official_id column — skipped`);
       continue;
     }
     const ids = lines.slice(1).map((l) => l.split("\t")[idCol]!).filter(Boolean);
     const missing = ids.filter((id) => !predicate.has(id));
-    console.log(`  ${f}: ${ids.length} rows, ${missing.length} NOT returned by the predicate`);
-    for (const id of missing.slice(0, 20)) console.log(`      ! ${id}`);
+    console.info(`  ${f}: ${ids.length} rows, ${missing.length} NOT returned by the predicate`);
+    for (const id of missing.slice(0, 20)) console.info(`      ! ${id}`);
   }
 }
 
