@@ -1379,8 +1379,7 @@ export function dedupeIndustryTags<T extends { entity_id: string; tag: string; t
 // authoritative clears (rule via RPC, curated via clearCuratedIndustryTags) own
 // every industry row on the table, so anything written from outside is wiped on
 // the next nightly and anything written twice from inside accumulates.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function tagFinancialEntities(db: any): Promise<number> {
+export async function tagFinancialEntities(_db: unknown): Promise<number> {
   // [2/3] since FIX-959 — the donor-side tag writes must land before the
   // sector-affinity refresh and tagOfficials read them.
   console.info("\n  [2/3] Tagging financial entities...");

@@ -16,12 +16,9 @@
  * matched_entity_id=NULL.
  */
 
-import type { createAdminClient } from "@civitics/db";
-import { refreshPrimarySourceForEntities, rowsOrThrow, afterKey } from "@civitics/db";
+import { rowsOrThrow, afterKey } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import type { ParsedFiling, ParsedOfficer, ParsedGrantOut } from "./parse";
-
-type Db = ReturnType<typeof createAdminClient>;
 
 const FILING_CHUNK   = 100;
 const OFFICER_CHUNK  = 500;

@@ -31,7 +31,7 @@ import {
   skipSync,
   type PipelineResult,
 } from "../sync-log";
-import { syncCompanies, type CompanyRecord } from "./companies";
+import { syncCompanies } from "./companies";
 import { parseDef14a } from "./def14a";
 import { matchPersonToDonor } from "./matcher";
 import { scanDailyShareholders } from "./shareholders";

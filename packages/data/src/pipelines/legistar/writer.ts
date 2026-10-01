@@ -24,7 +24,6 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { createAdminClient } from "@civitics/db";
 import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 import {
   bodyToGoverningBodyRow,

@@ -24,8 +24,6 @@ import {
   setGuardedHolds,
 } from "./prod-session";
 
-type Issued = { sql: string; params: readonly unknown[] };
-
 /**
  * A `pg.Client` stand-in, injected through the module's own `dbUrl` seam.
  *

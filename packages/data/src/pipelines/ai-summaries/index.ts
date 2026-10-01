@@ -157,9 +157,8 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
   // a fresh now() ISO string still gives "still-open" semantics.
   // FIX-545: work-list read was log-and-continue (an error read as "no open
   // proposals" and the step skipped while the run looked clean).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const proposals = rowsOrThrow(
-    await (db as any)
+    await db
       .from("proposals")
       .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at, primary_source")
       .gt("metadata->>comment_period_end", new Date().toISOString())
@@ -193,12 +192,13 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
   );
   const cached = new Set<string>(cacheRows.map((r) => r.entity_id));
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return proposals
-    .filter((p: any) => !cached.has(p.id))
+    .filter((p) => !cached.has(p.id))
     .slice(0, 100)
-    .map((p: any) => {
-      const acronym: string | null = p.metadata?.agency_id ?? null;
+    .map((p) => {
+      // metadata is jsonb; agency_id / latest_action are string keys on its object form.
+      const meta = p.metadata as Record<string, unknown> | null;
+      const acronym = (meta?.["agency_id"] as string | undefined) ?? null;
       const contextLevel = classifyContext(p.summary_plain ?? null, p.title ?? "");
       const primarySource = (p as { primary_source?: string | null }).primary_source ?? null;
       return {
@@ -208,7 +208,7 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
         type: p.type,
         agency_acronym: acronym,
         agency_name: agencyFullName(acronym),
-        latest_action: (p.metadata?.latest_action as string | undefined) ?? null,
+        latest_action: (meta?.["latest_action"] as string | undefined) ?? null,
         context_level: contextLevel,
         jurisdiction_id: p.jurisdiction_id ?? "",
         updated_at: p.updated_at ?? new Date().toISOString(),
@@ -339,9 +339,8 @@ export async function fetchOfficials(db: ReturnType<typeof createAdminClient>): 
   // Fetch federal officials with the most data, excluding those already cached
   // FIX-545: work-list read was return-[]-on-error; cache read was
   // silent-zero + 1,000-row truncated (re-summarizing cached officials).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const officialRows = rowsOrThrow(
-    await (db as any)
+    await db
       .from("officials")
       .select("id, full_name, role_title, party, metadata, jurisdiction_id, updated_at")
       .in("role_title", ["Senator", "Representative"])

@@ -109,7 +109,15 @@ test("FIX-1194 cc-153: (d) scans cron.job_run_details ONCE, the probe's MATERIAL
 // ---------------------------------------------------------------------------
 
 type Blocked = { check: string; name: string; detail: string; retry_after: string | null };
-type Gate = { ok: boolean; blocked_by: Blocked[]; readings: Record<string, any> };
+/** prod_op_gate()'s readings — only the sections these assertions read. */
+type Readings = {
+  watchdogs: { jobs: unknown[] };
+  vacuum: { unparsed: unknown };
+  blackout: { source: string };
+  nightly: { next_start: string };
+  stuck_units: { guarded_pipelines: unknown };
+};
+type Gate = { ok: boolean; blocked_by: Blocked[]; readings: Readings };
 
 let runid = 9_150_000_000;
 

@@ -20,7 +20,6 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { createAdminClient } from "@civitics/db";
 import { refreshPrimarySourceForEntities } from "@civitics/db";
 
 type Db = any;

@@ -134,13 +134,6 @@ function textOf(node: XmlNode): string | null {
   return null;
 }
 
-function intOf(node: XmlNode): number | null {
-  const t = textOf(node);
-  if (t === null) return null;
-  const n = parseInt(t.replace(/[, ]+/g, ""), 10);
-  return isNaN(n) ? null : n;
-}
-
 function numberOf(node: XmlNode): number | null {
   const t = textOf(node);
   if (t === null) return null;

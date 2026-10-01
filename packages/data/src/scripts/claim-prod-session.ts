@@ -30,7 +30,6 @@
 
 import {
   claimProdSession,
-  describeWriters,
   formatAge,
   readProdSessionState,
   withClient,

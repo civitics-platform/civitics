@@ -179,7 +179,6 @@ import {
   loadOfficialsByFecIds,
 } from "./candidates";
 import {
-  retiredClaims,
   hasAnyRetiredClaim,
   hasRetiredClaim,
   priorClaims,
@@ -1195,7 +1194,6 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
   let indivDonorsUpserted = 0, indivDonorsFailed = 0;
   let indivRelsUpserted = 0, indivRelsFailed = 0;
   let indivCmteRelsUpserted = 0, indivCmteRelsFailed = 0; // FIX-236
-  let smallDollarBracketRows = 0;                        // FIX-1068
   // FIX-686 integrity counter: donor→committee rows skipped because an entity id
   // failed to resolve. With the retry+throw writers this must read 0; a nonzero
   // value means a committee/donor entity silently went missing — re-run the cycle.
@@ -2108,7 +2106,6 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   }
 
                   const bracketRes = await replaceSmallDollarBrackets(parseInt(CYCLE, 10), writeRows);
-                  smallDollarBracketRows += bracketRes.inserted;
                   console.info(
                     `    Small-dollar brackets — deleted ${bracketRes.deleted.toLocaleString()}, ` +
                       `inserted ${bracketRes.inserted.toLocaleString()}, ` +

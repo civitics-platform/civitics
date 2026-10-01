@@ -59,7 +59,6 @@ const ABSTAIN_SAMPLE_LIMIT = 25;
 // unclassifiable PAC ends with NO industry tag. That is the honest state, and it
 // is exactly what the 362 NULL curated overrides already assert for the same
 // class of entity (leadership PACs, party committees, vanity PACs).
-type Industry = (typeof VALID_INDUSTRIES)[number];
 
 /**
  * What the model may answer that is NOT a tag. The prompt still offers it — an

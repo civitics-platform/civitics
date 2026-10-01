@@ -33,7 +33,6 @@ import {
   mapLegislationType,
   mapVote,
   mapVoteResult,
-  sleep,
   CURRENT_CONGRESS,
 } from "./members";
 import {

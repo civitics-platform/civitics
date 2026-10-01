@@ -42,7 +42,7 @@ import {
   type CommitteeInfo,
 } from "../pipelines/fec-bulk/index";
 import { loadOfficialsByFecIds } from "../pipelines/fec-bulk/candidates";
-import { extractZipEntryToDisk, candMasterUrl } from "../pipelines/fec-bulk/util";
+import { extractZipEntryToDisk } from "../pipelines/fec-bulk/util";
 import { streamIndependentExpenditures } from "../pipelines/fec-bulk/indep-exp";
 import { resolveOrMintIeTargets, type IeTargetIdentity } from "../pipelines/fec-bulk/mint-ie-targets";
 import {

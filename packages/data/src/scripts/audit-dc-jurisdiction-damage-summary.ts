@@ -14,7 +14,6 @@ import { Client } from "pg";
 
 const FED      = "eb075dd5-038f-4b21-82f7-30f5c9e1d49a";
 const DC_CAN   = "4d2aac54-6d83-4736-b446-2970e98439f5";
-const DC_SUB   = "6145e924-257a-4ddf-9c42-175e5de27665";
 const WIN_LO   = "2026-05-09";
 const WIN_HI   = "2026-05-26";
 

@@ -63,9 +63,8 @@ async function main(): Promise<void> {
   const db = createAdminClient();
 
   await section("DONOR — Elon Musk", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: ents } = await (db as any).from("financial_entities")
+    const { data: ents } = await db.from("financial_entities")
       .select("id, display_name, canonical_name, entity_type, total_donated_cents, metadata")
       .ilike("display_name", "%MUSK%ELON%")
       .or("display_name.ilike.%ELON%MUSK%")
@@ -116,9 +115,8 @@ async function main(): Promise<void> {
   });
 
   await section("DONOR — Elizabeth Simons → DCCC (FIX-236 anchor, expect ~$522K)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: ents } = await (db as any).from("financial_entities")
+    const { data: ents } = await db.from("financial_entities")
       .select("id, display_name, total_donated_cents")
       .or("display_name.ilike.%SIMONS%ELIZABETH%,display_name.ilike.%ELIZABETH%SIMONS%")
       .limit(10);
@@ -128,9 +126,8 @@ async function main(): Promise<void> {
     if (!ents || ents.length === 0) return;
     const ids = ents.map((e: { id: string }) => e.id);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: dccc } = await (db as any).from("financial_entities")
+    const { data: dccc } = await db.from("financial_entities")
       .select("id, display_name")
       .or("display_name.ilike.%DCCC%,display_name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
       .limit(10);
@@ -141,9 +138,8 @@ async function main(): Promise<void> {
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
     if (dcccIds.length === 0) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: rels } = await (db as any).from("financial_relationships")
+    const { data: rels } = await db.from("financial_relationships")
       .select("relationship_type, source:metadata->>source, amount_cents, cycle_year, to_id")
       .in("from_id", ids)
       .in("to_id", dcccIds);
@@ -154,9 +150,8 @@ async function main(): Promise<void> {
   });
 
   await section("DONOR — Jon Stryker → DCCC (FIX-236 anchor, expect ~$310K)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: ents } = await (db as any).from("financial_entities")
+    const { data: ents } = await db.from("financial_entities")
       .select("id, display_name, total_donated_cents")
       .or("display_name.ilike.%STRYKER%JON%,display_name.ilike.%JON%STRYKER%")
       .limit(10);
@@ -164,18 +159,16 @@ async function main(): Promise<void> {
     for (const e of (ents ?? [])) console.info(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
     if (!ents || ents.length === 0) return;
     const ids = ents.map((e: { id: string }) => e.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: dccc } = await (db as any).from("financial_entities")
+    const { data: dccc } = await db.from("financial_entities")
       .select("id, display_name")
       .or("display_name.ilike.%DCCC%,display_name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
       .limit(10);
     // .in() bounded: the DCCC probe above is .limit(10), max 10 -- FIX-1037
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
     if (dcccIds.length === 0) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: rels } = await (db as any).from("financial_relationships")
+    const { data: rels } = await db.from("financial_relationships")
       .select("relationship_type, source:metadata->>source, amount_cents, cycle_year")
       .in("from_id", ids)
       .in("to_id", dcccIds);
@@ -185,9 +178,8 @@ async function main(): Promise<void> {
   });
 
   await section("DONOR — Stephen Schwarzman (FIX-239 dedup — expect ONE row)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: ents } = await (db as any).from("financial_entities")
+    const { data: ents } = await db.from("financial_entities")
       .select("id, display_name, canonical_name, donor_fingerprint, total_donated_cents")
       .ilike("display_name", "%SCHWARZMAN%")
       .limit(20);
@@ -207,9 +199,8 @@ async function main(): Promise<void> {
     if (error) console.info("  error:", error.message);
 
     // pick one and confirm it resolves
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: sample } = await (db as any).from("financial_entities")
+    const { data: sample } = await db.from("financial_entities")
       .select("id, display_name, canonical_name, total_donated_cents")
       .ilike("display_name", "THOMPSON,%")
       .gt("total_donated_cents", 50000)
@@ -226,9 +217,8 @@ async function main(): Promise<void> {
       // exact count was a full ilike scan whose number nobody compared.
       // (count:'estimated' is not an option here: the hosted PostgREST 500s on
       // EXPLAIN-based counts when the filter value contains an apostrophe.)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-      const { data: sample } = await (db as any).from("financial_entities")
+      const { data: sample } = await db.from("financial_entities")
         .select("id, display_name, canonical_name")
         .ilike("display_name", `${surname},%`)
         .limit(3);
@@ -238,14 +228,13 @@ async function main(): Promise<void> {
   });
 
   await section("RECIPIENT — Donald Trump (tier='candidate' or 'elected'; FIX-240 IE inflow)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: off } = await (db as any).from("officials")
+    const { data: off } = await db.from("officials")
       .select("id, full_name, tier, party, role_title, source_ids")
       .or("full_name.ilike.%DONALD%TRUMP%,full_name.ilike.%TRUMP%DONALD%")
       .limit(10);
     console.info(`  matching officials: ${(off ?? []).length}`);
-    for (const o of (off ?? [])) console.info(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} role="${o.role_title}" fec=${o.source_ids?.fec_candidate_id ?? "-"}`);
+    for (const o of (off ?? [])) console.info(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} role="${o.role_title}" fec=${(o.source_ids as Record<string, unknown> | null)?.["fec_candidate_id"] ?? "-"}`);
 
     if (!off || off.length === 0) return;
     const ids = off.map((o: { id: string }) => o.id);
@@ -272,20 +261,18 @@ async function main(): Promise<void> {
   });
 
   await section("RECIPIENT — JD Vance (FIX-247 'J D' parsing — should NOT duplicate)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: off } = await (db as any).from("officials")
+    const { data: off } = await db.from("officials")
       .select("id, full_name, tier, party, role_title, source_ids")
       .or("full_name.ilike.%VANCE%J%,full_name.ilike.%VANCE,%J%")
       .limit(10);
     console.info(`  Vance officials: ${(off ?? []).length}`);
-    for (const o of (off ?? [])) console.info(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} fec=${o.source_ids?.fec_candidate_id ?? "-"}`);
+    for (const o of (off ?? [])) console.info(`    [${o.id}] name="${o.full_name}" tier=${o.tier} party=${o.party} fec=${(o.source_ids as Record<string, unknown> | null)?.["fec_candidate_id"] ?? "-"}`);
   });
 
   await section("RECIPIENT — Senate Majority PAC inflow (FIX-240 IE)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: ents } = await (db as any).from("financial_entities")
+    const { data: ents } = await db.from("financial_entities")
       .select("id, display_name, fec_committee_id")
       .ilike("display_name", "%SENATE MAJORITY PAC%")
       .limit(5);
@@ -309,9 +296,8 @@ async function main(): Promise<void> {
     const { count: total } = await (db as any).from("entity_connections").select("id", { count: "estimated", head: true });
     console.info(`  entity_connections total rows (estimated): ${total}`);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
-    const { data: ap } = await (db as any).from("financial_entities")
+    const { data: ap } = await db.from("financial_entities")
       .select("id, display_name")
       .ilike("display_name", "%AMERICA PAC%")
       .limit(5);

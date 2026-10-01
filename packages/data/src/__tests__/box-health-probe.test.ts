@@ -129,7 +129,14 @@ type Sat = {
   saturated: boolean;
   reason: string;
   age_seconds: number | null;
-  readings: { probe: Record<string, any> | null; memory: Record<string, any> | null };
+  readings: { probe: Record<string, unknown> | null; memory: Record<string, unknown> | null };
+};
+
+/** record_box_health()'s payload: flat counters plus the three nested maps the assertions index into. */
+type BoxHealth = Record<string, unknown> & {
+  watchdog_max_wall_10m: Record<string, unknown>;
+  watchdog_runs_10m: Record<string, unknown>;
+  backends: Record<string, unknown>;
 };
 
 let runid = 9_194_000_000;
@@ -273,7 +280,7 @@ test("FIX-1194: record_box_health() on the clone — the stamp appears, readings
       )).rows[0]?.b;
       assert.ok(budget, "donor-rollup-refresh has a budget row");
 
-      const r = await c.query<{ v: Record<string, any> }>("SELECT public.record_box_health($1::timestamptz) AS v", [NOON]);
+      const r = await c.query<{ v: BoxHealth }>("SELECT public.record_box_health($1::timestamptz) AS v", [NOON]);
       const v = r.rows[0]!.v;
       console.info(`[fix1194] probe on the clone: probe_ms=${v["probe_ms"]} ${JSON.stringify(v)}`);
       assert.equal(v["startup_timeouts_10m"], 1);
@@ -289,7 +296,7 @@ test("FIX-1194: record_box_health() on the clone — the stamp appears, readings
       assert.equal(typeof v["backends"]["client"], "number");
       assert.equal(typeof v["probe_ms"], "number");
 
-      const s = await c.query<{ value: Record<string, any> }>("SELECT value FROM public.pipeline_state WHERE key = 'box_health'");
+      const s = await c.query<{ value: { at: string } }>("SELECT value FROM public.pipeline_state WHERE key = 'box_health'");
       assert.equal(Date.parse(s.rows[0]!.value["at"]), Date.parse("2030-03-12T12:00:00Z"), "the stamp's `at` is the firing's");
       // And the reader sees a fresh stamp with 1 failure and a 10 s wall.
       assert.equal((await saturated(c)).reason, "watchdog_wall");
@@ -303,13 +310,13 @@ test("FIX-1125: record_box_health_mem() validates, drops unknown keys, stamps th
   const c = await connect(t);
   if (!c) return;
   try {
-    const call = (p: unknown) => c.query<{ r: Record<string, any> }>("SELECT public.record_box_health_mem($1::jsonb) AS r", [JSON.stringify(p)]);
+    const call = (p: unknown) => c.query<{ r: Record<string, unknown> }>("SELECT public.record_box_health_mem($1::jsonb) AS r", [JSON.stringify(p)]);
     const good = { mem_available_bytes: 418258944, mem_total_bytes: 948195328, load1: 0.14, route_at: "2026-09-24T01:34:29.602Z" };
 
     await inTx(c, async () => {
       const r = (await call({ ...good, bogus: 1 })).rows[0]!.r;
       assert.deepEqual(r["ignored_keys"], ["bogus"]);
-      const v = (await c.query<{ value: Record<string, any> }>("SELECT value FROM public.pipeline_state WHERE key = 'box_health_mem'")).rows[0]!.value;
+      const v = (await c.query<{ value: Record<string, unknown> }>("SELECT value FROM public.pipeline_state WHERE key = 'box_health_mem'")).rows[0]!.value;
       assert.equal(v["mem_available_bytes"], 418258944);
       assert.equal(v["route_at"], good.route_at);
       assert.ok(!("bogus" in v), "an unlisted key is not stored");

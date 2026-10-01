@@ -100,10 +100,8 @@ export class LegistarClient {
   ): Promise<T[]> {
     const results: T[] = [];
     let skip = 0;
-    let page = 0;
 
     while (true) {
-      page++;
       const url = this.buildUrl(endpoint, skip, filter);
 
       let data: T[] | null = null;

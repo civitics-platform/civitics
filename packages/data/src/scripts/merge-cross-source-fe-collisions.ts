@@ -252,7 +252,6 @@ async function buildRemap(client: Client): Promise<void> {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const apply = argv.includes("--apply");
-  const dryRun = !apply; // default is dry-run
   const allowProd = argv.includes("--allow-prod");
   const prod = isProd();
 

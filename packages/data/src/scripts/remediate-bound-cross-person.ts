@@ -275,8 +275,6 @@ async function main(): Promise<void> {
       `${"stale $".padStart(14)}${"stale/shared".padStart(13)}${"live".padStart(8)}  owner`,
   );
   for (const { e, verdict } of rows) {
-    const shared = Number(e.shared);
-    const share = shared > 0 ? (Number(e.stale_rows) / shared) * 100 : 0;
     console.info(
       `  ${(e.full_name ?? "").slice(0, 23).padEnd(24)}${(e.role_title ?? "").slice(0, 15).padEnd(16)}` +
         `${verdict.padEnd(20)}${usd(e.stale_cents).padStart(14)}` +
