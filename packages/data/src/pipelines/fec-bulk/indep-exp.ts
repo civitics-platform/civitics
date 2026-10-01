@@ -239,7 +239,7 @@ export async function streamIndependentExpenditures(
   for await (const row of parser as AsyncIterable<IeRow>) {
     rowsRead++;
     if (rowsRead % 50_000 === 0) {
-      console.log(
+      console.info(
         `    ... ${rowsRead.toLocaleString()} rows | ` +
         `${aggregations.size.toLocaleString()} (cmte×cand×S/O) keys`,
       );
@@ -347,17 +347,17 @@ export async function streamIndependentExpenditures(
   const usd = (cents: number) =>
     `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
-  console.log(`    Rows read:                 ${rowsRead.toLocaleString()}`);
-  console.log(`    Passed sup_opp filter:     ${passedSupOpp.toLocaleString()}`);
-  console.log(`    Passed cmte+cand filter:   ${passedCmteCand.toLocaleString()}`);
-  console.log(`    Rejected exp_amo > $${(MAX_IE_AMOUNT_DOLLARS / 1e6).toFixed(0)}M:  ${rejectedHighAmount.toLocaleString()}`);
-  console.log(`    Passed amount filter:      ${passedAmount.toLocaleString()}`);
-  console.log(`    Passed candidateSet:       ${passedCand.toLocaleString()}`);
-  console.log(`    Kept $ (matched officials):   ${usd(keptCents)}`);
-  console.log(`    Dropped $ (unmatched target): ${usd(droppedUnmatchedCents)}`);
-  console.log(`    Unique (cmte × cand × S/O): ${aggregations.size.toLocaleString()}`);
+  console.info(`    Rows read:                 ${rowsRead.toLocaleString()}`);
+  console.info(`    Passed sup_opp filter:     ${passedSupOpp.toLocaleString()}`);
+  console.info(`    Passed cmte+cand filter:   ${passedCmteCand.toLocaleString()}`);
+  console.info(`    Rejected exp_amo > $${(MAX_IE_AMOUNT_DOLLARS / 1e6).toFixed(0)}M:  ${rejectedHighAmount.toLocaleString()}`);
+  console.info(`    Passed amount filter:      ${passedAmount.toLocaleString()}`);
+  console.info(`    Passed candidateSet:       ${passedCand.toLocaleString()}`);
+  console.info(`    Kept $ (matched officials):   ${usd(keptCents)}`);
+  console.info(`    Dropped $ (unmatched target): ${usd(droppedUnmatchedCents)}`);
+  console.info(`    Unique (cmte × cand × S/O): ${aggregations.size.toLocaleString()}`);
   if (unmatchedAggregations) {
-    console.log(`    Unmatched (cmte × cand × S/O): ${unmatchedAggregations.size.toLocaleString()} — will resolve-or-mint (FIX-674)`);
+    console.info(`    Unmatched (cmte × cand × S/O): ${unmatchedAggregations.size.toLocaleString()} — will resolve-or-mint (FIX-674)`);
   }
 
   return {

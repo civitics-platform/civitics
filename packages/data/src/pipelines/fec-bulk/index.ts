@@ -594,7 +594,7 @@ export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
     byLastName.set(key, list);
   }
   if (roleExcluded > 0) {
-    console.log(
+    console.info(
       `    FIX-937: ${roleExcluded} of ${officials.length} officials excluded from the ` +
         `name-match pool (role_title is not federally electable)`,
     );
@@ -992,7 +992,7 @@ async function streamPas224(
   }
 
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
-  console.log(`    Extracted pas224.txt (${txtMb} MB) — streaming line by line...`);
+  console.info(`    Extracted pas224.txt (${txtMb} MB) — streaming line by line...`);
 
   let linesRead = 0, passedTxType = 0, passedCand = 0, passedAmt = 0;
 
@@ -1051,12 +1051,12 @@ async function streamPas224(
     aggregated.delete(key);
   }
 
-  console.log(`    Lines read: ${linesRead.toLocaleString()}`);
-  console.log(`    Passed 24K/24Z filter:    ${passedTxType.toLocaleString()}`);
-  console.log(`    Passed candidateSet filter: ${passedCand.toLocaleString()}`);
-  console.log(`    Admitted (amount > 0):    ${passedAmt.toLocaleString()}`);
-  console.log(`    PAC × candidate pairs:    ${aggregated.size.toLocaleString()}  (aggregate ≥ $200)`);
-  console.log(
+  console.info(`    Lines read: ${linesRead.toLocaleString()}`);
+  console.info(`    Passed 24K/24Z filter:    ${passedTxType.toLocaleString()}`);
+  console.info(`    Passed candidateSet filter: ${passedCand.toLocaleString()}`);
+  console.info(`    Admitted (amount > 0):    ${passedAmt.toLocaleString()}`);
+  console.info(`    PAC × candidate pairs:    ${aggregated.size.toLocaleString()}  (aggregate ≥ $200)`);
+  console.info(
     `    Sub-floor residual:       ${residualPairs.toLocaleString()} pair(s) · ` +
     `$${(residualCents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })} ` +
     `— not emitted, not bracketed (PR 3b; brackets are the individual-donor substrate)`,
@@ -1128,7 +1128,7 @@ async function recordSkippedRun(blockedBy: string): Promise<void> {
 }
 
 async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
-  console.log("\n=== FEC bulk data pipeline (public, multi-cycle) ===");
+  console.info("\n=== FEC bulk data pipeline (public, multi-cycle) ===");
   const logId = await startSync("fec_bulk");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -1142,7 +1142,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  console.log(`  Cycles to process: ${CYCLES.join(", ")}`);
+  console.info(`  Cycles to process: ${CYCLES.join(", ")}`);
 
   // FIX-193: separate knob for the (very expensive) indiv stage. Defaults to
   // FEC_CYCLES so a manual `pnpm data:fec-bulk` still processes indiv for every
@@ -1153,7 +1153,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     .map((s) => s.trim())
     .filter(Boolean);
   const indivCycleSet = new Set(INDIV_CYCLES);
-  console.log(`  Indiv cycles:      ${INDIV_CYCLES.join(", ")}`);
+  console.info(`  Indiv cycles:      ${INDIV_CYCLES.join(", ")}`);
 
   // FIX-700: surgical scope filters for the (expensive) indiv stage. Two axes,
   // each defaulting to full-run behavior when unset (see the header comment):
@@ -1181,7 +1181,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     isStagesScoped(indivStageSet) ||
     isRecipientScoped(recipientCmtes);
   if (isScoped) {
-    console.log(
+    console.info(
       `  ⚠ SCOPED RUN — tx_types=[${[...keepTxTypes].join(",")}] ` +
         `stages=[${indivStageSet.size ? [...indivStageSet].join(",") : "all"}] ` +
         `recipient_cmtes=[${recipientCmtes.size ? `${recipientCmtes.size} committee(s)` : "all"}] ` +
@@ -1213,7 +1213,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
   // FIX-181: indiv ingest is on by default; flip to "false" to run PAC-only.
   const INCLUDE_INDIV = (process.env.FEC_INCLUDE_INDIV ?? "true").toLowerCase() !== "false";
   if (!INCLUDE_INDIV) {
-    console.log("  FEC_INCLUDE_INDIV=false — skipping individual contributions stage");
+    console.info("  FEC_INCLUDE_INDIV=false — skipping individual contributions stage");
   }
 
   // Cross-cycle accumulators
@@ -1264,7 +1264,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     if (!isScoped) {
       runState = await loadRunState(db);
       if (runState) {
-        console.log(`  ⟳ Pending fec_bulk_run_state: ${describeRunState(runState)}`);
+        console.info(`  ⟳ Pending fec_bulk_run_state: ${describeRunState(runState)}`);
         // Self-guard: narrow the indiv cycle set to the pending cycle so a
         // multi-cycle manual run can't start a second cycle's indiv work and
         // clobber the single state slot. Other cycles' indiv files are
@@ -1272,7 +1272,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         // (The nightly orchestrator narrows the env before invoking us; this
         // guards the standalone `pnpm data:fec-bulk` path.)
         if (indivCycleSet.has(runState.cycle) && indivCycleSet.size > 1) {
-          console.log(
+          console.info(
             `  ⟳ FIX-754 self-guard: narrowing indiv cycles [${[...indivCycleSet].join(",")}] → ` +
               `[${runState.cycle}] while resume is pending`,
           );
@@ -1311,7 +1311,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // FIX-246: seed jurisdictions + governing bodies for the cn{yy} stage's
     //          candidate-row inserts. Idempotent — re-seed defensively when
     //          fec-bulk runs standalone (orchestrator path already seeds).
-    console.log("\n  Seeding jurisdictions + governing bodies (idempotent)...");
+    console.info("\n  Seeding jurisdictions + governing bodies (idempotent)...");
     const { federalId, stateIds, warnings: seedWarnings } = await seedJurisdictions(db);
     const governingBodies = await seedGoverningBodies(db, federalId);
 
@@ -1320,27 +1320,27 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     //          stage skips these so it never overwrites electeds and never
     //          double-inserts candidates across cycles.
     const existingByFecCandId = await loadOfficialsByFecIds(db);
-    console.log(`    Officials indexed by FEC ID: ${existingByFecCandId.size}`);
+    console.info(`    Officials indexed by FEC ID: ${existingByFecCandId.size}`);
     let totalCandidatesInserted = 0;
     let totalCandidatesMatched  = 0;
 
     // ── Load officials + match index (once, shared across all cycles) ───────
-    console.log("\n  Loading officials and building match index...");
+    console.info("\n  Loading officials and building match index...");
     const officials   = await loadOfficials(db);
     const index       = buildMatchIndex(officials);
-    console.log(`    Loaded ${officials.length} active officials`);
-    console.log(`    Initial FEC ID index size: ${index.byFecId.size}`);
+    console.info(`    Loaded ${officials.length} active officials`);
+    console.info(`    Initial FEC ID index size: ${index.byFecId.size}`);
 
     // ── Per-cycle loop ──────────────────────────────────────────────────────
     for (const CYCLE of CYCLES) {
-      console.log(`\n────────── Cycle ${CYCLE} ──────────`);
+      console.info(`\n────────── Cycle ${CYCLE} ──────────`);
 
       // FIX-754: non-null while this cycle's indiv stage runs with checkpoint
       // machinery active; also read by the IE stage's skip/marker below.
       let cycleActiveState: FecBulkRunState | null = null;
 
       // Step 1: Download bulk files for this cycle
-      console.log(`  [${CYCLE} 1/5] Downloading FEC bulk files...`);
+      console.info(`  [${CYCLE} 1/5] Downloading FEC bulk files...`);
       const bulkFiles = [
         { url:  `https://www.fec.gov/files/bulk-downloads/${CYCLE}/weball${CYCLE.slice(2)}.zip`,
           name: `weball${CYCLE.slice(2)}.zip` },
@@ -1353,12 +1353,12 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       let downloadFailed = false;
       for (const f of bulkFiles) {
         const destPath = path.join(TMP_DIR, f.name);
-        console.log(`    Downloading ${f.name}...`);
+        console.info(`    Downloading ${f.name}...`);
         try {
           const r2Key = r2KeyFor(CYCLE, f.name);
           const res = await downloadWithR2Cache(f.url, r2Key, destPath, downloadFile);
           const sizeMb = (fs.statSync(destPath).size / 1024 / 1024).toFixed(1);
-          console.log(`    ✓ ${f.name} (${sizeMb} MB, source=${res.source})`);
+          console.info(`    ✓ ${f.name} (${sizeMb} MB, source=${res.source})`);
           if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
         } catch (err) {
           const msg = errMsg(err);
@@ -1379,7 +1379,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       // weball matching so candidate rows exist and weball's fec_candidate_id
       // discovery path can resolve against them without going through the
       // name-fallback branch.
-      console.log(`  [${CYCLE} 1b/5] Ingesting FEC candidate master (cn${CYCLE.slice(2)}.zip)...`);
+      console.info(`  [${CYCLE} 1b/5] Ingesting FEC candidate master (cn${CYCLE.slice(2)}.zip)...`);
       const cnZipName = `cn${CYCLE.slice(2)}.zip`;
       const cnZipPath = path.join(TMP_DIR, cnZipName);
       let cnDownloadOk = true;
@@ -1387,7 +1387,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         const r2Key = r2KeyFor(CYCLE, cnZipName);
         const res   = await downloadWithR2Cache(candMasterUrl(CYCLE), r2Key, cnZipPath, downloadFile);
         const sizeMb = (fs.statSync(cnZipPath).size / 1024 / 1024).toFixed(2);
-        console.log(`    ✓ ${cnZipName} (${sizeMb} MB, source=${res.source})`);
+        console.info(`    ✓ ${cnZipName} (${sizeMb} MB, source=${res.source})`);
         if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
       } catch (err) {
         const msg = errMsg(err);
@@ -1407,7 +1407,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         });
         totalCandidatesInserted += candResult.insertedNew;
         totalCandidatesMatched  += candResult.matchedExisting;
-        console.log(
+        console.info(
           `    cn${CYCLE.slice(2)}: lines=${candResult.linesRead} ` +
           `new=${candResult.insertedNew} existing=${candResult.matchedExisting} ` +
           `name_updated=${candResult.nameUpdated} ` +
@@ -1422,7 +1422,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       }
 
       // Step 2: Extract + parse weball
-      console.log(`  [${CYCLE} 2/5] Extracting and parsing candidate summary...`);
+      console.info(`  [${CYCLE} 2/5] Extracting and parsing candidate summary...`);
       const weballZip  = path.join(TMP_DIR, `weball${CYCLE.slice(2)}.zip`);
       const extracted  = await extractZip(weballZip, TMP_DIR);
       const weballFile = extracted.find(
@@ -1436,7 +1436,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       const weballRows = parseWeBall(weballBuf);
       const cycleMb    = weballBuf.byteLength / 1024 / 1024;
       totalFileMb     += cycleMb;
-      console.log(`    Parsed ${weballRows.length} candidate rows (${cycleMb.toFixed(1)} MB)`);
+      console.info(`    Parsed ${weballRows.length} candidate rows (${cycleMb.toFixed(1)} MB)`);
 
       // Step 3: Match weball → officials, growing index across cycles
       let cycMatchedByFecId = 0, cycMatchedByName = 0, cycNotMatched = 0;
@@ -1465,8 +1465,8 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       matchedByFecId += cycMatchedByFecId;
       matchedByName  += cycMatchedByName;
       notMatched     += cycNotMatched;
-      console.log(`    Matched by fec_id: ${cycMatchedByFecId}  by name: ${cycMatchedByName}  not matched: ${cycNotMatched}`);
-      console.log(`    ${describeMatchRefusals(refusals)}`);
+      console.info(`    Matched by fec_id: ${cycMatchedByFecId}  by name: ${cycMatchedByName}  not matched: ${cycNotMatched}`);
+      console.info(`    ${describeMatchRefusals(refusals)}`);
 
       // Name-fallback for officials with no stored FEC ID at all. Re-run per
       // cycle — a senator who didn't run in 2024 may appear in 2020/2022's
@@ -1481,13 +1481,13 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         }
       }
       if (fallbackBound.length > 0) {
-        console.log(`    Name fallback matched: ${fallbackBound.length} additional officials`);
+        console.info(`    Name fallback matched: ${fallbackBound.length} additional officials`);
       }
 
       const candidateSet = new Set<string>(index.byFecId.keys());
 
       // Step 4: Parse cm + stream pas2
-      console.log(`  [${CYCLE} 3/5] Building PAC committee index and streaming contributions...`);
+      console.info(`  [${CYCLE} 3/5] Building PAC committee index and streaming contributions...`);
       const cmZip       = path.join(TMP_DIR, `cm${CYCLE.slice(2)}.zip`);
       const cmExtracted = await extractZip(cmZip, TMP_DIR);
       const cmFile      = cmExtracted.find(
@@ -1498,19 +1498,19 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         continue;
       }
       const cmLookup = parseCm24(fs.readFileSync(cmFile));
-      console.log(`    Committee master: ${cmLookup.size.toLocaleString()} committees indexed`);
+      console.info(`    Committee master: ${cmLookup.size.toLocaleString()} committees indexed`);
       // Merge into cross-cycle map (later cycles override — keep freshest committee name)
       for (const [cmteId, info] of cmLookup.entries()) {
         cmteInfoSeen.set(cmteId, info);
       }
 
-      console.log(`    Streaming pas2 (filtering to ${candidateSet.size} known fec_ids)...`);
+      console.info(`    Streaming pas2 (filtering to ${candidateSet.size} known fec_ids)...`);
       const pasZip  = path.join(TMP_DIR, `pas2${CYCLE.slice(2)}.zip`);
       const pacAggs = await streamPas224(pasZip, candidateSet);
-      console.log(`    PAC pairs matched (committee × candidate): ${pacAggs.size.toLocaleString()}`);
+      console.info(`    PAC pairs matched (committee × candidate): ${pacAggs.size.toLocaleString()}`);
 
       // Step 5: Upsert entities + relationships for this cycle
-      console.log(`  [${CYCLE} 4/5] Upserting entities + relationships...`);
+      console.info(`  [${CYCLE} 4/5] Upserting entities + relationships...`);
 
       // Cycle-local committee totals (used as initial total_donated_cents;
       // the cross-cycle final pass below will overwrite with the proper sum)
@@ -1542,7 +1542,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       for (const [cmteId, id] of entityResult.entityIdByCmte.entries()) {
         entityIdByCmteAcc.set(cmteId, id);
       }
-      console.log(`    Entities — upserted: ${entityResult.upserted}  failed: ${entityResult.failed}`);
+      console.info(`    Entities — upserted: ${entityResult.upserted}  failed: ${entityResult.failed}`);
 
       const relInputs = [];
       for (const agg of pacAggs.values()) {
@@ -1565,7 +1565,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       const relResult = await upsertDonationRelationshipsBatch(relInputs, pacSink);
       pacRelsUpserted += relResult.upserted;
       pacRelsFailed   += relResult.failed;
-      console.log(`    Relationships — upserted: ${relResult.upserted}  failed: ${relResult.failed}`);
+      console.info(`    Relationships — upserted: ${relResult.upserted}  failed: ${relResult.failed}`);
 
       // FIX-1184 — stamp THIS cycle's pac emit set complete, here, at the end of
       // the arm. The end-of-run stamp cannot do it: cycleSinks is filtered to the
@@ -1588,7 +1588,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
             stampEmitRunsComplete(client, [pacSink]),
           );
           for (const { keys } of pacStamped) {
-            console.log(`    ⟳ emit set complete — cycle ${CYCLE} fec_bulk_pac: ${keys.toLocaleString()} keys (FIX-1184)`);
+            console.info(`    ⟳ emit set complete — cycle ${CYCLE} fec_bulk_pac: ${keys.toLocaleString()} keys (FIX-1184)`);
           }
         } catch (emitErr) {
           console.warn(`    ! failed to stamp cycle ${CYCLE} fec_bulk_pac complete: ${errMsg(emitErr)} (FIX-1184; the audit will refuse this slice)`);
@@ -1608,7 +1608,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       //      since the last successful pipeline run, skip the cycle's indiv
       //      stage entirely (no download, no streaming, no upsert).
       if (INCLUDE_INDIV && !indivCycleSet.has(CYCLE)) {
-        console.log(`  [${CYCLE} 5/6] Indiv stage skipped — cycle not in FEC_INDIV_CYCLES`);
+        console.info(`  [${CYCLE} 5/6] Indiv stage skipped — cycle not in FEC_INDIV_CYCLES`);
         indivCyclesSkipped++;
       }
       if (INCLUDE_INDIV && indivCycleSet.has(CYCLE)) {
@@ -1622,7 +1622,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
 
         let indivFailed     = false;
         let indivFecHead:   FecHead | null = null;
-        console.log(`  [${CYCLE} 5/6] Individual contributions stage (FIX-181)...`);
+        console.info(`  [${CYCLE} 5/6] Individual contributions stage (FIX-181)...`);
 
         // FIX-193 layer 2: watermark short-circuit. HEAD FEC; if Last-Modified
         // is unchanged from the stored watermark, skip the whole stage. We
@@ -1643,7 +1643,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         const storedLm  = parseLastModified(stored?.last_modified);
         const watermarkUnchanged = !!(probeLm && storedLm && probeLm.getTime() <= storedLm.getTime());
         if (watermarkUnchanged && !isScoped) {
-          console.log(
+          console.info(
             `    ↺ Indiv ${indivName} unchanged since last run ` +
             `(FEC Last-Modified ${headProbe?.lastModified} ≤ watermark ${stored?.last_modified}) — skipping cycle ${CYCLE}`,
           );
@@ -1652,7 +1652,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
           // the skipped counter avoids double-counting.
           indivFailed = true;
         } else if (watermarkUnchanged && isScoped) {
-          console.log(
+          console.info(
             `    ⇢ Indiv ${indivName} unchanged since last run, but SCOPED run — ` +
             `bypassing the FIX-193 watermark to re-ingest cycle ${CYCLE} (FIX-701)`,
           );
@@ -1663,7 +1663,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         // persist and the state clear). Clear it here so the nightly
         // orchestrator stops re-triggering resume runs.
         if (indivFailed && runState?.cycle === CYCLE) {
-          console.log(
+          console.info(
             `    ⟳ clearing fec_bulk_run_state — watermark already current for cycle ${CYCLE} (FIX-754)`,
           );
           await clearRunState(db);
@@ -1677,7 +1677,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
           const plan = planCycleResume(runState, CYCLE, headProbe?.lastModified ?? null);
           if (plan === "resume" || plan === "skip-indiv") {
             cycleActiveState = runState;
-            console.log(
+            console.info(
               `    ⟳ RESUMING fec_bulk cycle=${CYCLE} (FIX-754): ${describeRunState(runState)}`,
             );
             if (plan === "skip-indiv") {
@@ -1690,7 +1690,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                 etag:          runState.fec_etag,
               };
               runStateCompletedCycle = CYCLE;
-              console.log(
+              console.info(
                 `    ⟳ all indiv writer stages complete — skipping download/stream for cycle ${CYCLE}`,
               );
             }
@@ -1713,12 +1713,12 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         }
 
         if (!indivFailed && !indivStateSkip) {
-          console.log(`    Downloading ${cclName}...`);
+          console.info(`    Downloading ${cclName}...`);
           try {
             const r2KeyCcl = r2KeyFor(CYCLE, cclName);
             const res = await downloadWithR2Cache(cclUrl, r2KeyCcl, cclPath, downloadFile);
             const sizeMb = (fs.statSync(cclPath).size / 1024 / 1024).toFixed(2);
-            console.log(`    ✓ ${cclName} (${sizeMb} MB, source=${res.source})`);
+            console.info(`    ✓ ${cclName} (${sizeMb} MB, source=${res.source})`);
             if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
           } catch (err) {
             const msg = errMsg(err);
@@ -1728,12 +1728,12 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         }
 
         if (!indivFailed && !indivStateSkip) {
-          console.log(`    Downloading ${indivName} (~2 GB)...`);
+          console.info(`    Downloading ${indivName} (~2 GB)...`);
           try {
             const r2KeyIndiv = r2KeyFor(CYCLE, indivName);
             const res = await downloadWithR2Cache(indivUrl, r2KeyIndiv, indivPath, downloadFile);
             const sizeMb = (fs.statSync(indivPath).size / 1024 / 1024).toFixed(0);
-            console.log(`    ✓ ${indivName} (${sizeMb} MB, source=${res.source})`);
+            console.info(`    ✓ ${indivName} (${sizeMb} MB, source=${res.source})`);
             totalFileMb += parseFloat(sizeMb);
             indivFecHead = res.fecHead ?? headProbe;
             if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
@@ -1786,14 +1786,14 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
               for (const [cmteId, candId] of cclLookupAll.entries()) {
                 if (candidateSet.has(candId)) cmteToCand.set(cmteId, candId);
               }
-              console.log(`    ccl: ${cclLookupAll.size.toLocaleString()} all committees, ${cmteToCand.size.toLocaleString()} mapped to our candidates`);
+              console.info(`    ccl: ${cclLookupAll.size.toLocaleString()} all committees, ${cmteToCand.size.toLocaleString()} mapped to our candidates`);
 
               // FIX-236 + FIX-698: build the non-candidate-committee recipient
               // set (super PAC / party / other PAC, excluding the JFC/leadership
               // designations that would double-count). See
               // buildNonCandRecipientSet for the full rationale.
               const nonCandCmtes = buildNonCandRecipientSet(cmLookup, cmteToCand);
-              console.log(`    Non-candidate committees to capture (super PAC + party + other PAC + leadership/SSF, excl. JFC): ${nonCandCmtes.size.toLocaleString()}`);
+              console.info(`    Non-candidate committees to capture (super PAC + party + other PAC + leadership/SSF, excl. JFC): ${nonCandCmtes.size.toLocaleString()}`);
 
               // FIX-701: narrow both recipient maps to FEC_INDIV_RECIPIENT_CMTES
               // when set (the 2024 D/B re-capture passes the D/B committee list).
@@ -1801,7 +1801,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
               if (recipientCmtes.size > 0) {
                 const candBefore = cmteToCand.size, nonCandBefore = nonCandCmtes.size;
                 const { candKept, nonCandKept } = applyRecipientCmteScope(cmteToCand, nonCandCmtes, recipientCmtes);
-                console.log(
+                console.info(
                   `    FEC_INDIV_RECIPIENT_CMTES scope: ${recipientCmtes.size} committee(s) allow-listed — ` +
                     `cand recipients ${candBefore}→${candKept}, non-cand recipients ${nonCandBefore}→${nonCandKept}`,
                 );
@@ -1822,7 +1822,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   cycleActiveState = createRunState(CYCLE, indivFecHead.lastModified, indivFecHead.etag ?? null);
                   runState = cycleActiveState;
                   await saveRunState(db, cycleActiveState);
-                  console.log(
+                  console.info(
                     `    ⟳ checkpoint state established for cycle ${CYCLE} (lm="${indivFecHead.lastModified}") (FIX-754)`,
                   );
                 }
@@ -1882,7 +1882,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   // from cursor arithmetic because nothing counted them.
                   const throttle = checkpointThrottles.get(stage as CursoredStage);
                   if (throttle && throttle.stats.attempted > 0) {
-                    console.log(`    [${stage}] ${describeCheckpointStats(throttle.stats)}`);
+                    console.info(`    [${stage}] ${describeCheckpointStats(throttle.stats)}`);
                   }
                 };
 
@@ -1900,9 +1900,9 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                 if (stageOn("donor-entities") && cycleActiveState && stageIsComplete(cycleActiveState, "donor-entities")) {
                   // FIX-754: prior run landed every donor. Nothing to rebuild —
                   // the id map this used to reconstruct no longer exists.
-                  console.log(`    ⟳ [donor-entities] complete in prior run — skipping (FIX-754)`);
+                  console.info(`    ⟳ [donor-entities] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("donor-entities")) {
-                  console.log(
+                  console.info(
                     `    Upserting ${indivResult.stats.donorRows.toLocaleString()} individual donor entities (streamed)...`,
                   );
                   // isScoped ⇒ omit total_donated_cents/total_received_cents so a
@@ -1915,23 +1915,23 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   );
                   indivDonorsUpserted += donorResult.upserted;
                   indivDonorsFailed   += donorResult.failed;
-                  console.log(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
+                  console.info(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
                   await completeStage("donor-entities");
                 } else {
-                  console.log(`    [donor-entities] — skipped (not in FEC_INDIV_STAGES)`);
+                  console.info(`    [donor-entities] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
                 // FIX-700 stage: indiv-to-candidate. (A tx-type-10-only run yields
                 // no candidate-path rows — type 10 flows to super PACs — so this
                 // stage upserts 0 in the FIX-677 finish, harmlessly.)
                 if (stageOn("indiv-to-candidate") && cycleActiveState && stageIsComplete(cycleActiveState, "indiv-to-candidate")) {
-                  console.log(`    ⟳ [indiv-to-candidate] complete in prior run — skipping (FIX-754)`);
+                  console.info(`    ⟳ [indiv-to-candidate] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("indiv-to-candidate")) {
                   // FIX-1061: streamed — one (donor × candidate × cycle) row per
                   // aggregate, pulled a batch at a time off the fingerprint-sorted
                   // file. The pre-1061 shape materialized 762,891 objects here for
                   // cycle 2026 (2,165,106 for 2020) before the writer saw one row.
-                  console.log(
+                  console.info(
                     `    Upserting ${indivResult.stats.candPairs.toLocaleString()} individual → candidate donation relationships (streamed)...`,
                   );
                   const indivRelResult = await streamIndividualDonations({
@@ -1948,10 +1948,10 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   });
                   indivRelsUpserted += indivRelResult.upserted;
                   indivRelsFailed   += indivRelResult.failed;
-                  console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}  unresolved: ${indivRelResult.skipped}`);
+                  console.info(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}  unresolved: ${indivRelResult.skipped}`);
                   await completeStage("indiv-to-candidate");
                 } else {
-                  console.log(`    [indiv-to-candidate] — skipped (not in FEC_INDIV_STAGES)`);
+                  console.info(`    [indiv-to-candidate] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
                 // ── FIX-236: donor → non-candidate committee donations ──
@@ -2007,40 +2007,40 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   // rebuild the cmte→entity id map the indiv-to-committee stage
                   // resolves to_id from, without re-running the upsert.
                   if (cmteEntityInputs.length > 0) {
-                    console.log(
+                    console.info(
                       `    ⟳ [recipient-entities] complete in prior run — rebuilding ` +
                         `${cmteEntityInputs.length.toLocaleString()} committee ids via direct-pg read (FIX-754)...`,
                     );
                     const fetched = await fetchEntityIdsByCmteId(cmteEntityInputs.map((i) => i.cmteId));
                     for (const [cmteId, id] of fetched) entityIdByCmteAcc.set(cmteId, id);
-                    console.log(
+                    console.info(
                       `    ⟳ [recipient-entities] resolved ${fetched.size.toLocaleString()}` +
                         `/${cmteEntityInputs.length.toLocaleString()} committees`,
                     );
                   }
                 } else if (stageOn("recipient-entities")) {
                   if (cmteEntityInputs.length > 0) {
-                    console.log(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
+                    console.info(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
                     const cmteEntityResult = await upsertPacEntitiesBatch(cmteEntityInputs, isScoped);
                     pacEntitiesUpserted += cmteEntityResult.upserted;
                     pacEntitiesFailed   += cmteEntityResult.failed;
                     for (const [cmteId, id] of cmteEntityResult.entityIdByCmte.entries()) {
                       entityIdByCmteAcc.set(cmteId, id);
                     }
-                    console.log(`    Recipient committees — upserted: ${cmteEntityResult.upserted}  failed: ${cmteEntityResult.failed}`);
+                    console.info(`    Recipient committees — upserted: ${cmteEntityResult.upserted}  failed: ${cmteEntityResult.failed}`);
                   }
                   await completeStage("recipient-entities");
                 } else {
-                  console.log(`    [recipient-entities] — skipped (not in FEC_INDIV_STAGES)`);
+                  console.info(`    [recipient-entities] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
                 // FIX-700 stage: indiv-to-committee. This is the path that lands
                 // the FIX-677 super-PAC (type-10) receipts — the finish's target.
                 if (stageOn("indiv-to-committee") && cycleActiveState && stageIsComplete(cycleActiveState, "indiv-to-committee")) {
-                  console.log(`    ⟳ [indiv-to-committee] complete in prior run — skipping (FIX-754)`);
+                  console.info(`    ⟳ [indiv-to-committee] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("indiv-to-committee")) {
                   // FIX-1061: streamed, same shape as indiv-to-candidate above.
-                  console.log(
+                  console.info(
                     `    Upserting ${indivResult.stats.cmtePairs.toLocaleString()} individual → committee donation relationships (streamed)...`,
                   );
                   const indivCmteRelResult = await streamIndividualToCommitteeDonations({
@@ -2055,11 +2055,11 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   });
                   indivCmteRelsUpserted += indivCmteRelResult.upserted;
                   indivCmteRelsFailed   += indivCmteRelResult.failed;
-                  console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
-                  console.log(`    Donations (→ committee) — skipped_unresolved: ${indivCmteSkippedUnresolved} (FIX-686; should be 0)`);
+                  console.info(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
+                  console.info(`    Donations (→ committee) — skipped_unresolved: ${indivCmteSkippedUnresolved} (FIX-686; should be 0)`);
                   await completeStage("indiv-to-committee");
                 } else {
-                  console.log(`    [indiv-to-committee] — skipped (not in FEC_INDIV_STAGES)`);
+                  console.info(`    [indiv-to-committee] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
                 // ── FIX-1068: the sub-$200 residual ──────────────────────────
@@ -2069,7 +2069,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                 // bands), one delete-then-insert transaction per cycle, no
                 // resume cursor.
                 if (!stageOn("small-dollar-brackets")) {
-                  console.log(`    [small-dollar-brackets] — skipped (not in FEC_INDIV_STAGES)`);
+                  console.info(`    [small-dollar-brackets] — skipped (not in FEC_INDIV_STAGES)`);
                 } else {
                   const bracketRows = indivResult.readSmallDollarBrackets();
                   // Resolve FEC ids → our ids. Candidates come from the match
@@ -2084,7 +2084,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   if (unresolvedCmtes.size > 0) {
                     const fetched = await fetchEntityIdsByCmteId([...unresolvedCmtes]);
                     for (const [cmteId, id] of fetched) entityIdByCmteAcc.set(cmteId, id);
-                    console.log(
+                    console.info(
                       `    [small-dollar-brackets] resolved ${fetched.size.toLocaleString()}/` +
                         `${unresolvedCmtes.size.toLocaleString()} sub-floor-only committee(s) via direct-pg`,
                     );
@@ -2109,7 +2109,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
 
                   const bracketRes = await replaceSmallDollarBrackets(parseInt(CYCLE, 10), writeRows);
                   smallDollarBracketRows += bracketRes.inserted;
-                  console.log(
+                  console.info(
                     `    Small-dollar brackets — deleted ${bracketRes.deleted.toLocaleString()}, ` +
                       `inserted ${bracketRes.inserted.toLocaleString()}, ` +
                       `unresolved recipients ${bracketUnresolved.toLocaleString()}`,
@@ -2124,7 +2124,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                   if (bracketOfficials.length > 0) {
                     const t0 = Date.now();
                     const n = await rebuildSmallDollarForOfficials(bracketOfficials);
-                    console.log(
+                    console.info(
                       `    Small-dollar rollup — re-aggregated ${n.toLocaleString()} official(s) ` +
                         `in ${((Date.now() - t0) / 1000).toFixed(1)}s (FIX-1068)`,
                     );
@@ -2174,13 +2174,13 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       // contributions) misses because IE-only super PACs never appear in
       // pas2. Tolerant of FEC outages: failure here is logged and the
       // cycle still wraps up cleanly with PAC + indiv data already landed.
-      console.log(`  [${CYCLE} 6/7] Independent expenditures (Schedule E) stage...`);
+      console.info(`  [${CYCLE} 6/7] Independent expenditures (Schedule E) stage...`);
       if (!stageOn("independent-expenditures")) {
-        console.log(`    [independent-expenditures] — skipped (not in FEC_INDIV_STAGES)`);
+        console.info(`    [independent-expenditures] — skipped (not in FEC_INDIV_STAGES)`);
       } else if (cycleActiveState && stageIsComplete(cycleActiveState, "independent-expenditures")) {
         // FIX-754: a kill can land between the IE stage and the end-of-run
         // watermark persist — the marker keeps the resumed run from re-running IE.
-        console.log(`    ⟳ [independent-expenditures] complete in prior run — skipping for cycle ${CYCLE} (FIX-754)`);
+        console.info(`    ⟳ [independent-expenditures] complete in prior run — skipping for cycle ${CYCLE} (FIX-754)`);
         ieCyclesSkipped++;
       } else {
         const ieName = `independent_expenditure_${CYCLE}.csv`;
@@ -2192,7 +2192,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
           const r2KeyIe = r2KeyFor(CYCLE, ieName);
           const res = await downloadWithR2Cache(ieUrl, r2KeyIe, iePath, downloadFile);
           const sizeMb = (fs.statSync(iePath).size / 1024 / 1024).toFixed(1);
-          console.log(`    ✓ ${ieName} (${sizeMb} MB, source=${res.source})`);
+          console.info(`    ✓ ${ieName} (${sizeMb} MB, source=${res.source})`);
           totalFileMb += parseFloat(sizeMb);
           if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
         } catch (err) {
@@ -2238,7 +2238,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
               ieTargetsResolved += mintResult.resolved;
               ieTargetsMinted   += mintResult.minted;
               ieTargetsFailed   += mintResult.failed;
-              console.log(
+              console.info(
                 `    IE targets — resolved: ${mintResult.resolved}  minted: ${mintResult.minted}  failed: ${mintResult.failed}`,
               );
               // Wire resolved+minted targets into the match index so the writer
@@ -2300,7 +2300,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
                 if (isMintableSpenderName(nm)) { orphanNameInputs.push({ cmteId, name: nm }); continue; }
                 orphanCount++; // blank OR denylisted prankster name
               }
-              console.log(
+              console.info(
                 `    New IE spenders to pre-upsert: ${newSpenderInputs.length}` +
                 (orphanNameInputs.length > 0 ? ` (+${orphanNameInputs.length} orphan minted from spe_nam)` : "") +
                 (orphanCount > 0 ? ` (${orphanCount} orphan spe_id(s) missing from cm AND spe_nam — skipped)` : ""),
@@ -2351,11 +2351,11 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
               else                            ieOpposeRows++;
             }
 
-            console.log(`    Upserting ${ieInputs.length.toLocaleString()} IE relationships (S: ${ieSupportRows}, O: ${ieOpposeRows})...`);
+            console.info(`    Upserting ${ieInputs.length.toLocaleString()} IE relationships (S: ${ieSupportRows}, O: ${ieOpposeRows})...`);
             const ieWriteResult = await upsertIndependentExpendituresBatch(ieInputs);
             ieRelsUpserted += ieWriteResult.upserted;
             ieRelsFailed   += ieWriteResult.failed;
-            console.log(`    IE relationships — upserted: ${ieWriteResult.upserted}  failed: ${ieWriteResult.failed}`);
+            console.info(`    IE relationships — upserted: ${ieWriteResult.upserted}  failed: ${ieWriteResult.failed}`);
 
             ieCyclesProcessed++;
 
@@ -2385,10 +2385,10 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       // its temp files — `Upload` streams from disk; unlinking mid-upload
       // fails on Windows and is racy on Linux.
       if (cycleR2Uploads.length > 0) {
-        console.log(`    Awaiting ${cycleR2Uploads.length} R2 cache upload(s) for cycle ${CYCLE}...`);
+        console.info(`    Awaiting ${cycleR2Uploads.length} R2 cache upload(s) for cycle ${CYCLE}...`);
         const results = await Promise.all(cycleR2Uploads);
         const ok = results.filter(Boolean).length;
-        console.log(`    R2 uploads: ${ok}/${cycleR2Uploads.length} ok`);
+        console.info(`    R2 uploads: ${ok}/${cycleR2Uploads.length} ok`);
         totalR2UploadsOk        += ok;
         totalR2UploadsAttempted += cycleR2Uploads.length;
         cycleR2Uploads = [];
@@ -2396,7 +2396,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
 
       // Step 7: cleanup cycle-specific temp files (keeps disk under ~3GB
       // peak with indiv enabled — pas2 + indiv + cm + weball + ccl + IE per cycle)
-      console.log(`  [${CYCLE} 7/7] Cleaning up cycle ${CYCLE} temp files...`);
+      console.info(`  [${CYCLE} 7/7] Cleaning up cycle ${CYCLE} temp files...`);
       for (const f of fs.readdirSync(TMP_DIR)) {
         try { fs.unlinkSync(path.join(TMP_DIR, f)); } catch { /* ok */ }
       }
@@ -2408,7 +2408,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // stale read-modify-write that dropped any source_ids key another writer
     // merged in mid-run.
     if (newFecIds.length > 0) {
-      console.log(`\n  Storing ${newFecIds.length} FEC ID associations across cycles...`);
+      console.info(`\n  Storing ${newFecIds.length} FEC ID associations across cycles...`);
       await withDirectClient((client) => persistNewFecIds(client, newFecIds));
     }
 
@@ -2416,7 +2416,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // Per-cycle upserts wrote each cycle's local total to total_donated_cents,
     // so the last-cycle-processed value is what's currently in the row. Final
     // pass overwrites with the SUM across every cycle observed in this run.
-    console.log("\n  Recomputing financial_entities.total_donated_cents across all cycles...");
+    console.info("\n  Recomputing financial_entities.total_donated_cents across all cycles...");
     const finalEntityInputs = [];
     for (const [cmteId, totalCents] of cmteTotalsAllCycles.entries()) {
       const info = cmteInfoSeen.get(cmteId);
@@ -2430,7 +2430,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       });
     }
     const finalResult = await upsertPacEntitiesBatch(finalEntityInputs);
-    console.log(`    Cross-cycle entity totals — upserted: ${finalResult.upserted}  failed: ${finalResult.failed}`);
+    console.info(`    Cross-cycle entity totals — upserted: ${finalResult.upserted}  failed: ${finalResult.failed}`);
 
     // ── FIX-700 stage: totals — end-of-run authoritative aggregate recomputes ─
     // Gateable via FEC_INDIV_STAGES. After ANY scoped relationship-writing run
@@ -2472,10 +2472,10 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // total_ie_oppose_cents) for the search + donor-page read surfaces. Same
     // direct-pg lift as the donation recompute. Advisory — a failure here leaves
     // stale IE totals the next cycle recomputes; it must not abort the pipeline.
-    console.log("\n  Recomputing financial_entities IE (Schedule E) totals from live financial_relationships...");
+    console.info("\n  Recomputing financial_entities IE (Schedule E) totals from live financial_relationships...");
     try {
       await runHeavyRebuild("rebuild_financial_entity_ie_totals");
-      console.log("    ✓ IE support/oppose totals recomputed from financial_relationships");
+      console.info("    ✓ IE support/oppose totals recomputed from financial_relationships");
     } catch (rebuildErr) {
       console.warn(`    rebuild_financial_entity_ie_totals failed: ${errMsg(rebuildErr)}`);
     }
@@ -2484,7 +2484,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // pg_cron jobs above — the to_id mirror of the donation total, same weekly
     // incremental + monthly reconcile. No inline rebuild here.
     } else {
-      console.log(
+      console.info(
         "\n  [totals] — skipped (not in FEC_INDIV_STAGES); IE totals rebuild " +
           "(rebuild_financial_entity_ie_totals) not run. Donation/received totals " +
           "are maintained out-of-band by the financial-entity-totals pg_cron jobs " +
@@ -2507,7 +2507,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
             { onConflict: "key" },
           );
         watermarkPersisted = true;
-        console.log(`  Persisted indiv watermark for cycles: ${Object.keys(indivWatermark).join(", ")}`);
+        console.info(`  Persisted indiv watermark for cycles: ${Object.keys(indivWatermark).join(", ")}`);
       } catch (err) {
         const msg = errMsg(err);
         console.warn(`  Failed to persist indiv watermark: ${msg}`);
@@ -2544,7 +2544,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
           try {
             const stamped = await withDirectClient((client) => stampEmitRunsComplete(client, cycleSinks));
             for (const { source, keys } of stamped) {
-              console.log(`  ⟳ emit set complete — cycle ${runStateCompletedCycle} ${source}: ${keys.toLocaleString()} keys (FIX-1106)`);
+              console.info(`  ⟳ emit set complete — cycle ${runStateCompletedCycle} ${source}: ${keys.toLocaleString()} keys (FIX-1106)`);
             }
           } catch (emitErr) {
             console.warn(`  ! failed to stamp emit sets complete: ${errMsg(emitErr)} (FIX-1106; the audit will refuse this slice)`);
@@ -2552,7 +2552,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         }
 
         await clearRunState(db);
-        console.log(`  ⟳ Cleared fec_bulk_run_state — cycle ${runStateCompletedCycle} complete (FIX-754)`);
+        console.info(`  ⟳ Cleared fec_bulk_run_state — cycle ${runStateCompletedCycle} complete (FIX-754)`);
       } else {
         console.warn(
           `  ⟳ cycle ${runStateCompletedCycle} complete but the watermark persist failed — ` +
@@ -2564,7 +2564,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // R2 cache upload summary (FIX-192) — per-cycle uploads were drained
     // inside the cycle loop above; this is just the final tally.
     if (totalR2UploadsAttempted > 0) {
-      console.log(`  R2 cache uploads (cumulative): ${totalR2UploadsOk}/${totalR2UploadsAttempted} ok`);
+      console.info(`  R2 cache uploads (cumulative): ${totalR2UploadsOk}/${totalR2UploadsAttempted} ok`);
     }
 
     // ── Final cleanup + report ──────────────────────────────────────────────
@@ -2579,39 +2579,39 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       indivDonorsFailed + indivRelsFailed + indivCmteRelsFailed +
       ieRelsFailed;
 
-    console.log("\n  ──────────────────────────────────────────────────");
-    console.log("  FEC Bulk Pipeline Report (multi-cycle)");
-    console.log("  ──────────────────────────────────────────────────");
-    console.log(`  ${"Cycles processed:".padEnd(38)} ${CYCLES.join(", ")}`);
-    console.log(`  ${"Officials matched by fec_id:".padEnd(38)} ${matchedByFecId}`);
-    console.log(`  ${"Officials matched by name:".padEnd(38)} ${matchedByName}`);
-    console.log(`  ${"Officials not matched:".padEnd(38)} ${notMatched}`);
-    console.log(`  ${"Candidate officials inserted:".padEnd(38)} ${totalCandidatesInserted}`);
-    console.log(`  ${"Candidate officials existing:".padEnd(38)} ${totalCandidatesMatched}`);
-    console.log(`  ${"PAC entity upserts (per-cycle):".padEnd(38)} ${pacEntitiesUpserted}`);
-    console.log(`  ${"PAC entity failures:".padEnd(38)} ${pacEntitiesFailed}`);
-    console.log(`  ${"PAC entity upserts (cross-cycle):".padEnd(38)} ${finalResult.upserted}`);
-    console.log(`  ${"PAC relationships upserted:".padEnd(38)} ${pacRelsUpserted}`);
-    console.log(`  ${"PAC relationships failed:".padEnd(38)} ${pacRelsFailed}`);
+    console.info("\n  ──────────────────────────────────────────────────");
+    console.info("  FEC Bulk Pipeline Report (multi-cycle)");
+    console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Cycles processed:".padEnd(38)} ${CYCLES.join(", ")}`);
+    console.info(`  ${"Officials matched by fec_id:".padEnd(38)} ${matchedByFecId}`);
+    console.info(`  ${"Officials matched by name:".padEnd(38)} ${matchedByName}`);
+    console.info(`  ${"Officials not matched:".padEnd(38)} ${notMatched}`);
+    console.info(`  ${"Candidate officials inserted:".padEnd(38)} ${totalCandidatesInserted}`);
+    console.info(`  ${"Candidate officials existing:".padEnd(38)} ${totalCandidatesMatched}`);
+    console.info(`  ${"PAC entity upserts (per-cycle):".padEnd(38)} ${pacEntitiesUpserted}`);
+    console.info(`  ${"PAC entity failures:".padEnd(38)} ${pacEntitiesFailed}`);
+    console.info(`  ${"PAC entity upserts (cross-cycle):".padEnd(38)} ${finalResult.upserted}`);
+    console.info(`  ${"PAC relationships upserted:".padEnd(38)} ${pacRelsUpserted}`);
+    console.info(`  ${"PAC relationships failed:".padEnd(38)} ${pacRelsFailed}`);
     if (INCLUDE_INDIV) {
-      console.log(`  ${"Indiv cycles processed / skipped:".padEnd(38)} ${indivCyclesProcessed} / ${indivCyclesSkipped}`);
-      console.log(`  ${"Indiv donor entities upserted:".padEnd(38)} ${indivDonorsUpserted}`);
-      console.log(`  ${"Indiv donor entity failures:".padEnd(38)} ${indivDonorsFailed}`);
-      console.log(`  ${"Indiv → cand rels upserted:".padEnd(38)} ${indivRelsUpserted}`);
-      console.log(`  ${"Indiv → cand rels failed:".padEnd(38)} ${indivRelsFailed}`);
-      console.log(`  ${"Indiv → cmte rels upserted:".padEnd(38)} ${indivCmteRelsUpserted}`);
-      console.log(`  ${"Indiv → cmte rels failed:".padEnd(38)} ${indivCmteRelsFailed}`);
-      console.log(`  ${"Indiv → cmte skipped_unresolved:".padEnd(38)} ${indivCmteSkippedUnresolved} (FIX-686; done-gate: 0)`);
+      console.info(`  ${"Indiv cycles processed / skipped:".padEnd(38)} ${indivCyclesProcessed} / ${indivCyclesSkipped}`);
+      console.info(`  ${"Indiv donor entities upserted:".padEnd(38)} ${indivDonorsUpserted}`);
+      console.info(`  ${"Indiv donor entity failures:".padEnd(38)} ${indivDonorsFailed}`);
+      console.info(`  ${"Indiv → cand rels upserted:".padEnd(38)} ${indivRelsUpserted}`);
+      console.info(`  ${"Indiv → cand rels failed:".padEnd(38)} ${indivRelsFailed}`);
+      console.info(`  ${"Indiv → cmte rels upserted:".padEnd(38)} ${indivCmteRelsUpserted}`);
+      console.info(`  ${"Indiv → cmte rels failed:".padEnd(38)} ${indivCmteRelsFailed}`);
+      console.info(`  ${"Indiv → cmte skipped_unresolved:".padEnd(38)} ${indivCmteSkippedUnresolved} (FIX-686; done-gate: 0)`);
     }
-    console.log(`  ${"IE cycles processed / skipped:".padEnd(38)} ${ieCyclesProcessed} / ${ieCyclesSkipped}`);
-    console.log(`  ${"IE new spenders pre-upserted:".padEnd(38)} ${ieSpendersUpserted}`);
-    console.log(`  ${"IE orphan spenders minted (spe_nam):".padEnd(38)} ${ieSpendersMintedByName}`); // FIX-841
-    console.log(`  ${"IE targets resolved/minted/failed:".padEnd(38)} ${ieTargetsResolved} / ${ieTargetsMinted} / ${ieTargetsFailed}`); // FIX-674
-    console.log(`  ${"IE orphan spe_ids skipped:".padEnd(38)} ${ieSpendersOrphaned}`);
-    console.log(`  ${"IE → cand rels upserted (S+O):".padEnd(38)} ${ieRelsUpserted}`);
-    console.log(`  ${"IE → cand rels failed:".padEnd(38)} ${ieRelsFailed}`);
-    console.log(`  ${"IE support / oppose split:".padEnd(38)} ${ieSupportRows} / ${ieOpposeRows}`);
-    console.log(`  ${"Financial data processed:".padEnd(38)} ~${totalFileMb.toFixed(1)} MB`);
+    console.info(`  ${"IE cycles processed / skipped:".padEnd(38)} ${ieCyclesProcessed} / ${ieCyclesSkipped}`);
+    console.info(`  ${"IE new spenders pre-upserted:".padEnd(38)} ${ieSpendersUpserted}`);
+    console.info(`  ${"IE orphan spenders minted (spe_nam):".padEnd(38)} ${ieSpendersMintedByName}`); // FIX-841
+    console.info(`  ${"IE targets resolved/minted/failed:".padEnd(38)} ${ieTargetsResolved} / ${ieTargetsMinted} / ${ieTargetsFailed}`); // FIX-674
+    console.info(`  ${"IE orphan spe_ids skipped:".padEnd(38)} ${ieSpendersOrphaned}`);
+    console.info(`  ${"IE → cand rels upserted (S+O):".padEnd(38)} ${ieRelsUpserted}`);
+    console.info(`  ${"IE → cand rels failed:".padEnd(38)} ${ieRelsFailed}`);
+    console.info(`  ${"IE support / oppose split:".padEnd(38)} ${ieSupportRows} / ${ieOpposeRows}`);
+    console.info(`  ${"Financial data processed:".padEnd(38)} ~${totalFileMb.toFixed(1)} MB`);
 
     // Sanity check — top 10 PAC donors by total contributed (cross-cycle)
     // reads-ok: end-of-run console report; an empty result prints nothing and must not fail the sync
@@ -2622,12 +2622,12 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
       .limit(10);
 
     if (top10pacs && top10pacs.length > 0) {
-      console.log("\n  Top 10 PAC donors (cross-cycle):");
+      console.info("\n  Top 10 PAC donors (cross-cycle):");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const row of top10pacs as any[]) {
         const name = String(row.display_name ?? "Unknown").padEnd(52);
         const amt  = `$${(Number(row.total_donated_cents) / 100).toLocaleString()}`;
-        console.log(`    ${name} ${amt}`);
+        console.info(`    ${name} ${amt}`);
       }
     }
 
@@ -2670,7 +2670,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         }
         if ((probe ?? []).length > 0) withDonations++;
       }
-      console.log(
+      console.info(
         `\n  Senate coverage: ${withDonations}/${fedSenators.length} federal senators have ≥1 donation` +
         (probeErrors > 0 ? ` (${probeErrors} probe error(s) — coverage undercounted)` : ""),
       );

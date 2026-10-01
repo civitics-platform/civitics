@@ -734,9 +734,9 @@ export async function streamIndivText(
   opts:           StreamIndivTextOptions = {},
 ): Promise<IndivStreamResult> {
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
-  console.log(`    Extracted indiv text (${txtMb} MB) — streaming line by line...`);
-  console.log(`    Tx-type filter: [${[...keepTxTypes].join(",")}]`);
-  console.log(`    Floor: $${(MIN_AGGREGATE_CENTS / 100).toFixed(0)} per (donor × recipient × cycle) AGGREGATE, applied at EMIT (PR 3b)`);
+  console.info(`    Extracted indiv text (${txtMb} MB) — streaming line by line...`);
+  console.info(`    Tx-type filter: [${[...keepTxTypes].join(",")}]`);
+  console.info(`    Floor: $${(MIN_AGGREGATE_CENTS / 100).toFixed(0)} per (donor × recipient × cycle) AGGREGATE, applied at EMIT (PR 3b)`);
 
   const sortDir = path.join(tempDir, opts.sortDirName ?? "indiv-sort");
   const bufferEntries = opts.sortBufferEntries ?? resolveSortBuffer();
@@ -749,7 +749,7 @@ export async function streamIndivText(
     // far more input rows per spill than the aggregate sorter does.
     tempDir: sortDir, name: "meta", maxBufferEntries: bufferEntries, ...META_CODEC,
   });
-  console.log(`    Sort buffer: ${bufferEntries.toLocaleString()} keys/run · gzip level 1 · ${sortDir}`);
+  console.info(`    Sort buffer: ${bufferEntries.toLocaleString()} keys/run · gzip level 1 · ${sortDir}`);
 
   let linesRead = 0,
       passedTxType = 0,
@@ -770,7 +770,7 @@ export async function streamIndivText(
     if (linesRead >= maxLines) { rl.close(); break; }
     linesRead++;
     if (linesRead % 1_000_000 === 0) {
-      console.log(
+      console.info(
         `    ... ${linesRead.toLocaleString()} lines | ` +
         `${passedAmount.toLocaleString()} kept | ` +
         `${aggSorter.stats.runsWritten}+${metaSorter.stats.runsWritten} runs | ` +
@@ -826,7 +826,7 @@ export async function streamIndivText(
     if (isLikelyOrgName(fpName)) {
       skippedOrgShaped++;
       if (skippedOrgShaped <= 20) {
-        console.log(`    [fec-bulk:indiv] skipped org-shaped name: ${fpName}`);
+        console.info(`    [fec-bulk:indiv] skipped org-shaped name: ${fpName}`);
       }
       continue;
     }
@@ -862,7 +862,7 @@ export async function streamIndivText(
   }
 
   // ── finalize ────────────────────────────────────────────────────────────
-  console.log(`    Merging sorted runs (${aggSorter.stats.runsWritten} agg + ${metaSorter.stats.runsWritten} meta)...`);
+  console.info(`    Merging sorted runs (${aggSorter.stats.runsWritten} agg + ${metaSorter.stats.runsWritten} meta)...`);
   const aggSorted  = await aggSorter.finalize();
   const metaSorted = await metaSorter.finalize();
 
@@ -925,18 +925,18 @@ export async function streamIndivText(
   const bracketRows  = [...brackets.values()];
   const result = makeExternalResult(aggSorted, metaSorted, bracketRows, sortDir);
 
-  console.log(`    Lines read:                ${linesRead.toLocaleString()}`);
-  console.log(`    Passed tx-type filter [${[...keepTxTypes].join(",")}]: ${passedTxType.toLocaleString()}`);
-  console.log(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
-  console.log(`      → candidate path:        ${passedCand.toLocaleString()}`);
-  console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);
-  console.log(`    Admitted (amount > 0):     ${passedAmount.toLocaleString()}`);
-  console.log(`    Skipped org-shaped names:  ${skippedOrgShaped.toLocaleString()}`);
-  console.log(`    Unique donors in file:     ${uniqueDonors.toLocaleString()}`);
-  console.log(`    Donor rows to write:       ${donorRows.toLocaleString()}  (donors with ≥1 aggregate ≥ $${(MIN_AGGREGATE_CENTS / 100).toFixed(0)})`);
-  console.log(`    Donor × candidate pairs:   ${candPairs.toLocaleString()}  (≥ floor)`);
-  console.log(`    Donor × committee pairs:   ${cmtePairs.toLocaleString()}  (≥ floor)`);
-  console.log(
+  console.info(`    Lines read:                ${linesRead.toLocaleString()}`);
+  console.info(`    Passed tx-type filter [${[...keepTxTypes].join(",")}]: ${passedTxType.toLocaleString()}`);
+  console.info(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
+  console.info(`      → candidate path:        ${passedCand.toLocaleString()}`);
+  console.info(`      → committee path:        ${passedCommittee.toLocaleString()}`);
+  console.info(`    Admitted (amount > 0):     ${passedAmount.toLocaleString()}`);
+  console.info(`    Skipped org-shaped names:  ${skippedOrgShaped.toLocaleString()}`);
+  console.info(`    Unique donors in file:     ${uniqueDonors.toLocaleString()}`);
+  console.info(`    Donor rows to write:       ${donorRows.toLocaleString()}  (donors with ≥1 aggregate ≥ $${(MIN_AGGREGATE_CENTS / 100).toFixed(0)})`);
+  console.info(`    Donor × candidate pairs:   ${candPairs.toLocaleString()}  (≥ floor)`);
+  console.info(`    Donor × committee pairs:   ${cmtePairs.toLocaleString()}  (≥ floor)`);
+  console.info(
     `    Sub-floor residual:        ${residualGroups.toLocaleString()} group(s) · ` +
     `$${(residualCents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })} · ` +
     `${bracketRows.length.toLocaleString()} (recipient × bracket) rollup row(s) (PR 3b)`,
@@ -948,7 +948,7 @@ export async function streamIndivText(
   };
   const peak = aggSorter.stats.peakDiskBytes + metaSorter.stats.peakDiskBytes;
   result.stats.sort = { agg: aggSorter.stats, meta: metaSorter.stats, peakDiskBytes: peak };
-  console.log(
+  console.info(
     `    Sort: ${aggSorter.stats.runsWritten} agg run(s) + ${metaSorter.stats.runsWritten} meta run(s) · ` +
     `peak sort disk ${(peak / 1024 / 1024).toFixed(0)} MB · ` +
     `peak rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB (FIX-961)`,

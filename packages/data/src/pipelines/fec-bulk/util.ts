@@ -389,7 +389,7 @@ export async function downloadWithR2Cache(
   ]);
 
   const decision = evaluateR2Freshness(r2Head, fecHead);
-  console.log(formatR2FreshnessDecision(r2Key, decision));
+  console.info(formatR2FreshnessDecision(r2Key, decision));
 
   if (decision.fresh) {
     const ok = await downloadCacheObjectToDisk(r2Key, destPath);

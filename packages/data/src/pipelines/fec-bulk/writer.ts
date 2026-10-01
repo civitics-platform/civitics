@@ -748,7 +748,7 @@ export async function upsertIndividualDonorsBatch(
       if (fp && !donorIdByFingerprint.has(fp)) missing.push(fp);
     }
     if (missing.length > 0) {
-      console.log(
+      console.info(
         `    individual-donor: re-reading ${missing.length.toLocaleString()} donor id(s) ` +
           `not returned by the upsert (unchanged rows / prior-run chunks) (FIX-1008)`,
       );
@@ -767,7 +767,7 @@ export async function upsertIndividualDonorsBatch(
     return res;
   });
 
-  console.log(
+  console.info(
     `    individual-donor: ${changed.toLocaleString()}/${upserted.toLocaleString()} rows ` +
       `actually written (${(upserted - changed).toLocaleString()} unchanged, skipped) (FIX-1008)`,
   );
@@ -1400,7 +1400,7 @@ export async function streamIndividualToCommitteeDonations(opts: {
  *  work. `changed` is the server's row count; the remainder is rows whose every
  *  SET column already matched and which were therefore never rewritten. */
 function logSkipRatio(label: string, upserted: number, changed: number): void {
-  console.log(
+  console.info(
     `    ${label}: ${changed.toLocaleString()}/${upserted.toLocaleString()} rows actually ` +
       `written (${(upserted - changed).toLocaleString()} unchanged, skipped) (FIX-1008)`,
   );

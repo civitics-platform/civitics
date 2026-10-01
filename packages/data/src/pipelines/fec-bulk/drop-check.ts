@@ -188,7 +188,7 @@ export async function probeIndivDrop(db: Db, cycle: string): Promise<IndivDropPr
       : probe
         ? "no new drop"
         : "HEAD failed — failing closed";
-    console.log(
+    console.info(
       `  [fec-drop-check] cycle=${cycle} FEC indiv Last-Modified ${q(probe)} ` +
         `vs watermark ${q(stored)} → ${verdict} (FIX-903)`,
     );

@@ -236,7 +236,7 @@ export async function streamCandidates(opts: CandidateStreamOptions): Promise<Ca
   }
 
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(1);
-  console.log(`    cn${yy}: extracted ${txtMb} MB — streaming line by line...`);
+  console.info(`    cn${yy}: extracted ${txtMb} MB — streaming line by line...`);
 
   const rl = readline.createInterface({
     input:     fs.createReadStream(txtPath, { encoding: "latin1" }),
