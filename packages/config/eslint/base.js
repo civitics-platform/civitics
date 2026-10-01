@@ -19,8 +19,7 @@ module.exports = {
     // every lint script runs with --max-warnings 0, so a warning inherited
     // from an upstream config fails the gate too. An exception is a
     // `// eslint-disable-next-line <rule> -- <reason>` at the line, never a
-    // rule turned down here. (packages/data alone still overrides three rules
-    // to warn in its own .eslintrc.cjs — FIX-1241.)
+    // rule turned down here.
     "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
     "@typescript-eslint/no-explicit-any": "error",
     // The allow-list is the policy. console.log is debug debris and is banned;

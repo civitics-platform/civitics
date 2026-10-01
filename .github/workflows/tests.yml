@@ -85,8 +85,8 @@ jobs:
 
       # Blocking (FIX-459). @civitics/config exports the base + next presets and
       # every package/app has an .eslintrc that extends them. Warnings fail the
-      # gate (FIX-460): every lint script runs with --max-warnings 0, except
-      # packages/data, whose never-linted backlog is still at warn (FIX-1241).
+      # gate (FIX-460): every lint script runs with --max-warnings 0
+      # (packages/data since FIX-1241, the last package to take the flag).
       - name: Lint
         run: pnpm turbo run lint
 

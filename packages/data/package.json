@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "test": "node run-tests.mjs",
     "data:seed": "tsx --env-file=../../.env.local src/seed.ts",
     "data:seed:franklin": "tsx --env-file=../../.env.local src/seed/franklin/index.ts",
