@@ -94,7 +94,6 @@ export function printStdoutTable(report: HarnessReport): void {
     verdict: r.match ? "MATCH" : "MISMATCH",
     computed: r.computedVerdict,
   }));
-  // eslint-disable-next-line no-console
   console.table(rows);
   console.info(
     `\nTotals: ${report.summary.matches} match · ${report.summary.mismatches} mismatch ` +

@@ -26,8 +26,11 @@ module.exports = {
     // The allow-list is the policy. console.log is debug debris and is banned;
     // console.info is DELIBERATE operator output (a cron receipt, a CLI's
     // report) — the same stdout stream as .log, so moving a real line to .info
-    // changes nothing at runtime; warn/error are diagnostics.
-    "no-console": ["error", { allow: ["info", "warn", "error"] }],
+    // changes nothing at runtime; warn/error are diagnostics. table and dir
+    // are operator output by construction (FIX-1241: 60 calls across 12
+    // investigation scripts, plus 4 pipeline reporters that had each carried
+    // a disable for one). Neither has an .info form that prints the same.
+    "no-console": ["error", { allow: ["info", "warn", "error", "table", "dir"] }],
     "no-empty": ["error", { allowEmptyCatch: true }],
     "no-inner-declarations": "error",
     // `while (true) { … break; }` is the paging-loop idiom across the

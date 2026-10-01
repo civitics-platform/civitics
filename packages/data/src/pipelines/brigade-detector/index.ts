@@ -208,7 +208,6 @@ async function main(): Promise<void> {
   const after = await tableCounts(client);
   await client.end();
 
-  // eslint-disable-next-line no-console
   console.table(
     candidates.map((c) => ({
       mode: c.mode,

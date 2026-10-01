@@ -102,7 +102,6 @@ export function printStdoutTable(report: AuditReport): void {
     expected: String(r.expected),
     actual: String(r.actual),
   }));
-  // eslint-disable-next-line no-console
   console.table(rows);
   console.info(
     `\nTotals: ${report.summary.errors} error · ${report.summary.warnings} warning · ${report.summary.infos} info (of ${report.summary.total} checks)`,

@@ -275,7 +275,6 @@ async function main(): Promise<void> {
   const after = await tableCounts(client);
   await client.end();
 
-  // eslint-disable-next-line no-console
   console.table(candidates.map(summarizeCandidate));
   console.info(
     `\nScanned ${linkable} linkable event(s) (non-NULL ip_hash, last ${a.horizonDays}d). ` +

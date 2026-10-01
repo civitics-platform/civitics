@@ -288,7 +288,7 @@ test("FIX-1248: the weekly size merge — six fixtures, reconciled counts, secon
     assert.equal(p2.inserted, 0n, "a second pass inserted rows — the anti-join is not idempotent");
     assert.equal(p2.updated, 0n, "a second pass updated rows — the DO UPDATE's WHERE is not idempotent");
 
-    console.log(
+    console.info(
       `[fix1248] merge: before=${catBefore} desired=${p1.desired} deleted=${p1.deleted} inserted=${p1.inserted} ` +
         `updated=${p1.updated} blocked=${exp.blocked} after=${catAfter} | pass2 ${p2.deleted}/${p2.inserted}/${p2.updated} ` +
         `wall=${((Date.now() - t0) / 1000).toFixed(1)}s`,
@@ -343,7 +343,7 @@ test("FIX-1248: both delete guards RAISE — a truncated scan, and a delete past
     // And the category is exactly what it was: a guard rolls back, it does not half-delete.
     assert.equal(await scalar(c, CAT_COUNT), cur, "a guard left the category changed");
 
-    console.log(`[fix1248] guards: current=${cur} wall=${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    console.info(`[fix1248] guards: current=${cur} wall=${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } finally {
     await c.query("ROLLBACK").catch(() => {});
     await c.end().catch(() => {});
