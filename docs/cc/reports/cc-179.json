@@ -1,0 +1,56 @@
+{
+  "cc": "179",
+  "prompt": "cc-prompt-179-fix1248-weekly-size-tags-merge.md",
+  "started_at": "2026-10-01T00:23:17Z",
+  "finished_at": "2026-10-01T06:35:21Z",
+  "head_before": "c734abf3",
+  "head_after": "ab600f64",
+  "commits": [
+    {
+      "sha": "94b30d51",
+      "subject": "test(data): FIX-1248 — the weekly size-tag merge fixtures (stay / moved total / tier change / left / new / foreign; second run zeros; both guards)"
+    },
+    {
+      "sha": "ebba20e0",
+      "subject": "docs(fixes): file FIX-1258 — compact entity_tags once with pg_repack after FIX-1248's second in-band weekly"
+    },
+    {
+      "sha": "049843dc",
+      "subject": "feat(db): FIX-1248 — rebuild_financial_entity_size_tags is a merge (scan / delete / insert with DO UPDATE on a moved total; 0.5× and 10 % delete guards); run_rule_taggers('weekly') stamps the four counts; the budget note"
+    },
+    {
+      "sha": "ab600f64",
+      "subject": "docs(fixes): FIX-1248 — cc-179 append (migration landed on prod; receipts owed 10-06 + 10-13)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1258"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261001010000_fix1248_weekly_size_tags_merge.sql"
+  ],
+  "prod_writes": "One migration, 20261001010000_fix1248_weekly_size_tags_merge.sql, applied to Pro at 05:05:5x UTC on 2026-10-01. It ran as the --then of session:wait-for-gate:prod --expected-minutes 2 --census stop --reason \\\"cc-179 FIX-1248 weekly merge migration\\\", from the primary checkout's packages/data. The gate read ok at 05:05:49Z, and the census passed: 0 renders and 0 events in 60 min, edge 0 of 129 requests. The FIX-950 claim wrote the interlock and 17 guarded holds and released them; --then exited 0. Its pending list was first read on its own by a dry run, which listed exactly this file. Metadata DDL: CREATE of rebuild_financial_entity_size_tags_scan(); CREATE OR REPLACE of _delete(), the wrapper and PROCEDURE run_rule_taggers(text); DROP + CREATE of _insert() (bigint -> OUT inserted, OUT updated); grants restated. Plus one data statement: UPDATE public.cron_job_budget SET note = ..., updated_at = now() WHERE jobname = 'rule-taggers-weekly' (1 row; budget_seconds unchanged at 7,200). No CALL of any tagger, no VACUUM, no MV, no hand-fired pipeline. Every other prod contact was a read: db-query --prod (read 2's delta, 113.7 s plus a 41.0 s duplicate check at 05:02 UTC; catalog reads; pg_get_functiondef before and after), prod_op_gate, prod_session_state, session:held, and gh. Four pushes to main before this report, each through the pre-push hook's held gate.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1248",
+      "what": "jobid 12's first merge firing (Tue 16:00 UTC): data_sync_log complete; phase_seconds {scan, delete, insert}; desired_rows = |category after|; deleted/inserted/updated = the donation changes since 2026-10-01 05:02Z (read 2 found a zero delta then); wall vs 5,062.9 s, projected 100-250 s; data:box-health:series around it; entity_tags relpages 226,259 not growing. If no donation row changed since 09-27 it stamps skipped_unchanged and this receipt slips a week",
+      "after": "2026-10-06T16:30Z"
+    },
+    {
+      "fix": "FIX-1248",
+      "what": "the second in-band weekly merge; bands.json gains rule-taggers-weekly (rule 74/117); then the Pattern-B record chore(fixes): record prod verification of FIX-1248 (Fixes: FIX-1248, Verified: prod), with cron_job_budget resized to ~3x the band high (a later prompt's item)",
+      "after": "2026-10-13T16:30Z"
+    },
+    {
+      "fix": "FIX-1258",
+      "what": "the pg_repack compaction landing prompt for entity_tags, after FIX-1248 closes; receipt relpages after vs 226,259 before",
+      "after": "2026-10-13T16:30Z"
+    }
+  ]
+}
