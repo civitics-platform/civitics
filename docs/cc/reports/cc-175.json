@@ -2,9 +2,9 @@
   "cc": "175",
   "prompt": "cc-prompt-175-fix1012-fe-index-census-drops-fix1099-retune-flip-owed-records.md",
   "started_at": "2026-10-02T00:22:23Z",
-  "finished_at": "2026-10-02T02:05:20Z",
+  "finished_at": "2026-10-02T02:53:19Z",
   "head_before": "8072d2eb",
-  "head_after": "c081f3f9",
+  "head_after": "5d0d9ce7",
   "commits": [
     {
       "sha": "cf1cf8d8",
@@ -57,6 +57,14 @@
     {
       "sha": "c081f3f9",
       "subject": "chore(fixes): sync status after FIX-1012, FIX-1252"
+    },
+    {
+      "sha": "976a8f27",
+      "subject": "docs(db): FIX-1099 — the Vercel alert rows stay on the calendar month (Craig, 2026-10-02: option 4); the vendor cycle stays the shadow"
+    },
+    {
+      "sha": "5d0d9ce7",
+      "subject": "chore(fixes): sync status after FIX-1099"
     }
   ],
   "fixes_closed": [
@@ -64,7 +72,8 @@
     "FIX-1247",
     "FIX-1254",
     "FIX-1012",
-    "FIX-1252"
+    "FIX-1252",
+    "FIX-1099"
   ],
   "fixes_filed": [],
   "fixes_reopened": [],
@@ -76,7 +85,7 @@
   "stopped_items": [
     "FIX-1012 drops 3 and 4 were first STOPPED at a permission prompt (classifier: Modify Shared Resources) on: pnpm --filter @civitics/data session:wait-for-gate:prod --expected-minutes 2 --census stop --reason \\\"cc-175 FIX-1012 drop financial_entities_individual_state_idx\\\" --then \\\"node ../../scripts/fix1012-drop-fe-indexes.mjs --index financial_entities_individual_state_idx\\\". Nothing reached prod then. RESOLVED in-session: Craig approved the permission, and both drops, the twin migration and the close followed (§6).",
     "FIX-1238 prod record: NOT RECORDED. The prompt expected votes n_dead flat against cc-174's 31,226. The pre-ec probe series reads 30,793 → 31,226 → 31,426 (10-01 04:25), and 31,826 at 00:39 UTC 10-02. The +433/day roll-back signature is gone (+200, then +400 around the 10-01 roll landing), but the table is not flat. cc-174's own receipts for this FIX (n_dead flat 10-02 → 10-03, and jobid 56's first Saturday vacuum) fall after 2026-10-03T04:30Z, so the COMPLETE receipt (rule 64) is not readable yet. The skip-line half IS confirmed: receipts 10-01 §1 printed it, and 10-02 §1 does not.",
-    "FIX-1099 flip (item 3c) and its prod record (3d): NOT DONE, because D6 FAILED criteria (i), (iii) and (v) at floor 7 (see §4). Per D7, D4 and D5 landed without the flip and FIX-1099 stays OPEN with an append naming the failed criteria."
+    "FIX-1099 flip (item 3c) and its prod record (3d): NOT DONE, because D6 FAILED criteria (i), (iii) and (v) at floor 7 (see §4). Per D7, D4 and D5 landed without the flip. RESOLVED in-session: Craig chose option 4 (the alert rows stay on the calendar month), and FIX-1099 closed as recognized (§7)."
   ],
   "lane": "ops",
   "owed": [
@@ -89,11 +98,6 @@
       "fix": "FIX-1012",
       "what": "a week of financial_entities HOT ratio and index bytes stable (15 indexes, 1,689,182,208 bytes at 02:02 UTC 10-02). The Saturday 10-03 nightly LittleSis run completes; the resolver's pgss mean was 999.75 ms on the trgm GIN, and that does not move",
       "after": "2026-10-08T12:00Z"
-    },
-    {
-      "fix": "FIX-1099",
-      "what": "the vendor cycle rollover: the first tick after Oct 14 PDT's charges close (~10-15 07:00Z) shows vercel_billing_shadow (vendor) with projection_divisor_days 7, fixed_per_cycle_usd 0.65 and included_usage_usd projection healthy (≈ $0.65 + day-1 metered × 30/7); calendar alert rows unchanged",
-      "after": "2026-10-15T08:00Z"
     },
     {
       "fix": "FIX-1238",
