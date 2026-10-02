@@ -1545,3 +1545,5 @@
 2026-10-01 | FIX-1012 | 3c95139d | prod-only | feat(db): FIX-1012 — drop the never-taken financial_entities indexes (canonical, canonical_name_type, individual_state_idx, recipient_count_idx; 195.0 MiB); the twin DROP INDEX IF EXISTS migration
 2026-10-01 | FIX-1252 | f9388cf5 | prod-only | chore(fixes): record prod verification of FIX-1252
 2026-10-01 | FIX-1099 | 976a8f27 | closes-as-recognized | docs(db): FIX-1099 — the Vercel alert rows stay on the calendar month (Craig, 2026-10-02: option 4); the vendor cycle stays the shadow
+2026-10-01 | FIX-1255 | fa60139f | local-only | feat(data,db): FIX-1255 — 524114 (direct health & medical insurance carriers) → health; the twelve defense IT/R&D primes get a curated defense override (fix1255 cohort, FIX-922 uuid arm)
+2026-10-01 | FIX-1259 | c4b21847 | local-only | fix(data): FIX-1259 — a tag writer overwrites only its own provenance (bulkUpsert updateOnlyIfSame; upsertTags keeps ai/curated rows)
