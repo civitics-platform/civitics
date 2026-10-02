@@ -1,0 +1,33 @@
+{
+  "database": "prod",
+  "fix": "FIX-1257",
+  "prompt": "cc-180",
+  "built_at": "2026-10-02T04:21:16.741Z",
+  "items": [
+    {
+      "proposal_id": "0e2433b5-0fd3-4e27-a3ae-9741c468122d",
+      "bill_key": {
+        "external_id": "119-HR-4795",
+        "jurisdiction_id": "eb075dd5-038f-4b21-82f7-30f5c9e1d49a",
+        "session": "119",
+        "bill_number": "HR 4795",
+        "chamber": "house"
+      },
+      "title": "Protect Economic and Academic Freedom Act of 2026",
+      "expected_status": "introduced",
+      "new_status": "passed_chamber",
+      "roll": "2026-house-295",
+      "roll_result": "Passed",
+      "roll_question": "On Passage",
+      "roll_tally": {
+        "yes": 237,
+        "no": 169,
+        "recorded": 433
+      },
+      "latest_action": "Motion to reconsider laid on the table Agreed to without objection.",
+      "last_action_at": "2026-09-03",
+      "updated_at_at_build": "2026-09-30T23:48:45.215292+00:00",
+      "reason": "cc-177's FIX-1256 copy rule took the stub's mapBillStatus value (latestAction.text alone: 'Motion to reconsider laid on the table' → introduced); roll 2026-house-295 On Passage Passed 237–169, which the vote path maps to passed_chamber. Temporary: the recent-bills sync regresses it the next time the bill is in its top-50 list (FIX-1257)."
+    }
+  ]
+}
