@@ -1,0 +1,74 @@
+{
+  "cc": "180",
+  "prompt": "cc-prompt-180-fix1255-naics-map-defense-overrides-upsert-provenance-guard-hr4795-status.md",
+  "started_at": "2026-10-02T03:46:18Z",
+  "finished_at": "2026-10-02T04:24:11Z",
+  "head_before": "6c2a9a2a",
+  "head_after": "f83e1dba",
+  "commits": [
+    {
+      "sha": "e4097f42",
+      "subject": "docs(fixes): file FIX-1259 — upsertTags overwrites another writer's provenance on a shared key"
+    },
+    {
+      "sha": "c4b21847",
+      "subject": "fix(data): FIX-1259 — a tag writer overwrites only its own provenance (bulkUpsert updateOnlyIfSame; upsertTags keeps ai/curated rows)"
+    },
+    {
+      "sha": "fa60139f",
+      "subject": "feat(data,db): FIX-1255 — 524114 (direct health & medical insurance carriers) → health; the twelve defense IT/R&D primes get a curated defense override (fix1255 cohort, FIX-922 uuid arm)"
+    },
+    {
+      "sha": "9a01cd97",
+      "subject": "chore(scripts,audits): FIX-1257 — hand-set HR 4795 to passed_chamber from a one-row manifest (temporary until the mapper fix)"
+    },
+    {
+      "sha": "99f5eaa8",
+      "subject": "docs(fixes): FIX-1257 — cc-180 append (HR 4795 hand-set to passed_chamber on prod at 04:22:02 UTC; temporary until the mapper fix)"
+    },
+    {
+      "sha": "f83e1dba",
+      "subject": "chore(fixes): sync status after FIX-1255, FIX-1259"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1255",
+    "FIX-1259"
+  ],
+  "fixes_filed": [
+    "FIX-1259"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261002010000_fix1255_defense_primes_override.sql"
+  ],
+  "prod_writes": "Two, both under the FIX-950 claim from the primary checkout's packages/data. (1) Migration 20261002010000_fix1255_defense_primes_override.sql, applied to Pro as the --then of session:wait-for-gate:prod --expected-minutes 2 --census stop --reason \\\"cc-180 FIX-1255 override cohort\\\". The gate read ok at 04:18:53Z with nothing blocking, and the census passed: 0 renders and 0 events in 60 min, edge 0 of 621 requests. A dry run first listed exactly this one file. NOTICE: 12 defense primes seeded on the uuid arm, table now 805 rows. The write is twelve INSERTs into financial_entity_industry_overrides; no entity_tags row was touched. (2) One UPDATE of public.proposals 0e2433b5-0fd3-4e27-a3ae-9741c468122d (HR 4795), introduced to passed_chamber at 04:22:02 UTC, from the committed manifest docs/audits/2026-10-01-fix1257-hr4795-status.json. It ran via scripts/fix1257-set-bill-status.mjs --prod --apply as the --then of session:wait-for-gate:prod --expected-minutes 1 --census off --reason \\\"cc-180 FIX-1257 HR 4795 status\\\" (gate ok 04:22:00Z). One DO block, FOR UPDATE, precondition status = introduced. Every other prod contact was a read: db-query --prod, prod_op_gate, session:held, the manifest build and dry runs, and gh. No tagger, CALL, VACUUM, MV refresh or hand-fired pipeline ran on prod. The map change and the upsert guard reach prod through the 10-02 nightly tail.",
+  "ci": "green",
+  "stopped_items": [
+    "pnpm data:tag-rules (the whole rule tagger) could not run on the clone. The clone's API gateway accepts on 127.0.0.1:54321 but returns an empty reply, while Kong answers inside its container: the host port-forward is broken. The tagger's proposal pass reads through PostgREST and died on fetch failed before writing anything. I did not restart the local stack. Instead I ran tagFinancialEntities() and refresh_sector_affinity_from_tag_changes directly over direct pg, twice: after item 2, and after the migration. So the proposals and officials taggers were not run on the clone; the guard's SQL is pinned for them by unit tests only. No permission prompt fired."
+  ],
+  "lane": "fec",
+  "project": "industry-tags",
+  "owed": [
+    {
+      "fix": "FIX-1255",
+      "what": "the 10-02 tail (tag_rules about 21:07 UTC): overrides read 805 (438 re-assigned, 367 de-tagged), orphans 0; the twelve carry ONE industry row each, defense/ai, with the tech NAICS row gone. FIX-1259 keeps the curated row out because the ai row holds its key. Humana Government Business, Optum Public Sector, Palmetto GBA and First Coast keep health/ai; the other 524114 contractors re-tag health/rule with metadata naics_code 524114. The upsert log line reads about 16 rows kept as another writer's provenance; primary_industry_tag reads defense x12 and health for Humana GB; refresh_sector_affinity_from_tag_changes is targeted with 0 officials affected. Then chore(fixes): record prod verification of FIX-1255 and FIX-1259 (two commits)",
+      "after": "2026-10-02T21:40Z"
+    },
+    {
+      "fix": "FIX-1259",
+      "what": "the same tail: ai industry rows on prod stay at 2,075 (read 4, 03:54 UTC 10-02), instead of falling by the ~16 collisions this tail creates; the entity_tags log line names the kept count for each of the three taggers",
+      "after": "2026-10-02T21:40Z"
+    },
+    {
+      "fix": "FIX-1255",
+      "what": "jobid 28 Thu 10-08 14:00 UTC: contract_agency_sector_rollup and contract_recipient_rollup show the twelve under Defense & Aerospace and Humana Government Business under Health Care; the totals are unchanged (259,401,096,179,104 / 240,884,054,588,325) unless USASpending wrote rows; the chord's Defense, Tech, Health and Finance deltas from cc-176 §3 reverse for these thirteen",
+      "after": "2026-10-08T14:45Z"
+    },
+    {
+      "fix": "FIX-1257",
+      "what": "HR 4795 still reads passed_chamber after the next recent-bills sync that lists it. The regression is expected the day it re-enters the top-50, and that day is the mapper prompt's deadline",
+      "after": "2026-10-02T21:30Z"
+    }
+  ]
+}
