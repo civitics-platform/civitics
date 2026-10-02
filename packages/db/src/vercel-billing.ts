@@ -240,9 +240,11 @@ export function computeVercelBilling(input: VercelBillingInput): VercelBilling {
 // flip; see docs/audits/2026-09-28-fix1099-alert-replay.md).
 //
 // cc-175 landed the audit's options 1 and 2 (FIXED_PER_CYCLE_SERVICES and
-// MIN_PROJECTION_DAYS above). They are correct on either basis. Whether the
-// alert rows move to the vendor basis is decided by the committed re-replay
-// (packages/data/src/scripts/fix1099-replay-alert-bases.ts), not here.
+// MIN_PROJECTION_DAYS above). They are correct on either basis. The committed
+// re-replay (packages/data/src/scripts/fix1099-replay-alert-bases.ts) still
+// failed on the Aug 14 cycle's days 14-17. On 2026-10-02 Craig kept the alert
+// rows on the calendar month (option 4), and this cycle is computed beside it
+// as the shadow.
 
 export type VercelBillingBasis = "vendor" | "calendar";
 

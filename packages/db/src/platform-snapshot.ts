@@ -136,7 +136,14 @@ import {
  * flips. The Aug 14 cycle's days 14-17 still read critical on the vendor basis
  * ($23.25 on d14, for a cycle that ended at $14.64), because their divisors
  * are already past any floor of 7. On that series only a floor of 18 or more
- * clears it. So it stays "calendar", and the next step is Craig's call.
+ * clears it.
+ *
+ * DECIDED 2026-10-02 (Craig, after cc-175): the alert rows STAY on the
+ * calendar month. That is the audit's option 4. The vendor cycle keeps being
+ * computed every tick and rides as `vercel_billing_shadow` for comparison and
+ * display. Options 1 + 2 stay in force on both bases. This is a decision, not
+ * a pending re-tune: flipping this constant needs a new FIX and a passing
+ * re-run of the replay script.
  */
 export const VERCEL_ALERT_BASIS: VercelBillingBasis = "calendar";
 import { evaluateBurnRate, readBurnRateSeries, type BurnRateVerdict } from "./burn-rate";
@@ -1067,7 +1074,7 @@ export async function computePlatformUsagePayload(
           ...calendarCycle,
           fallback_reason:
             VERCEL_ALERT_BASIS === "calendar"
-              ? "held on the calendar month: VERCEL_ALERT_BASIS (FIX-1099 — the alert bands are tuned on this basis; the vendor-basis replay flipped them)"
+              ? "calendar month by decision: VERCEL_ALERT_BASIS (FIX-1099, 2026-10-02 — the alert rows stay on the calendar month; the vendor cycle rides as vercel_billing_shadow)"
               : vendorError || null,
         },
         v.window_days,
@@ -1134,7 +1141,7 @@ export async function computePlatformUsagePayload(
   // but this endpoint states the period outright, and it matches the usage
   // page. FIX-1099 now reads it up front (vercelAcctRead) and computes the
   // billing picture on this cycle too; which basis the alert rows read is
-  // VERCEL_ALERT_BASIS, held on the calendar month until the re-tune.
+  // VERCEL_ALERT_BASIS, kept on the calendar month (FIX-1099, decided 2026-10-02).
   let vercelAccount: PlatformUsagePayload["vercel_account"] = undefined;
   let vercelPeriodStartMs: number | null = null;
   let vercelPeriodEndMs: number | null = null;
