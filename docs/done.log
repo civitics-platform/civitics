@@ -1542,3 +1542,5 @@
 2026-10-01 | FIX-1246 | cf1cf8d8 | prod-only | chore(fixes): record prod verification of FIX-1246
 2026-10-01 | FIX-1247 | 038db598 | prod-only | chore(fixes): record prod verification of FIX-1247
 2026-10-01 | FIX-1254 | a79f502b | prod-only | chore(fixes): record prod verification of FIX-1254
+2026-10-01 | FIX-1012 | 3c95139d | prod-only | feat(db): FIX-1012 — drop the never-taken financial_entities indexes (canonical, canonical_name_type, individual_state_idx, recipient_count_idx; 195.0 MiB); the twin DROP INDEX IF EXISTS migration
+2026-10-01 | FIX-1252 | f9388cf5 | prod-only | chore(fixes): record prod verification of FIX-1252
