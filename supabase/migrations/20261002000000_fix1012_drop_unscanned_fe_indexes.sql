@@ -1,0 +1,67 @@
+-- FIX-1012 — financial_entities index census: drop the four never-taken indexes.
+--
+-- Companion migration to scripts/fix1012-drop-fe-indexes.mjs. The script is the
+-- prod path (DROP INDEX CONCURRENTLY cannot run inside a transaction block, and
+-- `supabase db push` wraps each migration in one). This file is the real path
+-- for local and any rebuilt-from-zero environment, and a no-op against prod:
+-- all four were dropped there CONCURRENTLY on 2026-10-02 (cc-175), each through
+-- its own session:wait-for-gate:prod --census stop pass:
+--
+--   financial_entities_canonical             16,146,432 B  00:51:37 UTC
+--   financial_entities_canonical_name_type   19,914,752 B  00:52:02 UTC
+--   financial_entities_individual_state_idx  77,611,008 B  01:58:59 UTC
+--   financial_entities_recipient_count_idx   90,767,360 B  01:59:16 UTC
+--
+-- FE indexes 19 -> 15, 1,893,621,760 -> 1,689,182,208 bytes (-195.0 MiB).
+--
+-- WHAT THE CENSUS FOUND — docs/audits/2026-10-01-fe-index-census.md
+--
+-- Window: 16.4 days from the 2026-09-15 15:09:48 crash. The counters survived
+-- the 09-22 fast shutdown (min last_idx_scan 09-18 < postmaster start 09-22),
+-- and data_sync_log n_tup_ins = 3,238 = its rows since the crash. All four read
+-- idx_scan 0 at cc-169 (09-29) and at cc-175 (10-02). The order was role, then
+-- callers, then counters:
+--
+--   recipient_count_idx   Not a constraint or an arbiter. Sweep C of
+--                         reconcile_financial_entity_totals() ran on 10-01
+--                         (jobid 14, 19 rows zeroed) and the index stayed at 0.
+--                         recipient_count > 0 is not selective (2.63M of 3.69M
+--                         rows on the clone), so Sweep C seq-scans with the
+--                         index present. The FIX-736 comments naming it as
+--                         Sweep C's driver (20260705000000, 20260902100000,
+--                         20260911000200) were wrong. Pass 2 of
+--                         financial_entity_recipient_count_window() rides the
+--                         pkey either way.
+--   individual_state_idx  No usable reader. The one equality predicate is
+--                         resolve_entity_by_canonical()'s (p_state IS NULL OR
+--                         metadata->>'state' = p_state), and every caller passes
+--                         NULL. Everything else on FE is a projection or a
+--                         GROUP BY, or the chord MV's fenced Seq Scan (FIX-1030,
+--                         plan unchanged). FIX-1034's fe_state_len_stats and
+--                         fe_state_value_stats keep the planner's view of the
+--                         expression.
+--   canonical_name_type,  Partial on entity_type <> 'individual'. Only CUSTOM
+--   canonical             plans of two dormant readers used them: EDGAR's
+--                         resolver ELSE branch and the IRS 990 grant name-only
+--                         path. Neither ran inside the window. Without them both
+--                         go to financial_entities_canonical_trgm (pg_trgm 1.6
+--                         GIN equality), not a Seq Scan: 0.8 -> 8.9 / 14.8 ms
+--                         warm on the clone, and ~1 s cold on prod (the LittleSis
+--                         resolver's pgss mean, already on the trgm). Every
+--                         generic plan of the resolver already used the trgm.
+--
+-- KEPT, so a future pass does not re-litigate it: financial_entities_donated_positive
+-- (43,316 scans); financial_entities_primary_source_idx (3 scans, 71 MB, a
+-- question for a later census); the 8 kB financial_entities_parent (FK support)
+-- and financial_entities_entity_cluster.
+--
+-- RECREATE, if this ever turns out to be wrong:
+--   CREATE INDEX financial_entities_canonical ON public.financial_entities USING btree (canonical_name) WHERE (entity_type <> 'individual'::text);
+--   CREATE INDEX financial_entities_canonical_name_type ON public.financial_entities USING btree (canonical_name, entity_type) WHERE (entity_type <> 'individual'::text);
+--   CREATE INDEX financial_entities_individual_state_idx ON public.financial_entities USING btree (((metadata ->> 'state'::text))) WHERE (entity_type = 'individual'::text);
+--   CREATE INDEX financial_entities_recipient_count_idx ON public.financial_entities USING btree (recipient_count) WHERE (entity_type = 'individual'::text);
+
+DROP INDEX IF EXISTS public.financial_entities_canonical;
+DROP INDEX IF EXISTS public.financial_entities_canonical_name_type;
+DROP INDEX IF EXISTS public.financial_entities_individual_state_idx;
+DROP INDEX IF EXISTS public.financial_entities_recipient_count_idx;
