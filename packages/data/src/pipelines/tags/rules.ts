@@ -1243,7 +1243,7 @@ export async function tagOfficials(db: any): Promise<number> {
 
 // ---------------------------------------------------------------------------
 // NAICS 2-digit → industry tag (for USASpending contractors)
-// More-specific 3/4-digit entries override the 2-digit bucket.
+// More-specific 6/4/3-digit entries override the 2-digit bucket.
 // ---------------------------------------------------------------------------
 
 // FIX-909: five sector-level corrections. These touch only ~78 contractor rows so
@@ -1285,10 +1285,24 @@ const NAICS2_INDUSTRY: Record<string, string> = {
   "92": "lobby",
 };
 
-// 3/4-digit overrides beat the 2-digit bucket. FIX-909 left these alone except
-// where the 2-digit rename forced a rewrite, per decision 8 ("only if the change
-// is clean — skip if it spiders").
+// 6/4/3-digit overrides beat the 2-digit bucket, most specific first. FIX-909
+// left these alone except where the 2-digit rename forced a rewrite, per
+// decision 8 ("only if the change is clean — skip if it spiders").
 const NAICS_OVERRIDE: Record<string, string> = {
+  // FIX-1255: 524114 Direct Health and Medical Insurance Carriers → health. It
+  // has to be the six-digit code, not 5241 Insurance Carriers: 5241 is also
+  // direct life (524113), property and casualty (524126), title (524127) and
+  // other (524128), which stay finance through "52". On prod 2026-10-02 (cc-180
+  // read 2) 524114 is the dominant code of 64 contractors, every one of them
+  // buying or selling health cover or care: Humana Government Business ($78.6B,
+  // which the "52" bucket moved from Health Care to Finance & Insurance once
+  // FIX-1252 made it the dominant code), Health Net Federal Services, Optum
+  // Public Sector Solutions, TriWest, the Medicare administrative contractors
+  // and the US Family Health Plan providers (22 contractors), plus 42 foreign
+  // carriers and clinics ($32.9M combined) selling the State Department
+  // local-staff medical cover. Some of those 42 are life or property carriers
+  // at home; the code tags them by what they sold the government.
+  "524114": "health",
   "334": "tech",
   "335": "tech",
   // "336" — Transportation Equipment Manufacturing. Kept on `defense` rather
@@ -1323,6 +1337,7 @@ export const NAICS_MAPS = { NAICS2_INDUSTRY, NAICS_OVERRIDE } as const;
 export function naicsToIndustry(code: string): string | null {
   const clean = code.trim();
   return (
+    NAICS_OVERRIDE[clean] ??              // FIX-1255: the full code, for 524114
     NAICS_OVERRIDE[clean.slice(0, 4)] ??
     NAICS_OVERRIDE[clean.slice(0, 3)] ??
     NAICS2_INDUSTRY[clean.slice(0, 2)] ??

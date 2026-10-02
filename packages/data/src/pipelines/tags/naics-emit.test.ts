@@ -136,3 +136,33 @@ test("FIX-1246: the four 54 sub-sectors with a bucket keep it", () => {
     assert.equal(rows[0]!.tag, want, code);
   }
 });
+
+/**
+ * FIX-1255 — 524114 (Direct Health and Medical Insurance Carriers) is health,
+ * by its full six-digit code. Its 5241 siblings stay finance through "52":
+ * a 5241 → health entry would send the life and property-and-casualty
+ * carriers (Travelers, Chubb) to health. Humana Government Business is the
+ * wrong-but-green shape: its dominant code is 524114 and the old map gave it
+ * finance.
+ */
+test("FIX-1255: 524114 maps to health; its 5241 siblings stay finance", () => {
+  assert.equal(naicsToIndustry("524114"), "health");
+  assert.equal(naicsToIndustry(" 524114 "), "health", "trimmed like every other code");
+  for (const code of ["524113", "524126", "524127", "524128", "524130", "524210"]) {
+    assert.equal(naicsToIndustry(code), "finance", `${code} must stay finance`);
+  }
+  // A shorter code string still falls through the 4/3/2-digit arms.
+  assert.equal(naicsToIndustry("5241"), "finance");
+  assert.equal(naicsToIndustry("524"), "finance");
+  const rows = buildNaicsIndustryTags([{ entity_id: E_MAPPED, naics_code: "524114" }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.tag, "health");
+  assert.deepEqual(rows[0]!.metadata, { naics_code: "524114" });
+});
+
+test("FIX-1255: the six-digit arm does not disturb the 4- and 3-digit overrides", () => {
+  assert.equal(naicsToIndustry("325412"), "health", "3254 still beats 325");
+  assert.equal(naicsToIndustry("325211"), "manufacturing");
+  assert.equal(naicsToIndustry("336411"), "defense");
+  assert.equal(naicsToIndustry("541512"), "tech");
+});

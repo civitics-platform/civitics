@@ -11,6 +11,10 @@ steps:
   - {id: s3, kind: op, ref: "FIX-923", title: "PR3 sweep 908–923", done: 2026-08-01}
   - {id: s4, kind: cc, ref: "cc-166", title: "918 one home for the primary tag + 919 NAICS repoint"}
   - {id: s5, kind: receipt, ref: "FIX-1240", title: "official_donor_rollup_mv / donor_party_rollup_mv see a tag change (filed by cc-166)"}
+  - {id: s6, kind: cc, ref: "cc-173", title: "1246 NAICS-54 retire + 1247 label unification", done: 2026-09-30}
+  - {id: s7, kind: cc, ref: "cc-176", title: "1252 dominant code + 1245 provenance-first + 1254 label pairs", done: 2026-09-30}
+  - {id: s8, kind: cc, ref: "cc-180", title: "1255 map + defense cohort; upsert provenance guard"}
+  - {id: s9, kind: receipt, ref: "FIX-1255", title: "jobid 28 Thu 10-08 — the twelve under Defense, Humana under Health Care", after: 2026-10-08T14:45Z}
 ---
 
 # Industry tag remediation
@@ -21,6 +25,13 @@ July). cc-166 gave a donor's primary tag one home, `primary_industry_tag()`
 
 **Open:** FIX-1240. `official_donor_rollup_mv` and `donor_party_rollup_mv` do not
 yet see a tag change.
+
+cc-173 and cc-176 retired the NAICS-54 catch-all, tagged contractors by their
+dollar-dominant code, and ranked a rule tag ahead of an ai tag. cc-180 settled
+the two groups that left behind (FIX-1255): 524114 health insurers back to
+health, and twelve defense IT and R&D primes under a curated `defense` override.
+It also stopped a rule tag from overwriting an ai row on a shared key
+(FIX-1259). s9 is the contract-side receipt.
 
 s3's date is `done.log`'s (2026-08-01). The plan of record said 2026-07-29, and
 the log wins.

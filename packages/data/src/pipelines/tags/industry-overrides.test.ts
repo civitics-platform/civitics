@@ -520,3 +520,99 @@ test("FIX-922: the tagger reads BOTH arms, each as its own indexable join", () =
     "the single-arm reader must be gone",
   );
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1255 — the first cohort on the uuid arm: twelve defense IT and R&D
+// primes that the dominant-code NAICS map sends to tech. Its own TSV, its own
+// drift alarm (the FIX-921 precedent), and a TSV that leads with
+// financial_entity_id in place of fec_committee_id (FIX-922's header).
+// ---------------------------------------------------------------------------
+
+const DEFENSE_TSV_PATH = join(REPO_ROOT, "docs", "audits", "2026-10-01-fix1255-defense-primes.tsv");
+const DEFENSE_MIGRATION_PATH = join(
+  REPO_ROOT, "supabase", "migrations", "20261002010000_fix1255_defense_primes_override.sql",
+);
+
+type DefenseRow = { id: string; display_name: string; industry: string; naics: string; pick: string };
+
+function readDefenseTsv(): DefenseRow[] {
+  const lines = readFileSync(DEFENSE_TSV_PATH, "utf8").split(/\r?\n/).filter((l) => l.length);
+  assert.equal(
+    lines[0],
+    "financial_entity_id\tdisplay_name\tindustry\tnaics_dominant\tcontract_usd\tcoded_usd\tcurrent_pick\tnote",
+  );
+  return lines.slice(1).map((l) => {
+    const c = l.split("\t");
+    return { id: c[0]!, display_name: c[1]!, industry: c[2]!, naics: c[3]!, pick: c[6]! };
+  });
+}
+
+test("FIX-1255: the defense TSV is twelve unique contractor ids, all defense, all picked tech before", () => {
+  const rows = readDefenseTsv();
+  assert.equal(rows.length, 12);
+  assert.equal(new Set(rows.map((r) => r.id)).size, 12, "financial_entity_id must be unique");
+  for (const r of rows) {
+    assert.match(r.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, r.display_name);
+    assert.equal(r.industry, "defense", r.display_name);
+    assert.equal(r.pick, "tech", `${r.display_name}: the cohort is the defense → tech pick-changers`);
+    assert.ok((VALID_INDUSTRIES as readonly string[]).includes(r.industry));
+  }
+});
+
+test("FIX-1255: the migration seeds exactly its TSV, on the uuid arm's synthetic key", () => {
+  const sql = readFileSync(DEFENSE_MIGRATION_PATH, "utf8");
+  const seeded = new Map<string, string>();
+  for (const m of sql.matchAll(/^ {2}\('fe:([0-9a-f-]{36})', '([0-9a-f-]{36})', '([a-z_]+)'/gm)) {
+    assert.equal(m[1], m[2], "the synthetic key must be 'fe:' || financial_entity_id (the CHECK)");
+    seeded.set(m[2]!, m[3]!);
+  }
+  const tsv = readDefenseTsv();
+  assert.equal(seeded.size, tsv.length, "seed row count must match the defense TSV");
+  for (const r of tsv) {
+    assert.equal(seeded.get(r.id), r.industry, `${r.display_name} (${r.id}) missing or mismatched`);
+  }
+  // The pre-check's id list is the same twelve.
+  const precheck = sql.match(/v_ids\s+uuid\[\] := ARRAY\[([\s\S]*?)\]::uuid\[\]/);
+  assert.ok(precheck, "the pre-check id list must be present");
+  const ids = [...precheck![1]!.matchAll(/'([0-9a-f-]{36})'/g)].map((m) => m[1]!);
+  assert.deepEqual([...ids].sort(), tsv.map((r) => r.id).sort());
+});
+
+test("FIX-1255: the migration's total is every cohort's TSV plus HRPAC", () => {
+  // 742 (FIX-916) + 50 (FIX-921) + 1 (FIX-923) + 12 (FIX-1255). A cohort row
+  // that collided with another would be absorbed by ON CONFLICT and the total
+  // would come up short on apply.
+  const total = readTsv().length + readSweepTsv().length + 1 + readDefenseTsv().length;
+  assert.equal(total, 805);
+  const sql = readFileSync(DEFENSE_MIGRATION_PATH, "utf8");
+  assert.match(sql, /IF v_total <> 805 THEN/);
+  assert.match(sql, /IF v_cohort <> 12 THEN/);
+});
+
+test("FIX-1255: the migration does not delete the cohort's ai rows (FIX-1259 keeps them)", () => {
+  // FIX-916/921/923 deleted an overridden entity's ai rows. Here the ai rows
+  // say `defense` too, and FIX-1259 exists to keep another writer's judgment;
+  // a DELETE would also be a prod write the prompt did not sanction.
+  const sql = readFileSync(DEFENSE_MIGRATION_PATH, "utf8");
+  assert.doesNotMatch(sql, /DELETE\s+FROM\s+public\.entity_tags/i);
+});
+
+test("FIX-1255: a uuid-keyed defense override replaces the computed tech NAICS tag", () => {
+  const LLNS = "07f586a3-4996-47a6-97fc-55bf06f7dcf3";
+  const computed = [
+    { ...ruleTag(LLNS, "tech"), confidence: 0.85, metadata: { naics_code: "541710" } },
+  ];
+  const out = applyIndustryOverrides(computed, [
+    { entity_id: LLNS, fec_committee_id: `fe:${LLNS}`, industry: "defense",
+      audited_sector: "defense_prime_it_rd", source: "fix1255-defense-primes-2026-10-01" },
+  ]);
+  const industry = out.filter((t) => t.tag_category === "industry");
+  assert.equal(industry.length, 1);
+  assert.equal(industry[0]!.tag, "defense");
+  assert.equal(industry[0]!.generated_by, "curated");
+  assert.deepEqual(industry[0]!.metadata, {
+    source: "fix1255-defense-primes-2026-10-01",
+    audited_sector: "defense_prime_it_rd",
+    fec_committee_id: `fe:${LLNS}`,
+  });
+});

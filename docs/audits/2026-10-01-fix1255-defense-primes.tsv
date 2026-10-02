@@ -1,0 +1,13 @@
+financial_entity_id	display_name	industry	naics_dominant	contract_usd	coded_usd	current_pick	note
+2d39711b-3d07-4351-aa28-8c4390f780fe	AEROJET ROCKETDYNE OF DE, INC	defense	541712	5330868433.41	63179907.00	tech	5417 R&D -> tech; ai defense 0.90
+2d489f9f-e419-45c3-b3c3-d3204254b68e	BLUE ORIGIN MANUFACTURING, LLC	defense	541715	1708753191.15	347118.06	tech	5417 R&D -> tech; ai defense 0.90
+775ffe3e-5607-4559-a6fc-4d766892087b	CACI, INC. - FEDERAL	defense	541512	7934909370.95	648175200.46	tech	5415 computer systems design -> tech; ai defense 0.92
+0c779898-b3b5-4dc0-8b3e-c0c505ec94ad	Harris Corporation	defense	517310	6382187610.36	36085348.01	tech	51 information -> tech; ai defense 0.95
+b3fd7d61-8708-44cc-81c4-96c914a2989a	KBR WYLE SERVICES, LLC	defense	541715	4084411492.06	324941052.19	tech	5417 R&D -> tech; ai defense 0.90
+6f39ee2d-1d52-44dc-8bfe-97168b08d54b	L3HARRIS TECHNOLOGIES, INC.	defense	334220	6493300452.77	1382145951.01	tech	334 electronics manufacturing -> tech; ai defense 0.95
+07f586a3-4996-47a6-97fc-55bf06f7dcf3	LAWRENCE LIVERMORE NATIONAL SECURITY, LLC	defense	541710	40843725842.59	62553282.68	tech	5417 R&D -> tech; ai defense 0.94
+bcf3792f-35b2-4daf-ae0f-c132784e1d24	SAAB, INC	defense	334511	179854701.17	86996935.17	tech	334 electronics manufacturing -> tech; ai defense 0.95
+8e46bf37-380d-48a4-a4b8-244d036b93f3	SCIENCE APPLICATIONS INTERNATIONAL CORPORATION	defense	541512	13151382753.83	1016990582.04	tech	5415 computer systems design -> tech; ai defense 0.95
+dae656c9-02c4-4030-bd52-814c69ad5e6d	SMARTRONIX, LLC	defense	541512	2079244551.30	22231069.14	tech	5415 computer systems design -> tech; ai defense 0.87
+7e7bcd33-1ca0-40ab-8777-d4f900d241f0	The MITRE Corporation	defense	541715	3372185026.05	836595614.61	tech	5417 R&D -> tech; ai defense 0.90
+e05486a3-4687-476a-950e-39b65281bd47	WESTINGHOUSE GOVERNMENT SERVICES LLC	defense	334517	250262220.86	28880480.54	tech	334 electronics manufacturing -> tech; ai defense 0.90
