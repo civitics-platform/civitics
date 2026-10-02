@@ -39,7 +39,7 @@
  * produces.
  */
 
-import { isPlanBaseService } from "./vercel-billing";
+import { isFixedPerCycleService, isPlanBaseService } from "./vercel-billing";
 
 const BASE = "https://api.vercel.com";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -87,6 +87,12 @@ export type VercelUsage = {
    *  stays first-class because deriving billing math from a display array is
    *  the wrong dependency direction regardless. */
   plan_base_usd: number;
+  /** FIX-1099: Σ EffectiveCost of the FIXED_PER_CYCLE_SERVICES lines (today
+   *  `Speed Insights Plus Events`, $0.65 on day 1 of each vendor cycle). It IS
+   *  usage — it draws down the credit — but it lands once per cycle, so the
+   *  billing math projects it once instead of × days. First-class for the same
+   *  reason plan_base_usd is: billing math does not read the display array. */
+  fixed_per_cycle_usd: number;
   /** Number of distinct billing days (ChargePeriodStart) in the response.
    *  Every quantity/cost above is a sum over THIS many days, and the snapshot
    *  writer projects them to a full-month run-rate using it as the divisor.
@@ -174,7 +180,7 @@ export type VercelUsage = {
 
 export type VercelUsageError = { error: string };
 
-type CostFields = "charges_total_usd" | "effective_cost_usd" | "plan_base_usd";
+type CostFields = "charges_total_usd" | "effective_cost_usd" | "plan_base_usd" | "fixed_per_cycle_usd";
 // FIX-648: window + breakdown are response-level metadata, not metric quantities.
 type WindowFields =
   | "window_days"
@@ -213,6 +219,7 @@ function emptyMetrics(): AllMetrics {
     charges_total_usd: 0,
     effective_cost_usd: 0,
     plan_base_usd: 0,
+    fixed_per_cycle_usd: 0,
   };
 }
 
@@ -362,6 +369,8 @@ export function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
     if (mapped) byMetric[mapped.key] = (byMetric[mapped.key] ?? 0) + effective;
     // FIX-1046: keep the subscription line separable from consumption.
     if (isPlanBaseService(serviceName)) out.plan_base_usd += effective;
+    // FIX-1099: and the once-per-cycle line separable from metered usage.
+    if (isFixedPerCycleService(serviceName)) out.fixed_per_cycle_usd += effective;
     // FIX-648: window + per-service breakdown. Lines are per (day, region)
     // leaves (e.g. Fluid Provisioned Memory = 7 days x 21 regions = 147 lines),
     // so distinct ChargePeriodStart is the true day count and summing per

@@ -179,6 +179,14 @@ describe("FIX-1041 (3) — window_days counts distinct billing days", () => {
     assert.equal(ex.window_end, "2026-09-02");
   });
 
+  it("FIX-1099: sums the once-per-cycle line separately, and it stays inside the cost sums", () => {
+    const ex = extractFromCharges(TEN_REAL_SERVICES);
+    assert.equal(ex.metrics.fixed_per_cycle_usd, 0.775, "Speed Insights Plus Events only");
+    assert.equal(ex.metrics.plan_base_usd, 20.0, "the Pro line is still the base, not fixed usage");
+    const total = TEN_REAL_SERVICES.reduce((s, l) => s + (l["EffectiveCost"] as number), 0);
+    assert.ok(Math.abs(ex.metrics.effective_cost_usd - total) < 1e-9, "nothing removed from the gross");
+  });
+
   it("parses the JSONL body billing/charges actually returns", () => {
     const body = TEN_REAL_SERVICES.map((l) => JSON.stringify(l)).join("\n");
     assert.equal(extractFromCharges(parseChargesBody(body)).cost_breakdown.length, 10);

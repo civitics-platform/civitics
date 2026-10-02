@@ -62,17 +62,66 @@
  */
 export const VERCEL_PRO_INCLUDED_USD = 20;
 
+/**
+ * FIX-1099 option 1 — charges that land ONCE per billing cycle, whatever the
+ * usage, and so must be projected once rather than × days.
+ *
+ * A STATED list, not a heuristic. Today it is one service. `Speed Insights
+ * Plus Events` is $0.65 on day 1 of every vendor cycle (Aug 14 and Sep 14 PDT
+ * on prod, 26 events each time, flat for the rest of the cycle). Projected ×30
+ * as if it were a day's metered usage, it put $19.50 of phantom month-end usage
+ * on day 1 of every cycle: 97.5 % of the $20 critical band before any real
+ * consumption (docs/audits/2026-09-28-fix1099-alert-replay.md §3(b)). Add a
+ * service here only on the same kind of evidence: a charge that steps once at
+ * the cycle start and stays flat.
+ */
+export const FIXED_PER_CYCLE_SERVICES: readonly string[] = ["Speed Insights Plus Events"];
+
+/** Exact match after trim, case-insensitive, like isPlanBaseService. */
+export function isFixedPerCycleService(serviceName: string): boolean {
+  const s = serviceName.trim().toLowerCase();
+  return FIXED_PER_CYCLE_SERVICES.some((f) => f.toLowerCase() === s);
+}
+
+/**
+ * FIX-1099 option 2 — the fewest days a projection may divide by.
+ *
+ * Linear extrapolation from one or two days projects a spike onto the whole
+ * cycle: the Aug 14 crawl read $37.62 on its day 1. A floor of a week trades
+ * early-cycle sensitivity for stability. It is a judgement, not a measurement:
+ * the audit named 7 and the cc-175 re-replay measures 5, 7 and 10 on prod's own
+ * series. The ACTUAL rows (credit_used_pct, billable_overage_mtd_usd,
+ * overage_present) never divide, so a real overrun is still seen on day 1.
+ */
+export const MIN_PROJECTION_DAYS = 7;
+
+/** The divisor a projection uses: windowDays, floored at `min`. 0 ⇒ not projectable. */
+export function projectionDivisorDays(windowDays: number, min = MIN_PROJECTION_DAYS): number {
+  return windowDays > 0 ? Math.max(windowDays, min) : 0;
+}
+
 export type VercelBillingInput = {
   /** Σ EffectiveCost over the window, INCLUDING the `Pro` subscription line. */
   effectiveMtdUsd: number;
   /** Σ EffectiveCost of the plan-subscription line(s) only. */
   planBaseMtdUsd: number;
+  /**
+   * FIX-1099: Σ EffectiveCost of the FIXED_PER_CYCLE_SERVICES lines in the
+   * window. Part of usage (it draws down the credit) but projected once.
+   * Default 0, which is the pre-FIX-1099 arithmetic.
+   */
+  fixedPerCycleUsd?: number;
   /** Distinct billing days present in the charges response. 0 ⇒ unknown. */
   windowDays: number;
-  /** Days in the cycle the projection extrapolates to (calendar month today). */
+  /** Days in the cycle the projection extrapolates to. */
   daysInCycle: number;
   /** Included usage credit for the cycle. Defaults to VERCEL_PRO_INCLUDED_USD. */
   includedCreditUsd?: number;
+  /**
+   * FIX-1099: the projection divisor's floor. Defaults to MIN_PROJECTION_DAYS;
+   * 1 reproduces the pre-FIX-1099 divisor (the replay passes it).
+   */
+  minProjectionDays?: number;
 };
 
 export type VercelBilling = {
@@ -101,6 +150,11 @@ export type VercelBilling = {
 
   /** false when windowDays is 0 (quantity-only fallback): no projection made. */
   projectable: boolean;
+
+  /** FIX-1099: the fixed once-per-cycle part of usage_mtd_usd, projected once. */
+  fixed_per_cycle_usd: number;
+  /** FIX-1099: what the usage projection divided by — max(window_days, the floor). 0 ⇒ unprojected. */
+  projection_divisor_days: number;
 };
 
 function round4(n: number): number {
@@ -111,9 +165,11 @@ export function computeVercelBilling(input: VercelBillingInput): VercelBilling {
   const {
     effectiveMtdUsd,
     planBaseMtdUsd,
+    fixedPerCycleUsd = 0,
     windowDays,
     daysInCycle,
     includedCreditUsd = VERCEL_PRO_INCLUDED_USD,
+    minProjectionDays = MIN_PROJECTION_DAYS,
   } = input;
 
   const gross = Math.max(0, effectiveMtdUsd);
@@ -131,13 +187,23 @@ export function computeVercelBilling(input: VercelBillingInput): VercelBilling {
   // granularity, so there is no honest rate to extrapolate. Pass the MTD
   // figures through unprojected and say so, rather than inventing a run-rate.
   const projectable = windowDays > 0 && daysInCycle > 0;
-  const scale = projectable ? daysInCycle / windowDays : 1;
+  // FIX-1099: usage divides by the floored divisor (option 2), and its fixed
+  // once-per-cycle part is carried at face value rather than scaled (option 1).
+  // A fixed charge larger than the usage it is part of is nonsense; clamp it.
+  const divisor = projectable ? projectionDivisorDays(windowDays, minProjectionDays) : 0;
+  const scale = projectable ? daysInCycle / divisor : 1;
+  const fixed = Math.min(Math.max(0, fixedPerCycleUsd), usage);
 
-  const projectedUsage = usage * scale;
+  const projectedUsage = fixed + (usage - fixed) * scale;
   const projectedBillable = Math.max(0, projectedUsage - credit);
   // The subscription is a whole-cycle charge; at month end it is the full $20
-  // regardless of how far into the cycle we are, so project the base too.
-  const projectedBase = base * scale;
+  // regardless of how far into the cycle we are, so project the base too. It
+  // keeps the LINEAR daysInCycle/windowDays scale: Vercel accrues it at exactly
+  // $plan/daysInCycle a day, so the linear projection of it is exact. It is not
+  // a once-per-cycle charge (option 1) and has no noise to damp (option 2).
+  // The audit's day-1 cause (b) was the usage line only.
+  const baseScale = projectable ? daysInCycle / windowDays : 1;
+  const projectedBase = base * baseScale;
 
   return {
     gross_effective_mtd_usd: round4(gross),
@@ -152,6 +218,8 @@ export function computeVercelBilling(input: VercelBillingInput): VercelBilling {
     projected_total_bill_usd: round4(projectedBase + projectedBillable),
     projected_gross_usd: round4(projectedBase + projectedUsage),
     projectable,
+    fixed_per_cycle_usd: round4(fixed),
+    projection_divisor_days: divisor,
   };
 }
 
@@ -170,6 +238,11 @@ export function computeVercelBilling(input: VercelBillingInput): VercelBilling {
 // platform-snapshot.ts, and it stays on the calendar month until the alert
 // bands are re-tuned against the vendor basis (the 2026-09-28 replay found a
 // flip; see docs/audits/2026-09-28-fix1099-alert-replay.md).
+//
+// cc-175 landed the audit's options 1 and 2 (FIXED_PER_CYCLE_SERVICES and
+// MIN_PROJECTION_DAYS above). They are correct on either basis. Whether the
+// alert rows move to the vendor basis is decided by the committed re-replay
+// (packages/data/src/scripts/fix1099-replay-alert-bases.ts), not here.
 
 export type VercelBillingBasis = "vendor" | "calendar";
 

@@ -11,7 +11,11 @@ import assert from "node:assert/strict";
 import {
   chargesWindowStartsAt,
   computeVercelBilling,
+  FIXED_PER_CYCLE_SERVICES,
+  isFixedPerCycleService,
   isPlanBaseService,
+  MIN_PROJECTION_DAYS,
+  projectionDivisorDays,
   stampVercelBilling,
   vercelBillingCycle,
   VERCEL_PRO_INCLUDED_USD,
@@ -141,7 +145,7 @@ describe("computeVercelBilling", () => {
     assert.equal(b.included_credit_usd, 30);
   });
 
-  test("projection scales linearly with elapsed days", () => {
+  test("projection scales linearly with elapsed days, once a week has elapsed", () => {
     const half = computeVercelBilling({
       effectiveMtdUsd: 10,
       planBaseMtdUsd: 0,
@@ -149,6 +153,103 @@ describe("computeVercelBilling", () => {
       daysInCycle: 30,
     });
     near(half.projected_usage_usd, 20);
+    assert.equal(half.projection_divisor_days, 15);
+    const week = computeVercelBilling({
+      effectiveMtdUsd: 7,
+      planBaseMtdUsd: 0,
+      windowDays: 7,
+      daysInCycle: 28,
+    });
+    near(week.projected_usage_usd, 28, 1e-9);
+    assert.equal(week.projection_divisor_days, 7, "the floor is inclusive: day 7 divides by 7");
+  });
+
+  test("FIX-1099 option 2: before day 7 the divisor is floored at 7, not windowDays", () => {
+    // $1 of usage on day 1 of a 30-day cycle: x30/7, not x30.
+    const day1 = computeVercelBilling({
+      effectiveMtdUsd: 1 + 0.6667,
+      planBaseMtdUsd: 0.6667,
+      windowDays: 1,
+      daysInCycle: 30,
+    });
+    near(day1.projected_usage_usd, 30 / 7);
+    assert.equal(day1.projection_divisor_days, 7);
+    // The subscription keeps its exact linear projection: $20, not $20 x 1/7.
+    near(day1.projected_total_bill_usd, 20.001, 0.01);
+    // The ACTUAL rows never divide.
+    near(day1.usage_mtd_usd, 1);
+    assert.equal(day1.billable_overage_mtd_usd, 0);
+    // minProjectionDays 1 is the pre-FIX-1099 divisor.
+    const old = computeVercelBilling({
+      effectiveMtdUsd: 1 + 0.6667,
+      planBaseMtdUsd: 0.6667,
+      windowDays: 1,
+      daysInCycle: 30,
+      minProjectionDays: 1,
+    });
+    near(old.projected_usage_usd, 30);
+    assert.equal(old.projection_divisor_days, 1);
+  });
+
+  test("FIX-1099 option 1: a fixed per-cycle charge is projected once, not x days", () => {
+    const b = computeVercelBilling({
+      effectiveMtdUsd: 10.65 + 10,
+      planBaseMtdUsd: 10,
+      fixedPerCycleUsd: 0.65,
+      windowDays: 15,
+      daysInCycle: 30,
+    });
+    // 0.65 + (10.65 - 0.65) x 30/15 = 20.65, against 21.30 with the fixed line doubled.
+    near(b.projected_usage_usd, 20.65);
+    near(b.fixed_per_cycle_usd, 0.65);
+    near(b.usage_mtd_usd, 10.65, 1e-9);
+  });
+
+  test("a fixed charge larger than the usage it is part of clamps to the usage", () => {
+    const b = computeVercelBilling({
+      effectiveMtdUsd: 0.5,
+      planBaseMtdUsd: 0,
+      fixedPerCycleUsd: 0.65,
+      windowDays: 1,
+      daysInCycle: 30,
+    });
+    near(b.fixed_per_cycle_usd, 0.5, 1e-9);
+    near(b.projected_usage_usd, 0.5, 1e-9);
+  });
+
+  test("windowDays 0 stamps a 0 divisor and projects nothing", () => {
+    const b = computeVercelBilling({
+      effectiveMtdUsd: 3,
+      planBaseMtdUsd: 1,
+      fixedPerCycleUsd: 0.65,
+      windowDays: 0,
+      daysInCycle: 30,
+    });
+    assert.equal(b.projection_divisor_days, 0);
+    assert.equal(b.projected_usage_usd, b.usage_mtd_usd);
+  });
+});
+
+describe("projectionDivisorDays / isFixedPerCycleService (FIX-1099)", () => {
+  test("floors at MIN_PROJECTION_DAYS, passes larger windows through, 0 stays 0", () => {
+    assert.equal(MIN_PROJECTION_DAYS, 7);
+    assert.equal(projectionDivisorDays(0), 0);
+    assert.equal(projectionDivisorDays(1), 7);
+    assert.equal(projectionDivisorDays(6), 7);
+    assert.equal(projectionDivisorDays(7), 7);
+    assert.equal(projectionDivisorDays(14), 14);
+    assert.equal(projectionDivisorDays(3, 5), 5);
+    assert.equal(projectionDivisorDays(3, 1), 3);
+  });
+
+  test("the stated list matches exactly, never by substring", () => {
+    assert.deepEqual([...FIXED_PER_CYCLE_SERVICES], ["Speed Insights Plus Events"]);
+    assert.equal(isFixedPerCycleService("Speed Insights Plus Events"), true);
+    assert.equal(isFixedPerCycleService(" speed insights plus events "), true);
+    // The metered sibling is usage, not a fixed charge.
+    assert.equal(isFixedPerCycleService("Speed Insights Data Points"), false);
+    assert.equal(isFixedPerCycleService("Pro"), false);
+    assert.equal(isFixedPerCycleService("Speed Insights Plus Events Extra"), false);
   });
 });
 
@@ -285,54 +386,68 @@ describe("chargesWindowStartsAt (FIX-1099)", () => {
   });
 });
 
+// cc-175 re-computed these under options 1 + 2 rather than deleting them. Each
+// anchor carries BOTH arithmetics: the pre-FIX-1099 one (fixed 0, floor 1) must
+// still reproduce the audit's figure to the cent, which is what makes the new
+// figure beside it a comparison and not a guess (rule 105).
+const OLD = { fixedPerCycleUsd: 0, minProjectionDays: 1 } as const;
+// Speed Insights Plus Events landed Sep 14 PDT: inside both windows below.
+const SPEED_INSIGHTS_PLUS = 0.65;
+
 describe("the two bases on prod's own numbers (FIX-1099 replay anchors)", () => {
   test("2026-09-28 00:30Z: both bases sit well inside every band", () => {
     // platform_usage_snapshot, prod. Calendar: MTD usage $7.2378 over 27 charge
     // days (Aug 31 PDT … Sep 26 PDT). Vendor: the MTD read $3.3402 at the
     // boundary (through Sep 13 PDT), so the cycle-to-date is $3.8976 over 13.
-    const calendar = computeVercelBilling({
-      effectiveMtdUsd: 24.9367,
-      planBaseMtdUsd: 17.6989,
-      windowDays: 27,
-      daysInCycle: 30,
-    });
-    near(calendar.projected_usage_usd, 8.042);
-    const vendor = computeVercelBilling({
-      effectiveMtdUsd: 3.8976 + 8.6666,
-      planBaseMtdUsd: 8.6666,
-      windowDays: 13,
-      daysInCycle: 30,
-    });
-    near(vendor.projected_usage_usd, 8.9945);
+    const calIn = { effectiveMtdUsd: 24.9367, planBaseMtdUsd: 17.6989, windowDays: 27, daysInCycle: 30 };
+    const venIn = { effectiveMtdUsd: 3.8976 + 8.6666, planBaseMtdUsd: 8.6666, windowDays: 13, daysInCycle: 30 };
+    near(computeVercelBilling({ ...calIn, ...OLD }).projected_usage_usd, 8.042);
+    near(computeVercelBilling({ ...venIn, ...OLD }).projected_usage_usd, 8.9945);
+
+    const calendar = computeVercelBilling({ ...calIn, fixedPerCycleUsd: SPEED_INSIGHTS_PLUS });
+    const vendor = computeVercelBilling({ ...venIn, fixedPerCycleUsd: SPEED_INSIGHTS_PLUS });
+    // 0.65 + 6.5878 x 30/27, and 0.65 + 3.2476 x 30/13. Both divisors are past
+    // the floor, so only option 1 moves them.
+    near(calendar.projected_usage_usd, 7.9698);
+    near(vendor.projected_usage_usd, 8.1445);
     assert.equal(calendar.projected_billable_overage_usd, 0);
     assert.equal(vendor.projected_billable_overage_usd, 0);
   });
 
-  test("day 1 of the Sep 14 cycle: the vendor basis projects one day x 30 — the flip", () => {
+  test("day 1 of the Sep 14 cycle: the vendor-basis flip is gone, on both bases", () => {
     // Sep 14 PDT alone: $0.7752 of usage, $0.65 of it the once-per-cycle
     // Speed Insights Plus Events charge. The calendar basis saw it as day 15.
-    const vendor = computeVercelBilling({
-      effectiveMtdUsd: 0.7752 + 0.6667,
-      planBaseMtdUsd: 0.6667,
-      windowDays: 1,
-      daysInCycle: 30,
-    });
-    near(vendor.projected_usage_usd, 23.256);
+    const venIn = { effectiveMtdUsd: 0.7752 + 0.6667, planBaseMtdUsd: 0.6667, windowDays: 1, daysInCycle: 30 };
+    const calIn = { effectiveMtdUsd: 4.1154 + 9.6989, planBaseMtdUsd: 9.6989, windowDays: 15, daysInCycle: 30 };
+
+    // The wrong-but-green shape, kept: the OLD arithmetic still reads the flip.
+    const vendorOld = computeVercelBilling({ ...venIn, ...OLD });
+    near(vendorOld.projected_usage_usd, 23.256);
     assert.ok(
-      vendor.projected_usage_usd >= VERCEL_PRO_INCLUDED_USD,
-      "≥ 100% of the credit: included_usage_usd CRITICAL on the vendor basis",
+      vendorOld.projected_usage_usd >= VERCEL_PRO_INCLUDED_USD,
+      "OLD: >= 100% of the credit, included_usage_usd CRITICAL on the vendor basis",
     );
-    const calendar = computeVercelBilling({
-      effectiveMtdUsd: 4.1154 + 9.6989,
-      planBaseMtdUsd: 9.6989,
-      windowDays: 15,
-      daysInCycle: 30,
-    });
-    near(calendar.projected_usage_usd, 8.2308);
-    assert.ok(
-      calendar.projected_usage_usd < 0.8 * VERCEL_PRO_INCLUDED_USD,
-      "healthy on the calendar basis",
+    near(computeVercelBilling({ ...calIn, ...OLD }).projected_usage_usd, 8.2308);
+
+    // Option 1 alone: $0.65 + $0.1252 x 30 = $4.41 (the audit's arithmetic).
+    near(
+      computeVercelBilling({ ...venIn, fixedPerCycleUsd: SPEED_INSIGHTS_PLUS, minProjectionDays: 1 })
+        .projected_usage_usd,
+      4.406,
     );
+
+    // Options 1 + 2: $0.65 + $0.1252 x 30/7.
+    const vendor = computeVercelBilling({ ...venIn, fixedPerCycleUsd: SPEED_INSIGHTS_PLUS });
+    near(vendor.projected_usage_usd, 1.1866);
+    assert.equal(vendor.projection_divisor_days, 7);
+    const calendar = computeVercelBilling({ ...calIn, fixedPerCycleUsd: SPEED_INSIGHTS_PLUS });
+    near(calendar.projected_usage_usd, 7.5808);
+    for (const b of [vendor, calendar]) {
+      assert.ok(
+        b.projected_usage_usd < 0.8 * VERCEL_PRO_INCLUDED_USD,
+        "healthy on both bases (below the 80% warning band)",
+      );
+    }
   });
 });
 

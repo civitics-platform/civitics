@@ -97,6 +97,7 @@ import {
 import {
   chargesWindowStartsAt,
   computeVercelBilling,
+  projectionDivisorDays,
   stampVercelBilling,
   vercelBillingCycle,
   VERCEL_PRO_INCLUDED_USD,
@@ -889,8 +890,11 @@ export async function computePlatformUsagePayload(
       ).getDate();
       // Extrapolate a window total to a full month at the window's daily rate.
       // window_days===0 (the quantity-only fallback) → pass the value through.
+      // FIX-1099: the divisor is floored exactly as the billing rows' is, so the
+      // card's projected numbers and the alert rows divide by the same days.
+      const projectDivisor = projectionDivisorDays(v.window_days);
       const project = (raw: number): number =>
-        v.window_days > 0 ? (raw / v.window_days) * daysInMonth : raw;
+        projectDivisor > 0 ? (raw / projectDivisor) * daysInMonth : raw;
 
       await Promise.all([
         updateUsage(db, "vercel", "fluid_cpu_seconds", project(v.fluid_cpu_seconds), "estimated"),
@@ -989,6 +993,7 @@ export async function computePlatformUsagePayload(
       const calendarBilling = computeVercelBilling({
         effectiveMtdUsd: v.effective_cost_usd,
         planBaseMtdUsd: v.plan_base_usd,
+        fixedPerCycleUsd: v.fixed_per_cycle_usd,
         windowDays: v.window_days,
         daysInCycle: daysInMonth,
         includedCreditUsd,
@@ -1031,6 +1036,7 @@ export async function computePlatformUsagePayload(
               computeVercelBilling({
                 effectiveMtdUsd: vc.effective_cost_usd,
                 planBaseMtdUsd: vc.plan_base_usd,
+                fixedPerCycleUsd: vc.fixed_per_cycle_usd,
                 windowDays: vc.window_days,
                 daysInCycle: cycle.days_in_cycle,
                 includedCreditUsd,
@@ -1326,11 +1332,11 @@ export async function computePlatformUsagePayload(
   {
     const now = new Date();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const vercelWindowDays = vercelUsage?.window_days ?? 0;
     // Same projection the quantities got, so a row's cost and its quantity are
-    // always on the same basis.
+    // always on the same basis — including FIX-1099's divisor floor.
+    const vercelDivisor = projectionDivisorDays(vercelUsage?.window_days ?? 0);
     const projectVercel = (raw: number): number =>
-      vercelWindowDays > 0 ? (raw / vercelWindowDays) * daysInMonth : raw;
+      vercelDivisor > 0 ? (raw / vercelDivisor) * daysInMonth : raw;
     const vercelRawQty: Record<string, number> = vercelUsage
       ? {
           fluid_cpu_seconds: vercelUsage.fluid_cpu_seconds,

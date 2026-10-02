@@ -392,7 +392,12 @@ export type {
 // Vercel Pro billing math — $20 base INCLUDES $20 of usage (FIX-1046)
 export {
   computeVercelBilling,
+  FIXED_PER_CYCLE_SERVICES,
+  isFixedPerCycleService,
   isPlanBaseService,
+  MIN_PROJECTION_DAYS,
+  projectionDivisorDays,
+  vercelBillingCycle,
   VERCEL_PRO_INCLUDED_USD,
 } from "./vercel-billing";
 export type { VercelBilling, VercelBillingInput } from "./vercel-billing";
