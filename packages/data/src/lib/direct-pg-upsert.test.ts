@@ -451,3 +451,100 @@ test("FIX-1008 `changed` equals `upserted` when the driver omits rowCount", asyn
   });
   assert.equal(res.changed, res.upserted);
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1259 — updateOnlyIfSame (a writer overwrites only its own provenance)
+// ---------------------------------------------------------------------------
+
+const TAG_COLUMNS = [
+  "entity_type", "entity_id", "tag", "tag_category",
+  "display_label", "display_icon", "visibility",
+  "generated_by", "confidence", "pipeline_version", "metadata",
+];
+const TAG_KEY = ["entity_type", "entity_id", "tag", "tag_category"];
+
+test("FIX-1259 updateOnlyIfSame gates the DO UPDATE on the existing value matching", () => {
+  const sql = buildUpsertStatement({
+    table: "entity_tags",
+    columns: TAG_COLUMNS,
+    conflictColumns: TAG_KEY,
+    updateOnlyIfSame: ["generated_by"],
+    jsonbColumns: ["metadata"],
+    rowCount: 1,
+  });
+  assert.match(
+    sql,
+    /DO UPDATE SET .*"metadata" = EXCLUDED\."metadata" WHERE \("entity_tags"\."generated_by" IS NOT DISTINCT FROM EXCLUDED\."generated_by"\)$/,
+  );
+});
+
+test("FIX-1259 several columns are ANDed — every one must match", () => {
+  const sql = buildUpsertStatement({
+    table: "t",
+    columns: ["k", "a", "b", "c"],
+    conflictColumns: ["k"],
+    updateOnlyIfSame: ["a", "b"],
+    rowCount: 1,
+  });
+  assert.match(
+    sql,
+    /WHERE \("t"\."a" IS NOT DISTINCT FROM EXCLUDED\."a" AND "t"\."b" IS NOT DISTINCT FROM EXCLUDED\."b"\)$/,
+  );
+});
+
+test("FIX-1259 composes with FIX-1008 skipUnchangedRows by AND, provenance first", () => {
+  const sql = buildUpsertStatement({
+    table: "t",
+    columns: ["k", "gb", "a"],
+    conflictColumns: ["k"],
+    updateOnlyIfSame: ["gb"],
+    skipUnchangedRows: true,
+    rowCount: 1,
+  });
+  assert.match(
+    sql,
+    /WHERE \("t"\."gb" IS NOT DISTINCT FROM EXCLUDED\."gb"\) AND \("t"\."gb" IS DISTINCT FROM EXCLUDED\."gb" OR "t"\."a" IS DISTINCT FROM EXCLUDED\."a"\)$/,
+  );
+});
+
+test("FIX-1259 omitting it (or an empty list) leaves the statement byte-identical", () => {
+  const base = { table: "entity_tags", columns: TAG_COLUMNS, conflictColumns: TAG_KEY, jsonbColumns: ["metadata"], rowCount: 2 };
+  assert.equal(buildUpsertStatement(base), buildUpsertStatement({ ...base, updateOnlyIfSame: [] }));
+  assert.doesNotMatch(buildUpsertStatement(base), /WHERE/);
+});
+
+test("FIX-1259 DO NOTHING is never given the provenance predicate", () => {
+  const sql = buildUpsertStatement({
+    table: "t", columns: ["k"], conflictColumns: ["k"], updateColumns: [],
+    updateOnlyIfSame: ["k"], rowCount: 1,
+  });
+  assert.match(sql, /ON CONFLICT \("k"\) DO NOTHING$/);
+});
+
+test("FIX-1259 the column list is identifiers, validated like every other", () => {
+  assert.throws(
+    () =>
+      buildUpsertStatement({
+        table: "t", columns: ["k", "a"], conflictColumns: ["k"],
+        updateOnlyIfSame: ["a\" = 'x' OR true --"], rowCount: 1,
+      }),
+    /unsafe identifier/,
+  );
+});
+
+test("FIX-1259 bulkUpsert threads the option into every chunk's statement", async () => {
+  const seen: string[] = [];
+  const client = {
+    query: async (text: string) => { seen.push(text); return { rows: [], rowCount: 1 }; },
+  } as unknown as Client;
+  const res = await bulkUpsert(client, {
+    table: "t", columns: ["k", "gb"], conflictColumns: ["k"],
+    updateOnlyIfSame: ["gb"],
+    rows: Array.from({ length: 5 }, (_, i) => [i, "rule"]),
+    chunkSize: 2,
+  });
+  assert.equal(seen.length, 3);
+  for (const s of seen) assert.match(s, /WHERE \("t"\."gb" IS NOT DISTINCT FROM EXCLUDED\."gb"\)$/);
+  assert.equal(res.upserted, 5);
+  assert.equal(res.changed, 3, "the rows the predicate left alone are the shortfall");
+});

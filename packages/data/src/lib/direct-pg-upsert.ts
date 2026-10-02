@@ -160,6 +160,35 @@ export interface BulkUpsertSpec {
    * rewritten. Omit the flag for today's behaviour.
    */
   skipUnchangedRows?: boolean;
+  /**
+   * FIX-1259 — columns whose EXISTING value must EQUAL the incoming one for a
+   * conflicting row to be rewritten. When set, the statement gains
+   *
+   *   ON CONFLICT (...) DO UPDATE SET ... WHERE (
+   *     tbl.c1 IS NOT DISTINCT FROM EXCLUDED.c1 AND ...
+   *   )
+   *
+   * so a conflicting row that differs on any listed column is left exactly as
+   * it was, and the incoming row is not written at all.
+   *
+   * WHY: entity_tags' key is (entity_type, entity_id, tag, tag_category), with
+   * no provenance in it, and two writers share it — the rule tagger and the ai
+   * writers. With no predicate the rule tagger's DO UPDATE rewrote an ai row's
+   * `generated_by` to 'rule', and the next nightly's rule clear deleted it:
+   * prod lost 51 ai industry rows across two tails (2,126 → 2,075, cc-180
+   * read 4), and no ai writer re-classifies an entity that already has a tag.
+   * `["generated_by"]` makes a writer overwrite only rows of its own
+   * provenance.
+   *
+   * Composes with `skipUnchangedRows` by AND: the row must match on these
+   * columns AND differ on some SET column. The same RETURNING caveat applies —
+   * a row the predicate leaves alone produces no RETURNING row, and `changed`
+   * comes back short by exactly that many.
+   *
+   * Identifiers only, validated and quoted like every other column here —
+   * never a raw SQL fragment.
+   */
+  updateOnlyIfSame?: string[];
   /** Columns whose value is JSON-serialized and cast `::jsonb`. */
   jsonbColumns?: string[];
   /** Columns to RETURNING (rows come back in `BulkUpsertResult.returned`). */
@@ -239,6 +268,7 @@ export function buildUpsertStatement(spec: {
   conflictColumns: string[];
   updateColumns?: string[];
   skipUnchangedRows?: boolean;
+  updateOnlyIfSame?: string[];
   jsonbColumns?: string[];
   returningColumns?: string[];
   rowCount: number;
@@ -264,15 +294,31 @@ export function buildUpsertStatement(spec: {
   // Built from the SET list itself, via validated + quoted identifiers — never
   // raw caller SQL, and never a subset. A DO NOTHING already writes nothing, so
   // the predicate is only emitted on a DO UPDATE.
-  const updateWhere =
-    spec.skipUnchangedRows && updateCols.length > 0
-      ? ` WHERE (${updateCols
-          .map(
-            (c) =>
-              `${quoteIdent(table)}.${quoteIdent(c)} IS DISTINCT FROM EXCLUDED.${quoteIdent(c)}`,
-          )
-          .join(" OR ")})`
-      : "";
+  //
+  // FIX-1259: `... WHERE (every updateOnlyIfSame column is unchanged)`, ANDed
+  // in front of the FIX-1008 predicate when both are set.
+  const predicates: string[] = [];
+  if (spec.updateOnlyIfSame?.length && updateCols.length > 0) {
+    predicates.push(
+      `(${spec.updateOnlyIfSame
+        .map(
+          (c) =>
+            `${quoteIdent(table)}.${quoteIdent(c)} IS NOT DISTINCT FROM EXCLUDED.${quoteIdent(c)}`,
+        )
+        .join(" AND ")})`,
+    );
+  }
+  if (spec.skipUnchangedRows && updateCols.length > 0) {
+    predicates.push(
+      `(${updateCols
+        .map(
+          (c) =>
+            `${quoteIdent(table)}.${quoteIdent(c)} IS DISTINCT FROM EXCLUDED.${quoteIdent(c)}`,
+        )
+        .join(" OR ")})`,
+    );
+  }
+  const updateWhere = predicates.length ? ` WHERE ${predicates.join(" AND ")}` : "";
 
   const onConflict =
     updateCols.length === 0
@@ -345,6 +391,7 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
       conflictColumns: spec.conflictColumns,
       updateColumns: spec.updateColumns,
       skipUnchangedRows: spec.skipUnchangedRows,
+      updateOnlyIfSame: spec.updateOnlyIfSame,
       jsonbColumns: spec.jsonbColumns,
       returningColumns: spec.returningColumns,
       rowCount: chunk.length,

@@ -192,6 +192,7 @@
     "data:verify:sector-affinity": "tsx --env-file=../../.env.local src/scripts/verify-sector-affinity-trigger.ts",
     "data:verify:primary-industry": "tsx --env-file=../../.env.local src/scripts/verify-fix918-primary-industry.ts",
     "data:verify:naics-dominant": "tsx --env-file=../../.env.local src/scripts/verify-fix1252-naics-dominant.ts",
+    "data:verify:tag-provenance": "tsx --env-file=../../.env.local src/scripts/verify-fix1259-tag-provenance.ts",
     "data:replay:fix1099": "tsx --env-file=../../.env.local.prod src/scripts/fix1099-replay-alert-bases.ts",
     "data:backfill-agency-staffing": "tsx --env-file=../../.env.local src/scripts/backfill-agency-staffing-rollup.ts",
     "data:backfill-agency-staffing:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-agency-staffing-rollup.ts",

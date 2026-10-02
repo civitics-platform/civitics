@@ -26,7 +26,7 @@ import { VALID_INDUSTRIES, industryDisplay } from "./topics";
 // Types
 // ---------------------------------------------------------------------------
 
-interface TagInsert {
+export interface TagInsert {
   entity_type: string;
   entity_id: string;
   tag: string;
@@ -563,17 +563,30 @@ const TAG_COLUMNS = [
 // It stays a plain bulkUpsert — the transaction is opened one level up, never
 // around bulkUpsert itself, whose autocommit-per-chunk behaviour FIX-754's
 // resume support depends on.
-async function upsertTags(client: Client, tags: TagInsert[]): Promise<number> {
+//
+// FIX-1259: a writer overwrites only rows of its OWN provenance. The conflict
+// key has no generated_by in it, so a rule tag landing on the key of an ai row
+// used to rewrite that row as 'rule' — and the next nightly's rule clear then
+// deleted it. Prod lost 51 ai industry rows that way across two tails (2,126 →
+// 2,075, cc-180 read 4), and neither ai writer re-classifies an entity that
+// already holds an industry tag, so they never came back. Now a conflict with
+// an ai (or curated, or manual) row leaves that row exactly as it was and the
+// incoming row is not written; the entity keeps the other writer's judgment.
+// Every caller clears its own rows first (proposals and officials their rule
+// rows, financial entities rule + curated), so same-provenance conflicts only
+// arise inside one run's own set.
+export async function upsertTags(client: Client, tags: TagInsert[]): Promise<number> {
   if (tags.length === 0) return 0;
   const rows = tags.map((t) => [
     t.entity_type, t.entity_id, t.tag, t.tag_category,
     t.display_label, t.display_icon, t.visibility,
     t.generated_by, t.confidence, t.pipeline_version, t.metadata,
   ]);
-  const { upserted, failed } = await bulkUpsert(client, {
+  const { upserted, failed, changed } = await bulkUpsert(client, {
     table: "entity_tags",
     columns: [...TAG_COLUMNS],
     conflictColumns: ["entity_type", "entity_id", "tag", "tag_category"],
+    updateOnlyIfSame: ["generated_by"],
     jsonbColumns: ["metadata"],
     rows,
     label: "entity_tags",
@@ -585,6 +598,11 @@ async function upsertTags(client: Client, tags: TagInsert[]): Promise<number> {
     // instead of reporting a partial rebuild as a success.
     throw new Error(`entity_tags bulk upsert: ${failed} row(s) failed`);
   }
+  // Without skipUnchangedRows every insert and every same-provenance update is
+  // counted, so the shortfall is exactly the rows the guard left alone.
+  console.info(
+    `    entity_tags: ${upserted - changed} row(s) kept as another writer's provenance (FIX-1259)`,
+  );
   return upserted;
 }
 
