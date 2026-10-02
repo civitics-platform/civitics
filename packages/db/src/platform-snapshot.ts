@@ -128,6 +128,15 @@ import {
  * Sep 14). docs/audits/2026-09-28-fix1099-alert-replay.md has the table. Flip
  * this only together with the re-tune — the bands, not this constant, are the
  * decision.
+ *
+ * cc-175 landed options 1 + 2 (vercel-billing.ts: the fixed per-cycle charge
+ * projected once, the divisor floored at 7) and re-ran the replay as a
+ * committed script (packages/data/src/scripts/fix1099-replay-alert-bases.ts;
+ * docs/audits/2026-10-01-fix1099-replay-2.md). Day 1 of a cycle no longer
+ * flips. The Aug 14 cycle's days 14-17 still read critical on the vendor basis
+ * ($23.25 on d14, for a cycle that ended at $14.64), because their divisors
+ * are already past any floor of 7. On that series only a floor of 18 or more
+ * clears it. So it stays "calendar", and the next step is Craig's call.
  */
 export const VERCEL_ALERT_BASIS: VercelBillingBasis = "calendar";
 import { evaluateBurnRate, readBurnRateSeries, type BurnRateVerdict } from "./burn-rate";

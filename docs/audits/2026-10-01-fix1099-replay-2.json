@@ -1,0 +1,3658 @@
+{
+  "generated_at": "2026-10-02T01:08:08.920Z",
+  "read_at": "2026-10-02T01:08:05.797Z",
+  "window": {
+    "from": "2026-08-14",
+    "to": "2026-10-02T01:08:07.163Z"
+  },
+  "source": "prod public.platform_usage_snapshot + public.platform_limits (pro), one READ ONLY transaction",
+  "bands": {
+    "billable_overage_usd": {
+      "metric": "billable_overage_usd",
+      "included_limit": 20,
+      "warning_pct": 50,
+      "critical_pct": 50
+    },
+    "included_usage_usd": {
+      "metric": "included_usage_usd",
+      "included_limit": 20,
+      "warning_pct": 80,
+      "critical_pct": 100
+    },
+    "overage_present": {
+      "metric": "overage_present",
+      "included_limit": 1,
+      "warning_pct": 1,
+      "critical_pct": 101
+    }
+  },
+  "credit_usd": 20,
+  "min_projection_days": 7,
+  "audit_inputs": {
+    "A14": 4.2988,
+    "AUG_FIXED": 0.65,
+    "AUG_CYCLE": {
+      "start": "2026-08-14T07:00:00.000Z",
+      "end": "2026-09-14T07:00:00.000Z"
+    },
+    "AUDIT_AUGUST": [
+      {
+        "tick": "2026-08-15T23:30:00Z",
+        "k": 15,
+        "calProjected": 11.392500000000002,
+        "note": "cc-168 §2 supplement (the crawl's day 1)"
+      },
+      {
+        "tick": "2026-08-29T03:21:00Z",
+        "k": 28,
+        "calProjected": 16.78
+      },
+      {
+        "tick": "2026-08-30T06:30:00Z",
+        "k": 29,
+        "calProjected": 16.34
+      },
+      {
+        "tick": "2026-08-31T06:03:00Z",
+        "k": 30,
+        "calProjected": 16.04
+      },
+      {
+        "tick": "2026-08-31T23:30:00Z",
+        "k": 31,
+        "calProjected": 15.6
+      }
+    ]
+  },
+  "stored_reproduction": {
+    "matches": 31,
+    "checked": 31
+  },
+  "cycle_ends": [
+    {
+      "start": "2026-08-14T07:00:00.000Z",
+      "end": "2026-09-14T07:00:00.000Z",
+      "completed": true,
+      "end_usage": 14.6414,
+      "usage_so_far": 14.6414
+    },
+    {
+      "start": "2026-09-14T07:00:00.000Z",
+      "end": "2026-10-14T07:00:00.000Z",
+      "completed": false,
+      "end_usage": null,
+      "usage_so_far": 5.5803
+    }
+  ],
+  "criteria": {
+    "floor": 7,
+    "i": {
+      "pass": false,
+      "days": [
+        "2026-08-27 ($23.25, d14)",
+        "2026-08-28 ($22.01, d15)",
+        "2026-08-29 ($21.14, d16)",
+        "2026-08-30 ($20.07, d17)"
+      ],
+      "provisional": []
+    },
+    "ii": {
+      "pass": true,
+      "days": []
+    },
+    "iii": {
+      "pass": false,
+      "days": [
+        "2026-08-14 vendor billable_overage_usd"
+      ]
+    },
+    "iv": {
+      "pass": true,
+      "vacuous": true,
+      "days": []
+    },
+    "v": {
+      "pass": false,
+      "old": {
+        "usd": 24.0412,
+        "status": "critical"
+      },
+      "new": {
+        "usd": 23.2519,
+        "status": "critical"
+      }
+    }
+  },
+  "floor_sweep": [
+    {
+      "floor": 1,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 2,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 3,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 4,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 5,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 6,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 7,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 8,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 9,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 10,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 11,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 12,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 13,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 14,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 15,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 16,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": false
+    },
+    {
+      "floor": 17,
+      "all_pass": false,
+      "i": false,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": true
+    },
+    {
+      "floor": 18,
+      "all_pass": false,
+      "i": true,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": true
+    },
+    {
+      "floor": 19,
+      "all_pass": false,
+      "i": true,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": true
+    },
+    {
+      "floor": 20,
+      "all_pass": false,
+      "i": true,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": true
+    },
+    {
+      "floor": 21,
+      "all_pass": false,
+      "i": true,
+      "ii": true,
+      "iii": false,
+      "iv": true,
+      "v": true
+    }
+  ],
+  "flips": {
+    "included_usage_usd": {
+      "calendar_old_vs_new": 0,
+      "vendor_old_vs_new": 2,
+      "old_vendor_vs_calendar": 16,
+      "new_vendor_vs_calendar": 14,
+      "new_vendor_more_severe": 14,
+      "new_vendor_less_severe": 0
+    },
+    "billable_overage_usd": {
+      "calendar_old_vs_new": 0,
+      "vendor_old_vs_new": 1,
+      "old_vendor_vs_calendar": 1,
+      "new_vendor_vs_calendar": 0,
+      "new_vendor_more_severe": 0,
+      "new_vendor_less_severe": 0
+    },
+    "overage_present": {
+      "calendar_old_vs_new": 0,
+      "vendor_old_vs_new": 0,
+      "old_vendor_vs_calendar": 0,
+      "new_vendor_vs_calendar": 0,
+      "new_vendor_more_severe": 0,
+      "new_vendor_less_severe": 0
+    }
+  },
+  "rows": [
+    {
+      "tick": "2026-08-15T23:30:00Z",
+      "note": "cc-168 §2 supplement (the crawl's day 1)",
+      "through": "2026-08-14",
+      "provenance": {
+        "calendar": "audit",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 5.5125,
+          "base": 9.6774,
+          "fixed": 0.65,
+          "windowDays": 15,
+          "daysInCycle": 31
+        },
+        "stored_projected": 11.392500000000002,
+        "old": {
+          "projected_usage_usd": 11.3925,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 10.6992,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 1,
+        "inputs": {
+          "usage": 1.2137,
+          "base": 0.6452,
+          "fixed": 0.65,
+          "windowDays": 1,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 37.6247,
+          "projected_billable_overage_usd": 17.6247,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 1,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "critical",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 3.1464,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 10.6992,
+          "vendor": 4.1449,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 10.6992,
+          "vendor": 3.1464,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 10.6992,
+          "vendor": 2.3975,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-08-29T03:21:00Z",
+      "through": "2026-08-27",
+      "provenance": {
+        "calendar": "audit",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 15.1561,
+          "base": 18.0645,
+          "fixed": 0.65,
+          "windowDays": 28,
+          "daysInCycle": 31
+        },
+        "stored_projected": 16.78,
+        "old": {
+          "projected_usage_usd": 16.78,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 28,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.7104,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 28,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 14,
+        "inputs": {
+          "usage": 10.8573,
+          "base": 9.0323,
+          "fixed": 0.65,
+          "windowDays": 14,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 24.0412,
+          "projected_billable_overage_usd": 4.0412,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 14,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 23.2519,
+          "projected_billable_overage_usd": 3.2519,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 14,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 16.7104,
+          "vendor": 23.2519,
+          "vendor_status": "critical"
+        },
+        "7": {
+          "calendar": 16.7104,
+          "vendor": 23.2519,
+          "vendor_status": "critical"
+        },
+        "10": {
+          "calendar": 16.7104,
+          "vendor": 23.2519,
+          "vendor_status": "critical"
+        }
+      }
+    },
+    {
+      "tick": "2026-08-30T06:30:00Z",
+      "through": "2026-08-28",
+      "provenance": {
+        "calendar": "audit",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 15.2858,
+          "base": 18.7097,
+          "fixed": 0.65,
+          "windowDays": 29,
+          "daysInCycle": 31
+        },
+        "stored_projected": 16.34,
+        "old": {
+          "projected_usage_usd": 16.34,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 29,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.2952,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 29,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 15,
+        "inputs": {
+          "usage": 10.987,
+          "base": 9.6774,
+          "fixed": 0.65,
+          "windowDays": 15,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 22.7065,
+          "projected_billable_overage_usd": 2.7065,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 22.0131,
+          "projected_billable_overage_usd": 2.0131,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 16.2952,
+          "vendor": 22.0131,
+          "vendor_status": "critical"
+        },
+        "7": {
+          "calendar": 16.2952,
+          "vendor": 22.0131,
+          "vendor_status": "critical"
+        },
+        "10": {
+          "calendar": 16.2952,
+          "vendor": 22.0131,
+          "vendor_status": "critical"
+        }
+      }
+    },
+    {
+      "tick": "2026-08-31T06:03:00Z",
+      "through": "2026-08-29",
+      "provenance": {
+        "calendar": "audit",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 15.5226,
+          "base": 19.3548,
+          "fixed": 0.65,
+          "windowDays": 30,
+          "daysInCycle": 31
+        },
+        "stored_projected": 16.04,
+        "old": {
+          "projected_usage_usd": 16.04,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 30,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.0183,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 30,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 16,
+        "inputs": {
+          "usage": 11.2238,
+          "base": 10.3226,
+          "fixed": 0.65,
+          "windowDays": 16,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 21.7461,
+          "projected_billable_overage_usd": 1.7461,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 16,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 21.1367,
+          "projected_billable_overage_usd": 1.1367,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 16,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 16.0183,
+          "vendor": 21.1367,
+          "vendor_status": "critical"
+        },
+        "7": {
+          "calendar": 16.0183,
+          "vendor": 21.1367,
+          "vendor_status": "critical"
+        },
+        "10": {
+          "calendar": 16.0183,
+          "vendor": 21.1367,
+          "vendor_status": "critical"
+        }
+      }
+    },
+    {
+      "tick": "2026-08-31T23:30:00Z",
+      "through": "2026-08-30",
+      "provenance": {
+        "calendar": "audit",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 15.6,
+          "base": 20,
+          "fixed": 0.65,
+          "windowDays": 31,
+          "daysInCycle": 31
+        },
+        "stored_projected": 15.6,
+        "old": {
+          "projected_usage_usd": 15.6,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 31,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 15.6,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 31,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 17,
+        "inputs": {
+          "usage": 11.3012,
+          "base": 10.9677,
+          "fixed": 0.65,
+          "windowDays": 17,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 20.6081,
+          "projected_billable_overage_usd": 0.6081,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 17,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 20.0728,
+          "projected_billable_overage_usd": 0.0728,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 17,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 15.6,
+          "vendor": 20.0728,
+          "vendor_status": "critical"
+        },
+        "7": {
+          "calendar": 15.6,
+          "vendor": 20.0728,
+          "vendor_status": "critical"
+        },
+        "10": {
+          "calendar": 15.6,
+          "vendor": 20.0728,
+          "vendor_status": "critical"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-02T06:30:22.208Z",
+      "through": "2026-08-31",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 0.1785,
+          "base": 0.6452,
+          "fixed": 0,
+          "windowDays": 1,
+          "daysInCycle": 30
+        },
+        "stored_projected": 5.3547,
+        "old": {
+          "projected_usage_usd": 5.355,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 1,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 0.765,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 18,
+        "inputs": {
+          "usage": 11.4797,
+          "base": 11.6129,
+          "fixed": 0.65,
+          "windowDays": 18,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 19.7706,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 18,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 19.3011,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 18,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 1.071,
+          "vendor": 19.3011,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 0.765,
+          "vendor": 19.3011,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 0.5355,
+          "vendor": 19.3011,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-03T06:30:34.497Z",
+      "through": "2026-09-01",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 0.4404,
+          "base": 1.2903,
+          "fixed": 0,
+          "windowDays": 2,
+          "daysInCycle": 30
+        },
+        "stored_projected": 6.6065,
+        "old": {
+          "projected_usage_usd": 6.606,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 2,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 1.8874,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 19,
+        "inputs": {
+          "usage": 11.7416,
+          "base": 12.2581,
+          "fixed": 0.65,
+          "windowDays": 19,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 19.1573,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 19,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 18.7468,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 19,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 2.6424,
+          "vendor": 18.7468,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 1.8874,
+          "vendor": 18.7468,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 1.3212,
+          "vendor": 18.7468,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-04T06:30:26.574Z",
+      "through": "2026-09-02",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 0.8457,
+          "base": 1.9355,
+          "fixed": 0,
+          "windowDays": 3,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.4566,
+        "old": {
+          "projected_usage_usd": 8.457,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 3,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 3.6244,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 20,
+        "inputs": {
+          "usage": 12.1469,
+          "base": 12.9032,
+          "fixed": 0.65,
+          "windowDays": 20,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 18.8277,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 20,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 18.4702,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 20,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 5.0742,
+          "vendor": 18.4702,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 3.6244,
+          "vendor": 18.4702,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 2.5371,
+          "vendor": 18.4702,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-05T06:30:24.528Z",
+      "through": "2026-09-03",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 1.0715,
+          "base": 2.5806,
+          "fixed": 0,
+          "windowDays": 4,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.036,
+        "old": {
+          "projected_usage_usd": 8.0362,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 4,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 4.5921,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 21,
+        "inputs": {
+          "usage": 12.3727,
+          "base": 13.5484,
+          "fixed": 0.65,
+          "windowDays": 21,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 18.2645,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 21,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 17.9549,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 21,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 6.429,
+          "vendor": 17.9549,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 4.5921,
+          "vendor": 17.9549,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 3.2145,
+          "vendor": 17.9549,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-06T06:30:25.165Z",
+      "through": "2026-09-04",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 1.4084,
+          "base": 3.2258,
+          "fixed": 0,
+          "windowDays": 5,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.4502,
+        "old": {
+          "projected_usage_usd": 8.4504,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 5,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.036,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 22,
+        "inputs": {
+          "usage": 12.7096,
+          "base": 14.1935,
+          "fixed": 0.65,
+          "windowDays": 22,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 17.909,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 22,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 17.6431,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 22,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 8.4504,
+          "vendor": 17.6431,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 6.036,
+          "vendor": 17.6431,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 4.2252,
+          "vendor": 17.6431,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-07T06:30:22.620Z",
+      "through": "2026-09-05",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 1.5784,
+          "base": 3.871,
+          "fixed": 0,
+          "windowDays": 6,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.8921,
+        "old": {
+          "projected_usage_usd": 7.892,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 6,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.7646,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 23,
+        "inputs": {
+          "usage": 12.8796,
+          "base": 14.8387,
+          "fixed": 0.65,
+          "windowDays": 23,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 17.3595,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 23,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 17.1334,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 23,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.892,
+          "vendor": 17.1334,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 6.7646,
+          "vendor": 17.1334,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 4.7352,
+          "vendor": 17.1334,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-08T06:30:22.037Z",
+      "through": "2026-09-06",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 1.7786,
+          "base": 4.5161,
+          "fixed": 0,
+          "windowDays": 7,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.6226,
+        "old": {
+          "projected_usage_usd": 7.6226,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.6226,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 24,
+        "inputs": {
+          "usage": 13.0798,
+          "base": 15.4839,
+          "fixed": 0.65,
+          "windowDays": 24,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 16.8947,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 24,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.7052,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 24,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.6226,
+          "vendor": 16.7052,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 7.6226,
+          "vendor": 16.7052,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 5.3358,
+          "vendor": 16.7052,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-09T06:30:25.016Z",
+      "through": "2026-09-07",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 2.2469,
+          "base": 5.1613,
+          "fixed": 0,
+          "windowDays": 8,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.4259,
+        "old": {
+          "projected_usage_usd": 8.4259,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 8,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.4259,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 8,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 25,
+        "inputs": {
+          "usage": 13.5481,
+          "base": 16.129,
+          "fixed": 0.65,
+          "windowDays": 25,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 16.7996,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 25,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.6436,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 25,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 8.4259,
+          "vendor": 16.6436,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 8.4259,
+          "vendor": 16.6436,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 6.7407,
+          "vendor": 16.6436,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-10T06:30:22.888Z",
+      "through": "2026-09-08",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 2.3776,
+          "base": 5.8065,
+          "fixed": 0,
+          "windowDays": 9,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.9255,
+        "old": {
+          "projected_usage_usd": 7.9253,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 9,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.9253,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 9,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 26,
+        "inputs": {
+          "usage": 13.6788,
+          "base": 16.7742,
+          "fixed": 0.65,
+          "windowDays": 26,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 16.3093,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 26,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.1843,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 26,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.9253,
+          "vendor": 16.1843,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 7.9253,
+          "vendor": 16.1843,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 7.1328,
+          "vendor": 16.1843,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-11T06:30:27.195Z",
+      "through": "2026-09-09",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 2.7286,
+          "base": 6.4516,
+          "fixed": 0,
+          "windowDays": 10,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.1858,
+        "old": {
+          "projected_usage_usd": 8.1858,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 10,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.1858,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 10,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 27,
+        "inputs": {
+          "usage": 14.0298,
+          "base": 17.4194,
+          "fixed": 0.65,
+          "windowDays": 27,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 16.1083,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 27,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 16.012,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 27,
+          "status": {
+            "included_usage_usd": "warning",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 8.1858,
+          "vendor": 16.012,
+          "vendor_status": "warning"
+        },
+        "7": {
+          "calendar": 8.1858,
+          "vendor": 16.012,
+          "vendor_status": "warning"
+        },
+        "10": {
+          "calendar": 8.1858,
+          "vendor": 16.012,
+          "vendor_status": "warning"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-12T06:30:33.694Z",
+      "through": "2026-09-10",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 2.7987,
+          "base": 7.0968,
+          "fixed": 0,
+          "windowDays": 11,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.6328,
+        "old": {
+          "projected_usage_usd": 7.6328,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 11,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.6328,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 11,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 28,
+        "inputs": {
+          "usage": 14.0999,
+          "base": 18.0645,
+          "fixed": 0.65,
+          "windowDays": 28,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 15.6106,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 28,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 15.541,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 28,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.6328,
+          "vendor": 15.541,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.6328,
+          "vendor": 15.541,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.6328,
+          "vendor": 15.541,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-13T06:30:26.648Z",
+      "through": "2026-09-11",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 3.0136,
+          "base": 7.7419,
+          "fixed": 0,
+          "windowDays": 12,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.5341,
+        "old": {
+          "projected_usage_usd": 7.534,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 12,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.534,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 12,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 29,
+        "inputs": {
+          "usage": 14.3148,
+          "base": 18.7097,
+          "fixed": 0.65,
+          "windowDays": 29,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 15.302,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 29,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 15.2572,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 29,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.534,
+          "vendor": 15.2572,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.534,
+          "vendor": 15.2572,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.534,
+          "vendor": 15.2572,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-14T06:30:22.205Z",
+      "through": "2026-09-12",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 3.1058,
+          "base": 8.3871,
+          "fixed": 0,
+          "windowDays": 13,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.1671,
+        "old": {
+          "projected_usage_usd": 7.1672,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 13,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.1672,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 13,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 30,
+        "inputs": {
+          "usage": 14.407,
+          "base": 19.3548,
+          "fixed": 0.65,
+          "windowDays": 30,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 14.8872,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 30,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 14.8656,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 30,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.1672,
+          "vendor": 14.8656,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.1672,
+          "vendor": 14.8656,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.1672,
+          "vendor": 14.8656,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-15T06:30:26.062Z",
+      "through": "2026-09-13",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "audit"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 3.3402,
+          "base": 9.0323,
+          "fixed": 0,
+          "windowDays": 14,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.1576,
+        "old": {
+          "projected_usage_usd": 7.1576,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 14,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.1576,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 14,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-08-14T07:00:00.000Z",
+        "cycle_end": "2026-09-14T07:00:00.000Z",
+        "day": 31,
+        "inputs": {
+          "usage": 14.6414,
+          "base": 20,
+          "fixed": 0.65,
+          "windowDays": 31,
+          "daysInCycle": 31
+        },
+        "old": {
+          "projected_usage_usd": 14.6414,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 31,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 14.6414,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 31,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.1576,
+          "vendor": 14.6414,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.1576,
+          "vendor": 14.6414,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.1576,
+          "vendor": 14.6414,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-16T06:30:30.361Z",
+      "through": "2026-09-14",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 4.1154,
+          "base": 9.6989,
+          "fixed": 0.65,
+          "windowDays": 15,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.2309,
+        "old": {
+          "projected_usage_usd": 8.2308,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.5808,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 1,
+        "inputs": {
+          "usage": 0.7752,
+          "base": 0.6667,
+          "fixed": 0.65,
+          "windowDays": 1,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 23.256,
+          "projected_billable_overage_usd": 3.256,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 1,
+          "status": {
+            "included_usage_usd": "critical",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 1.1866,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.5808,
+          "vendor": 1.4012,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.5808,
+          "vendor": 1.1866,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.5808,
+          "vendor": 1.0256,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-17T06:30:30.559Z",
+      "through": "2026-09-15",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 4.1972,
+          "base": 10.3656,
+          "fixed": 0.65,
+          "windowDays": 16,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.8698,
+        "old": {
+          "projected_usage_usd": 7.8697,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 16,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.301,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 16,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 2,
+        "inputs": {
+          "usage": 0.857,
+          "base": 1.3333,
+          "fixed": 0.65,
+          "windowDays": 2,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 12.855,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 2,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 1.5371,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.301,
+          "vendor": 1.892,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.301,
+          "vendor": 1.5371,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.301,
+          "vendor": 1.271,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-18T06:30:32.744Z",
+      "through": "2026-09-16",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 4.29,
+          "base": 11.0323,
+          "fixed": 0.65,
+          "windowDays": 17,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.5706,
+        "old": {
+          "projected_usage_usd": 7.5706,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 17,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.0735,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 17,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 3,
+        "inputs": {
+          "usage": 0.9498,
+          "base": 2,
+          "fixed": 0.65,
+          "windowDays": 3,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 9.498,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 3,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 1.9349,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.0735,
+          "vendor": 2.4488,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.0735,
+          "vendor": 1.9349,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.0735,
+          "vendor": 1.5494,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-19T06:30:25.389Z",
+      "through": "2026-09-17",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 4.4502,
+          "base": 11.6989,
+          "fixed": 0.65,
+          "windowDays": 18,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.417,
+        "old": {
+          "projected_usage_usd": 7.417,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 18,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.9837,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 18,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 4,
+        "inputs": {
+          "usage": 1.11,
+          "base": 2.6667,
+          "fixed": 0.65,
+          "windowDays": 4,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 8.325,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 4,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 2.6214,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 6.9837,
+          "vendor": 3.41,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 6.9837,
+          "vendor": 2.6214,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 6.9837,
+          "vendor": 2.03,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-20T06:30:24.957Z",
+      "through": "2026-09-18",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 4.6996,
+          "base": 12.3656,
+          "fixed": 0.65,
+          "windowDays": 19,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.4205,
+        "old": {
+          "projected_usage_usd": 7.4204,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 19,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.0441,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 19,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 5,
+        "inputs": {
+          "usage": 1.3594,
+          "base": 3.3333,
+          "fixed": 0.65,
+          "windowDays": 5,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 8.1564,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 5,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 3.6903,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.0441,
+          "vendor": 4.9064,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.0441,
+          "vendor": 3.6903,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.0441,
+          "vendor": 2.7782,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-21T06:30:27.305Z",
+      "through": "2026-09-19",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 4.8523,
+          "base": 13.0323,
+          "fixed": 0.65,
+          "windowDays": 20,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.2785,
+        "old": {
+          "projected_usage_usd": 7.2785,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 20,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.9534,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 20,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 6,
+        "inputs": {
+          "usage": 1.5121,
+          "base": 4,
+          "fixed": 0.65,
+          "windowDays": 6,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.5605,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 6,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 4.3447,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 6.9534,
+          "vendor": 4.9605,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 6.9534,
+          "vendor": 4.3447,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 6.9534,
+          "vendor": 3.2363,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-22T06:30:37.276Z",
+      "through": "2026-09-20",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 5.0795,
+          "base": 13.6989,
+          "fixed": 0.65,
+          "windowDays": 21,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.2564,
+        "old": {
+          "projected_usage_usd": 7.2564,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 21,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.9779,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 21,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 7,
+        "inputs": {
+          "usage": 1.7393,
+          "base": 4.6667,
+          "fixed": 0.65,
+          "windowDays": 7,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.4541,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 5.3184,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 6.9779,
+          "vendor": 5.3184,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 6.9779,
+          "vendor": 5.3184,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 6.9779,
+          "vendor": 3.9179,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-23T06:30:24.303Z",
+      "through": "2026-09-21",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 5.3808,
+          "base": 14.3656,
+          "fixed": 0.65,
+          "windowDays": 22,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.3374,
+        "old": {
+          "projected_usage_usd": 7.3375,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 22,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.1011,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 22,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 8,
+        "inputs": {
+          "usage": 2.0406,
+          "base": 5.3333,
+          "fixed": 0.65,
+          "windowDays": 8,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.6522,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 8,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 5.8647,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 8,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.1011,
+          "vendor": 5.8648,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.1011,
+          "vendor": 5.8648,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.1011,
+          "vendor": 4.8218,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-24T06:30:26.015Z",
+      "through": "2026-09-22",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 5.6135,
+          "base": 15.0323,
+          "fixed": 0.65,
+          "windowDays": 23,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.3219,
+        "old": {
+          "projected_usage_usd": 7.322,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 23,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.1241,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 23,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 9,
+        "inputs": {
+          "usage": 2.2733,
+          "base": 6,
+          "fixed": 0.65,
+          "windowDays": 9,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.5777,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 9,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.061,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 9,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.1241,
+          "vendor": 6.061,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.1241,
+          "vendor": 6.061,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.1241,
+          "vendor": 5.5199,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-25T06:30:40.642Z",
+      "through": "2026-09-23",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 5.7839,
+          "base": 15.6989,
+          "fixed": 0.65,
+          "windowDays": 24,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.2299,
+        "old": {
+          "projected_usage_usd": 7.2299,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 24,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.0674,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 24,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 10,
+        "inputs": {
+          "usage": 2.4437,
+          "base": 6.6667,
+          "fixed": 0.65,
+          "windowDays": 10,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.3311,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 10,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.0311,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 10,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.0674,
+          "vendor": 6.0311,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.0674,
+          "vendor": 6.0311,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.0674,
+          "vendor": 6.0311,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-26T06:30:24.520Z",
+      "through": "2026-09-24",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 6.1232,
+          "base": 16.3656,
+          "fixed": 0.65,
+          "windowDays": 25,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.3479,
+        "old": {
+          "projected_usage_usd": 7.3478,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 25,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.2178,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 25,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 11,
+        "inputs": {
+          "usage": 2.783,
+          "base": 7.3333,
+          "fixed": 0.65,
+          "windowDays": 11,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.59,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 11,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.4673,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 11,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.2178,
+          "vendor": 6.4673,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.2178,
+          "vendor": 6.4673,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.2178,
+          "vendor": 6.4673,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-27T06:30:29.830Z",
+      "through": "2026-09-25",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "reconstructed"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 6.4916,
+          "base": 17.0323,
+          "fixed": 0.65,
+          "windowDays": 26,
+          "daysInCycle": 30
+        },
+        "stored_projected": 7.4903,
+        "old": {
+          "projected_usage_usd": 7.4903,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 26,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.3903,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 26,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 12,
+        "inputs": {
+          "usage": 3.1514,
+          "base": 8,
+          "fixed": 0.65,
+          "windowDays": 12,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 7.8785,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 12,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 6.9035,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 12,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": null
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.3903,
+          "vendor": 6.9035,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.3903,
+          "vendor": 6.9035,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.3903,
+          "vendor": 6.9035,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-28T06:30:45.878Z",
+      "through": "2026-09-26",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "shadow"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 7.2378,
+          "base": 17.6989,
+          "fixed": 0.65,
+          "windowDays": 27,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.042,
+        "old": {
+          "projected_usage_usd": 8.042,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 27,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 7.9698,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 27,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 13,
+        "inputs": {
+          "usage": 3.8976,
+          "base": 8.6667,
+          "fixed": 0.65,
+          "windowDays": 13,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 8.9945,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 13,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.1445,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 13,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": 0
+      },
+      "floors": {
+        "5": {
+          "calendar": 7.9698,
+          "vendor": 8.1445,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 7.9698,
+          "vendor": 8.1445,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 7.9698,
+          "vendor": 8.1445,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-29T06:30:34.633Z",
+      "through": "2026-09-27",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "shadow"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 7.8345,
+          "base": 18.3656,
+          "fixed": 0.65,
+          "windowDays": 28,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.3941,
+        "old": {
+          "projected_usage_usd": 8.3941,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 28,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.3477,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 28,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 14,
+        "inputs": {
+          "usage": 4.4943,
+          "base": 9.3333,
+          "fixed": 0.65,
+          "windowDays": 14,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 9.6306,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 14,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.8878,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 14,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": 0
+      },
+      "floors": {
+        "5": {
+          "calendar": 8.3477,
+          "vendor": 8.8878,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 8.3477,
+          "vendor": 8.8878,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 8.3477,
+          "vendor": 8.8878,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-30T06:30:31.755Z",
+      "through": "2026-09-28",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "shadow"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 8.075,
+          "base": 19.0323,
+          "fixed": 0.65,
+          "windowDays": 29,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.3535,
+        "old": {
+          "projected_usage_usd": 8.3534,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 29,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.331,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 29,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 15,
+        "inputs": {
+          "usage": 4.7348,
+          "base": 10,
+          "fixed": 0.65,
+          "windowDays": 15,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 9.4696,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.8196,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 15,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": 0
+      },
+      "floors": {
+        "5": {
+          "calendar": 8.331,
+          "vendor": 8.8196,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 8.331,
+          "vendor": 8.8196,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 8.331,
+          "vendor": 8.8196,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-09-30T23:30:38.705Z",
+      "through": "2026-09-29",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "shadow"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 8.5726,
+          "base": 19.6989,
+          "fixed": 0.65,
+          "windowDays": 30,
+          "daysInCycle": 30
+        },
+        "stored_projected": 8.5726,
+        "old": {
+          "projected_usage_usd": 8.5726,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 30,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 8.5726,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 30,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 16,
+        "inputs": {
+          "usage": 5.2324,
+          "base": 10.6667,
+          "fixed": 0.65,
+          "windowDays": 16,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 9.8108,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 16,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 9.242,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 16,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": 0
+      },
+      "floors": {
+        "5": {
+          "calendar": 8.5726,
+          "vendor": 9.242,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 8.5726,
+          "vendor": 9.242,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 8.5726,
+          "vendor": 9.242,
+          "vendor_status": "healthy"
+        }
+      }
+    },
+    {
+      "tick": "2026-10-02T01:00:35.801Z",
+      "through": "2026-09-30",
+      "provenance": {
+        "calendar": "stored",
+        "vendor": "shadow"
+      },
+      "calendar": {
+        "inputs": {
+          "usage": 0.3479,
+          "base": 0.6667,
+          "fixed": 0,
+          "windowDays": 1,
+          "daysInCycle": 31
+        },
+        "stored_projected": 10.7843,
+        "old": {
+          "projected_usage_usd": 10.7849,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 1,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 1.5407,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 7,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        }
+      },
+      "vendor": {
+        "cycle_start": "2026-09-14T07:00:00.000Z",
+        "cycle_end": "2026-10-14T07:00:00.000Z",
+        "day": 17,
+        "inputs": {
+          "usage": 5.5803,
+          "base": 11.3333,
+          "fixed": 0.65,
+          "windowDays": 17,
+          "daysInCycle": 30
+        },
+        "old": {
+          "projected_usage_usd": 9.8476,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 17,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "new": {
+          "projected_usage_usd": 9.3505,
+          "projected_billable_overage_usd": 0,
+          "billable_overage_mtd_usd": 0,
+          "projection_divisor_days": 17,
+          "status": {
+            "included_usage_usd": "healthy",
+            "billable_overage_usd": "healthy",
+            "overage_present": "healthy"
+          }
+        },
+        "reconstruction_vs_shadow": 0
+      },
+      "floors": {
+        "5": {
+          "calendar": 2.157,
+          "vendor": 9.3505,
+          "vendor_status": "healthy"
+        },
+        "7": {
+          "calendar": 1.5407,
+          "vendor": 9.3505,
+          "vendor_status": "healthy"
+        },
+        "10": {
+          "calendar": 1.0785,
+          "vendor": 9.3505,
+          "vendor_status": "healthy"
+        }
+      }
+    }
+  ]
+}
