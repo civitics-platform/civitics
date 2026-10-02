@@ -1,0 +1,100 @@
+{
+  "cc": "175",
+  "prompt": "cc-prompt-175-fix1012-fe-index-census-drops-fix1099-retune-flip-owed-records.md",
+  "started_at": "2026-10-02T00:22:23Z",
+  "finished_at": "2026-10-02T01:33:00Z",
+  "head_before": "8072d2eb",
+  "head_after": "49bf65b9",
+  "commits": [
+    {
+      "sha": "cf1cf8d8",
+      "subject": "chore(fixes): record prod verification of FIX-1246"
+    },
+    {
+      "sha": "038db598",
+      "subject": "chore(fixes): record prod verification of FIX-1247"
+    },
+    {
+      "sha": "a79f502b",
+      "subject": "chore(fixes): record prod verification of FIX-1254"
+    },
+    {
+      "sha": "7fdcd464",
+      "subject": "docs(audits): FIX-1012 — the financial_entities index census (19 indexes; role → callers → counters after the 10-01 monthlies)"
+    },
+    {
+      "sha": "6b7bef11",
+      "subject": "chore(scripts): FIX-1012 — fix1012-drop-fe-indexes.mjs (one gated DROP INDEX CONCURRENTLY per target; epoch + constraint + idx_scan gates)"
+    },
+    {
+      "sha": "f469682a",
+      "subject": "docs(fixes): FIX-1012 — cc-175 append (2 of 4 dropped on prod; individual_state_idx and recipient_count_idx await the gated re-run)"
+    },
+    {
+      "sha": "2abd3978",
+      "subject": "feat(db): FIX-1099 — Vercel projection: fixed per-cycle charges projected once (Speed Insights Plus Events); projection divisor max(window_days, 7) on the alert rows and the two display projections; the payload stamps both"
+    },
+    {
+      "sha": "f49579db",
+      "subject": "chore(data,audits): FIX-1099 — the committed alert-basis replay (fix1099-replay-alert-bases.ts) and its 2026-10-01 run"
+    },
+    {
+      "sha": "268fffeb",
+      "subject": "docs(fixes): FIX-1099 — cc-175 append (options 1 + 2 landed; the re-replay FAILS (i), (iii) and (v); no flip)"
+    },
+    {
+      "sha": "49bf65b9",
+      "subject": "chore(fixes): sync status after FIX-1246, FIX-1247, FIX-1254 (cc-175 prod records)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1246",
+    "FIX-1247",
+    "FIX-1254"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "Two DROP INDEX CONCURRENTLY on public.financial_entities, each its own scripts/fix1012-drop-fe-indexes.mjs --index run as the --then of session:wait-for-gate:prod --census stop: financial_entities_canonical (00:51:37 UTC, 16,146,432 bytes) and financial_entities_canonical_name_type (00:52:02 UTC, 19,914,752 bytes). Each gate pass claimed the interlock and 17 holds and released them. No migration was pushed. The third drop was stopped at a permission prompt and never reached prod, so individual_state_idx and recipient_count_idx are intact (read back 00:52:52). Two Vercel deploys of packages/db code (2abd3978, f49579db). No pipeline CALL, VACUUM, MV refresh or data write. Every other prod contact was a read: db-query --prod, prod_op_gate(120), the census (Logs API), the replay's one READ ONLY transaction, gh.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1012 drops 3 and 4: STOPPED at a permission prompt (classifier: Modify Shared Resources). The exact command was: pnpm --filter @civitics/data session:wait-for-gate:prod --expected-minutes 2 --census stop --reason \\\"cc-175 FIX-1012 drop financial_entities_individual_state_idx\\\" --then \\\"node ../../scripts/fix1012-drop-fe-indexes.mjs --index financial_entities_individual_state_idx\\\", from App/ (it was preceded by a read-only pg_stat_activity check in the same call). Nothing reached prod: read back at 00:52:52 UTC, both indexes present, idx_scan 0, interlock clear. I did not attempt the fourth drop (recipient_count_idx) on my own. It is the same class of write, and the ratified reading is to stop that command, not work around it.",
+    "FIX-1012 twin migration and the Fixes: close (item 2c): NOT DONE, because they depend on drops 3 and 4. A DROP INDEX IF EXISTS migration naming all four, pushed while two still exist, would drop those two NON-concurrently (ACCESS EXCLUSIVE) on the next db-push-prod. So no migration file was committed. FIX-1012 stays OPEN; the census, the script and the bullet append are on main.",
+    "FIX-1252 prod record: NOT RECORDED, because the reading does not match its stated expectation. Expected ~12.6k rule NAICS tags whose code is not the entity's MIN code. Read 7,417. Every one of the 34,653 rule NAICS tags carries the dominant code (0 off-dominant), and the MIN-not-dominant entity count reproduces cc-176 exactly (12,665), so the fix is live. But 12,665 counts entities and 7,417 counts tags. The 5,248 difference is entities with no NAICS rule tag: unmapped dominant codes, or 2,159 corporations whose industry is already carried by another tag. Per the prompt's rule, this goes to the report and not a record. A one-line Pattern-B record makes it if Craig accepts the reading.",
+    "FIX-1238 prod record: NOT RECORDED. The prompt expected votes n_dead flat against cc-174's 31,226. The pre-ec probe series reads 30,793 → 31,226 → 31,426 (10-01 04:25), and 31,826 at 00:39 UTC 10-02. The +433/day roll-back signature is gone (+200, then +400 around the 10-01 roll landing), but the table is not flat. cc-174's own receipts for this FIX (n_dead flat 10-02 → 10-03, and jobid 56's first Saturday vacuum) fall after 2026-10-03T04:30Z, so the COMPLETE receipt (rule 64) is not readable yet. The skip-line half IS confirmed: receipts 10-01 §1 printed it, and 10-02 §1 does not.",
+    "FIX-1099 flip (item 3c) and its prod record (3d): NOT DONE, because D6 FAILED criteria (i), (iii) and (v) at floor 7 (see §4). Per D7, D4 and D5 landed without the flip and FIX-1099 stays OPEN with an append naming the failed criteria."
+  ],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1012",
+      "what": "Craig re-runs drops 3 and 4 under the gate (individual_state_idx, then recipient_count_idx; the script's pre-flight re-proves idx_scan 0 and the epoch), then the twin DROP INDEX IF EXISTS migration 20261002000000_fix1012_drop_unscanned_fe_indexes.sql via the gated db-push-prod, carrying Fixes: FIX-1012 / Verified: prod",
+      "after": "2026-10-02T02:00Z"
+    },
+    {
+      "fix": "FIX-1012",
+      "what": "the first donor stage after the drops (nightly fec-phase, 21:00 UTC dispatch): phase complete, wall vs 245.2 s (10-01); financial_entities n_tup_hot_upd / n_tup_upd vs this run's epoch baseline of 4.7 % HOT (18,630 / 394,676; the bullet's ~73 % non-HOT is stale); edgar / littlesis / irs990 rows complete, with no resolve_entity_by_canonical timeouts",
+      "after": "2026-10-02T21:30Z"
+    },
+    {
+      "fix": "FIX-1012",
+      "what": "a week of financial_entities HOT ratio and index bytes stable (17 indexes, 1,857,560,576 bytes now; 15 / ~1,689 MB once drops 3+4 land). The Saturday 10-03 nightly LittleSis run completes; the resolver's pgss mean was 999.75 ms on the trgm GIN, and that does not move",
+      "after": "2026-10-08T12:00Z"
+    },
+    {
+      "fix": "FIX-1099",
+      "what": "the vendor cycle rollover: the first tick after Oct 14 PDT's charges close (~10-15 07:00Z) shows vercel_billing_shadow (vendor) with projection_divisor_days 7, fixed_per_cycle_usd 0.65 and included_usage_usd projection healthy (≈ $0.65 + day-1 metered × 30/7); calendar alert rows unchanged",
+      "after": "2026-10-15T08:00Z"
+    },
+    {
+      "fix": "FIX-1252",
+      "what": "the prod record, if Craig accepts read 7,417 tags / 12,665 entities (0 of 34,653 rule NAICS tags off the dominant code; get_financial_entity_naics 105.5 s in run 36776521293) as the receipt",
+      "after": "2026-10-02T02:00Z"
+    },
+    {
+      "fix": "FIX-1238",
+      "what": "cc-174's receipts: pre-ec probe votes n_dead 10-02 → 10-03 without the +433 step (this run: 31,226 → 31,426 → 31,826); jobid 56 votes-vacuum-analyze first firing Sat 02:37 UTC; then the prod record",
+      "after": "2026-10-03T04:30Z"
+    }
+  ]
+}
