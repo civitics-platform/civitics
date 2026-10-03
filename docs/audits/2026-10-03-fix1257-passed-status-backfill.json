@@ -1,0 +1,3076 @@
+{
+  "database": "prod",
+  "fix": "FIX-1257",
+  "prompt": "cc-181",
+  "built_at": "2026-10-03T03:35:04.202Z",
+  "population": {
+    "rule": "federal bill (bill_details row), status rank < passed_chamber, a House passage roll with result Passed/Agreed to, no later Failed passage roll",
+    "passage_questions_included": [
+      "On Passage",
+      "On Motion to Suspend the Rules and Pass",
+      "On Motion to Suspend the Rules and Pass, as Amended"
+    ],
+    "passed_results_included": [
+      "Passed",
+      "Agreed to"
+    ],
+    "questions_excluded": [
+      "On Passage of the Bill (Senate) — every Senate roll stores vote_result '' (FIX-1260)",
+      "Passage, Objections of the President To The Contrary Notwithstanding — a veto override, not a chamber passage"
+    ],
+    "distinct_questions_seen": [
+      {
+        "question": "On Motion to Suspend the Rules and Pass",
+        "result": "Failed",
+        "bills": 12
+      },
+      {
+        "question": "On Motion to Suspend the Rules and Pass",
+        "result": "Passed",
+        "bills": 291
+      },
+      {
+        "question": "On Motion to Suspend the Rules and Pass, as Amended",
+        "result": "Failed",
+        "bills": 10
+      },
+      {
+        "question": "On Motion to Suspend the Rules and Pass, as Amended",
+        "result": "Passed",
+        "bills": 337
+      },
+      {
+        "question": "On Passage",
+        "result": "Failed",
+        "bills": 9
+      },
+      {
+        "question": "On Passage",
+        "result": "Passed",
+        "bills": 413
+      },
+      {
+        "question": "On Passage of the Bill",
+        "result": "",
+        "bills": 58
+      },
+      {
+        "question": "Passage, Objections of the President To The Contrary Notwithstanding",
+        "result": "Failed",
+        "bills": 9
+      }
+    ],
+    "counts": {
+      "rows": 166,
+      "by_current_status": {
+        "introduced": 69,
+        "in_committee": 97
+      },
+      "by_first_passing_question": {
+        "On Motion to Suspend the Rules and Pass, as Amended": 47,
+        "On Motion to Suspend the Rules and Pass": 31,
+        "On Passage": 88
+      },
+      "with_an_on_passage_roll": 88,
+      "suspension_only": 78,
+      "already_at_or_above_passed_chamber": {
+        "failed": 135,
+        "enacted": 63,
+        "passed_chamber": 677
+      },
+      "excluded_later_failed_passage_roll": 0,
+      "senate_passage_roll_only_below_passed_chamber": 14
+    },
+    "excluded_later_failed": []
+  },
+  "items": [
+    {
+      "proposal_id": "0c33af41-4718-45db-8f14-79a233d32a69",
+      "bill_key": {
+        "external_id": "117-HR-3531",
+        "session": "117",
+        "bill_number": "HR 3531",
+        "chamber": "house"
+      },
+      "title": "Women Who Worked on the Home Front World War II Memorial Act",
+      "current_status": "introduced",
+      "roll_call_id": "2021-house-428",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2021-12-08T00:00:00+00:00",
+      "latest_action": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 540.",
+      "last_action_at": "2022-10-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "31ace4b0-2cdd-477a-a6ee-40ca590ec152",
+      "bill_key": {
+        "external_id": "117-HR-4380",
+        "session": "117",
+        "bill_number": "HR 4380",
+        "chamber": "house"
+      },
+      "title": "To designate the El Paso Community Healing Garden National Memorial, and for other purposes.",
+      "current_status": "introduced",
+      "roll_call_id": "2022-house-076",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2022-03-16T00:00:00+00:00",
+      "latest_action": "Committee on Energy and Natural Resources Subcommittee on National Parks. Hearings held.",
+      "last_action_at": "2022-09-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "4f3ed7d3-c6c5-43fa-b388-ca87c4d5355e",
+      "bill_key": {
+        "external_id": "117-HR-5001",
+        "session": "117",
+        "bill_number": "HR 5001",
+        "chamber": "house"
+      },
+      "title": "Upper Colorado and San Juan River Basins Recovery Act",
+      "current_status": "introduced",
+      "roll_call_id": "2022-house-072",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2022-03-15T00:00:00+00:00",
+      "latest_action": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 520.",
+      "last_action_at": "2022-09-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "f7b5a7a5-a5fd-42b1-8fa5-828c49f1de78",
+      "bill_key": {
+        "external_id": "117-HR-6434",
+        "session": "117",
+        "bill_number": "HR 6434",
+        "chamber": "house"
+      },
+      "title": "Japanese American World War II History Network Act",
+      "current_status": "introduced",
+      "roll_call_id": "2022-house-077",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2022-03-16T00:00:00+00:00",
+      "latest_action": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 514.",
+      "last_action_at": "2022-09-27",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "71357693-17cd-49b0-a158-d763416f7526",
+      "bill_key": {
+        "external_id": "118-HJRES-109",
+        "session": "118",
+        "bill_number": "HJRES 109",
+        "chamber": "house"
+      },
+      "title": "Providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the Securities and Exchange Commission relating to \"Staff Accounting Bulletin No. 121\".",
+      "current_status": "introduced",
+      "roll_call_id": "2024-house-189",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2024-05-08T00:00:00+00:00",
+      "latest_action": "The Chair directed the Clerk to notify the Senate of the action of the House.",
+      "last_action_at": "2024-07-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "8734814b-1c93-45b4-84a4-7f1eb0a8016b",
+      "bill_key": {
+        "external_id": "118-HJRES-165",
+        "session": "118",
+        "bill_number": "HJRES 165",
+        "chamber": "house"
+      },
+      "title": "Providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the Department of Education relating to \"Nondiscrimination on the Basis of Sex in Education Programs or Activities Receiving Federal Financial Assistance\".",
+      "current_status": "introduced",
+      "roll_call_id": "2024-house-354",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2024-07-11T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 442.",
+      "last_action_at": "2024-07-23",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "55e43daa-d543-489f-b184-f830fd57964b",
+      "bill_key": {
+        "external_id": "118-HJRES-39",
+        "session": "118",
+        "bill_number": "HJRES 39",
+        "chamber": "house"
+      },
+      "title": "Disapproving the rule submitted by the Department of Commerce relating to \"Procedures Covering Suspension of Liquidation, Duties and Estimated Duties in Accord With Presidential Proclamation 10414\".",
+      "current_status": "introduced",
+      "roll_call_id": "2023-house-202",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2023-04-28T00:00:00+00:00",
+      "latest_action": "The Chair directed the Clerk to notify the Senate of the action of the House.",
+      "last_action_at": "2023-05-24",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "9f8b6d83-8a01-4f70-855c-8107f3845435",
+      "bill_key": {
+        "external_id": "118-HJRES-98",
+        "session": "118",
+        "bill_number": "HJRES 98",
+        "chamber": "house"
+      },
+      "title": "Providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the National Labor Relations Board relating to \"Standard for Determining Joint Employer Status\".",
+      "current_status": "introduced",
+      "roll_call_id": "2024-house-010",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2024-01-12T00:00:00+00:00",
+      "latest_action": "The Chair directed the Clerk to notify the Senate of the action of the House.",
+      "last_action_at": "2024-05-07",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "9f6ac511-1c05-47cd-820c-da4c4f736315",
+      "bill_key": {
+        "external_id": "118-HR-4470",
+        "session": "118",
+        "bill_number": "HR 4470",
+        "chamber": "house"
+      },
+      "title": "Protecting and Securing Chemical Facilities from Terrorist Attacks Act of 2023",
+      "current_status": "introduced",
+      "roll_call_id": "2023-house-366",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2023-07-25T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2023-07-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "574630e6-221e-4d6f-96d1-60a09a7e8d49",
+      "bill_key": {
+        "external_id": "118-SJRES-11",
+        "session": "118",
+        "bill_number": "SJRES 11",
+        "chamber": "senate"
+      },
+      "title": "A joint resolution providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the Environmental Protection Agency relating to \"Control of Air Pollution From New Motor Vehicles: Heavy-Duty Engine and Vehicle Standards\".",
+      "current_status": "introduced",
+      "roll_call_id": "2023-house-232",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2023-05-23T00:00:00+00:00",
+      "latest_action": "Message on Senate action sent to the House.",
+      "last_action_at": "2023-06-22",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "dc01857f-9271-4c71-a85d-74d5a32c33bc",
+      "bill_key": {
+        "external_id": "118-SJRES-24",
+        "session": "118",
+        "bill_number": "SJRES 24",
+        "chamber": "senate"
+      },
+      "title": "A joint resolution providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the United States Fish and Wildlife Service relating to \"Endangered and Threatened Wildlife and Plants; Endangered Species Status for Northern Long-Eared Bat\".",
+      "current_status": "introduced",
+      "roll_call_id": "2023-house-382",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2023-07-27T00:00:00+00:00",
+      "latest_action": "Failed of passage in Senate over veto by Yea-Nay Vote. 47 - 45. Record Vote Number: 243.",
+      "last_action_at": "2023-09-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "3283b283-2e3e-464d-9930-0a3af15ed7c7",
+      "bill_key": {
+        "external_id": "118-SJRES-9",
+        "session": "118",
+        "bill_number": "SJRES 9",
+        "chamber": "senate"
+      },
+      "title": "A joint resolution providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the United States Fish and Wildlife Service relating to \"Endangered and Threatened Wildlife and Plants; Lesser Prairie-Chicken; Threatened Status with Section 4(d) Rule for the Northern Distinct Population Segment and Endangered Status for the Southern Distinct Population Segment\".",
+      "current_status": "introduced",
+      "roll_call_id": "2023-house-381",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2023-07-27T00:00:00+00:00",
+      "latest_action": "Failed of passage in Senate over veto by Yea-Nay Vote. 47 - 46. Record Vote Number: 242.",
+      "last_action_at": "2023-09-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "da97dd6d-a1d2-46a5-babb-0291638b9c03",
+      "bill_key": {
+        "external_id": "119-HJRES-210",
+        "session": "119",
+        "bill_number": "HJRES 210",
+        "chamber": "house"
+      },
+      "title": "Providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the Environmental Protection Agency relating to \"California State Nonroad Engine Pollution Control Standards; Ocean-Going Vessels At-Berth; Notice of Decision\".",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-306",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "352818b2-0212-4164-87ea-f68f74afed8e",
+      "bill_key": {
+        "external_id": "119-HJRES-213",
+        "session": "119",
+        "bill_number": "HJRES 213",
+        "chamber": "house"
+      },
+      "title": "Providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule issued by the Environmental Protection Agency relating to the \"California State Nonroad Engine Pollution Control Standards; Commercial Harbor Craft Regulations; Notice of Decision\".",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-311",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-16T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-09-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "7db51fa6-2e63-4acf-a239-07477da50804",
+      "bill_key": {
+        "external_id": "119-HJRES-78",
+        "session": "119",
+        "bill_number": "HJRES 78",
+        "chamber": "house"
+      },
+      "title": "Providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the United States Fish and Wildlife Service relating to \"Endangered and Threatened Wildlife and Plants; Endangered Species Status for the San Francisco Bay-Delta Distinct Population Segment of the Longfin Smelt\".",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-113",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-01T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-05-05",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "441a6657-fc90-4043-889a-9931fc1b0074",
+      "bill_key": {
+        "external_id": "119-HR-1011",
+        "session": "119",
+        "bill_number": "HR 1011",
+        "chamber": "house"
+      },
+      "title": "Emergency Conservation Program Improvement Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-109",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-04-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "97a99f40-e09b-4c06-800c-db8a51e6c092",
+      "bill_key": {
+        "external_id": "119-HR-1156",
+        "session": "119",
+        "bill_number": "HR 1156",
+        "chamber": "house"
+      },
+      "title": "Pandemic Unemployment Fraud Enforcement Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-068",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-03-11T00:00:00+00:00",
+      "latest_action": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 29.",
+      "last_action_at": "2025-03-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "2e3346be-0422-4d18-802b-da8aa74a32e0",
+      "bill_key": {
+        "external_id": "119-HR-1366",
+        "session": "119",
+        "bill_number": "HR 1366",
+        "chamber": "house"
+      },
+      "title": "Mining Regulatory Clarity Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-358",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-12-18T00:00:00+00:00",
+      "latest_action": "Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 357.",
+      "last_action_at": "2026-03-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ddccb130-4844-406a-bedc-1123042f1f3c",
+      "bill_key": {
+        "external_id": "119-HR-1442",
+        "session": "119",
+        "bill_number": "HR 1442",
+        "chamber": "house"
+      },
+      "title": "To ban the sale of products with a high concentration of sodium nitrite to individuals, and for other purposes.",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-108",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-04-29T00:00:00+00:00",
+      "latest_action": "Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 116.",
+      "last_action_at": "2025-07-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ed3e37bd-381a-49e5-a561-417d536f32b8",
+      "bill_key": {
+        "external_id": "119-HR-1501",
+        "session": "119",
+        "bill_number": "HR 1501",
+        "chamber": "house"
+      },
+      "title": "Protecting Domestic Mining Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-294",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-02T00:00:00+00:00",
+      "latest_action": "Motion to reconsider laid on the table Agreed to without objection.",
+      "last_action_at": "2026-09-02",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e2ddcfcc-b158-46b7-85fd-2e86523289ed",
+      "bill_key": {
+        "external_id": "119-HR-1689",
+        "session": "119",
+        "bill_number": "HR 1689",
+        "chamber": "house"
+      },
+      "title": "To require the Secretary of Homeland Security to designate Haiti for temporary protected status.",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-120",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-16T00:00:00+00:00",
+      "latest_action": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 374.",
+      "last_action_at": "2026-04-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "76f5f7f2-62d9-4b7b-87d7-facdb1e5bc53",
+      "bill_key": {
+        "external_id": "119-HR-186",
+        "session": "119",
+        "bill_number": "HR 186",
+        "chamber": "house"
+      },
+      "title": "Hershel Woody Williams National Medal of Honor Monument Location Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-018",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-01-21T00:00:00+00:00",
+      "latest_action": "Committee on Energy and Natural Resources Subcommittee on National Parks. Hearings held. With printed Hearing: S.Hrg. 119-238.",
+      "last_action_at": "2025-12-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "1d52f5a4-bc4a-4709-8b31-d1969f71579d",
+      "bill_key": {
+        "external_id": "119-HR-1919",
+        "session": "119",
+        "bill_number": "HR 1919",
+        "chamber": "house"
+      },
+      "title": "Anti-CBDC Surveillance State Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-201",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-07-17T00:00:00+00:00",
+      "latest_action": "Motion to reconsider laid on the table Agreed to without objection.",
+      "last_action_at": "2025-07-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5a627b73-e680-4487-875a-db8895d8df56",
+      "bill_key": {
+        "external_id": "119-HR-1949",
+        "session": "119",
+        "bill_number": "HR 1949",
+        "chamber": "house"
+      },
+      "title": "Unlocking our Domestic LNG Potential Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-304",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-11-20T00:00:00+00:00",
+      "latest_action": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 286.",
+      "last_action_at": "2025-12-08",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a5a0b22a-a8f4-43db-8c4f-bbaf3aec9994",
+      "bill_key": {
+        "external_id": "119-HR-1993",
+        "session": "119",
+        "bill_number": "HR 1993",
+        "chamber": "house"
+      },
+      "title": "25th Anniversary of 9/11 Commemorative Coin Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-182",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-05-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ac63781c-e8f2-4f20-9cf4-ed356d40b662",
+      "bill_key": {
+        "external_id": "119-HR-2140",
+        "session": "119",
+        "bill_number": "HR 2140",
+        "chamber": "house"
+      },
+      "title": "Diesel Emissions Reduction Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-304",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 624.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "98e845b8-790f-4c89-a96b-65e01592b201",
+      "bill_key": {
+        "external_id": "119-HR-2189",
+        "session": "119",
+        "bill_number": "HR 2189",
+        "chamber": "house"
+      },
+      "title": "Law-Enforcement Innovate to De-Escalate Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-070",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-02-12T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-02-24",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "90c215ca-87b8-4c26-a4e3-c72d43dbe97f",
+      "bill_key": {
+        "external_id": "119-HR-22",
+        "session": "119",
+        "bill_number": "HR 22",
+        "chamber": "house"
+      },
+      "title": "SAVE Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-102",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-04-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-04-10",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "b01f3418-bb8e-49d3-b13a-2b6ec3088833",
+      "bill_key": {
+        "external_id": "119-HR-23",
+        "session": "119",
+        "bill_number": "HR 23",
+        "chamber": "house"
+      },
+      "title": "Illegitimate Court Counteraction Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-007",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-01-09T00:00:00+00:00",
+      "latest_action": "Cloture on the motion to proceed to the measure not invoked in Senate by Yea-Nay Vote. 54 - 45. Record Vote Number: 22. (CR S410)",
+      "last_action_at": "2025-01-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "100c25a2-b66b-4c37-a2bc-1e880531e4d0",
+      "bill_key": {
+        "external_id": "119-HR-249",
+        "session": "119",
+        "bill_number": "HR 249",
+        "chamber": "house"
+      },
+      "title": "To redesignate certain facilities at Paterson Great Falls National Historical Park in honor of Congressman Bill Pascrell, Jr.",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-124",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-13T00:00:00+00:00",
+      "latest_action": "Committee on Energy and Natural Resources Subcommittee on National Parks. Hearings held.",
+      "last_action_at": "2025-12-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "948d1b6e-7860-4885-9dda-7c479f446227",
+      "bill_key": {
+        "external_id": "119-HR-2860",
+        "session": "119",
+        "bill_number": "HR 2860",
+        "chamber": "house"
+      },
+      "title": "Northwest Straits Marine Conservation Initiative Reauthorization Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-196",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-03T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 427.",
+      "last_action_at": "2026-06-04",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "acc00984-f815-43a3-98cd-2f8aaa915a15",
+      "bill_key": {
+        "external_id": "119-HR-29",
+        "session": "119",
+        "bill_number": "HR 29",
+        "chamber": "house"
+      },
+      "title": "Laken Riley Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-006",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-01-07T00:00:00+00:00",
+      "latest_action": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 10.",
+      "last_action_at": "2025-02-10",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "570b375e-67c6-4cbc-89ea-2911cb8e10f7",
+      "bill_key": {
+        "external_id": "119-HR-2913",
+        "session": "119",
+        "bill_number": "HR 2913",
+        "chamber": "house"
+      },
+      "title": "Ukraine Support Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-207",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-04T00:00:00+00:00",
+      "latest_action": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 462.",
+      "last_action_at": "2026-07-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "c9182d2a-4429-467a-b0bc-b7733c4c2609",
+      "bill_key": {
+        "external_id": "119-HR-2978",
+        "session": "119",
+        "bill_number": "HR 2978",
+        "chamber": "house"
+      },
+      "title": "GUARD Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-301",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 627.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "af9e7a28-21b1-41a7-9074-2835bf54f0aa",
+      "bill_key": {
+        "external_id": "119-HR-3633",
+        "session": "119",
+        "bill_number": "HR 3633",
+        "chamber": "house"
+      },
+      "title": "Digital Asset Market Clarity Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-199",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-07-17T00:00:00+00:00",
+      "latest_action": "Cloture motion on the motion to proceed to the measure presented in Senate. (CR S4557)",
+      "last_action_at": "2026-08-08",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5bad9dab-6000-438a-a267-2641970d18c0",
+      "bill_key": {
+        "external_id": "119-HR-3838",
+        "session": "119",
+        "bill_number": "HR 3838",
+        "chamber": "house"
+      },
+      "title": "Streamlining Procurement for Effective Execution and Delivery and National Defense Authorization Act for Fiscal Year 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-262",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-09-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-09-30",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "f86790f8-af06-48d8-889a-c2d667ab9b62",
+      "bill_key": {
+        "external_id": "119-HR-3937",
+        "session": "119",
+        "bill_number": "HR 3937",
+        "chamber": "house"
+      },
+      "title": "Wabeno Economic Development Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-215",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-07-22T00:00:00+00:00",
+      "latest_action": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 494.",
+      "last_action_at": "2026-07-23",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "8e96058f-c2b8-4561-a070-4cacd987f24a",
+      "bill_key": {
+        "external_id": "119-HR-3944",
+        "session": "119",
+        "bill_number": "HR 3944",
+        "chamber": "house"
+      },
+      "title": "Military Construction and Veterans Affairs, Agriculture, and Legislative Branch Appropriations Act, 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-182",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-06-25T00:00:00+00:00",
+      "latest_action": "Message on House action received in Senate and at desk: House requests a conference.",
+      "last_action_at": "2025-09-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "c421643b-95fa-4ffa-a6b3-ac721033e6dc",
+      "bill_key": {
+        "external_id": "119-HR-4371",
+        "session": "119",
+        "bill_number": "HR 4371",
+        "chamber": "house"
+      },
+      "title": "Kayla Hamilton Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-340",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-12-16T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-12-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "65d935fd-4752-4ad0-965e-0549f06607f6",
+      "bill_key": {
+        "external_id": "119-HR-471",
+        "session": "119",
+        "bill_number": "HR 471",
+        "chamber": "house"
+      },
+      "title": "Fix Our Forests Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-025",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-01-23T00:00:00+00:00",
+      "latest_action": "Committee on Agriculture, Nutrition, and Forestry Subcommittee on Conservation, Forestry, Natural Resources, and Biotechnology. Hearings held. With printed Hearing: S.Hrg. 119-27.",
+      "last_action_at": "2025-03-06",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "faddd314-4451-4d0f-bd10-3542ada8b778",
+      "bill_key": {
+        "external_id": "119-HR-5103",
+        "session": "119",
+        "bill_number": "HR 5103",
+        "chamber": "house"
+      },
+      "title": "Make the District of Columbia Safe and Beautiful Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-101",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-03-25T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-03-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "47327f1d-6156-4f48-882c-bb67df76a5ae",
+      "bill_key": {
+        "external_id": "119-HR-5107",
+        "session": "119",
+        "bill_number": "HR 5107",
+        "chamber": "house"
+      },
+      "title": "Common-Sense Law Enforcement and Accountability Now in DC Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-299",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-11-19T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-11-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e483db8d-712d-4a53-8d8c-3ba29ae1f43f",
+      "bill_key": {
+        "external_id": "119-HR-5200",
+        "session": "119",
+        "bill_number": "HR 5200",
+        "chamber": "house"
+      },
+      "title": "Emergency Reporting Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-126",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 375.",
+      "last_action_at": "2026-04-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "560d231d-f9cf-42b5-949a-a4a1cb11aaef",
+      "bill_key": {
+        "external_id": "119-HR-5214",
+        "session": "119",
+        "bill_number": "HR 5214",
+        "chamber": "house"
+      },
+      "title": "District of Columbia Cash Bail Reform Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-298",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-11-19T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-11-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5ce22179-b779-435a-a5e7-433f1350d6e3",
+      "bill_key": {
+        "external_id": "119-HR-5408",
+        "session": "119",
+        "bill_number": "HR 5408",
+        "chamber": "house"
+      },
+      "title": "Faster Labor Contracts Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-216",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-09T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-06-10",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "27bd3c6a-a4ce-4e23-9a37-8b6cf15ba9a3",
+      "bill_key": {
+        "external_id": "119-HR-5587",
+        "session": "119",
+        "bill_number": "HR 5587",
+        "chamber": "house"
+      },
+      "title": "HEATS Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-137",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-23T00:00:00+00:00",
+      "latest_action": "Committee on Energy and Natural Resources Subcommittee on Public Lands, Forests, and Mining. Hearings held.",
+      "last_action_at": "2026-07-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "328e0c13-87ea-47b5-8da3-e97321b6978f",
+      "bill_key": {
+        "external_id": "119-HR-6359",
+        "session": "119",
+        "bill_number": "HR 6359",
+        "chamber": "house"
+      },
+      "title": "Pregnant Students’ Rights Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-047",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-01-22T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 303.",
+      "last_action_at": "2026-01-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e5f0ffe2-f097-4c7d-a53b-36b4eda4f62d",
+      "bill_key": {
+        "external_id": "119-HR-7006",
+        "session": "119",
+        "bill_number": "HR 7006",
+        "chamber": "house"
+      },
+      "title": "Financial Services and General Government and National Security, Department of State, and Related Programs Appropriations Act, 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-028",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-01-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-01-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "43f130bc-8c3b-4db4-8b8a-8a4bbd9840e4",
+      "bill_key": {
+        "external_id": "119-HR-7008",
+        "session": "119",
+        "bill_number": "HR 7008",
+        "chamber": "house"
+      },
+      "title": "Stop Insider Trading Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-280",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-22T00:00:00+00:00",
+      "latest_action": "Motion to proceed to consideration of measure withdrawn in Senate.",
+      "last_action_at": "2026-09-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "91b4bc7e-07ca-4eae-9c57-1a3fdd92f240",
+      "bill_key": {
+        "external_id": "119-HR-7128",
+        "session": "119",
+        "bill_number": "HR 7128",
+        "chamber": "house"
+      },
+      "title": "TRIA Program Reauthorization Act of 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-229",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-29T00:00:00+00:00",
+      "latest_action": "Placed on the Union Calendar, Calendar No. 482.",
+      "last_action_at": "2026-03-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "09d92162-b43b-47ee-bf29-57425b4804b6",
+      "bill_key": {
+        "external_id": "119-HR-7401",
+        "session": "119",
+        "bill_number": "HR 7401",
+        "chamber": "house"
+      },
+      "title": "Small Business Lending Fraud Prevention Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-225",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-24T00:00:00+00:00",
+      "latest_action": "Motion to reconsider laid on the table Agreed to without objection.",
+      "last_action_at": "2026-06-24",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5d122ac7-97b5-4997-a78a-8a922df5f4d5",
+      "bill_key": {
+        "external_id": "119-HR-7567",
+        "session": "119",
+        "bill_number": "HR 7567",
+        "chamber": "house"
+      },
+      "title": "Farm, Food, and National Security Act of 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-154",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-30T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-05-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "6243cd42-f0f7-40a9-b391-1077efbe20bb",
+      "bill_key": {
+        "external_id": "119-HR-7757",
+        "session": "119",
+        "bill_number": "HR 7757",
+        "chamber": "house"
+      },
+      "title": "KIDS Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-228",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-29T00:00:00+00:00",
+      "latest_action": "Motion to reconsider laid on the table Agreed to without objection.",
+      "last_action_at": "2026-06-29",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a8f99513-eb08-4142-beed-a3b3903db35e",
+      "bill_key": {
+        "external_id": "119-HR-8029",
+        "session": "119",
+        "bill_number": "HR 8029",
+        "chamber": "house"
+      },
+      "title": "Pay Our Homeland Defenders Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-104",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-03-26T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-04-02",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "0f17c4fe-ea9a-4282-bb6c-420e42da1960",
+      "bill_key": {
+        "external_id": "119-HR-8312",
+        "session": "119",
+        "bill_number": "HR 8312",
+        "chamber": "house"
+      },
+      "title": "Fraud Prevention and Accountability Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-218",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-06-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a6f460f7-d736-409d-a60c-04c6b0ff0f16",
+      "bill_key": {
+        "external_id": "119-HR-8464",
+        "session": "119",
+        "bill_number": "HR 8464",
+        "chamber": "house"
+      },
+      "title": "Stopping Fraudulent Payments Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-220",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-06-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "bc192323-e0c1-4b92-ac79-f835bead0d0f",
+      "bill_key": {
+        "external_id": "119-HR-8469",
+        "session": "119",
+        "bill_number": "HR 8469",
+        "chamber": "house"
+      },
+      "title": "Making appropriations for military construction, the Department of Veterans Affairs, and related agencies for the fiscal year ending September 30, 2027, and for other purposes.",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-175",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-05-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ca181c77-bffc-492a-977c-7d434a257c63",
+      "bill_key": {
+        "external_id": "119-HR-859",
+        "session": "119",
+        "bill_number": "HR 859",
+        "chamber": "house"
+      },
+      "title": "Informing Consumers about Smart Devices Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-109",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-04-29T00:00:00+00:00",
+      "latest_action": "Received in the Senate. Read twice. Placed on Senate Legislative Calendar under General Orders. Calendar No. 64.",
+      "last_action_at": "2025-04-30",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "affe1ec6-ccc5-49f2-bea2-e0c2633c40a1",
+      "bill_key": {
+        "external_id": "119-HR-8595",
+        "session": "119",
+        "bill_number": "HR 8595",
+        "chamber": "house"
+      },
+      "title": "Making appropriations for national security, Department of State, and related programs for the fiscal year ending September 30, 2027, and for other purposes.",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-247",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-07-29",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "b064f994-d64d-4707-aff1-15680f9c7a71",
+      "bill_key": {
+        "external_id": "119-HR-8646",
+        "session": "119",
+        "bill_number": "HR 8646",
+        "chamber": "house"
+      },
+      "title": "Agriculture, Rural Development, Food and Drug Administration, and Related Agency Appropriations Act, 2027",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-205",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-04T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-06-08",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "6b25d9e2-4da1-4797-bce8-5b71450dc970",
+      "bill_key": {
+        "external_id": "119-HR-8800",
+        "session": "119",
+        "bill_number": "HR 8800",
+        "chamber": "house"
+      },
+      "title": "National Defense Authorization Act for Fiscal Year 2027",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-278",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-22T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-09-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "91c371e7-9449-422b-86e8-b49fa15d1d27",
+      "bill_key": {
+        "external_id": "119-HR-9340",
+        "session": "119",
+        "bill_number": "HR 9340",
+        "chamber": "house"
+      },
+      "title": "Ratepayer Protection Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-312",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-16T00:00:00+00:00",
+      "latest_action": "Motion to proceed to consideration of measure withdrawn in Senate. (CR S5199)",
+      "last_action_at": "2026-09-30",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "82dfb3d5-3f9c-41e8-adc2-88244de469d8",
+      "bill_key": {
+        "external_id": "119-HR-9497",
+        "session": "119",
+        "bill_number": "HR 9497",
+        "chamber": "house"
+      },
+      "title": "Water Resources Development Act of 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-313",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-16T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-09-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d97c50ae-5f95-4c3a-88ff-5addcbf157e3",
+      "bill_key": {
+        "external_id": "119-HR-9576",
+        "session": "119",
+        "bill_number": "HR 9576",
+        "chamber": "house"
+      },
+      "title": "National Fraud Enforcement Division Act of 2026",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-309",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-16T00:00:00+00:00",
+      "latest_action": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 679.",
+      "last_action_at": "2026-09-22",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "acfac848-6af6-470c-866f-ee0bc36de446",
+      "bill_key": {
+        "external_id": "119-HR-973",
+        "session": "119",
+        "bill_number": "HR 973",
+        "chamber": "house"
+      },
+      "title": "Setting Consumer Standards for Lithium-Ion Batteries Act",
+      "current_status": "introduced",
+      "roll_call_id": "2025-house-103",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-04-28T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2025-04-29",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ead10ff6-db7c-4c02-bfc1-a7746ccfc1ea",
+      "bill_key": {
+        "external_id": "119-HR-9770",
+        "session": "119",
+        "bill_number": "HR 9770",
+        "chamber": "house"
+      },
+      "title": "Continuing Appropriations Act, 2027",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-272",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate.",
+      "last_action_at": "2026-07-22",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "c8ce6f41-d758-49af-b1ee-82df87f47f19",
+      "bill_key": {
+        "external_id": "119-S-1318",
+        "session": "119",
+        "bill_number": "S 1318",
+        "chamber": "senate"
+      },
+      "title": "Fallen Servicemembers Religious Heritage Restoration Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-142",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-29T00:00:00+00:00",
+      "latest_action": "Motion to proceed to consideration of the House message to accompany S. 1318 rejected in Senate by Yea-Nay Vote. 47 - 52. Record Vote Number: 164.",
+      "last_action_at": "2026-06-05",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a2efb032-618c-4dea-aaa2-47642aa53a42",
+      "bill_key": {
+        "external_id": "119-S-1383",
+        "session": "119",
+        "bill_number": "S 1383",
+        "chamber": "senate"
+      },
+      "title": "Veterans Accessibility Advisory Committee Act of 2025",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-069",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-02-11T00:00:00+00:00",
+      "latest_action": "Considered by Senate (Message from the House considered). (consideration: CR S1647)",
+      "last_action_at": "2026-03-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d252f6b3-9882-4450-a0ce-ecb911257552",
+      "bill_key": {
+        "external_id": "119-S-2403",
+        "session": "119",
+        "bill_number": "S 2403",
+        "chamber": "senate"
+      },
+      "title": "Retire through Ownership Act",
+      "current_status": "introduced",
+      "roll_call_id": "2026-house-314",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-16T00:00:00+00:00",
+      "latest_action": "Motion to reconsider laid on the table Agreed to without objection.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "09075afd-a0a6-43ed-862e-c00dc264d4d2",
+      "bill_key": {
+        "external_id": "117-HR-1029",
+        "session": "117",
+        "bill_number": "HR 1029",
+        "chamber": "house"
+      },
+      "title": "Free Veterans from Fees Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2021-house-316",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2021-10-19T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2021-10-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "1210a4aa-aaed-4ca6-8c12-0f96f366de56",
+      "bill_key": {
+        "external_id": "117-HR-3616",
+        "session": "117",
+        "bill_number": "HR 3616",
+        "chamber": "house"
+      },
+      "title": "Bear River National Heritage Area Study Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2021-house-344",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2021-11-02T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2021-11-03",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "45ec7e09-e27e-4a84-a1d7-c51a2d5a630f",
+      "bill_key": {
+        "external_id": "117-HR-4404",
+        "session": "117",
+        "bill_number": "HR 4404",
+        "chamber": "house"
+      },
+      "title": "Kissimmee River Wild and Scenic River Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2022-house-376",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2022-07-19T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2022-07-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "9d24dacd-64e6-4892-a86d-ba994587b756",
+      "bill_key": {
+        "external_id": "117-HR-4706",
+        "session": "117",
+        "bill_number": "HR 4706",
+        "chamber": "house"
+      },
+      "title": "Blackwell School National Historic Site Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2021-house-429",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2021-12-08T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2021-12-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e511402b-184a-4597-9a12-2923ec3066a2",
+      "bill_key": {
+        "external_id": "118-HJRES-24",
+        "session": "118",
+        "bill_number": "HJRES 24",
+        "chamber": "house"
+      },
+      "title": "Disapproving the action of the District of Columbia Council in approving the Local Resident Voting Rights Amendment Act of 2022.",
+      "current_status": "in_committee",
+      "roll_call_id": "2023-house-118",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2023-02-09T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2023-02-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ebc892d3-884a-447d-b4c6-e1b749b35f92",
+      "bill_key": {
+        "external_id": "118-HR-1398",
+        "session": "118",
+        "bill_number": "HR 1398",
+        "chamber": "house"
+      },
+      "title": "Protect America’s Innovation and Economic Security from CCP Act of 2024",
+      "current_status": "in_committee",
+      "roll_call_id": "2024-house-413",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2024-09-11T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2024-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "fd972181-e0f0-4c2c-b1f9-3f0771188de0",
+      "bill_key": {
+        "external_id": "118-HR-1567",
+        "session": "118",
+        "bill_number": "HR 1567",
+        "chamber": "house"
+      },
+      "title": "ACRES Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2023-house-386",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2023-09-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2023-09-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "4f68df37-150c-4da7-a560-57e06eb020d3",
+      "bill_key": {
+        "external_id": "118-HR-5856",
+        "session": "118",
+        "bill_number": "HR 5856",
+        "chamber": "house"
+      },
+      "title": "Frederick Douglass Trafficking Victims Prevention and Protection Reauthorization Act of 2023",
+      "current_status": "in_committee",
+      "roll_call_id": "2024-house-041",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2024-02-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Foreign Relations.",
+      "last_action_at": "2024-02-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "70579924-3514-4592-87ac-a70646d76e3e",
+      "bill_key": {
+        "external_id": "118-HR-9668",
+        "session": "118",
+        "bill_number": "HR 9668",
+        "chamber": "house"
+      },
+      "title": "SHIELD Against CCP Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2024-house-498",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2024-12-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2024-12-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "553cb21e-7896-4e64-a26e-c1a33c0ded09",
+      "bill_key": {
+        "external_id": "119-HJRES-72",
+        "session": "119",
+        "bill_number": "HJRES 72",
+        "chamber": "house"
+      },
+      "title": "Relating to a national emergency by the President on February 1, 2025.",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-065",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-02-11T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Finance.",
+      "last_action_at": "2026-02-12",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "59805296-51a1-487a-b93f-7edc4e07d55b",
+      "bill_key": {
+        "external_id": "119-HR-10326",
+        "session": "119",
+        "bill_number": "HR 10326",
+        "chamber": "house"
+      },
+      "title": "PROOF Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-310",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-16T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-09-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "f2eedf14-7de6-47a6-8d03-c85ca1f2afa2",
+      "bill_key": {
+        "external_id": "119-HR-1039",
+        "session": "119",
+        "bill_number": "HR 1039",
+        "chamber": "house"
+      },
+      "title": "Clear Communication for Veterans Claims Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-090",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-04-07T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2025-04-08",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "82fbdc0e-939b-4a66-a07b-3d701c0ec865",
+      "bill_key": {
+        "external_id": "119-HR-1041",
+        "session": "119",
+        "bill_number": "HR 1041",
+        "chamber": "house"
+      },
+      "title": "Veterans 2nd Amendment Protection Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-190",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2026-06-02",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "c633f66e-3ad3-48d7-a19f-a3bdda6c51a6",
+      "bill_key": {
+        "external_id": "119-HR-1118",
+        "session": "119",
+        "bill_number": "HR 1118",
+        "chamber": "house"
+      },
+      "title": "Value Over Cost Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-252",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2026-07-22",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "30d4368b-7a6e-4287-9e90-6bcc85a870aa",
+      "bill_key": {
+        "external_id": "119-HR-1181",
+        "session": "119",
+        "bill_number": "HR 1181",
+        "chamber": "house"
+      },
+      "title": "Protecting Privacy in Purchases Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-240",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-07-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "3a925c1a-6163-4b6f-8d14-7fc52389775d",
+      "bill_key": {
+        "external_id": "119-HR-1286",
+        "session": "119",
+        "bill_number": "HR 1286",
+        "chamber": "house"
+      },
+      "title": "Simplifying Forms for Veterans Claims Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-133",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-19T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2025-05-20",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "af9e6fcb-7340-461e-9812-a76e57a4f965",
+      "bill_key": {
+        "external_id": "119-HR-1346",
+        "session": "119",
+        "bill_number": "HR 1346",
+        "chamber": "house"
+      },
+      "title": "Nationwide Consumer and Fuel Retailer Choice Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-164",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2026-05-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "72bc2f29-091c-4d67-87e5-7298222f97c9",
+      "bill_key": {
+        "external_id": "119-HR-139",
+        "session": "119",
+        "bill_number": "HR 139",
+        "chamber": "house"
+      },
+      "title": "Sunshine Protection Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-238",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-07-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5f8e8f72-36b6-4b1f-a7bf-16ee759bbee4",
+      "bill_key": {
+        "external_id": "119-HR-1526",
+        "session": "119",
+        "bill_number": "HR 1526",
+        "chamber": "house"
+      },
+      "title": "NORRA of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-098",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-04-09T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-04-10",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "9b39f24e-d203-4fa8-8e0c-2876b0365a0b",
+      "bill_key": {
+        "external_id": "119-HR-1681",
+        "session": "119",
+        "bill_number": "HR 1681",
+        "chamber": "house"
+      },
+      "title": "Expediting Federal Broadband Deployment Reviews Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-125",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-04-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "3c822fb2-333c-4fdf-95ca-2c8aeb3fbe56",
+      "bill_key": {
+        "external_id": "119-HR-1709",
+        "session": "119",
+        "bill_number": "HR 1709",
+        "chamber": "house"
+      },
+      "title": "Understanding Cybersecurity of Mobile Networks Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-191",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-07-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2025-07-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d368d6d1-cf50-4184-b0e3-c79b2b49dcb9",
+      "bill_key": {
+        "external_id": "119-HR-1770",
+        "session": "119",
+        "bill_number": "HR 1770",
+        "chamber": "house"
+      },
+      "title": "Consumer Safety Technology Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-192",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-07-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2025-07-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "340aaee1-9d9f-4d98-88b3-d22a85f2d058",
+      "bill_key": {
+        "external_id": "119-HR-1917",
+        "session": "119",
+        "bill_number": "HR 1917",
+        "chamber": "house"
+      },
+      "title": "Great Lakes Mass Marking Program Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-216",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-07-22T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2025-07-23",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "71d2fddb-41dd-414c-97e0-1616fc3bde69",
+      "bill_key": {
+        "external_id": "119-HR-192",
+        "session": "119",
+        "bill_number": "HR 192",
+        "chamber": "house"
+      },
+      "title": "Amtrak Executive Bonus Disclosure Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-008",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-01-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2025-01-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "dd98a955-9b0e-40ff-9efb-5a402c14e58f",
+      "bill_key": {
+        "external_id": "119-HR-1958",
+        "session": "119",
+        "bill_number": "HR 1958",
+        "chamber": "house"
+      },
+      "title": "Deporting Fraudsters Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-094",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-03-18T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-03-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "be506844-43a0-4ee3-aeb4-afce686e2e25",
+      "bill_key": {
+        "external_id": "119-HR-1998",
+        "session": "119",
+        "bill_number": "HR 1998",
+        "chamber": "house"
+      },
+      "title": "Sanction Sea Pirates Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-172",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-06-23T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Foreign Relations.",
+      "last_action_at": "2025-06-24",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "456fdd8a-0340-4803-a337-2187d62a2180",
+      "bill_key": {
+        "external_id": "119-HR-2071",
+        "session": "119",
+        "bill_number": "HR 2071",
+        "chamber": "house"
+      },
+      "title": "Save Our Shrimpers Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-156",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-12T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Foreign Relations.",
+      "last_action_at": "2026-05-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "6e89ed81-1c55-42ac-ab65-3568cbab8d63",
+      "bill_key": {
+        "external_id": "119-HR-21",
+        "session": "119",
+        "bill_number": "HR 21",
+        "chamber": "house"
+      },
+      "title": "Born-Alive Abortion Survivors Protection Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-027",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-01-23T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-01-24",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "175548a6-26a1-451b-aba3-2e0fbcbd9be8",
+      "bill_key": {
+        "external_id": "119-HR-2240",
+        "session": "119",
+        "bill_number": "HR 2240",
+        "chamber": "house"
+      },
+      "title": "Improving Law Enforcement Officer Safety and Wellness Through Data Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-131",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-05-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "7bf890bf-a1a3-4f83-b10b-dd90e01e6842",
+      "bill_key": {
+        "external_id": "119-HR-2243",
+        "session": "119",
+        "bill_number": "HR 2243",
+        "chamber": "house"
+      },
+      "title": "LEOSA Reform Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-128",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-05-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "c91c6b1b-1342-43e5-9567-489f57a99989",
+      "bill_key": {
+        "external_id": "119-HR-2255",
+        "session": "119",
+        "bill_number": "HR 2255",
+        "chamber": "house"
+      },
+      "title": "Federal Law Enforcement Officer Service Weapon Purchase Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-130",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-05-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5b1cbffd-1697-4528-b101-fa0166efcfad",
+      "bill_key": {
+        "external_id": "119-HR-227",
+        "session": "119",
+        "bill_number": "HR 227",
+        "chamber": "house"
+      },
+      "title": "Clergy Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-139",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-27T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Finance.",
+      "last_action_at": "2026-04-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "bc87b4c7-ea57-4f97-a467-6b980c2cfa68",
+      "bill_key": {
+        "external_id": "119-HR-261",
+        "session": "119",
+        "bill_number": "HR 261",
+        "chamber": "house"
+      },
+      "title": "Undersea Cable Protection Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-067",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-02-11T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-02-12",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "7ca6ec49-859b-407c-b904-49e843512d50",
+      "bill_key": {
+        "external_id": "119-HR-2616",
+        "session": "119",
+        "bill_number": "HR 2616",
+        "chamber": "house"
+      },
+      "title": "Stopping Indoctrination and Protecting Kids Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-184",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Health, Education, Labor, and Pensions.",
+      "last_action_at": "2026-05-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d86ed4fa-34dc-4e34-936f-c7f89ac3456f",
+      "bill_key": {
+        "external_id": "119-HR-2659",
+        "session": "119",
+        "bill_number": "HR 2659",
+        "chamber": "house"
+      },
+      "title": "Strengthening Cyber Resilience Against State-Sponsored Threats Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-287",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-11-17T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-11-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "7f888c37-8c52-4f96-ab16-cd060b743fe4",
+      "bill_key": {
+        "external_id": "119-HR-27",
+        "session": "119",
+        "bill_number": "HR 27",
+        "chamber": "house"
+      },
+      "title": "HALT Fentanyl Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-033",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-06T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-02-10",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a53a1678-5502-4743-9711-565701f95d78",
+      "bill_key": {
+        "external_id": "119-HR-2853",
+        "session": "119",
+        "bill_number": "HR 2853",
+        "chamber": "house"
+      },
+      "title": "Combating Organized Retail Crime Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-157",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-12T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-05-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "51c98edc-60f5-4f6a-8e43-4343289887c8",
+      "bill_key": {
+        "external_id": "119-HR-3015",
+        "session": "119",
+        "bill_number": "HR 3015",
+        "chamber": "house"
+      },
+      "title": "National Coal Council Reestablishment Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-278",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-09-18T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2025-09-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "961f7f6a-6a2f-4125-8203-e76c953b2479",
+      "bill_key": {
+        "external_id": "119-HR-3062",
+        "session": "119",
+        "bill_number": "HR 3062",
+        "chamber": "house"
+      },
+      "title": "Promoting Cross-border Energy Infrastructure Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-277",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-09-18T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2025-09-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e3bb6a4c-bd9e-4ef8-b9cf-2144429821f4",
+      "bill_key": {
+        "external_id": "119-HR-3106",
+        "session": "119",
+        "bill_number": "HR 3106",
+        "chamber": "house"
+      },
+      "title": "Weatherizing Infrastructure in the North and Terrorism Emergency Readiness Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-234",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2026-07-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "456903e9-3a3a-4137-b2dd-43f7fd5105d7",
+      "bill_key": {
+        "external_id": "119-HR-3234",
+        "session": "119",
+        "bill_number": "HR 3234",
+        "chamber": "house"
+      },
+      "title": "Keeping Deposits Local Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-177",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-05-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d8a3c205-db4d-4af7-b4c2-c84dab893db3",
+      "bill_key": {
+        "external_id": "119-HR-3276",
+        "session": "119",
+        "bill_number": "HR 3276",
+        "chamber": "house"
+      },
+      "title": "Local Communities & Bird Habitat Stewardship Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-297",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2026-09-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "3b7f5bf8-ca3a-4d39-9c1b-67816ebb97dc",
+      "bill_key": {
+        "external_id": "119-HR-3400",
+        "session": "119",
+        "bill_number": "HR 3400",
+        "chamber": "house"
+      },
+      "title": "TRAVEL Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-266",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2025-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "b1ab325d-2fe5-4bc9-8bc1-01ecacec2bcb",
+      "bill_key": {
+        "external_id": "119-HR-3422",
+        "session": "119",
+        "bill_number": "HR 3422",
+        "chamber": "house"
+      },
+      "title": "Promoting Opportunities for Non-Traditional Capital Formation Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-174",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-06-23T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2025-06-24",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a92e115b-dbe6-4bf5-99f0-33da483a1f41",
+      "bill_key": {
+        "external_id": "119-HR-3425",
+        "session": "119",
+        "bill_number": "HR 3425",
+        "chamber": "house"
+      },
+      "title": "Personnel Oversight and Shift Tracking Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-241",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-09-08T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-09-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "93503b96-e39f-4d84-a157-1b23b0f3997d",
+      "bill_key": {
+        "external_id": "119-HR-3492",
+        "session": "119",
+        "bill_number": "HR 3492",
+        "chamber": "house"
+      },
+      "title": "Protect Children’s Innocence Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-351",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-12-17T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-12-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "0013989d-c20a-4061-853a-1df4263d5053",
+      "bill_key": {
+        "external_id": "119-HR-35",
+        "session": "119",
+        "bill_number": "HR 35",
+        "chamber": "house"
+      },
+      "title": "Agent Raul Gonzalez Officer Safety Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-042",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-02-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "06e85fab-969b-436a-8a38-e07f0a59c43f",
+      "bill_key": {
+        "external_id": "119-HR-3617",
+        "session": "119",
+        "bill_number": "HR 3617",
+        "chamber": "house"
+      },
+      "title": "Securing America’s Critical Minerals Supply Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-064",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-02-11T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2026-02-12",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "29e5d4d3-b00c-4e3f-8262-1da09a9c1fb0",
+      "bill_key": {
+        "external_id": "119-HR-4219",
+        "session": "119",
+        "bill_number": "HR 4219",
+        "chamber": "house"
+      },
+      "title": "National Wildlife Refuge System Invasive Species Strike Team Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-296",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2026-09-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "b223544b-4f05-49ea-8fdb-ec0a36231c7a",
+      "bill_key": {
+        "external_id": "119-HR-4541",
+        "session": "119",
+        "bill_number": "HR 4541",
+        "chamber": "house"
+      },
+      "title": "To reauthorize the Young Women’s Breast Health Education and Awareness Requires Learning Young Act of 2009.",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-250",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-20T00:00:00+00:00",
+      "latest_action": "Read twice and referred to the Committee on Health, Education, Labor, and Pensions.",
+      "last_action_at": "2026-07-27",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "a345cc8c-b0cc-42a8-959a-e6afdf3fd5c1",
+      "bill_key": {
+        "external_id": "119-HR-4544",
+        "session": "119",
+        "bill_number": "HR 4544",
+        "chamber": "house"
+      },
+      "title": "American Access to Banking Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-178",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-05-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "59d8e68f-4d77-47e2-b6f8-22e90dd01a73",
+      "bill_key": {
+        "external_id": "119-HR-4638",
+        "session": "119",
+        "bill_number": "HR 4638",
+        "chamber": "house"
+      },
+      "title": "Federal Working Animal Protection Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-096",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-03-19T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-03-19",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "225009f0-b3eb-41c8-957e-aef6c20990a8",
+      "bill_key": {
+        "external_id": "119-HR-4646",
+        "session": "119",
+        "bill_number": "HR 4646",
+        "chamber": "house"
+      },
+      "title": "Whistleblower Protection Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-303",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "8f5f47e9-5921-4f23-85d1-5ecd93f45da7",
+      "bill_key": {
+        "external_id": "119-HR-4690",
+        "session": "119",
+        "bill_number": "HR 4690",
+        "chamber": "house"
+      },
+      "title": "Reliable Federal Infrastructure Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-134",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-22T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2026-04-27",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "9d74d1dc-d507-4615-b3f9-d1e2ffcfc0ed",
+      "bill_key": {
+        "external_id": "119-HR-5201",
+        "session": "119",
+        "bill_number": "HR 5201",
+        "chamber": "house"
+      },
+      "title": "Kari's Law Reporting Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-127",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-04-22",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d2af6365-5d0b-42ea-a4f3-4080d0918a63",
+      "bill_key": {
+        "external_id": "119-HR-5317",
+        "session": "119",
+        "bill_number": "HR 5317",
+        "chamber": "house"
+      },
+      "title": "Community Bank Deposit Access Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-179",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-05-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "67679539-355a-4fd8-aa1e-b2a4a69a1b89",
+      "bill_key": {
+        "external_id": "119-HR-5362",
+        "session": "119",
+        "bill_number": "HR 5362",
+        "chamber": "house"
+      },
+      "title": "To name the Department of Veterans Affairs multispecialty clinic in Marietta, Georgia, as the \"Colonel Michael H. Boyce Department of Veterans Affairs Multispecialty Clinic\".",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-248",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-16T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2026-07-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5c3ccf18-19a4-4e1d-a4cb-9a2474965a84",
+      "bill_key": {
+        "external_id": "119-HR-5625",
+        "session": "119",
+        "bill_number": "HR 5625",
+        "chamber": "house"
+      },
+      "title": "Cashless Bail Reporting Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-171",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-05-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "019c74ee-34c2-4c30-9a51-c0601a342b62",
+      "bill_key": {
+        "external_id": "119-HR-5764",
+        "session": "119",
+        "bill_number": "HR 5764",
+        "chamber": "house"
+      },
+      "title": "AI for Main Street Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-033",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-01-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Small Business and Entrepreneurship.",
+      "last_action_at": "2026-01-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "db26bb4a-0274-41dd-9fe4-6e98f93b20ef",
+      "bill_key": {
+        "external_id": "119-HR-6047",
+        "session": "119",
+        "bill_number": "HR 6047",
+        "chamber": "house"
+      },
+      "title": "Sharri Briley and Eric Edmundson Veterans Benefits Expansion Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-191",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2026-06-02",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5ef4c3cc-c274-4b45-96d3-e1042451b418",
+      "bill_key": {
+        "external_id": "119-HR-6260",
+        "session": "119",
+        "bill_number": "HR 6260",
+        "chamber": "house"
+      },
+      "title": "Keeping Violent Offenders Off Our Streets Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-169",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-05-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "2468513a-4212-43e1-94c6-8238a2ef6f91",
+      "bill_key": {
+        "external_id": "119-HR-6387",
+        "session": "119",
+        "bill_number": "HR 6387",
+        "chamber": "house"
+      },
+      "title": "FIRE Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-136",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-22T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2026-04-27",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "c6c9f1e3-bb26-4e57-b51b-b7efea2d19b3",
+      "bill_key": {
+        "external_id": "119-HR-6409",
+        "session": "119",
+        "bill_number": "HR 6409",
+        "chamber": "house"
+      },
+      "title": "FENCES Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-116",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-16T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2026-04-17",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "740eaddd-27d3-4a00-a061-a7fe445ceab3",
+      "bill_key": {
+        "external_id": "119-HR-692",
+        "session": "119",
+        "bill_number": "HR 692",
+        "chamber": "house"
+      },
+      "title": "China Exchange Rate Transparency Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-036",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Foreign Relations.",
+      "last_action_at": "2025-02-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "fb6991c5-3f9c-426f-ac39-e618853e5b14",
+      "bill_key": {
+        "external_id": "119-HR-6945",
+        "session": "119",
+        "bill_number": "HR 6945",
+        "chamber": "house"
+      },
+      "title": "Supporting Pregnant and Parenting Women and Families Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-037",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-01-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Finance.",
+      "last_action_at": "2026-01-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e790c9cd-7293-42cc-b970-3dab80997bf9",
+      "bill_key": {
+        "external_id": "119-HR-6955",
+        "session": "119",
+        "bill_number": "HR 6955",
+        "chamber": "house"
+      },
+      "title": "Main Street Capital Access Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-271",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-21T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-07-22",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5a47a95f-b489-4be8-8635-7f5570e4a07f",
+      "bill_key": {
+        "external_id": "119-HR-7613",
+        "session": "119",
+        "bill_number": "HR 7613",
+        "chamber": "house"
+      },
+      "title": "ALERT Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-110",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-04-15",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "fbbc1877-0967-467c-867c-bdd5aa44d158",
+      "bill_key": {
+        "external_id": "119-HR-7618",
+        "session": "119",
+        "bill_number": "HR 7618",
+        "chamber": "house"
+      },
+      "title": "American Battlefield Protection Program Amendments Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-192",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-03T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2026-06-04",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "43c991b5-a08f-4b82-9394-1ad894340980",
+      "bill_key": {
+        "external_id": "119-HR-77",
+        "session": "119",
+        "bill_number": "HR 77",
+        "chamber": "house"
+      },
+      "title": "Midnight Rules Relief Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-041",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-12T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-02-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d8f19bdb-7d16-4715-8e67-84e4a31d7d5f",
+      "bill_key": {
+        "external_id": "119-HR-7726",
+        "session": "119",
+        "bill_number": "HR 7726",
+        "chamber": "house"
+      },
+      "title": "Stop Child Care Scams Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-198",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-03T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Health, Education, Labor, and Pensions.",
+      "last_action_at": "2026-06-04",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "3c202d8a-c8ba-4949-b708-261c5241ef95",
+      "bill_key": {
+        "external_id": "119-HR-7744",
+        "session": "119",
+        "bill_number": "HR 7744",
+        "chamber": "house"
+      },
+      "title": "Department of Homeland Security Appropriations Act, 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-087",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-03-05T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Appropriations.",
+      "last_action_at": "2026-03-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "acd7738c-ee26-49c9-8b12-4682819ec1e7",
+      "bill_key": {
+        "external_id": "119-HR-776",
+        "session": "119",
+        "bill_number": "HR 776",
+        "chamber": "house"
+      },
+      "title": "Nutria Eradication and Control Reauthorization Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-029",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-04T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2025-02-05",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "bea1bdf3-b2fa-4a1d-b998-4e1b54cb2add",
+      "bill_key": {
+        "external_id": "119-HR-788",
+        "session": "119",
+        "bill_number": "HR 788",
+        "chamber": "house"
+      },
+      "title": "DOE and SBA Research Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-048",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-25T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Energy and Natural Resources.",
+      "last_action_at": "2025-02-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e7cfcae3-c238-4cb7-9998-6a03622557c0",
+      "bill_key": {
+        "external_id": "119-HR-7892",
+        "session": "119",
+        "bill_number": "HR 7892",
+        "chamber": "house"
+      },
+      "title": "No Aid for Ghost Students Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-217",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Health, Education, Labor, and Pensions.",
+      "last_action_at": "2026-06-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "1a815a0d-61bf-4e5e-a54c-3e1431e9e482",
+      "bill_key": {
+        "external_id": "119-HR-7959",
+        "session": "119",
+        "bill_number": "HR 7959",
+        "chamber": "house"
+      },
+      "title": "IRS Whistleblower Program Improvement Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-138",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-04-27T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Finance.",
+      "last_action_at": "2026-04-28",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5747c6cb-90e9-43c6-902b-4d3398a8b1c8",
+      "bill_key": {
+        "external_id": "119-HR-804",
+        "session": "119",
+        "bill_number": "HR 804",
+        "chamber": "house"
+      },
+      "title": "Rural Small Business Resilience Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-049",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-25T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Small Business and Entrepreneurship.",
+      "last_action_at": "2025-02-26",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "ad8bbef9-0028-4ff1-8b4a-8d2f21b4765d",
+      "bill_key": {
+        "external_id": "119-HR-818",
+        "session": "119",
+        "bill_number": "HR 818",
+        "chamber": "house"
+      },
+      "title": "SPUR Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-045",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-24T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Small Business and Entrepreneurship.",
+      "last_action_at": "2025-02-25",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "87f501cd-db9f-4b1a-9f7e-48ddbd0f5631",
+      "bill_key": {
+        "external_id": "119-HR-825",
+        "session": "119",
+        "bill_number": "HR 825",
+        "chamber": "house"
+      },
+      "title": "Assisting Small Businesses Not Fraudsters Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-043",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-24T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Small Business and Entrepreneurship.",
+      "last_action_at": "2025-02-25",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "2e2b646e-219d-4358-9766-73f49af5ddb8",
+      "bill_key": {
+        "external_id": "119-HR-8278",
+        "session": "119",
+        "bill_number": "HR 8278",
+        "chamber": "house"
+      },
+      "title": "Fostering the Use of Technology to Uphold Regulatory Effectiveness in Supervision Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-302",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "eef5a9c9-6324-445c-b79e-d31bc7d639c7",
+      "bill_key": {
+        "external_id": "119-HR-832",
+        "session": "119",
+        "bill_number": "HR 832",
+        "chamber": "house"
+      },
+      "title": "Small Business Advocacy Improvements Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-044",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-02-24T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Small Business and Entrepreneurship.",
+      "last_action_at": "2025-02-25",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "5adb3902-d39e-4161-bd7c-e898b1303870",
+      "bill_key": {
+        "external_id": "119-HR-8365",
+        "session": "119",
+        "bill_number": "HR 8365",
+        "chamber": "house"
+      },
+      "title": "Monitor Accountability Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-173",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-05-14T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2026-05-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "8afa3cdc-f7af-4bc7-90be-3ee0328d7693",
+      "bill_key": {
+        "external_id": "119-HR-8428",
+        "session": "119",
+        "bill_number": "HR 8428",
+        "chamber": "house"
+      },
+      "title": "Federal Fraud Prevention Workforce Training Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-209",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-08T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2026-06-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "45673f30-f75f-424a-b19d-fa02282b7b86",
+      "bill_key": {
+        "external_id": "119-HR-845",
+        "session": "119",
+        "bill_number": "HR 845",
+        "chamber": "house"
+      },
+      "title": "Pet and Livestock Protection Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-360",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-12-18T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Environment and Public Works.",
+      "last_action_at": "2025-12-18",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "e77d72ea-f147-4d11-9dac-187161e4d1cc",
+      "bill_key": {
+        "external_id": "119-HR-8466",
+        "session": "119",
+        "bill_number": "HR 8466",
+        "chamber": "house"
+      },
+      "title": "TRUE Accountability Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-208",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-08T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2026-06-09",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "1f4f8707-1ca6-46d4-8317-a9ff0508b91e",
+      "bill_key": {
+        "external_id": "119-HR-856",
+        "session": "119",
+        "bill_number": "HR 856",
+        "chamber": "house"
+      },
+      "title": "Safe and Smart Federal Purchasing Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-054",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-03-03T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-03-04",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "b663a3b5-ebd8-4270-ad6a-a17708c887ca",
+      "bill_key": {
+        "external_id": "119-HR-875",
+        "session": "119",
+        "bill_number": "HR 875",
+        "chamber": "house"
+      },
+      "title": "Jeremy and Angel Seay and Sergeant Brandon Mendoza Protect Our Communities from DUIs Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-183",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-06-26T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on the Judiciary.",
+      "last_action_at": "2025-06-27",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "6359a3ad-4731-496c-8d2b-b70a8fb52d5b",
+      "bill_key": {
+        "external_id": "119-HR-881",
+        "session": "119",
+        "bill_number": "HR 881",
+        "chamber": "house"
+      },
+      "title": "DHS Restrictions on Confucius Institutes and Chinese Entities of Concern Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-120",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-05-07T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-05-08",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "bc02e7fa-1846-4a08-8d32-81a30f79d597",
+      "bill_key": {
+        "external_id": "119-HR-8823",
+        "session": "119",
+        "bill_number": "HR 8823",
+        "chamber": "house"
+      },
+      "title": "Putting Patients First by Strengthening Provider Accountability in FECA Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-251",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-20T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Health, Education, Labor, and Pensions.",
+      "last_action_at": "2026-07-21",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "d71ac8b0-e35e-4a6e-bea8-aef33f203089",
+      "bill_key": {
+        "external_id": "119-HR-884",
+        "session": "119",
+        "bill_number": "HR 884",
+        "chamber": "house"
+      },
+      "title": "To prohibit individuals who are not citizens of the United States from voting in elections in the District of Columbia and to repeal the Local Resident Voting Rights Amendment Act of 2022.",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-163",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2025-06-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-06-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "820c58b0-9a9d-48df-a6ca-d7c3971ccb42",
+      "bill_key": {
+        "external_id": "119-HR-8884",
+        "session": "119",
+        "bill_number": "HR 8884",
+        "chamber": "house"
+      },
+      "title": "Removing Barriers to Work for Disabled Americans Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-283",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-23T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Finance.",
+      "last_action_at": "2026-07-23",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "76aff910-dbce-4ae7-a75a-51ebb18c8aa4",
+      "bill_key": {
+        "external_id": "119-HR-8897",
+        "session": "119",
+        "bill_number": "HR 8897",
+        "chamber": "house"
+      },
+      "title": "Improving Travel for American Families Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-235",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-07-13T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-07-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "1ef684e3-cf0f-470b-b64a-dfa887483a5d",
+      "bill_key": {
+        "external_id": "119-HR-901",
+        "session": "119",
+        "bill_number": "HR 901",
+        "chamber": "house"
+      },
+      "title": "Research Security and Accountability in DHS Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-064",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-03-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-03-11",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "f93970f8-741c-463d-94be-cbcec3149d34",
+      "bill_key": {
+        "external_id": "119-HR-915",
+        "session": "119",
+        "bill_number": "HR 915",
+        "chamber": "house"
+      },
+      "title": "Small Business Technological Advancement Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-226",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-06-24T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Small Business and Entrepreneurship.",
+      "last_action_at": "2026-07-13",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "191bf94a-5c37-4579-bf96-b10dc2768b7e",
+      "bill_key": {
+        "external_id": "119-HR-9436",
+        "session": "119",
+        "bill_number": "HR 9436",
+        "chamber": "house"
+      },
+      "title": "Northeast Lobsterman Protection Act of 2026",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-291",
+      "vote_question": "On Passage",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-01T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Commerce, Science, and Transportation.",
+      "last_action_at": "2026-09-14",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "7e365642-1093-44c2-94fc-ab4f7bc3c8bc",
+      "bill_key": {
+        "external_id": "119-HR-9500",
+        "session": "119",
+        "bill_number": "HR 9500",
+        "chamber": "house"
+      },
+      "title": "Tax Relief for Fraud Victims Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-305",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-09-15T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Finance.",
+      "last_action_at": "2026-09-16",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "17eb86a2-0f2c-46ad-869f-51c336a7759e",
+      "bill_key": {
+        "external_id": "119-HR-980",
+        "session": "119",
+        "bill_number": "HR 980",
+        "chamber": "house"
+      },
+      "title": "Veterans Readiness and Employment Improvement Act of 2025",
+      "current_status": "in_committee",
+      "roll_call_id": "2026-house-049",
+      "vote_question": "On Motion to Suspend the Rules and Pass, as Amended",
+      "vote_result": "Passed",
+      "voted_at": "2026-02-02T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Veterans' Affairs.",
+      "last_action_at": "2026-02-03",
+      "new_status": "passed_chamber"
+    },
+    {
+      "proposal_id": "068683a3-a9b9-4164-a319-a9a6104070a6",
+      "bill_key": {
+        "external_id": "119-HR-993",
+        "session": "119",
+        "bill_number": "HR 993",
+        "chamber": "house"
+      },
+      "title": "Emerging Innovative Border Technologies Act",
+      "current_status": "in_committee",
+      "roll_call_id": "2025-house-065",
+      "vote_question": "On Motion to Suspend the Rules and Pass",
+      "vote_result": "Passed",
+      "voted_at": "2025-03-10T00:00:00+00:00",
+      "latest_action": "Received in the Senate and Read twice and referred to the Committee on Homeland Security and Governmental Affairs.",
+      "last_action_at": "2025-03-11",
+      "new_status": "passed_chamber"
+    }
+  ]
+}
