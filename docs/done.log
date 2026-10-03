@@ -1549,3 +1549,6 @@
 2026-10-01 | FIX-1259 | c4b21847 | local-only | fix(data): FIX-1259 — a tag writer overwrites only its own provenance (bulkUpsert updateOnlyIfSame; upsertTags keeps ai/curated rows)
 2026-10-02 | FIX-1205 | ebb4c845 | local-only | feat(app): FIX-1205 — a revoked grant notifies its holder (third ClaimOutcome 'revoked'); createNotification surfaces insert errors
 2026-10-02 | FIX-1257 | 115493ce | prod-only | chore(scripts,audits): FIX-1257 — the passed-status backfill manifest + apply (166 federal bills with a passage roll, introduced/in_committee → passed_chamber)
+2026-10-02 | FIX-1211 | 5e0b9776 | prod-only | chore(fixes): FIX-1211 — the gated rebuild ran on prod (db99c5ef -> 0bb41fb8, 149999 / 1 / 0.397); FIX-1240 and FIX-1211 appends; industry-tags s10 done
+2026-10-02 | FIX-1240 | 18996aba | prod-only | chore(fixes): record prod verification of FIX-1240
+2026-10-02 | FIX-1240 | 333a209a | local-only | feat(db): FIX-1240 — sync_rollup_industry_labels(uuid[]) updates the two donor rollups' industry columns in place; Path 3 of refresh_sector_affinity_from_tag_changes() calls it for the night's dirty donors (Path 2 for all); today's drift backfilled
