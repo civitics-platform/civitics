@@ -148,7 +148,12 @@ true:
   `{fix: FIX-NNN, what: "<one line>", after: <date or zoned ISO instant>}`.
   `after` is required and must carry a zone (`…T15:00Z`). `owed: []` says
   nothing is owed. The board shows an entry as outstanding until `done.log` has
-  a row for its `fix` dated on or after the report's `finished_at` date.
+  a **receipt** row for its `fix` (FIX-1264): verified `prod-only`,
+  `local+prod` or `closes-as-*` (never `local-only` or `unverified`), dated on
+  or after both the report's `finished_at` date and the entry's own `after`
+  date, from a sha that is **not** one of this report's `commits[]`. So a run's
+  own `local-only` close never settles the receipt it declared. Plan steps of
+  kind `receipt`/`op` take the same `verified` filter against their `after`.
 
 - `commits` — every commit THIS run made, in order. Each must exist and be an
   ancestor of `origin/main` by the time you verify. **Quote a subject** that

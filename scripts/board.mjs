@@ -629,6 +629,24 @@ function doneRowsFor(statusMap, id) {
   return (statusMap.get(id)?.rows ?? []).filter((r) => r.sha !== REOPEN_SHA);
 }
 
+// FIX-1264 (cc-184 D4): the rows that count as a RECEIPT. A `local-only` row is
+// a code landing, not a receipt, and `unverified` never is one. Column 4 is
+// read here for the board's owed/step display only — deriveStatus still keys
+// on column 3 and row order (FIX-1016), so a FIX's open/closed is unchanged.
+const isReceiptVerified = (v) => v === "prod-only" || v === "local+prod" || /^closes-as-/.test(v);
+
+function receiptRowsFor(statusMap, id) {
+  return doneRowsFor(statusMap, id).filter((r) => isReceiptVerified(str(r.verified)));
+}
+
+/** Two abbreviated shas name one commit when the shorter is a prefix (≥ 7). */
+function sameSha(a, b) {
+  const x = str(a).trim().toLowerCase();
+  const y = str(b).trim().toLowerCase();
+  const n = Math.min(x.length, y.length);
+  return n >= 7 && x.slice(0, n) === y.slice(0, n);
+}
+
 /**
  * Derive a plan step's status. Returns { status, done, label }.
  * `ctx` = { nowMs, reportState(n), markerFor(n), hasPrompt(n), statusMap }.
@@ -661,7 +679,7 @@ export function stepStatus(step, ctx) {
   if (kind === "receipt" || kind === "op") {
     if (FIX_ID_RE.test(ref)) {
       const floor = Number.isNaN(after) ? "" : isoDate(after);
-      const row = doneRowsFor(ctx.statusMap, ref).find((r) => r.date >= floor);
+      const row = receiptRowsFor(ctx.statusMap, ref).find((r) => r.date >= floor);
       if (row) return { status: "done", done: true, label: `${ref} ✓ ${row.date}`, done_date: row.date };
     }
     return { status: gated ? gatedLabel : "planned", done: false, label: ref };
@@ -946,11 +964,20 @@ export function buildBoard(
       card.migrations = list(fm.migrations_pushed).filter((x) => typeof x === "string" && x.trim()).length;
       card.prod_writes = /^none$/i.test(str(fm.prod_writes).trim()) ? "none" : str(fm.prod_writes).trim() ? "stated" : "";
       card.stops = list(fm.stopped_items).filter((x) => str(x).trim()).length;
+      // FIX-1264: an entry is settled only by a receipt row (prod-only,
+      // local+prod, closes-as-*) dated on or after BOTH the report's finish
+      // and the entry's own `after`, from a commit that is not one of the
+      // report's own — a run's code landing never pays the debt it declared.
       const finDate = str(fm.finished_at).slice(0, 10);
+      const ownShas = list(fm.commits).map((c) => str(c?.sha)).filter(Boolean);
       card.owed = (Array.isArray(fm.owed) ? fm.owed : []).map((o) => {
         const bad = owedProblem(o);
         const fix = str(o?.fix);
-        const row = bad ? null : doneRowsFor(statusMap, fix).find((x) => x.date >= finDate);
+        const afterDate = bad ? "" : isoDate(dateishMs(o.after));
+        const floor = afterDate > finDate ? afterDate : finDate;
+        const row = bad
+          ? null
+          : receiptRowsFor(statusMap, fix).find((x) => x.date >= floor && !ownShas.some((s) => sameSha(s, x.sha)));
         return {
           fix,
           what: str(o?.what),

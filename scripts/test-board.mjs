@@ -48,6 +48,7 @@ import {
   whenDays,
   cronHistory,
   historyReceiptNames,
+  stepStatus,
 } from "./board.mjs";
 import { verifyReport } from "./cc-verify.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
@@ -160,16 +161,57 @@ assertEq("markerState at exactly 24 h is still running", markerState({ started_a
 assertEq("markerState past 24 h is stale", markerState({ started_at: "2026-09-27T03:59:00Z" }, NOW_MS).state, "running · stale?");
 assertEq("markerState with no started_at is stale, never running", markerState({}, NOW_MS).state, "running · stale?");
 
-// The same tree with FIX-50's receipt in done.log: owed → closed.
-const closedDone = `${readFileSync(paths.doneLogPath, "utf8")}2026-09-30 | FIX-50 | aaaaaaa1 | prod-only | the receipt\n`;
-const closedBoard = buildBoard({ ...inputs, doneLogText: closedDone }, { ...opts, verify: verifierFor(closedDone) });
-const closed900 = closedBoard.lanes.flatMap((l) => l.cards).find((c) => c.cc === 900);
-assertEq("…with FIX-50's row dated after finished_at, cc-900 → closed", closed900?.state, "closed");
+// The same tree with one extra FIX-50 row in done.log. cc-900 finished
+// 09-27, its own commit is aaaaaaa1, and its owed entry is after 09-30 15:00Z,
+// so FIX-1264 settles it only on a receipt row (prod-only / local+prod /
+// closes-as-*) dated ≥ 09-30 from a sha that is not aaaaaaa1. Each case below
+// breaks exactly one of those conditions (rule 105).
+const card900With = (row) => {
+  const text = `${readFileSync(paths.doneLogPath, "utf8")}${row}\n`;
+  return buildBoard({ ...inputs, doneLogText: text }, { ...opts, verify: verifierFor(text) })
+    .lanes.flatMap((l) => l.cards).find((c) => c.cc === 900);
+};
+const closed900 = card900With("2026-09-30 | FIX-50 | bbbbbbb2 | prod-only | the receipt");
+assertEq("…with a prod-only FIX-50 row from another commit, dated on the after date, cc-900 → closed", closed900?.state, "closed");
 assertEq("…and the owed line says received", closed900?.owed[0]?.received, "2026-09-30");
-const staleRow = `${readFileSync(paths.doneLogPath, "utf8")}2026-09-26 | FIX-50 | aaaaaaa1 | prod-only | before the report\n`;
+assertEq(
+  "a closes-as-recognized row from another commit settles it too",
+  card900With("2026-10-01 | FIX-50 | bbbbbbb2 | closes-as-recognized | prior work was the receipt")?.state,
+  "closed",
+);
+assertEq(
+  "a local+prod row settles it",
+  card900With("2026-09-30 | FIX-50 | bbbbbbb2 | local+prod | both")?.owed[0]?.received,
+  "2026-09-30",
+);
+assertEq(
+  "the report's OWN same-day local-only row does NOT settle it (the cc-183 / FIX-1194 shape)",
+  card900With("2026-09-27 | FIX-50 | aaaaaaa1 | local-only | the run's own code close")?.state,
+  "owed",
+);
+assertEq(
+  "a local-only row from another commit, on the after date, does NOT settle it",
+  card900With("2026-09-30 | FIX-50 | bbbbbbb2 | local-only | a code landing, not a receipt")?.state,
+  "owed",
+);
+assertEq(
+  "an unverified row does NOT settle it",
+  card900With("2026-09-30 | FIX-50 | bbbbbbb2 | unverified | trailer forgotten")?.state,
+  "owed",
+);
+assertEq(
+  "a prod-only row whose sha is the report's own commit does NOT settle it",
+  card900With("2026-09-30 | FIX-50 | aaaaaaa1 | prod-only | the run's own commit")?.state,
+  "owed",
+);
+assertEq(
+  "a prod-only row after finished_at but BEFORE the entry's after date does NOT settle it",
+  card900With("2026-09-28 | FIX-50 | bbbbbbb2 | prod-only | too early for this receipt")?.state,
+  "owed",
+);
 assertEq(
   "a FIX-50 row dated BEFORE the report's finished_at does not pay the debt",
-  buildBoard({ ...inputs, doneLogText: staleRow }, { ...opts, verify: verifierFor(staleRow) }).lanes.flatMap((l) => l.cards).find((c) => c.cc === 900)?.state,
+  card900With("2026-09-26 | FIX-50 | bbbbbbb2 | prod-only | before the report")?.state,
   "owed",
 );
 
@@ -210,7 +252,7 @@ console.log("\nprojects:");
 const demo = board.projects.find((p) => p.slug === "demo");
 const st = (id) => demo?.steps.find((s) => s.id === id)?.status;
 assertEq("s1 cc-880 — report outside the window, verify PASS → done", st("s1"), "done");
-assertEq("s2 op FIX-40 — done.log row → done", st("s2"), "done");
+assertEq("s2 op FIX-40 — a prod-only done.log row → done", st("s2"), "done");
 assertEq("s3 design — hand-dated → done", st("s3"), "done");
 assertEq("s4 cc-902 — the marker → running · stale?", st("s4"), "running · stale?");
 assertEq("s5 receipt FIX-50 after Wed → gated", st("s5"), "gated · 2026-09-30");
@@ -219,6 +261,24 @@ assertEq("s7 design after 10-20 → gated", st("s7"), "gated · 2026-10-20");
 assertEq("s8 cc with no ref → planned", st("s8"), "planned");
 assertEq("s9 names a report whose verify FAILs → landed · verify FAILs, never done", st("s9"), "landed · verify FAILs");
 assertEq("3 of 9 done, current = the first not-done step", [demo?.done_count, demo?.total, demo?.current], [3, 9, "s4"]);
+// FIX-1264: a receipt/op step takes the same verified filter (no sha filter —
+// a step has no report). Read past s5's after date so "gated" never masks it.
+const stepCtx = (text) => ({
+  nowMs: Date.parse("2026-10-02T00:00:00Z"),
+  statusMap: deriveStatus(parseDoneLog(text)),
+  reportState: () => "",
+  markerFor: () => null,
+  hasPrompt: () => false,
+});
+const s5 = { id: "s5", kind: "receipt", ref: "FIX-50", after: "2026-09-30T15:00Z" };
+assertEq("a receipt step on a local-only row after its date → planned", stepStatus(s5, stepCtx("2026-09-30 | FIX-50 | bbbbbbb2 | local-only | code")).status, "planned");
+assertEq("…on a prod-only row after its date → done", stepStatus(s5, stepCtx("2026-09-30 | FIX-50 | bbbbbbb2 | prod-only | receipt")).status, "done");
+assertEq("…on a closes-as-no-op row → done", stepStatus(s5, stepCtx("2026-10-01 | FIX-50 | bbbbbbb2 | closes-as-no-op | none")).status, "done");
+assertEq(
+  "an op step whose only row is local-only → planned (the fixture's FIX-40 without its prod row)",
+  stepStatus({ id: "s2", kind: "op", ref: "FIX-40" }, stepCtx("2026-09-27 | FIX-40 | aaaaaaa1 | local-only | code")).status,
+  "planned",
+);
 assertEq("the plan file has no shape problems", demo?.problems, []);
 assertEq(
   "queue: plan steps not done and not already a card (an archived plan queues nothing)",
