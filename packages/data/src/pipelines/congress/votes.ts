@@ -411,6 +411,27 @@ const xmlParser = new XMLParser({
   isArray: (name) => ["recorded-vote", "member"].includes(name),
 });
 
+/** A Senate LIS roll's `<roll_call_vote>` root, or null when the XML has none. */
+export function parseSenateRoll(xmlText: string): Record<string, unknown> | null {
+  const root = xmlParser.parse(xmlText)?.["roll_call_vote"];
+  return root && typeof root === "object" ? (root as Record<string, unknown>) : null;
+}
+
+/**
+ * FIX-1260 — the result a Senate LIS roll carries. The XML has `<vote_result>`
+ * ("Bill Passed", "Cloture Motion Agreed to") and `<vote_result_text>` (the
+ * same with the tally); it has no `<result>`, which is what this read until
+ * FIX-1260 — so every stored Senate roll has vote_result ''. `<result>` stays as
+ * a fallback, in case the feed ever grows the old name.
+ */
+export function senateRollResult(root: Record<string, unknown>): { resultStr: string; resultText: string } {
+  const text = (v: unknown) => (v === undefined || v === null ? "" : String(v).trim());
+  return {
+    resultStr: text(root["vote_result"] ?? root["result"]),
+    resultText: text(root["vote_result_text"]),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
@@ -767,6 +788,7 @@ export async function runVotesPipeline(
     votedAt:      string | null;
     voteQuestion: string;
     resultStr:    string;
+    resultText:   string;
     memberList:   unknown[];
   }
   const senateRollBuffer: SenateRollItem[] = [];
@@ -826,8 +848,7 @@ export async function runVotesPipeline(
           continue;
         }
 
-        const parsed = xmlParser.parse(xmlText);
-        const root = parsed["roll_call_vote"];
+        const root = parseSenateRoll(xmlText);
 
         if (!root) {
           console.error(`    Roll ${rollNum}: unexpected XML structure, skipping`);
@@ -837,7 +858,7 @@ export async function runVotesPipeline(
         const voteDateStr  = String(root["vote_date"] ?? "");
         const votedAt      = parseSenateDate(voteDateStr);
         const voteQuestion = String(root["question"] ?? "");
-        const resultStr    = String(root["result"] ?? "");
+        const { resultStr, resultText } = senateRollResult(root);
 
         const membersContainer = root["members"] as Record<string, unknown> | null;
         const memberList: unknown[] = membersContainer
@@ -916,7 +937,7 @@ export async function runVotesPipeline(
           }
         }
 
-        senateRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, memberList });
+        senateRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, resultText, memberList });
       } catch (err) {
         console.error(`    Senate roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
@@ -970,7 +991,10 @@ export async function runVotesPipeline(
           voted_at:         votedAtIso,
           vote_question:    roll.voteQuestion,
           source_url:       roll.url,
-          metadata:         { vote_result: roll.resultStr },
+          metadata:         {
+            vote_result: roll.resultStr,
+            ...(roll.resultText ? { vote_result_text: roll.resultText } : {}),
+          },
         });
       }
       return voteRecords;
@@ -982,10 +1006,10 @@ export async function runVotesPipeline(
   skippedRolls.push(...senateWrite.skipped);
   insertFailures.push(...senateWrite.insertFailures);
 
-  // FIX-1257: the House pass, for the Senate. Inert today: `root["result"]`
-  // above reads an element the LIS XML does not have, so every Senate roll's
-  // resultStr is "" (prod 2026-10-03: 1,893 of 1,893 Senate rolls store
-  // vote_result "") and mapVoteResult("") is floor_vote — FIX-1260.
+  // FIX-1257: the House pass, for the Senate. Live since FIX-1260 —
+  // senateRollResult() reads <vote_result>; before it, `root["result"]` read an
+  // element the LIS XML does not have, so every Senate roll stored '' (prod
+  // 2026-10-03: 1,893 of 1,893) and no Senate passage roll ever counted.
   {
     const landed = new Set(senateWrite.landed);
     mergeAdvance(statusResult, await advanceProposalStatuses(db, rollPassageAdvances(

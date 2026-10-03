@@ -233,28 +233,27 @@ export function mapLegislationType(typeStr: string): string {
 }
 
 /**
- * Map a roll-call result string to our proposal status enum.
+ * Classify a roll-call result: passed-like → `passed_chamber`, failed-like →
+ * `failed`, anything else → `floor_vote`. It classifies the MOTION's outcome,
+ * not the bill's: the question decides whether that outcome is evidence about
+ * the bill (bill-status.ts — a passed cloture motion is not a passed bill).
+ *
+ * FIX-1260: by SUFFIX, so the Senate LIS vocabulary ("Bill Passed", "Cloture
+ * Motion Agreed to", "Motion to Table Failed", …) classifies like the House
+ * Clerk's three values (Passed / Agreed to / Failed). Failed-like is tested
+ * first, so "… Not Agreed to" is failed; "defeated" is the census's addition
+ * (cc-185: "Bill Defeated", "Joint Resolution Defeated"). "Veto Sustained"
+ * classes passed-like although it means the override failed — inert, since
+ * the veto question is not a passage question. The old exact-match values all
+ * keep their class. scripts/lib/bill-status-evidence.mjs carries the twin regexes;
+ * bill-status.test.ts holds them equal.
  */
+export const VOTE_RESULT_FAILED_SUFFIX = /(rejected|failed|defeated|not agreed to|not sustained|not well taken)$/;
+export const VOTE_RESULT_PASSED_SUFFIX = /(^|\s)(passed|agreed to|confirmed|sustained)$/;
 export function mapVoteResult(result: string): string {
-  const r = result.trim().toLowerCase();
-  if (
-    r === "passed" ||
-    r === "agreed to" ||
-    r === "amendment agreed to" ||
-    r === "nomination confirmed" ||
-    r === "resolution agreed to"
-  ) {
-    return "passed_chamber";
-  }
-  if (
-    r === "failed" ||
-    r === "rejected" ||
-    r === "amendment rejected" ||
-    r === "motion rejected" ||
-    r === "nomination rejected"
-  ) {
-    return "failed";
-  }
+  const r = result.trim().toLowerCase().replace(/\s+/g, " ");
+  if (VOTE_RESULT_FAILED_SUFFIX.test(r)) return "failed";
+  if (VOTE_RESULT_PASSED_SUFFIX.test(r)) return "passed_chamber";
   return "floor_vote";
 }
 
