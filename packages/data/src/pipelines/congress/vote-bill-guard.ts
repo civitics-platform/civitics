@@ -225,6 +225,12 @@ export interface WriteRollsResult {
   inserted: number;
   skipped: SkippedRoll[];
   insertFailures: InsertFailure[];
+  /**
+   * FIX-1257: rolls whose votes are stored after this pass — inserted now, or
+   * already present (a 23505 on (roll_call_id, official_id)). Only these may
+   * serve as status evidence.
+   */
+  landed: string[];
 }
 
 /**
@@ -236,7 +242,7 @@ export async function writeRollVotes<R extends RollForWrite, V>(
   rolls: readonly R[],
   deps: WriteRollsDeps<R, V>,
 ): Promise<WriteRollsResult> {
-  const out: WriteRollsResult = { inserted: 0, skipped: [], insertFailures: [] };
+  const out: WriteRollsResult = { inserted: 0, skipped: [], insertFailures: [], landed: [] };
   for (const roll of rolls) {
     const proposalId = deps.proposalIdFor(roll.billKey);
     if (!proposalId) {
@@ -270,8 +276,10 @@ export async function writeRollVotes<R extends RollForWrite, V>(
       out.insertFailures.push({ roll: roll.rollCallId, code: error.code ?? null, message: error.message });
     } else if (error?.code === "23505") {
       deps.log(`    ${roll.rollCallId}: unique violation on (roll_call_id, official_id)`);
+      out.landed.push(roll.rollCallId);
     } else {
       out.inserted += records.length;
+      out.landed.push(roll.rollCallId);
       deps.log(`    ${roll.rollCallId}: inserted ${records.length} votes`);
     }
   }

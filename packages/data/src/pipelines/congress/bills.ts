@@ -16,10 +16,11 @@
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { refreshPrimarySourceForEntities, rowsOrThrow, fetchChunkedByIds } from "@civitics/db";
+import { statusAdvances, type ProposalStatus } from "./status-rank";
+import type { StatusPair } from "./bill-status";
 
 type ProposalInsert = Database["public"]["Tables"]["proposals"]["Insert"];
 type ProposalType = Database["public"]["Enums"]["proposal_type"];
-type ProposalStatus = Database["public"]["Enums"]["proposal_status"];
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -40,8 +41,14 @@ export interface BillProposalArgs {
   chamber: "house" | "senate";
   /** proposal_type enum (mapLegislationType output). */
   type: ProposalType;
-  /** proposal_status enum. */
-  status: ProposalStatus;
+  /**
+   * The stage this run's evidence PROVES, or null when it proves none
+   * (FIX-1257: a stage-less latest action like "Motion to reconsider laid on
+   * the table…"). A new bill is minted with it (null → `introduced`); an
+   * existing bill is only ever ADVANCED to it, through
+   * `proposals_advance_status()` — never overwritten.
+   */
+  status: ProposalStatus | null;
   /** Federal jurisdiction UUID. */
   jurisdictionId: string;
   /** Governing body (House or Senate) UUID. */
@@ -58,166 +65,6 @@ export interface BillProposalArgs {
   congressNumber: number;
   /** Session identifier as stored on bill_details, usually String(congressNumber). */
   session: string;
-}
-
-// ---------------------------------------------------------------------------
-// Lookup — find existing proposal by congress_gov bill key
-// ---------------------------------------------------------------------------
-
-async function findExistingProposalId(db: Db, billKey: string): Promise<string | null> {
-  const { data, error } = await db
-    .from("external_source_refs")
-    .select("entity_id")
-    .eq("source", "congress_gov")
-    .eq("external_id", billKey)
-    .eq("entity_type", "proposal")
-    .maybeSingle();
-
-  if (error) {
-    console.error(
-      `    bills.ts: external_source_refs lookup error for ${billKey}: ${error.message}`
-    );
-    return null;
-  }
-
-  return (data?.entity_id as string | undefined) ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Insert — single write to public (proposals + bill_details + source_refs)
-// ---------------------------------------------------------------------------
-
-async function insertBill(db: Db, args: BillProposalArgs): Promise<string | null> {
-  const {
-    billKey,
-    title,
-    billNumber,
-    chamber,
-    type,
-    status,
-    jurisdictionId,
-    governingBodyId,
-    congressGovUrl,
-    introducedAt,
-    lastActionAt,
-    latestActionText,
-    congressNumber,
-    session,
-  } = args;
-
-  const truncatedTitle = title.slice(0, 500);
-
-  const proposalRecord: ProposalInsert = {
-    title: truncatedTitle,
-    type,
-    status,
-    jurisdiction_id: jurisdictionId,
-    governing_body_id: governingBodyId,
-    external_url: congressGovUrl,
-    introduced_at: introducedAt,
-    last_action_at: lastActionAt,
-    metadata: {
-      legacy_bill_number: billNumber,
-      legacy_congress_num: congressNumber,
-      legacy_session: session,
-      ...(latestActionText ? { latest_action: latestActionText } : {}),
-    },
-  };
-
-  const { data: inserted, error: propErr } = await db
-    .from("proposals")
-    .insert(proposalRecord)
-    .select("id")
-    .single();
-
-  if (propErr || !inserted) {
-    console.error(`    bills.ts: proposals insert failed for ${billKey}: ${propErr?.message}`);
-    return null;
-  }
-
-  const proposalId = inserted.id as string;
-
-  // bill_details — trigger bill_details_sync_denorm fills jurisdiction_id
-  // from the parent proposals row, but supabase-js requires the column be
-  // present in the INSERT; pass the value explicitly so PostgREST accepts it.
-  const { error: bdErr } = await db.from("bill_details").insert({
-    proposal_id: proposalId,
-    bill_number: billNumber,
-    chamber,
-    session,
-    congress_number: congressNumber,
-    congress_gov_url: congressGovUrl,
-    jurisdiction_id: jurisdictionId,
-  });
-
-  if (bdErr && bdErr.code !== "23505") {
-    console.error(`    bills.ts: bill_details insert failed for ${billKey}: ${bdErr.message}`);
-  }
-
-  const { error: refErr } = await db.from("external_source_refs").insert({
-    source: "congress_gov",
-    external_id: billKey,
-    entity_type: "proposal",
-    entity_id: proposalId,
-    source_url: congressGovUrl,
-    metadata: {},
-  });
-
-  if (refErr && refErr.code !== "23505") {
-    console.error(
-      `    bills.ts: external_source_refs insert failed for ${billKey}: ${refErr.message}`
-    );
-  }
-
-  return proposalId;
-}
-
-// ---------------------------------------------------------------------------
-// Exported entry points
-// ---------------------------------------------------------------------------
-
-/**
- * Reactive create: called from the vote-ingestion path. If the bill already
- * exists (by billKey), returns its ID. Otherwise inserts it.
- */
-export async function findOrCreateBillProposal(
-  db: Db,
-  args: BillProposalArgs
-): Promise<string | null> {
-  const existing = await findExistingProposalId(db, args.billKey);
-  if (existing) return existing;
-  return insertBill(db, args);
-}
-
-/**
- * Proactive upsert: called from the recent-bills sync. If the bill exists,
- * updates its status + last_action_at. Otherwise inserts.
- */
-export async function upsertBillProposal(
-  db: Db,
-  args: BillProposalArgs
-): Promise<string | null> {
-  const existing = await findExistingProposalId(db, args.billKey);
-
-  if (existing) {
-    const { error } = await db
-      .from("proposals")
-      .update({
-        title: args.title.slice(0, 500),
-        status: args.status,
-        last_action_at: args.lastActionAt,
-      })
-      .eq("id", existing);
-
-    if (error) {
-      console.error(`    bills.ts: proposals update failed for ${args.billKey}: ${error.message}`);
-      return null;
-    }
-
-    return existing;
-  }
-
-  return insertBill(db, args);
 }
 
 /**
@@ -275,6 +122,73 @@ export interface BillBatchResult {
   /** FIX-1256: keys with no ref whose bill_details key-holder was found and bound instead of minting. */
   bound: number;
   keyConflicts: BillKeyConflict[];
+  /** FIX-1257: Step 3's status advances on existing bills (see `advanceProposalStatuses`). */
+  status: AdvanceResult;
+}
+
+// ---------------------------------------------------------------------------
+// FIX-1257 — status only ever advances
+// ---------------------------------------------------------------------------
+
+/** One proposal whose status moved. `via` names the evidence (a roll id, or "sync"). */
+export interface StatusMove {
+  id: string;
+  from: ProposalStatus;
+  to: ProposalStatus;
+  via: string;
+}
+
+export interface AdvanceResult {
+  /** Rows `proposals_advance_status()` moved. */
+  moved: StatusMove[];
+  /** Pairs the rule refused (or whose id is gone) — asked for, not moved. */
+  held: number;
+  /** Pairs in a chunk whose RPC call errored (logged; nothing moved). */
+  failed: number;
+}
+
+export const emptyAdvance = (): AdvanceResult => ({ moved: [], held: 0, failed: 0 });
+
+export function mergeAdvance(into: AdvanceResult, add: AdvanceResult): AdvanceResult {
+  into.moved.push(...add.moved);
+  into.held += add.held;
+  into.failed += add.failed;
+  return into;
+}
+
+/**
+ * Ask `proposals_advance_status()` to move each (id, status) pair — one RPC
+ * call per chunk, set-based. The DATABASE applies the rule
+ * (`proposal_status_advances`, re-checked against the locked row), so a status
+ * never goes backwards whatever this run's evidence says; the moved rows come
+ * back with their old status. Pairs with a null status are not sent.
+ */
+export async function advanceProposalStatuses(db: Db, pairs: readonly StatusPair[]): Promise<AdvanceResult> {
+  const out = emptyAdvance();
+  const byId = new Map<string, StatusPair>();
+  for (const p of pairs) {
+    const prev = byId.get(p.id);
+    // Two pairs for one bill: keep the one the rule would take over the other.
+    if (!prev || statusAdvances(prev.status, p.status)) byId.set(p.id, p);
+  }
+  const list = [...byId.values()];
+  for (let i = 0; i < list.length; i += BILL_CHUNK_SIZE) {
+    const chunk = list.slice(i, i + BILL_CHUNK_SIZE);
+    const { data, error } = await db.rpc("proposals_advance_status", {
+      p_ids: chunk.map((p) => p.id),
+      p_statuses: chunk.map((p) => p.status),
+    });
+    if (error) {
+      console.error(`    bills.ts: proposals_advance_status chunk ${i}-${i + chunk.length}: ${error.message}`);
+      out.failed += chunk.length;
+      continue;
+    }
+    const via = new Map(chunk.map((p) => [p.id, p.via]));
+    const rows = (data ?? []) as Array<{ id: string; from_status: ProposalStatus; to_status: ProposalStatus }>;
+    for (const r of rows) out.moved.push({ id: r.id, from: r.from_status, to: r.to_status, via: via.get(r.id) ?? "?" });
+    out.held += chunk.length - rows.length;
+  }
+  return out;
 }
 
 /**
@@ -446,11 +360,16 @@ async function bindToKeyHolders(db: Db, items: BillProposalArgs[]): Promise<KeyH
   return out;
 }
 
-function buildProposalInsert(args: BillProposalArgs): ProposalInsert {
+/**
+ * Every proposals column this sync owns EXCEPT `status`. Step 3 upserts this
+ * onto existing bills; `status` reaches them only through
+ * `advanceProposalStatuses` (FIX-1257 — the upsert used to overwrite it, which
+ * is how a stage-less latest action knocked a passed bill back to introduced).
+ */
+function buildProposalRow(args: BillProposalArgs): Omit<ProposalInsert, "status"> {
   return {
     title: args.title.slice(0, 500),
     type: args.type,
-    status: args.status,
     jurisdiction_id: args.jurisdictionId,
     governing_body_id: args.governingBodyId,
     external_url: args.congressGovUrl,
@@ -465,11 +384,16 @@ function buildProposalInsert(args: BillProposalArgs): ProposalInsert {
   };
 }
 
+/** A NEW bill's row: a status is required, and stage-less evidence mints as `introduced`. */
+function buildProposalInsert(args: BillProposalArgs): ProposalInsert {
+  return { ...buildProposalRow(args), status: args.status ?? "introduced" };
+}
+
 export async function upsertBillProposalsBatch(
   db: Db,
   items: BillProposalArgs[]
 ): Promise<BillBatchResult> {
-  if (items.length === 0) return { upserted: 0, failed: 0, bound: 0, keyConflicts: [] };
+  if (items.length === 0) return { upserted: 0, failed: 0, bound: 0, keyConflicts: [], status: emptyAdvance() };
 
   // Client-side dedupe by billKey — duplicate keys in the same batch would
   // trip ON CONFLICT "cannot affect row a second time". Later wins.
@@ -500,7 +424,7 @@ export async function upsertBillProposalsBatch(
 
   if (lookupFailed.length > 0) {
     console.error(`    bills.ts batch: lookup error: ${lookupFailed[0]!.error.message}`);
-    return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [] };
+    return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [], status: emptyAdvance() };
   }
 
   const existingMap = new Map<string, string>();
@@ -512,7 +436,7 @@ export async function upsertBillProposalsBatch(
   // a ref to its bill_details key-holder instead of minting beside it.
   const binding = await bindToKeyHolders(db, deduped.filter((i) => !existingMap.has(i.billKey)));
   if (binding === null) {
-    return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [] };
+    return { upserted: 0, failed: deduped.length, bound: 0, keyConflicts: [], status: emptyAdvance() };
   }
 
   // Step 2: partition into update vs insert. A bound holder is an existing
@@ -536,12 +460,19 @@ export async function upsertBillProposalsBatch(
 
   // Step 3: batched UPDATE via upsert(onConflict='id'). Every row has a
   // known-existing id, so the ON CONFLICT path runs for all of them.
+  //
+  // FIX-1257: `status` is NOT in the upsert. Each chunk's evidence goes to
+  // proposals_advance_status() after it, which moves a row only forward (the
+  // rule in status-rank.ts); a null status (a stage-less latest action) is not
+  // sent at all. The rest of the row is refreshed as before — `metadata`
+  // included, replaced whole.
+  const status = emptyAdvance();
   if (toUpdate.length > 0) {
     for (let i = 0; i < toUpdate.length; i += BILL_CHUNK_SIZE) {
       const chunk = toUpdate.slice(i, i + BILL_CHUNK_SIZE);
       const records = chunk.map(({ id, args }) => ({
         id,
-        ...buildProposalInsert(args),
+        ...buildProposalRow(args),
       }));
       const { error } = await db
         .from("proposals")
@@ -552,6 +483,11 @@ export async function upsertBillProposalsBatch(
       } else {
         upserted += chunk.length;
       }
+      const pairs: StatusPair[] = [];
+      for (const { id, args } of chunk) {
+        if (args.status !== null) pairs.push({ id, status: args.status, via: "sync" });
+      }
+      if (pairs.length > 0) mergeAdvance(status, await advanceProposalStatuses(db, pairs));
     }
   }
 
@@ -673,7 +609,7 @@ export async function upsertBillProposalsBatch(
     await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
 
-  return { upserted, failed, bound, keyConflicts };
+  return { upserted, failed, bound, keyConflicts, status };
 }
 
 // ---------------------------------------------------------------------------

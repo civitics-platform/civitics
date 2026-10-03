@@ -20,7 +20,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { upsertBillProposalsBatch, resolveBillsBatch, type BillProposalArgs } from "./bills";
+import {
+  upsertBillProposalsBatch,
+  resolveBillsBatch,
+  advanceProposalStatuses,
+  type BillProposalArgs,
+} from "./bills";
+import { mapBillStatus, rollPassageAdvances } from "./bill-status";
+import { statusAdvances, type ProposalStatus } from "./status-rank";
 
 type Row = Record<string, unknown>;
 
@@ -33,6 +40,8 @@ interface FakeState {
   /** Called after each bill_details read — lets a test take a key mid-run. */
   afterBillDetailsRead?: (state: FakeState) => void;
   nextId: number;
+  /** FIX-1257: every rpc call, in order. */
+  rpcCalls?: Array<{ name: string; args: Record<string, unknown> }>;
 }
 
 const UNIQUE: Record<string, string[][]> = {
@@ -120,7 +129,27 @@ function fakeDb(state: FakeState) {
     };
     return q;
   };
-  return { from, rpc: () => Promise.resolve({ data: 0, error: null }) };
+  // FIX-1257: `proposals_advance_status` is modelled — each pair moves its
+  // proposal only when the rule (the TS twin of the SQL one) says so, and the
+  // moved rows come back as the RPC returns them. Every other rpc (the FIX-397
+  // primary_source refresh) is the old no-op.
+  const rpc = (name: string, args: Record<string, unknown>) => {
+    (state.rpcCalls ??= []).push({ name, args });
+    if (name !== "proposals_advance_status") return Promise.resolve({ data: 0, error: null });
+    const ids = args.p_ids as string[];
+    const statuses = args.p_statuses as ProposalStatus[];
+    const moved: Array<{ id: string; from_status: ProposalStatus | null; to_status: ProposalStatus }> = [];
+    ids.forEach((id, i) => {
+      const p = state.proposals.find((r) => r.id === id);
+      if (!p) return;
+      const from = (p.status as ProposalStatus | undefined) ?? null;
+      if (!statusAdvances(from, statuses[i]!)) return;
+      p.status = statuses[i];
+      moved.push({ id, from_status: from, to_status: statuses[i]! });
+    });
+    return Promise.resolve({ data: moved, error: null });
+  };
+  return { from, rpc };
 }
 
 const FED = "fed-jurisdiction";
@@ -285,4 +314,125 @@ test("8. a second run over the same keys is a no-op", async () => {
   const res = await upsertBillProposalsBatch(asDb(s), [bill(4795), bill(777)]);
   assert.equal(JSON.stringify([s.proposals.length, s.bill_details.length, s.external_source_refs.length]), before);
   assert.deepEqual({ failed: res.failed, bound: res.bound }, { failed: 0, bound: 0 });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1257 — a status only ever advances (Step 3 and the vote path)
+// ---------------------------------------------------------------------------
+
+/** One existing bill, HR 4795, holding its ref and its key, at `status`. */
+function statusState(status: ProposalStatus): FakeState {
+  return {
+    nextId: 1,
+    proposals: [{ id: "hr4795", title: "Protect Economic and Academic Freedom Act of 2025", status }],
+    bill_details: [{ proposal_id: "hr4795", jurisdiction_id: FED, session: "119", bill_number: "HR 4795" }],
+    external_source_refs: [
+      { source: "congress_gov", external_id: "119-HR-4795", entity_type: "proposal", entity_id: "hr4795" },
+    ],
+  };
+}
+
+/** The recent-bills sync's args for HR 4795 with `text` as its latest action. */
+function synced(text: string): BillProposalArgs {
+  return { ...bill(4795), status: mapBillStatus(text), latestActionText: text };
+}
+
+const advanceCalls = (s: FakeState) => (s.rpcCalls ?? []).filter((c) => c.name === "proposals_advance_status");
+const statusOf = (s: FakeState, id: string) => s.proposals.find((p) => p.id === id)!.status;
+
+test("9 (a). a passed_chamber bill re-synced with 'Motion to reconsider…' keeps passed_chamber — the text proves no stage, so nothing is asked", async () => {
+  const s = statusState("passed_chamber");
+  const res = await upsertBillProposalsBatch(asDb(s), [synced("Motion to reconsider laid on the table Agreed to without objection.")]);
+  assert.equal(statusOf(s, "hr4795"), "passed_chamber");
+  assert.equal(advanceCalls(s).length, 0, "a null status is not sent");
+  assert.deepEqual({ moved: res.status.moved.length, held: res.status.held }, { moved: 0, held: 0 });
+  assert.equal(res.upserted, 1, "the rest of the row is still refreshed");
+  assert.equal(
+    (s.proposals[0]!.metadata as Record<string, unknown>).latest_action,
+    "Motion to reconsider laid on the table Agreed to without objection.",
+  );
+});
+
+test("9 (a'). a LOWER stage ('Received in the Senate and … referred to' → in_committee) is asked and HELD", async () => {
+  const s = statusState("passed_chamber");
+  const res = await upsertBillProposalsBatch(asDb(s), [
+    synced("Received in the Senate and Read twice and referred to the Committee on Health, Education, Labor, and Pensions."),
+  ]);
+  assert.equal(statusOf(s, "hr4795"), "passed_chamber");
+  assert.equal(advanceCalls(s).length, 1);
+  assert.deepEqual({ moved: res.status.moved.length, held: res.status.held }, { moved: 0, held: 1 });
+});
+
+test("10 (b). in_committee → a 'Passed House' text advances to passed_chamber", async () => {
+  const s = statusState("in_committee");
+  const res = await upsertBillProposalsBatch(asDb(s), [
+    synced("Passed/agreed to in House: On passage Passed by the Yeas and Nays: 237 - 169 (Roll no. 295)."),
+  ]);
+  assert.equal(statusOf(s, "hr4795"), "passed_chamber");
+  assert.deepEqual(res.status.moved, [{ id: "hr4795", from: "in_committee", to: "passed_chamber", via: "sync" }]);
+  assert.equal(res.status.held, 0);
+});
+
+test("11 (c). the status is NOT in Step 3's upsert payload (the pre-FIX-1257 shape wrote it and regressed 9 (a))", async () => {
+  const s = statusState("passed_chamber");
+  const seen: Row[] = [];
+  const db = asDb(s);
+  const from = db.from;
+  db.from = (table: string) => {
+    const q = from(table);
+    if (table !== "proposals") return q;
+    const upsert = q.upsert;
+    q.upsert = (rows: Row[], opts: unknown) => {
+      seen.push(...rows);
+      return upsert(rows, opts);
+    };
+    return q;
+  };
+  await upsertBillProposalsBatch(db, [synced("Motion to reconsider laid on the table Agreed to without objection.")]);
+  assert.equal(seen.length, 1);
+  assert.ok(!("status" in seen[0]!), `Step 3 upserted status=${String(seen[0]!.status)}`);
+});
+
+test("12 (d). the vote path: a passed passage roll on an existing in_committee holder advances it", async () => {
+  const s = statusState("in_committee");
+  // The vote path's args are placeholders (the bill number as title, the mint
+  // status from mapVoteResult); resolving must not touch the holder's row.
+  const voteArgs: BillProposalArgs = { ...bill(4795, "HR 4795"), status: "passed_chamber" };
+  const ids = await resolveBillsBatch(asDb(s), new Map([[voteArgs.billKey, voteArgs]]));
+  assert.equal(ids.get("119-HR-4795"), "hr4795");
+  assert.equal(statusOf(s, "hr4795"), "in_committee", "resolution alone does not write status");
+  const res = await advanceProposalStatuses(
+    asDb(s),
+    rollPassageAdvances(
+      [{ rollCallId: "2026-house-295", billKey: "119-HR-4795", voteQuestion: "On Passage", resultStr: "Passed" }],
+      (k) => (k ? (ids.get(k) ?? null) : null),
+    ),
+  );
+  assert.equal(statusOf(s, "hr4795"), "passed_chamber");
+  assert.deepEqual(res, { moved: [{ id: "hr4795", from: "in_committee", to: "passed_chamber", via: "2026-house-295" }], held: 0, failed: 0 });
+});
+
+test("13 (e). a FAILED roll — passage or procedural — changes nothing on an existing bill", async () => {
+  const s = statusState("in_committee");
+  const res = await advanceProposalStatuses(
+    asDb(s),
+    rollPassageAdvances(
+      [
+        { rollCallId: "2026-house-300", billKey: "119-HR-4795", voteQuestion: "On Passage", resultStr: "Failed" },
+        { rollCallId: "2026-house-301", billKey: "119-HR-4795", voteQuestion: "On Motion to Recommit", resultStr: "Failed" },
+        { rollCallId: "2026-house-302", billKey: "119-HR-4795", voteQuestion: "On Motion to Recommit", resultStr: "Passed" },
+      ],
+      () => "hr4795",
+    ),
+  );
+  assert.equal(statusOf(s, "hr4795"), "in_committee");
+  assert.equal(advanceCalls(s).length, 0);
+  assert.deepEqual(res, { moved: [], held: 0, failed: 0 });
+});
+
+test("14. a NEW bill with a stage-less latest action is minted as introduced", async () => {
+  const s = holderState();
+  await upsertBillProposalsBatch(asDb(s), [{ ...bill(901), status: mapBillStatus("Held at the desk."), latestActionText: "Held at the desk." }]);
+  const minted = refFor(s, "119-HR-901");
+  assert.equal(s.proposals.find((p) => p.id === minted)!.status, "introduced");
 });

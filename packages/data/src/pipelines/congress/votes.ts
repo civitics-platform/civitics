@@ -41,9 +41,13 @@ import {
   chamberForBillType,
   presentBillDetailIds,
   landBillDetails,
+  advanceProposalStatuses,
+  emptyAdvance,
+  mergeAdvance,
   type BillKeyConflict,
   type BillProposalArgs,
 } from "./bills";
+import { mapBillStatus, rollPassageAdvances } from "./bill-status";
 import {
   guardBillDetails,
   writeRollVotes,
@@ -106,23 +110,6 @@ interface BillSummary {
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
-
-function mapBillStatus(latestActionText: string | undefined): ProposalStatus {
-  if (!latestActionText) return "introduced";
-  const t = latestActionText.toLowerCase();
-  if (t.includes("became public law") || t.includes("signed by president")) return "enacted";
-  if (t.includes("signed") && t.includes("president")) return "signed";
-  if (t.includes("vetoed")) return "vetoed";
-  if (t.includes("passed") && (t.includes("senate") || t.includes("house"))) {
-    if (t.includes("both") || (t.includes("senate") && t.includes("house"))) {
-      return "passed_both_chambers";
-    }
-    return "passed_chamber";
-  }
-  if (t.includes("reported") || t.includes("ordered to be reported")) return "passed_committee";
-  if (t.includes("referred to")) return "in_committee";
-  return "introduced";
-}
 
 function chamberGovBodyId(
   billType: string,
@@ -434,6 +421,9 @@ export async function runVotesPipeline(
   // FIX-1256 — bill keys not bound to exactly one proposal (a key-holder that
   // carries a different ref, or a key taken mid-write). Also rows_failed.
   const billKeyConflicts: BillKeyConflict[] = [];
+  // FIX-1257 — every status this run moved (Step 1's sync evidence and the
+  // vote path's passage rolls) and every pair the rule held.
+  const statusResult = emptyAdvance();
 
   const billDetailsDeps: BillDetailsGuardDeps = {
     presentIds: (ids) => presentBillDetailIds(db, ids),
@@ -488,7 +478,9 @@ export async function runVotesPipeline(
         billType: bill.type,
         chamber: chamberForBillType(bill.type),
         type: mapLegislationType(bill.type) as ProposalType,
-        status: mapBillStatus(bill.latestAction?.text) as ProposalStatus,
+        // FIX-1257: null for a stage-less action — Step 3 then leaves the
+        // stored status alone, and only ever advances it.
+        status: mapBillStatus(bill.latestAction?.text),
         jurisdictionId: federalId,
         governingBodyId: chamberGovBodyId(bill.type, senateGovBodyId, houseGovBodyId),
         congressGovUrl: congressGovBillUrl(bill.congress, bill.type, bill.number),
@@ -508,6 +500,7 @@ export async function runVotesPipeline(
       const batchResult = await upsertBillProposalsBatch(db, batchArgs);
       proposalsUpserted += batchResult.upserted;
       billKeyConflicts.push(...batchResult.keyConflicts);
+      mergeAdvance(statusResult, batchResult.status);
       if (batchResult.failed > 0) {
         console.warn(`  ${batchResult.failed} ${label} failed in batch`);
       }
@@ -724,6 +717,19 @@ export async function runVotesPipeline(
   votesInserted += houseWrite.inserted;
   skippedRolls.push(...houseWrite.skipped);
   insertFailures.push(...houseWrite.insertFailures);
+
+  // FIX-1257: a passage roll that passed is primary evidence the bill passed
+  // this chamber — advance the bill (holder or novel) to passed_chamber. The
+  // mint status above stays mapVoteResult's (it ignores the question); this
+  // pass is what reads the question. A FAILED roll writes nothing onto an
+  // existing bill: a failed procedural vote is not a failed bill.
+  {
+    const landed = new Set(houseWrite.landed);
+    mergeAdvance(statusResult, await advanceProposalStatuses(db, rollPassageAdvances(
+      houseRollBuffer.filter((r) => landed.has(r.rollCallId)),
+      (billKey) => (billKey ? (houseBillKeyToId.get(billKey) ?? null) : null),
+    )));
+  }
 
   // -------------------------------------------------------------------------
   // Step 4: Senate LIS XML vote feeds — two-pass to batch bill resolution
@@ -957,6 +963,18 @@ export async function runVotesPipeline(
   skippedRolls.push(...senateWrite.skipped);
   insertFailures.push(...senateWrite.insertFailures);
 
+  // FIX-1257: the House pass, for the Senate. Inert today: `root["result"]`
+  // above reads an element the LIS XML does not have, so every Senate roll's
+  // resultStr is "" (prod 2026-10-03: 1,893 of 1,893 Senate rolls store
+  // vote_result "") and mapVoteResult("") is floor_vote — FIX-1260.
+  {
+    const landed = new Set(senateWrite.landed);
+    mergeAdvance(statusResult, await advanceProposalStatuses(db, rollPassageAdvances(
+      senateRollBuffer.filter((r) => landed.has(r.rollCallId)),
+      (billKey) => (billKey ? (senateBillKeyToId.get(billKey) ?? null) : null),
+    )));
+  }
+
   if (houseUnmatched > 0) {
     console.info(`\n  House unmatched bioguide IDs (no official in DB): ${houseUnmatched}`);
   }
@@ -991,6 +1009,16 @@ export async function runVotesPipeline(
     );
   }
 
+  if (statusResult.moved.length > 0 || statusResult.held > 0 || statusResult.failed > 0) {
+    console.info(
+      `\n  FIX-1257: status advanced on ${statusResult.moved.length} proposal(s), held on ${statusResult.held}` +
+        (statusResult.failed > 0 ? `, ${statusResult.failed} pair(s) not sent (RPC error)` : "") +
+        (statusResult.moved.length > 0
+          ? ": " + statusResult.moved.slice(0, 20).map((m) => `${m.id} ${m.from}→${m.to} (${m.via})`).join(", ")
+          : ""),
+    );
+  }
+
   console.info(
     `\nVotes pipeline complete: ${proposalsUpserted} proposals upserted, ${votesInserted} votes inserted, ` +
       `${skippedRolls.length} roll(s) skipped, ${insertFailures.length} roll insert(s) failed, ` +
@@ -1011,6 +1039,13 @@ export async function runVotesPipeline(
         skipped_rolls: skippedRolls,
         insert_failures: insertFailures,
         bill_key_conflicts: billKeyConflicts,
+        // FIX-1257: status moves are not failures — a held pair is the rule
+        // working (evidence older than the stored stage). An RPC error is
+        // logged and counted here, not in rows_failed: the votes still landed.
+        status_advanced: statusResult.moved.length,
+        status_held: statusResult.held,
+        status_advance_failed: statusResult.failed,
+        status_moves: statusResult.moved.slice(0, 100),
       },
     });
 

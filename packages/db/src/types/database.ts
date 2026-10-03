@@ -7400,6 +7400,28 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      proposal_status_advances: {
+        Args: {
+          p_from: Database["public"]["Enums"]["proposal_status"]
+          p_to: Database["public"]["Enums"]["proposal_status"]
+        }
+        Returns: boolean
+      }
+      proposal_status_rank: {
+        Args: { p_status: Database["public"]["Enums"]["proposal_status"] }
+        Returns: number
+      }
+      proposals_advance_status: {
+        Args: {
+          p_ids: string[]
+          p_statuses: Database["public"]["Enums"]["proposal_status"][]
+        }
+        Returns: {
+          from_status: Database["public"]["Enums"]["proposal_status"]
+          id: string
+          to_status: Database["public"]["Enums"]["proposal_status"]
+        }[]
+      }
       prune_kill_switch_events: { Args: never; Returns: number }
       prune_platform_usage_snapshot: { Args: never; Returns: number }
       prune_status_snapshot: { Args: never; Returns: number }
