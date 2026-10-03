@@ -1547,3 +1547,5 @@
 2026-10-01 | FIX-1099 | 976a8f27 | closes-as-recognized | docs(db): FIX-1099 — the Vercel alert rows stay on the calendar month (Craig, 2026-10-02: option 4); the vendor cycle stays the shadow
 2026-10-01 | FIX-1255 | fa60139f | local-only | feat(data,db): FIX-1255 — 524114 (direct health & medical insurance carriers) → health; the twelve defense IT/R&D primes get a curated defense override (fix1255 cohort, FIX-922 uuid arm)
 2026-10-01 | FIX-1259 | c4b21847 | local-only | fix(data): FIX-1259 — a tag writer overwrites only its own provenance (bulkUpsert updateOnlyIfSame; upsertTags keeps ai/curated rows)
+2026-10-02 | FIX-1205 | ebb4c845 | local-only | feat(app): FIX-1205 — a revoked grant notifies its holder (third ClaimOutcome 'revoked'); createNotification surfaces insert errors
+2026-10-02 | FIX-1257 | 115493ce | prod-only | chore(scripts,audits): FIX-1257 — the passed-status backfill manifest + apply (166 federal bills with a passage roll, introduced/in_committee → passed_chamber)
