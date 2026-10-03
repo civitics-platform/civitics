@@ -14,6 +14,7 @@
  * WHAT A FINANCIAL_RELATIONSHIPS REWRITE OWES, in order:
  *
  *   1. entity_connections money edges for the rows deleted   (the 954:693 shape)
+ *      + the partially-stale ones recomputed for their donors (FIX-1211)
  *   2. donor_rollup_rebuild_recipients(affected officials)
  *   3. financial_entity_donation_totals_rebuild(donors)      chunked
  *   4. donor_party_rollup_rebuild_donors(donors)             chunked
@@ -79,6 +80,32 @@ export const EC_STALE_MONEY_EDGE_DELETE = `DELETE FROM public.entity_connections
     AND e.evidence_ids && $1::uuid[]
     AND e.evidence_ids <@ $1::uuid[]`;
 
+/**
+ * FIX-1211 — the donors whose money edges lost SOME but not all of their
+ * evidence to this landing, with how many such edges each has. Read BEFORE the
+ * delete above, so it is the same set of rows the FIX-1210 warning used to
+ * count. Exported so a test can PARSE it (rule 158).
+ */
+export const EC_PARTIAL_MONEY_EDGE_DONORS = `SELECT e.from_id::text AS from_id, count(*)::int AS edges
+   FROM public.entity_connections e
+  WHERE e.connection_type::text = ANY($2::text[])
+    AND e.evidence_source = 'financial_relationships'
+    AND e.from_type = 'financial_entity'
+    AND e.evidence_ids && $1::uuid[]
+    AND NOT (e.evidence_ids <@ $1::uuid[])
+  GROUP BY e.from_id`;
+
+/**
+ * FIX-1211 — re-derive those donors' donation + opposition edges from their
+ * surviving FR rows. The function takes the EC rebuild's advisory key as an
+ * xact lock and raises 55P03 while the crawl (jobid 45, every 15 min) holds it.
+ */
+export const EC_REBUILD_DONOR_EDGES = `SELECT * FROM public.rebuild_ec_donation_edges_for_donors($1::uuid[])`;
+
+/** 55P03 retries for the EC rebuild lock: a crawl unit is 0.1-0.3 s caught up. */
+export const EC_LOCK_ATTEMPTS = 5;
+export const EC_LOCK_RETRY_MS = 60_000;
+
 /** Per-step budget ceilings, seconds. */
 export const STEP_BUDGET_S: Readonly<Record<string, number>> = {
   ec_delete: 20 * 60,
@@ -136,6 +163,33 @@ async function budgeted(
   }
 }
 
+type EdgeRebuildRow = { connection_type: string; edges_deleted: string; edges_inserted: string };
+
+/**
+ * FIX-1211 — run EC_REBUILD_DONOR_EDGES, retrying while the EC rebuild lock is
+ * held (55P03). Any other error, or the lock still held after the last attempt,
+ * propagates: the landing is committed, and the caller's resume path re-runs
+ * the drain.
+ */
+async function rebuildDonorEdges(client: Client, donorIds: string[], retryMs: number): Promise<EdgeRebuildRow[]> {
+  for (let attempt = 1; ; attempt++) {
+    const t0 = Date.now();
+    process.stdout.write(`  rebuild_ec_donation_edges_for_donors (${donorIds.length.toLocaleString()} donors) ... `);
+    try {
+      const rows = await q<EdgeRebuildRow>(client, EC_REBUILD_DONOR_EDGES, [donorIds]);
+      console.info(`${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      return rows;
+    } catch (err) {
+      if ((err as { code?: string })?.code !== "55P03" || attempt >= EC_LOCK_ATTEMPTS) {
+        console.info("FAILED");
+        throw err;
+      }
+      console.info(`EC lock held — retry ${attempt}/${EC_LOCK_ATTEMPTS - 1} in ${retryMs / 1000}s`);
+      await new Promise((r) => setTimeout(r, retryMs));
+    }
+  }
+}
+
 export interface DrainScope {
   /**
    * Temp table naming the affected OFFICIALS, and the column holding their id.
@@ -170,6 +224,8 @@ export interface DrainOptions {
    * copy at execution time.
    */
   printTable?: boolean;
+  /** FIX-1211 — wait between 55P03 retries of the EC edge rebuild. Tests pass 0. */
+  ecLockRetryMs?: number;
 }
 
 /**
@@ -223,17 +279,11 @@ export async function drainFrRewrite(
     // deleted row ids, never by a global predicate.
     if (scope.deletedFrRowIds && scope.deletedFrRowIds.length > 0) {
       // FIX-1210 — a partially-stale edge cannot be repaired by deleting it, so
-      // count them BEFORE the delete and say so. With today's data every money
-      // edge carries exactly one evidence id, so this is normally zero; a
-      // non-zero count means an edge is now overstated and needs a rebuild that
-      // this drain cannot perform.
-      const [partial] = await q<{ n: string }>(
+      // find them BEFORE the delete. FIX-1211 — then recompute them from their
+      // donors' surviving rows instead of only warning.
+      const partial = await q<{ from_id: string; edges: number }>(
         client,
-        `SELECT count(*)::text AS n FROM public.entity_connections e
-          WHERE e.connection_type::text = ANY($2::text[])
-            AND e.evidence_source = 'financial_relationships'
-            AND e.evidence_ids && $1::uuid[]
-            AND NOT (e.evidence_ids <@ $1::uuid[])`,
+        EC_PARTIAL_MONEY_EDGE_DONORS,
         [scope.deletedFrRowIds, [...MONEY_EDGE_TYPES]],
       );
 
@@ -246,12 +296,17 @@ export async function drainFrRewrite(
       );
       ran.push("entity_connections delete stale money edges");
 
-      const nPartial = Number(partial?.n ?? 0);
-      if (nPartial > 0) {
+      // Manifest-scoped (the deleted rows' donors), so it never defers.
+      if (partial.length > 0) {
+        const donorIds = partial.map((p) => p.from_id);
+        const nPartial = partial.reduce((s, p) => s + Number(p.edges), 0);
+        const rebuilt = await rebuildDonorEdges(client, donorIds, opts.ecLockRetryMs ?? EC_LOCK_RETRY_MS);
+        ran.push("rebuild_ec_donation_edges_for_donors(partial)");
+        const inserted = rebuilt.reduce((s, r) => s + Number(r.edges_inserted), 0);
+        const deleted = rebuilt.reduce((s, r) => s + Number(r.edges_deleted), 0);
         console.info(
-          `    ! ${nPartial.toLocaleString()} money edge(s) lost SOME but not all of their evidence and were\n` +
-            `      KEPT — they now overstate. Deleting them would drop live evidence too, so they\n` +
-            `      need an entity_connections rebuild this drain cannot do (FIX-1210).`,
+          `    recomputed ${inserted.toLocaleString()} edge(s) for ${donorIds.length.toLocaleString()} donor(s) ` +
+            `(${nPartial.toLocaleString()} partially stale; ${deleted.toLocaleString()} deleted and re-derived) (FIX-1211)`,
         );
       }
     }

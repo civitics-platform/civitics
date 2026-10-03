@@ -15,6 +15,9 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
+  EC_LOCK_ATTEMPTS,
+  EC_PARTIAL_MONEY_EDGE_DONORS,
+  EC_REBUILD_DONOR_EDGES,
   EC_STALE_MONEY_EDGE_DELETE,
   declareDrainTail,
   drainFrRewrite,
@@ -73,13 +76,16 @@ test("the drain never executes a platform-scoped step, flag or no flag", () => {
   // `SELECT rebuild_something()` to this file, and a mock of drainFrRewrite
   // would not notice that.
   // Derivation functions only — a bare SELECT count(*) is a read, not a step.
-  const executed = [...SRC.matchAll(/`SELECT ((?:rebuild|refresh|donor|financial|entity)\w*)\(/g)].map(
-    (m) => m[1]!,
-  );
+  // Both shapes: `SELECT fn(` and the set-returning `SELECT * FROM public.fn(`.
+  const executed = [
+    ...SRC.matchAll(/`SELECT (?:\* FROM )?(?:public\.)?((?:rebuild|refresh|donor|financial|entity)\w*)\(/g),
+  ].map((m) => m[1]!);
   const allowed = new Set([
     "donor_rollup_rebuild_recipients",
     "financial_entity_donation_totals_rebuild",
     "donor_party_rollup_rebuild_donors",
+    // FIX-1211 — scoped to the deleted rows' donors; manifest-scoped.
+    "rebuild_ec_donation_edges_for_donors",
   ]);
   for (const fn of executed) {
     assert.ok(
@@ -89,7 +95,8 @@ test("the drain never executes a platform-scoped step, flag or no flag", () => {
         `owner (FIX-1165).`,
     );
   }
-  assert.ok(executed.length >= 3, "the scan found fewer steps than exist — it has drifted");
+  assert.ok(executed.length >= 4, "the scan found fewer steps than exist — it has drifted");
+  assert.ok(executed.includes("rebuild_ec_donation_edges_for_donors"), "the scan no longer sees the FIX-1211 step");
 
   // The specific incident shapes, by name.
   for (const banned of [
@@ -131,18 +138,43 @@ test("a cancellation is distinguished from an ordinary step failure", () => {
 // Execution, against a fake client
 // ---------------------------------------------------------------------------
 
-function fakeClient(counts: { officials: number; donors: number }) {
+function fakeClient(
+  counts: { officials: number; donors: number },
+  ec: { partial?: { from_id: string; edges: number }[]; lockHeldFor?: number; failWith?: string } = {},
+) {
   const sql: string[] = [];
+  const params: unknown[][] = [];
+  let held = ec.lockHeldFor ?? 0;
   return {
     sql,
-    query: async (text: string, _params?: unknown[]) => {
+    params,
+    query: async (text: string, p?: unknown[]) => {
       sql.push(text);
+      params.push(p ?? []);
       if (/count\(\*\)::text AS n FROM _affected/.test(text)) return { rows: [{ n: String(counts.officials) }] };
       if (/count\(\*\)::text AS n FROM _donor/.test(text)) return { rows: [{ n: String(counts.donors) }] };
+      if (text === EC_PARTIAL_MONEY_EDGE_DONORS) return { rows: ec.partial ?? [] };
+      if (text === EC_REBUILD_DONOR_EDGES) {
+        if (ec.failWith) throw Object.assign(new Error("boom"), { code: ec.failWith });
+        if (held > 0) {
+          held--;
+          throw Object.assign(new Error("lock held"), { code: "55P03" });
+        }
+        return {
+          rows: [
+            { connection_type: "donation", edges_deleted: "1", edges_inserted: "1" },
+            { connection_type: "opposition", edges_deleted: "0", edges_inserted: "0" },
+          ],
+        };
+      }
       return { rows: [] };
     },
   };
 }
+
+const DELETED = ["11111111-1111-1111-1111-111111111111"];
+const SCOPE = { affectedTable: "_affected", affectedIdColumn: "id", donorTable: "_donor", deletedFrRowIds: DELETED };
+const OPTS = { prod: false, defer: true, printTable: false, ecLockRetryMs: 0 };
 
 test("a run with work does the three manifest-scoped steps and stops there", async () => {
   const c = fakeClient({ officials: 2, donors: 28 });
@@ -198,6 +230,52 @@ test("the EC money-edge delete runs only when the landing deleted rows, and is k
   assert.doesNotMatch(del!, /\be\.evidence_id\b(?!s)/, "evidence_id (singular) does not exist");
 });
 
+test("FIX-1211 a partially-stale edge's donors are recomputed after the delete", async () => {
+  const donor = "6d1b3de4-01cd-40d7-839e-c5f474d8c19a";
+  const c = fakeClient({ officials: 0, donors: 0 }, { partial: [{ from_id: donor, edges: 1 }] });
+  const { ran } = await drainFrRewrite(c as never, SCOPE, OPTS);
+
+  assert.deepEqual(ran, ["entity_connections delete stale money edges", "rebuild_ec_donation_edges_for_donors(partial)"]);
+  // Found BEFORE the delete (after it, the fully-stale edges are gone and the
+  // partial ones are indistinguishable), recomputed AFTER it.
+  const iPartial = c.sql.indexOf(EC_PARTIAL_MONEY_EDGE_DONORS);
+  const iDelete = c.sql.indexOf(EC_STALE_MONEY_EDGE_DELETE);
+  const iRebuild = c.sql.indexOf(EC_REBUILD_DONOR_EDGES);
+  assert.ok(iPartial >= 0 && iPartial < iDelete && iDelete < iRebuild);
+  // Keyed on the partial edges' donors, never a global predicate.
+  assert.deepEqual(c.params[iRebuild], [[donor]]);
+});
+
+test("FIX-1211 no partial edge -> no rebuild call", async () => {
+  const c = fakeClient({ officials: 0, donors: 0 }, { partial: [] });
+  const { ran } = await drainFrRewrite(c as never, SCOPE, OPTS);
+  assert.deepEqual(ran, ["entity_connections delete stale money edges"]);
+  assert.ok(!c.sql.includes(EC_REBUILD_DONOR_EDGES));
+});
+
+test("FIX-1211 a held EC lock (55P03) is retried; anything else propagates", async () => {
+  const partial = [{ from_id: "22222222-2222-2222-2222-222222222222", edges: 2 }];
+
+  const retried = fakeClient({ officials: 0, donors: 0 }, { partial, lockHeldFor: EC_LOCK_ATTEMPTS - 1 });
+  const ok = await drainFrRewrite(retried as never, SCOPE, OPTS);
+  assert.ok(ok.ran.includes("rebuild_ec_donation_edges_for_donors(partial)"));
+  assert.equal(retried.sql.filter((s) => s === EC_REBUILD_DONOR_EDGES).length, EC_LOCK_ATTEMPTS);
+
+  const exhausted = fakeClient({ officials: 0, donors: 0 }, { partial, lockHeldFor: EC_LOCK_ATTEMPTS });
+  await assert.rejects(drainFrRewrite(exhausted as never, SCOPE, OPTS), { code: "55P03" });
+
+  const other = fakeClient({ officials: 0, donors: 0 }, { partial, failWith: "42883" });
+  await assert.rejects(drainFrRewrite(other as never, SCOPE, OPTS), { code: "42883" });
+  assert.equal(other.sql.filter((s) => s === EC_REBUILD_DONOR_EDGES).length, 1, "a non-lock error is not retried");
+});
+
+test("FIX-1211 the step is declared manifest-scoped and never defers", () => {
+  const s = declareDrainTail(true).find((x) => x.label === "rebuild_ec_donation_edges_for_donors(partial)");
+  assert.ok(s, "the step must be in the declared tail table (rule 62)");
+  assert.equal(s.cls, "manifest");
+  assert.equal(s.deferred, false);
+});
+
 test("FIX-1210 the EC delete PARSES against the real schema", async (t) => {
   // This is the test that would have caught it. The assertions above regex a
   // string, and a string cannot know that `connection_type` is an enum or that
@@ -217,6 +295,12 @@ test("FIX-1210 the EC delete PARSES against the real schema", async (t) => {
   try {
     await client.query(`PREPARE ec_stale_check (uuid[], text[]) AS ${EC_STALE_MONEY_EDGE_DELETE}`);
     await client.query("DEALLOCATE ec_stale_check");
+    // FIX-1211 — the partial-donor read and the rebuild call, same treatment
+    // (rule 158). The rebuild PREPARE needs 20261003020000 applied locally.
+    await client.query(`PREPARE ec_partial_check (uuid[], text[]) AS ${EC_PARTIAL_MONEY_EDGE_DONORS}`);
+    await client.query("DEALLOCATE ec_partial_check");
+    await client.query(`PREPARE ec_rebuild_check (uuid[]) AS ${EC_REBUILD_DONOR_EDGES}`);
+    await client.query("DEALLOCATE ec_rebuild_check");
   } finally {
     await client.end();
   }

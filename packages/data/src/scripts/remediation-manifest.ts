@@ -418,6 +418,8 @@ export function declareRemediationTail(defer: boolean): TailStep[] {
   const WEEKLY = "refresh-derived-mvs-weekly";
   return [
     // Phase 2 — cost scales with the manifest. These are the change.
+    // FIX-1211: the deleted rows' donors whose money edges kept other evidence.
+    tailStep("rebuild_ec_donation_edges_for_donors(partial)", "manifest", MANIFEST_OWNER, defer),
     tailStep("donor_rollup_rebuild_recipients(affected)", "manifest", MANIFEST_OWNER, defer),
     tailStep("financial_entity_donation_totals_rebuild", "manifest", MANIFEST_OWNER, defer),
     tailStep("donor_party_rollup_rebuild_donors", "manifest", MANIFEST_OWNER, defer),
