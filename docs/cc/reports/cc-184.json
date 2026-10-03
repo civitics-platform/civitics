@@ -1,0 +1,90 @@
+{
+  "cc": "184",
+  "prompt": "cc-prompt-184-records-1255-1259-fix1263-test-lock-race-board-owed-settled-caci-nss-usaspending-fy-fallback.md",
+  "started_at": "2026-10-03T22:57:13Z",
+  "finished_at": "2026-10-03T23:52:00Z",
+  "head_before": "6202dcb0",
+  "head_after": "81e55351",
+  "commits": [
+    {
+      "sha": "42cba118",
+      "subject": "chore(fixes): record prod verification of FIX-1255"
+    },
+    {
+      "sha": "db529ef9",
+      "subject": "chore(fixes): record prod verification of FIX-1259"
+    },
+    {
+      "sha": "c0eb4d2b",
+      "subject": "fix(scripts): FIX-1264 — the board settles an owed entry only on a prod-verified done.log row that is not the report's own commit"
+    },
+    {
+      "sha": "feb0746d",
+      "subject": "feat(db): FIX-1255 — CACI NSS joins the defense-prime override cohort (fix1255 cohort 13, table 806)"
+    },
+    {
+      "sha": "829be3d6",
+      "subject": "docs(fixes): file FIX-1266 (top-200 donor pick audit) and FIX-1267 (pipeline-lock holder); cc-184 appends to FIX-1259 and FIX-1194"
+    },
+    {
+      "sha": "f94acfbd",
+      "subject": "fix(data): FIX-1268 — USASpending bulk falls back to the prior fiscal year while the new FY's Full archive does not exist yet"
+    },
+    {
+      "sha": "3d656905",
+      "subject": "fix(data): FIX-1263 — the EC lock-holding cases run under CIVITICS_DB_HEAVY_TESTS; the heavy run serialises DB-backed test files (--test-concurrency=1)"
+    },
+    {
+      "sha": "81e55351",
+      "subject": "chore(fixes): sync status after FIX-1263, FIX-1268"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1255",
+    "FIX-1259",
+    "FIX-1264",
+    "FIX-1268",
+    "FIX-1263"
+  ],
+  "fixes_filed": [
+    "FIX-1264",
+    "FIX-1266",
+    "FIX-1267",
+    "FIX-1268"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261003040000_fix1255_caci_nss_override.sql"
+  ],
+  "prod_writes": "One. Migration 20261003040000_fix1255_caci_nss_override.sql was applied to Pro as the --then of session:wait-for-gate:prod --expected-minutes 1 --census stop --reason \\\"cc-184 FIX-1255 CACI NSS override\\\". It ran from the primary checkout's packages/data under the FIX-950 claim, which held 17 guarded pipelines and released them. The gate read ok at 23:23:21Z with blocked_by empty. Census: 0 renders and 0 events in 60 min; edge 0 of 429 requests (P99 floor 4 at p0 0.23 %). A dry run first listed exactly this one file. NOTICE: CACI NSS seeded on the uuid arm, cohort now 13, table now 806 rows. The write is ONE INSERT into financial_entity_industry_overrides (fe:8fc669b7-378f-4f52-b6f2-adff2485801c, created 23:23:25.85Z); no entity_tags row was touched. Every other prod contact was a read: db-query --prod (reads 2-6, the CACI NSS resolution, the read-back), the fix1257 --read-back, prod_op_gate via the gate, the census (Logs API), the db-push dry runs, session:held, gh, and one HTTPS GET family against files.usaspending.gov. No CALL, VACUUM, tagger or pipeline ran on prod. The override reaches entity_tags through the next nightly tail. Pushes to main: four, each through the pre-push hook with held=false.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2, D3 as written, was not built. Its premise was that the 45 ms holder case was the lock holder, and the tree contradicted it: the rolled-back '(i) the drain's call path' case holds the same entity_connections_rebuild key as a transaction-level lock for 25.5 s. With only the holder case gated, the two files run together failed 3 of 3 runs. I applied D3's mechanism to all three (i) cases of that one file and stated the widening here and in §4, rather than doing it silently. Read 5's other holder, pipeline-lock.test.ts (fec_bulk_pipeline), is in another file; per the stop it was filed as FIX-1267 and NOT gated.",
+    "Item 2's Verification expected the heavy serial run to read 0 fail. It read 1 fail: donor-party-full-rebuild.test.ts:257 expects mode 'full' and gets 'crawl'. That FIX-1212 assertion is stale against the current procedure, fails in either concurrency mode, and was not touched (out of this prompt's files). Not filed; see §4.",
+    "No permission prompt fired."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1255",
+      "what": "the first nightly tail after the CACI NSS override (10-04 21:00 UTC dispatch, tag_rules ~21:07): CACI NSS, LLC carries ONE industry row, defense/ai 0.85, no tech/rule; overrides 806 resolved, 0 orphans; primary_industry_tag → defense; the FE tagger logs 17 rows kept as another writer's provenance (16 + CACI NSS)",
+      "after": "2026-10-04T21:40Z"
+    },
+    {
+      "fix": "FIX-1255",
+      "what": "jobid 28 Thu 10-08 14:00 UTC (contract-flow, first gated run): the twelve + CACI NSS under Defense & Aerospace and Humana GB under Health Care in contract_agency_sector_rollup and contract_recipient_rollup; Σ unchanged vs 10-01 unless USASpending wrote rows",
+      "after": "2026-10-08T14:45Z"
+    },
+    {
+      "fix": "FIX-1268",
+      "what": "the Thu 10-08 scheduled usaspending-bulk run (cron 10:00 UTC; the last five fired 14:05-16:53 UTC): both categories complete, metadata fiscal_year_requested 2027, fiscal_year_used 2026 (or 2027 if published), fiscal_year_fallback as applicable; contracts rows > 0 if the FY(All) delta then in the bucket is newer than the 20260806 baseline",
+      "after": "2026-10-08T17:30Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "Sun 10-04 09:00 + 12:00 UTC donor-rollup-refresh rows: complete (caught-up) or partial in the existing budget shape; no gate key on a clear box (a confirmation line for the 10-09 record, not the record)",
+      "after": "2026-10-04T12:30Z"
+    }
+  ]
+}
