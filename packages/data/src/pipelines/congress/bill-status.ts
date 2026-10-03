@@ -22,8 +22,22 @@ import passageQuestions from "./passage-questions.json";
  *
  * `introduced` is returned only for an "Introduced in …" text or a bill with
  * no action text at all (an introducedDate-only listing).
+ *
+ * FIX-1262 — with the measure's ORIGIN chamber, three of those texts prove
+ * the origin chamber passed it (a voice vote or unanimous consent leaves no
+ * roll, so nothing else does):
+ *   a House measure  "Received in the Senate…" — including "…and Read twice
+ *                    and referred to…", which would otherwise be in_committee
+ *                    (rank 50 beats 20: the House passage is the fact);
+ *   a Senate measure "Held at the desk.";
+ *   either           "Message on Senate action sent to the House." — the
+ *                    Senate acted on it, so its origin chamber had passed it.
+ * Without `originChamber` the function is what it was before FIX-1262.
  */
-export function mapBillStatus(latestActionText: string | null | undefined): ProposalStatus | null {
+export function mapBillStatus(
+  latestActionText: string | null | undefined,
+  originChamber?: "house" | "senate",
+): ProposalStatus | null {
   if (!latestActionText || !latestActionText.trim()) return "introduced";
   const t = latestActionText.toLowerCase();
   if (t.includes("became public law") || t.includes("signed by president")) return "enacted";
@@ -36,9 +50,18 @@ export function mapBillStatus(latestActionText: string | null | undefined): Prop
     return "passed_chamber";
   }
   if (t.includes("reported") || t.includes("ordered to be reported")) return "passed_committee";
+  if (originChamberPassed(t.trim(), originChamber)) return "passed_chamber";
   if (t.includes("referred to")) return "in_committee";
   if (/^introduced in (the )?(house|senate)\b/.test(t.trim())) return "introduced";
   return null;
+}
+
+/** FIX-1262's arms, on the lowercased, trimmed text. */
+function originChamberPassed(s: string, originChamber: "house" | "senate" | undefined): boolean {
+  if (originChamber === "house" && /^received in the senate\b/.test(s)) return true;
+  if (originChamber === "senate" && /^held at the desk\b/.test(s)) return true;
+  if (originChamber !== undefined && /^message on senate action sent to the house\b/.test(s)) return true;
+  return false;
 }
 
 /**

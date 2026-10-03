@@ -102,6 +102,12 @@ test("cc-185 mapBillStatus (lib, no chamber) ≡ mapBillStatus (bill-status.ts)"
   for (const t of [...TEXTS, undefined]) assert.equal(lib.mapBillStatus(t), mapBillStatus(t), JSON.stringify(t));
 });
 
+test("cc-185 mapBillStatus (lib) ≡ mapBillStatus (bill-status.ts) WITH each origin chamber (FIX-1262)", () => {
+  for (const c of ["house", "senate"] as const) {
+    for (const t of [...TEXTS, undefined]) assert.equal(lib.mapBillStatus(t, c), mapBillStatus(t, c), `${c}: ${JSON.stringify(t)}`);
+  }
+});
+
 test("cc-185 originChamberOf reads the prefix", () => {
   for (const [n, c] of [["HR 1", "house"], ["HJRES 2", "house"], ["HCONRES 3", "house"], ["HRES 4", "house"],
                         ["S 1", "senate"], ["SJRES 2", "senate"], ["SCONRES 3", "senate"], ["SRES 4", "senate"]]) {

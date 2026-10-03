@@ -460,6 +460,28 @@ test("15 (FIX-1261). the vote path mints novel bills by question over every roll
   );
 });
 
+/** Step 1's args since FIX-1262: the status is read WITH the bill's origin chamber (votes.ts). */
+function syncedFromHouse(text: string): BillProposalArgs {
+  return { ...bill(4795), status: mapBillStatus(text, "house"), latestActionText: text };
+}
+
+test("16 (FIX-1262). an in_committee House bill synced with 'Received in the Senate and … referred to' advances to passed_chamber", async () => {
+  const s = statusState("in_committee");
+  const text = "Received in the Senate and Read twice and referred to the Committee on Health, Education, Labor, and Pensions.";
+  // Rule 105: the chamber-less read (pre-FIX-1262 Step 1) asks in_committee and moves nothing.
+  const before = await upsertBillProposalsBatch(asDb(statusState("in_committee")), [synced(text)]);
+  assert.deepEqual({ moved: before.status.moved.length, held: before.status.held }, { moved: 0, held: 1 });
+  const res = await upsertBillProposalsBatch(asDb(s), [syncedFromHouse(text)]);
+  assert.equal(statusOf(s, "hr4795"), "passed_chamber");
+  assert.deepEqual(res.status.moved, [{ id: "hr4795", from: "in_committee", to: "passed_chamber", via: "sync" }]);
+});
+
+test("16b (FIX-1262). a NEW House bill whose latest action is 'Received in the Senate.' is minted passed_chamber", async () => {
+  const s = holderState();
+  await upsertBillProposalsBatch(asDb(s), [{ ...bill(902), status: mapBillStatus("Received in the Senate.", "house"), latestActionText: "Received in the Senate." }]);
+  assert.equal(s.proposals.find((p) => p.id === refFor(s, "119-HR-902"))!.status, "passed_chamber");
+});
+
 test("14. a NEW bill with a stage-less latest action is minted as introduced", async () => {
   const s = holderState();
   await upsertBillProposalsBatch(asDb(s), [{ ...bill(901), status: mapBillStatus("Held at the desk."), latestActionText: "Held at the desk." }]);

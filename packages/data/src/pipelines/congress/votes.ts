@@ -515,8 +515,10 @@ export async function runVotesPipeline(
         chamber: chamberForBillType(bill.type),
         type: mapLegislationType(bill.type) as ProposalType,
         // FIX-1257: null for a stage-less action — Step 3 then leaves the
-        // stored status alone, and only ever advances it.
-        status: mapBillStatus(bill.latestAction?.text),
+        // stored status alone, and only ever advances it. FIX-1262: with the
+        // origin chamber, "Received in the Senate" / "Held at the desk" prove
+        // the origin chamber passed it.
+        status: mapBillStatus(bill.latestAction?.text, chamberForBillType(bill.type)),
         jurisdictionId: federalId,
         governingBodyId: chamberGovBodyId(bill.type, senateGovBodyId, houseGovBodyId),
         congressGovUrl: congressGovBillUrl(bill.congress, bill.type, bill.number),

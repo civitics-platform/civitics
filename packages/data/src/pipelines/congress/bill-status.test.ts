@@ -63,6 +63,39 @@ for (const [text, want] of TEXTS) {
   });
 }
 
+// FIX-1262 — the same function WITH the origin chamber. The table above is the
+// chamber-less call and is unchanged; these are the only texts the chamber moves.
+const WITH_CHAMBER: Array<[string, "house" | "senate", ProposalStatus | null]> = [
+  ["Received in the Senate.", "house", "passed_chamber"],
+  ["Received in the Senate and Read twice and referred to the Committee on Finance.", "house", "passed_chamber"], // was in_committee
+  ["Held at the desk.", "senate", "passed_chamber"],
+  ["Message on Senate action sent to the House.", "senate", "passed_chamber"],
+  ["Message on Senate action sent to the House.", "house", "passed_chamber"], // the Senate acted on a House measure
+  // the wrong chamber proves nothing new
+  ["Received in the Senate.", "senate", null],
+  ["Received in the Senate and Read twice and referred to the Committee on Finance.", "senate", "in_committee"],
+  ["Held at the desk.", "house", null],
+  // stronger evidence still wins; unrelated texts are unchanged
+  ["Became Public Law No: 119-12.", "house", "enacted"],
+  ["Passed Senate without amendment by Unanimous Consent.", "senate", "passed_chamber"],
+  ["Referred to the House Committee on the Judiciary.", "house", "in_committee"],
+  ["Motion to reconsider laid on the table Agreed to without objection.", "house", null],
+  ["Introduced in Senate", "senate", "introduced"],
+];
+
+for (const [text, chamber, want] of WITH_CHAMBER) {
+  test(`FIX-1262 mapBillStatus(${JSON.stringify(text)}, ${chamber}) → ${want}`, () => {
+    assert.equal(mapBillStatus(text, chamber), want);
+  });
+}
+
+test("FIX-1262 without the chamber, every FIX-1262 text maps exactly as before (rule 105: the arm is chamber-gated)", () => {
+  assert.equal(mapBillStatus("Received in the Senate."), null);
+  assert.equal(mapBillStatus("Received in the Senate and Read twice and referred to the Committee on Finance."), "in_committee");
+  assert.equal(mapBillStatus("Held at the desk."), null);
+  assert.equal(mapBillStatus("Message on Senate action sent to the House."), null);
+});
+
 test("FIX-1257 isPassageQuestion — prod's passage questions in, everything else out", () => {
   for (const q of [
     "On Passage",
