@@ -168,22 +168,36 @@ export async function notifyFollowers(
   };
 }
 
+/** The one call createNotification() makes — injectable so its error path is testable. */
+export interface NotificationInsertClient {
+  from(table: "notifications"): {
+    insert(row: Record<string, unknown>): PromiseLike<{ error: { message: string; code?: string } | null }>;
+  };
+}
+
 /**
  * Insert a single notification for a specific user (no fan-out, no email).
  * Use when you already know the recipient and want a lightweight in-app ping.
+ *
+ * THROWS when the insert fails (FIX-1205). It used to discard the insert's
+ * `{ error }`, so a rejected row (an enum the column does not know, an RLS or
+ * FK miss) vanished without a log line. Both callers already wrap it in a
+ * best-effort try/catch that logs — the throw is what gives that catch
+ * something to log.
  */
-export async function createNotification(args: {
-  userId: string;
-  eventType: EventType;
-  title: string;
-  body?: string;
-  link?: string;
-  entityType?: EntityType;
-  entityId?: string;
-}): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
-  await db.from("notifications").insert({
+export async function createNotification(
+  args: {
+    userId: string;
+    eventType: EventType;
+    title: string;
+    body?: string;
+    link?: string;
+    entityType?: EntityType;
+    entityId?: string;
+  },
+  db: NotificationInsertClient = createAdminClient() as unknown as NotificationInsertClient,
+): Promise<void> {
+  const { error } = await db.from("notifications").insert({
     user_id:     args.userId,
     event_type:  args.eventType,
     title:       args.title,
@@ -192,4 +206,10 @@ export async function createNotification(args: {
     entity_type: args.entityType ?? null,
     entity_id:   args.entityId ?? null,
   });
+  if (error) {
+    throw new Error(
+      `notifications insert failed for user ${args.userId} (${args.eventType})` +
+        `${error.code ? ` [${error.code}]` : ""}: ${error.message}`,
+    );
+  }
 }

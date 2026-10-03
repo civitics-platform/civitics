@@ -153,3 +153,42 @@ test("an official target with a NULL target_id links nowhere and carries no enti
   assert.equal(n.entityId, undefined);
   assert.equal(n.entityType, undefined);
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1205 — the third outcome: an ACTIVE grant revoked by an administrator
+// ---------------------------------------------------------------------------
+
+test("FIX-1205: a revocation has its own title and body, naming the access withdrawn", () => {
+  const n = buildClaimOutcomeNotification(grant(), "revoked", "Jane Doe");
+  assert.equal(n.title, "Your access was revoked");
+  assert.equal(n.body, "Your official access to Jane Doe has been revoked by an administrator.");
+  assert.equal(n.eventType, "claim_outcome", "reuses the existing enum value — no migration");
+  assert.equal(n.userId, USER, "addressed to the holder, not the revoking admin");
+});
+
+test("FIX-1205: a revocation links and tags the entity exactly as the other outcomes do", () => {
+  const n = buildClaimOutcomeNotification(grant(), "revoked", "Jane Doe");
+  assert.equal(n.link, `/officials/${OFFICIAL}`);
+  assert.equal(n.entityType, "official");
+  assert.equal(n.entityId, OFFICIAL);
+  const g = buildClaimOutcomeNotification(
+    grant({ role: "platform_admin", target_type: "global", target_id: null }),
+    "revoked",
+  );
+  assert.equal(g.body, "Your platform admin access has been revoked by an administrator.");
+  assert.equal(g.link, undefined);
+  assert.equal(g.entityType, undefined);
+});
+
+test("FIX-1205: every outcome has a distinct title and body (a revocation never reads as 'not approved')", () => {
+  const outcomes = ["approved", "rejected", "revoked"] as const;
+  const titles = outcomes.map((o) => buildClaimOutcomeNotification(grant(), o, "Jane Doe").title);
+  const bodies = outcomes.map((o) => buildClaimOutcomeNotification(grant(), o, "Jane Doe").body);
+  assert.equal(new Set(titles).size, outcomes.length, titles.join(" | "));
+  assert.equal(new Set(bodies).size, outcomes.length, bodies.join(" | "));
+});
+
+test("FIX-1205: a missing target name degrades a revocation's body too", () => {
+  const n = buildClaimOutcomeNotification(grant(), "revoked", null);
+  assert.equal(n.body, "Your official access has been revoked by an administrator.");
+});

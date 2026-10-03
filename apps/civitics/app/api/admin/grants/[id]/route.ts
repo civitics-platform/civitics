@@ -15,17 +15,20 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // FIX-560 — tell the claimant. BEST-EFFORT: the review write has already
 // committed by the time this runs, so a notification failure must never turn a
-// successful approve/reject into a 500 the operator would retry (a retry hits
-// the pending-only 409 and looks like the action failed). Logged, swallowed.
+// successful approve/reject/revoke into a 500 the operator would retry (a retry
+// hits the pending-only or active-only 409 and looks like the action failed).
+// Logged, swallowed; the boolean says whether the row was written.
 async function notifyClaimant(
   grant: ClaimGrant,
   outcome: ClaimOutcome,
   targetName: string | null,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await createNotification(buildClaimOutcomeNotification(grant, outcome, targetName));
+    return true;
   } catch (err) {
     console.error("[/api/admin/grants/[id]] claim-outcome notification failed", err);
+    return false;
   }
 }
 
@@ -159,6 +162,22 @@ export async function POST(
   if (!grant) {
     return NextResponse.json({ error: "grant_not_found" }, { status: 404 });
   }
+
+  // The target official, read ONCE for all three actions. Approve needs the
+  // term dates for expiry (decision 8); every outcome's notification needs
+  // full_name for its body (FIX-560 approve/reject, FIX-1205 revoke) — so the
+  // read sits above the revoke branch rather than being repeated inside it.
+  let official: { term_end: string | null; current_term_end: string | null; full_name: string | null } | null = null;
+  if (grant.target_type === "official" && grant.target_id) {
+    const { data } = await admin
+      .from("officials")
+      .select("term_end, current_term_end, full_name")
+      .eq("id", grant.target_id)
+      .maybeSingle();
+    official = data ?? null;
+  }
+  const targetName = official?.full_name ?? null;
+
   // FIX-928 — revoke is the ACTIVE-grant action and runs before the
   // pending-only gate, which governs approve/reject alone.
   if (action === "revoke") {
@@ -183,7 +202,14 @@ export async function POST(
     // is 1; anything higher means the index was dropped or bypassed and this
     // account had duplicate live access, which the caller should see rather
     // than have smoothed over.
-    return NextResponse.json({ ok: true, status: "revoked", revoked: revoked ?? 0 });
+    //
+    // FIX-1205 — tell the holder. ONE notification per call, however many rows
+    // the RPC flipped: user_id is part of its key, so they all belong to this
+    // holder. None when it flipped nothing (a concurrent revoke got there
+    // first — that caller sent the notification).
+    const count = typeof revoked === "number" ? revoked : 0;
+    const notified = count > 0 ? await notifyClaimant(grant, "revoked", targetName) : false;
+    return NextResponse.json({ ok: true, status: "revoked", revoked: count, notified });
   }
 
   if (grant.status !== "pending") {
@@ -194,21 +220,6 @@ export async function POST(
   }
 
   const reviewedAt = new Date();
-
-  // The target official, read ONCE for both branches. Approve needs the term
-  // dates for expiry (decision 8); FIX-560 needs full_name for the notification
-  // body, and reject needs it too — so the read moved out of the approve branch
-  // rather than being duplicated into reject.
-  let official: { term_end: string | null; current_term_end: string | null; full_name: string | null } | null = null;
-  if (grant.target_type === "official" && grant.target_id) {
-    const { data } = await admin
-      .from("officials")
-      .select("term_end, current_term_end, full_name")
-      .eq("id", grant.target_id)
-      .maybeSingle();
-    official = data ?? null;
-  }
-  const targetName = official?.full_name ?? null;
 
   if (action === "approve") {
     // Expiry follows the target official's term when known (decision 8).

@@ -12,6 +12,14 @@
  * route — see claim-notification.test.ts. The routes own the insert; this owns
  * what goes in it.
  *
+ * FIX-1205 — the third outcome, `revoked`: the admin route's revoke action
+ * (FIX-928) withdraws LIVE access and used to tell the holder nothing. It
+ * reuses the `claim_outcome` event type (no enum migration): the readers
+ * render title/body/link only, and a revocation ends a grant's life exactly as
+ * the other two do. One revoke_grant() call yields ONE notification —
+ * `user_id` is part of the key it revokes on, so every row it flips belongs to
+ * the same holder.
+ *
  * TWO VOCABULARIES THAT DO NOT LINE UP
  * ------------------------------------
  * grant_target_type is  global | jurisdiction | official | institution
@@ -32,7 +40,7 @@ export interface ClaimGrant {
   target_id: string | null;
 }
 
-export type ClaimOutcome = "approved" | "rejected";
+export type ClaimOutcome = "approved" | "rejected" | "revoked";
 
 /** Exactly the createNotification() argument object. */
 export interface ClaimOutcomeNotification {
@@ -75,8 +83,25 @@ function roleLabel(role: string): string {
   }
 }
 
+/** Title and body per outcome. `subject` is "<role> access[ to <target>]". */
+const COPY: Record<ClaimOutcome, { title: string; body: (subject: string) => string }> = {
+  approved: {
+    title: "Your claim was approved",
+    body: (s) => `Your request for ${s} was approved and is now active.`,
+  },
+  rejected: {
+    title: "Your claim was not approved",
+    body: (s) => `Your request for ${s} was reviewed and not approved.`,
+  },
+  revoked: {
+    title: "Your access was revoked",
+    body: (s) => `Your ${s} has been revoked by an administrator.`,
+  },
+};
+
 /**
- * Build the notification for a claim that has just been approved or rejected.
+ * Build the notification for a grant that has just been approved, rejected or
+ * revoked.
  *
  * `targetName` is the official's full_name when the target is an official and
  * the lookup succeeded. It is optional on purpose: a failed name read must not
@@ -87,17 +112,14 @@ export function buildClaimOutcomeNotification(
   outcome: ClaimOutcome,
   targetName?: string | null,
 ): ClaimOutcomeNotification {
-  const approved = outcome === "approved";
   const label = roleLabel(grant.role);
   const subject = targetName ? `${label} access to ${targetName}` : `${label} access`;
 
   const notification: ClaimOutcomeNotification = {
     userId: grant.user_id,
     eventType: "claim_outcome",
-    title: approved ? "Your claim was approved" : "Your claim was not approved",
-    body: approved
-      ? `Your request for ${subject} was approved and is now active.`
-      : `Your request for ${subject} was reviewed and not approved.`,
+    title: COPY[outcome].title,
+    body: COPY[outcome].body(subject),
   };
 
   // Link only where a page exists to link to. An official target has
