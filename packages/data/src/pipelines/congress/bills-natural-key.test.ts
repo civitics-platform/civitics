@@ -26,7 +26,7 @@ import {
   advanceProposalStatuses,
   type BillProposalArgs,
 } from "./bills";
-import { mapBillStatus, rollPassageAdvances } from "./bill-status";
+import { mapBillStatus, rollPassageAdvances, stampMintStatuses, MINT_FLOOR } from "./bill-status";
 import { statusAdvances, type ProposalStatus } from "./status-rank";
 
 type Row = Record<string, unknown>;
@@ -428,6 +428,36 @@ test("13 (e). a FAILED roll — passage or procedural — changes nothing on an 
   assert.equal(statusOf(s, "hr4795"), "in_committee");
   assert.equal(advanceCalls(s).length, 0);
   assert.deepEqual(res, { moved: [], held: 0, failed: 0 });
+});
+
+test("15 (FIX-1261). the vote path mints novel bills by question over every roll; an existing bill is not minted and keeps its status", async () => {
+  const s = holderState();
+  s.proposals.find((p) => p.id === "held")!.status = "in_committee";
+  // The House Pass 1 buffer: a placeholder status on every bill key.
+  const args = new Map(
+    [bill(900, "HR 900"), bill(901, "HR 901"), bill(100, "HR 100")].map((b) => [b.billKey, { ...b, status: MINT_FLOOR }]),
+  );
+  const rolls = [
+    // HR 900: a failed recommit, then nothing — the pre-FIX-1261 mint was `failed`
+    { rollCallId: "2026-house-101", billKey: "119-HR-900", voteQuestion: "On Motion to Recommit", resultStr: "Failed" },
+    // HR 901: a failed recommit FIRST, then passage — the pre-FIX-1261 mint was `failed`
+    { rollCallId: "2026-house-102", billKey: "119-HR-901", voteQuestion: "On Motion to Recommit", resultStr: "Failed" },
+    { rollCallId: "2026-house-103", billKey: "119-HR-901", voteQuestion: "On Passage", resultStr: "Passed" },
+    // HR 100 already exists (in_committee): a failed recommit writes nothing onto it
+    { rollCallId: "2026-house-104", billKey: "119-HR-100", voteQuestion: "On Motion to Recommit", resultStr: "Failed" },
+  ];
+  stampMintStatuses(args, rolls);
+  const mintedArgs: BillProposalArgs[] = [];
+  const ids = await resolveBillsBatch(asDb(s), args, [], mintedArgs);
+  const statusByKey = (k: string) => s.proposals.find((p) => p.id === ids.get(k))!.status;
+  assert.equal(statusByKey("119-HR-900"), "floor_vote");
+  assert.equal(statusByKey("119-HR-901"), "passed_chamber");
+  assert.equal(statusByKey("119-HR-100"), "in_committee", "an existing bill is never minted over");
+  assert.deepEqual(
+    mintedArgs.map((a) => [a.billKey, a.status]).sort(),
+    [["119-HR-900", "floor_vote"], ["119-HR-901", "passed_chamber"]],
+    "minted lists only the novel bills, with the status they were minted at",
+  );
 });
 
 test("14. a NEW bill with a stage-less latest action is minted as introduced", async () => {

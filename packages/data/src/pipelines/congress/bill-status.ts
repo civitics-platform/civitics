@@ -7,6 +7,7 @@
 
 import { mapVoteResult } from "./members";
 import type { ProposalStatus } from "./status-rank";
+import passageQuestions from "./passage-questions.json";
 
 /**
  * Map a congress.gov `latestAction.text` to the stage it PROVES, or null when
@@ -41,23 +42,31 @@ export function mapBillStatus(latestActionText: string | null | undefined): Prop
 }
 
 /**
- * The roll-call questions that ARE a vote on a bill's passage in one chamber
- * (prod's distinct values, 2026-10-03). Not cloture, not amendments, not
- * "On Motion to Recommit", and not the veto-override question ("Passage,
- * Objections of the President To The Contrary Notwithstanding"), which is a
- * different stage.
+ * The roll-call questions that ARE a vote on a measure's passage (or a
+ * resolution's adoption) in one chamber — `passage-questions.json`, picked by
+ * meaning from prod's distinct values (cc-185 read 2, 2026-10-03). Not
+ * cloture, not amendments, not "On Motion to Recommit", not "On Ordering the
+ * Previous Question", and not either veto-override question (a different
+ * stage). FIX-1261 added the resolution and concurrence questions. The cc-185
+ * manifest scripts read the same file (scripts/lib/bill-status-evidence.mjs).
  */
-const PASSAGE_QUESTIONS: ReadonlySet<string> = new Set([
-  "on passage",
-  "on passage of the bill",
-  "on motion to suspend the rules and pass",
-  "on motion to suspend the rules and pass, as amended",
-]);
+const PASSAGE_QUESTIONS: ReadonlySet<string> = new Set([...passageQuestions.house, ...passageQuestions.senate]);
 
 export function isPassageQuestion(voteQuestion: string | null | undefined): boolean {
   if (!voteQuestion) return false;
   return PASSAGE_QUESTIONS.has(voteQuestion.trim().toLowerCase().replace(/\s+/g, " "));
 }
+
+/**
+ * FIX-1261 — the status a vote-path mint takes when no roll in the run proves
+ * passage: the measure reached the floor, and that is all a roll proves. Never
+ * `failed`: a failed roll is a failed MOTION — a recommit, an amendment, even a
+ * passage vote (9 failed suspensions on prod later passed) — not a failed bill.
+ * Before FIX-1261 the mint took mapVoteResult() of the bill's FIRST roll, so a
+ * failed recommit motion minted `failed` (all 174 federal `failed` bills, cc-181)
+ * and a passed previous-question vote minted `passed_chamber`.
+ */
+export const MINT_FLOOR: ProposalStatus = "floor_vote";
 
 export interface RollEvidence {
   rollCallId: string;
@@ -73,16 +82,54 @@ export interface StatusPair {
   via: string;
 }
 
+/** A passage question whose result passed — the one thing a roll proves beyond "it reached the floor". */
+function isPassedPassageRoll(r: Pick<RollEvidence, "voteQuestion" | "resultStr">): boolean {
+  return isPassageQuestion(r.voteQuestion) && mapVoteResult(r.resultStr) === "passed_chamber";
+}
+
+/**
+ * FIX-1261 — the mint status of every bill key in a run's roll buffer, decided
+ * over ALL of that key's buffered rolls (not the first): `passed_chamber` if
+ * any is a passed passage roll, else MINT_FLOOR. The vote path calls this at
+ * flush, after Pass 1 has buffered every novel roll, and only a NOVEL bill is
+ * minted with it — an existing bill is moved only by rollPassageAdvances().
+ *
+ * A nomination (PN) goes through the same rule and, since "On the Nomination"
+ * is not a passage question, mints floor_vote — what all 696 PN proposals on
+ * prod carry today (cc-185 read 2c).
+ */
+export function mintStatuses(rolls: readonly Pick<RollEvidence, "billKey" | "voteQuestion" | "resultStr">[]): Map<string, ProposalStatus> {
+  const out = new Map<string, ProposalStatus>();
+  for (const r of rolls) {
+    if (!r.billKey) continue;
+    if (isPassedPassageRoll(r)) out.set(r.billKey, "passed_chamber");
+    else if (!out.has(r.billKey)) out.set(r.billKey, MINT_FLOOR);
+  }
+  return out;
+}
+
+/**
+ * FIX-1261 — stamp each buffered bill's mint status from mintStatuses() over
+ * the run's roll buffer. The vote path calls it once per chamber, after Pass 1
+ * and before resolveBillsBatch() mints the novel bills.
+ */
+export function stampMintStatuses<A extends { status: ProposalStatus | null }>(
+  args: Map<string, A>,
+  rolls: readonly Pick<RollEvidence, "billKey" | "voteQuestion" | "resultStr">[],
+): void {
+  const mints = mintStatuses(rolls);
+  for (const [key, a] of args) a.status = mints.get(key) ?? MINT_FLOOR;
+}
+
 /**
  * The vote path's status evidence: every landed roll that is a PASSAGE roll
  * with a passing result asks for `passed_chamber` on its bill — holder or
  * novel. `mapVoteResult` alone ignores the question (a passed cloture or
- * amendment roll also maps to passed_chamber), so it is only the mint status;
- * the question is what makes a roll evidence here.
+ * amendment roll also maps to passed_chamber); the question is what makes a
+ * roll evidence here, and in mintStatuses().
  *
  * A FAILED roll writes nothing onto an existing bill: a failed procedural vote
- * is not a failed bill, and the mint already records `failed` far too eagerly
- * (FIX-1257 read 2: all 174 federal `failed` bills came from a failed first roll — FIX-1261).
+ * is not a failed bill (FIX-1261 — the mint no longer records one either).
  *
  * One pair per proposal (the first passage roll wins; they all ask for the
  * same status).
@@ -93,8 +140,7 @@ export function rollPassageAdvances(
 ): StatusPair[] {
   const out = new Map<string, StatusPair>();
   for (const r of rolls) {
-    if (!isPassageQuestion(r.voteQuestion)) continue;
-    if (mapVoteResult(r.resultStr) !== "passed_chamber") continue;
+    if (!isPassedPassageRoll(r)) continue;
     const id = proposalIdFor(r.billKey);
     if (!id || out.has(id)) continue;
     out.set(id, { id, status: "passed_chamber", via: r.rollCallId });

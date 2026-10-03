@@ -1,0 +1,33 @@
+{
+  "_doc": "FIX-1257/FIX-1261 — the roll-call questions that ARE a vote on a measure's passage (or adoption) in one chamber, lowercased with whitespace collapsed. ONE list, read by bill-status.ts (the nightly) and scripts/lib/bill-status-evidence.mjs (the cc-185 manifests), so the backfills and the writer cannot disagree. Picked by meaning from prod's distinct vote_question values (cc-185 read 2, 2026-10-03 23:01 UTC). NOT here: cloture, motions to proceed/table/recommit/commit/refer/discharge, amendments, 'On Ordering the Previous Question', 'On Consideration of the Resolution', the Senate's bare 'On the Motion' (the motion is named only in vote_title), 'On the Nomination' (a PN is not a bill), and both veto-override questions (a different stage). Concurrence questions ARE here: a concur vote that passed proves the measure passed this chamber (and the other), so passed_chamber is a true lower bound.",
+  "house": [
+    "on passage",
+    "on passage of the bill",
+    "on motion to suspend the rules and pass",
+    "on motion to suspend the rules and pass, as amended",
+    "on agreeing to the resolution",
+    "on agreeing to the resolution, as amended",
+    "on motion to suspend the rules and agree",
+    "on motion to suspend the rules and agree, as amended",
+    "on motion to suspend the rules and agree to the resolution",
+    "on motion to suspend the rules and agree to the resolution, as amended",
+    "on agreeing to the conference report",
+    "on motion to concur in the senate amendment",
+    "on motion to concur in the senate amendments",
+    "on motion to concur in the senate amendment with an amendment",
+    "on motion to suspend the rules and concur in the senate amendment",
+    "on motion to suspend the rules and concur in the senate amendments",
+    "on concurring in the senate amendments to the house amendment",
+    "on concurring in senate amdt with amdt (divisions b,c,f,x,z, titles 2&3 of division n)",
+    "on concurring in senate amdt with amdt (remaining divisions)",
+    "on motion to concur in the senate adt to the house adt to the senate adt",
+    "on motion to suspend the rules and concur in senate adt to house adt to senate adt"
+  ],
+  "senate": [
+    "on passage of the bill",
+    "on the joint resolution",
+    "on the resolution",
+    "on the concurrent resolution",
+    "on the conference report"
+  ]
+}

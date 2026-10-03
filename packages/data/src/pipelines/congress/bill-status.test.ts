@@ -12,7 +12,15 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapBillStatus, isPassageQuestion, rollPassageAdvances, type RollEvidence } from "./bill-status";
+import {
+  mapBillStatus,
+  isPassageQuestion,
+  rollPassageAdvances,
+  mintStatuses,
+  stampMintStatuses,
+  MINT_FLOOR,
+  type RollEvidence,
+} from "./bill-status";
 import type { ProposalStatus } from "./status-rank";
 
 const TEXTS: Array<[string | undefined, ProposalStatus | null]> = [
@@ -111,4 +119,134 @@ test("FIX-1257 rollPassageAdvances — a passed passage roll asks for passed_cha
     { id: "p1", status: "passed_chamber", via: "2026-house-001" },
     { id: "p2", status: "passed_chamber", via: "2026-house-002" },
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1261 — the vote-path mint reads the question, over every buffered roll
+// ---------------------------------------------------------------------------
+
+test("FIX-1261 isPassageQuestion — resolution adoption and concurrence join; procedural questions stay out", () => {
+  for (const q of [
+    // House resolutions (cc-185 read 2: 249 + 12 + 26 + 17 + 2 + 3 + 1 rolls)
+    "On Agreeing to the Resolution",
+    "On Agreeing to the Resolution, as Amended",
+    "On Motion to Suspend the Rules and Agree",
+    "On Motion to Suspend the Rules and Agree, as Amended",
+    "On Motion to Suspend the Rules and Agree, As Amended",
+    "On Motion to Suspend the Rules and Agree to the Resolution",
+    "On Motion to Suspend the Rules and Agree to the Resolution, as Amended",
+    // concurrence — proves this chamber passed the measure
+    "On Motion to Concur in the Senate Amendment",
+    "On Motion to Suspend the Rules and Concur in the Senate Amendment",
+    // Senate measures
+    "On the Joint Resolution",
+    "On the Resolution",
+    "On the Concurrent Resolution",
+    "On the Conference Report",
+  ]) {
+    assert.equal(isPassageQuestion(q), true, q);
+  }
+  for (const q of [
+    "On Ordering the Previous Question", // 182 rolls; the HRES passed_chamber mint artifact
+    "On Consideration of the Resolution",
+    "On Motion to Table",
+    "Table Motion to Reconsider",
+    "On Motion to Discharge",
+    "On the Nomination",
+    "On the Motion", // the Senate names the motion only in vote_title
+    "On the Motion to Proceed",
+    "On Cloture on the Motion to Proceed",
+    "On Overriding the Veto",
+  ]) {
+    assert.equal(isPassageQuestion(q), false, q);
+  }
+});
+
+const minted = (rolls: RollEvidence[]) => Object.fromEntries(mintStatuses(rolls));
+
+// Rule 105: each of the first three is RED against the pre-FIX-1261 mint
+// (mapVoteResult of the FIRST roll) — failed, failed, passed_chamber.
+test("FIX-1261 a failed recommit motion as the first (and only) roll mints floor_vote, not failed", () => {
+  assert.deepEqual(minted([roll("2026-house-101", "119-HR-1", "On Motion to Recommit", "Failed")]), { "119-HR-1": "floor_vote" });
+});
+
+test("FIX-1261 a failed first roll then a passed passage roll mints passed_chamber — decided over every roll, not the first", () => {
+  assert.deepEqual(
+    minted([
+      roll("2026-house-101", "119-HR-1", "On Motion to Recommit", "Failed"),
+      roll("2026-house-102", "119-HR-1", "On Passage", "Passed"),
+    ]),
+    { "119-HR-1": "passed_chamber" },
+  );
+});
+
+test("FIX-1261 a passed previous-question vote mints floor_vote; the resolution's own adoption roll makes it passed_chamber", () => {
+  assert.deepEqual(minted([roll("2026-house-201", "119-HRES-9", "On Ordering the Previous Question", "Passed")]), {
+    "119-HRES-9": "floor_vote",
+  });
+  assert.deepEqual(
+    minted([
+      roll("2026-house-201", "119-HRES-9", "On Ordering the Previous Question", "Passed"),
+      roll("2026-house-202", "119-HRES-9", "On Agreeing to the Resolution", "Agreed to"),
+    ]),
+    { "119-HRES-9": "passed_chamber" },
+  );
+});
+
+test("FIX-1261 a FAILED passage roll mints floor_vote — a failed passage vote is not terminal (bills get re-voted)", () => {
+  assert.deepEqual(minted([roll("2026-house-301", "119-HR-3", "On Motion to Suspend the Rules and Pass", "Failed")]), {
+    "119-HR-3": "floor_vote",
+  });
+});
+
+test("FIX-1261 a passed amendment roll is not passage — floor_vote", () => {
+  assert.deepEqual(minted([roll("2026-house-401", "119-HR-4", "On Agreeing to the Amendment", "Agreed to")]), {
+    "119-HR-4": "floor_vote",
+  });
+});
+
+test("FIX-1261 a nomination mints floor_vote whatever its result — what every PN on prod carries", () => {
+  assert.deepEqual(
+    minted([
+      roll("senate-119-2-00256", "119-PN-1129", "On the Cloture Motion", "Cloture Motion Agreed to"),
+      roll("senate-119-2-00257", "119-PN-1129", "On the Nomination", "Nomination Confirmed"),
+    ]),
+    { "119-PN-1129": "floor_vote" },
+  );
+});
+
+test("FIX-1261 failed is never minted — every result on every question", () => {
+  const qs = ["On Passage", "On Motion to Recommit", "On Agreeing to the Amendment", "On the Cloture Motion", "On the Nomination"];
+  const rs = ["Failed", "Rejected", "Amendment Rejected", "Motion Rejected", "Nomination Rejected", ""];
+  for (const q of qs) {
+    for (const r of rs) {
+      assert.notEqual(mintStatuses([roll("r", "k", q, r)]).get("k"), "failed", `${q} / ${r}`);
+    }
+  }
+});
+
+test("FIX-1261 stampMintStatuses overwrites the placeholder on every buffered bill; a roll with no bill is ignored", () => {
+  const args = new Map([
+    ["119-HR-1", { status: MINT_FLOOR as ProposalStatus | null }],
+    ["119-HR-2", { status: MINT_FLOOR as ProposalStatus | null }],
+    ["119-HR-3", { status: "failed" as ProposalStatus | null }], // a key with no buffered roll → MINT_FLOOR
+  ]);
+  stampMintStatuses(args, [
+    roll("2026-house-001", "119-HR-1", "On Passage", "Passed"),
+    roll("2026-house-002", "119-HR-2", "On Motion to Recommit", "Failed"),
+    roll("2026-house-003", null, "On Passage", "Passed"),
+  ]);
+  assert.deepEqual(Object.fromEntries([...args].map(([k, a]) => [k, a.status])), {
+    "119-HR-1": "passed_chamber",
+    "119-HR-2": "floor_vote",
+    "119-HR-3": "floor_vote",
+  });
+});
+
+test("FIX-1261 rollPassageAdvances uses the extended list — a resolution adopted by roll advances", () => {
+  const pairs = rollPassageAdvances(
+    [roll("2026-house-202", "119-HRES-9", "On Agreeing to the Resolution", "Agreed to")],
+    () => "hres9",
+  );
+  assert.deepEqual(pairs, [{ id: "hres9", status: "passed_chamber", via: "2026-house-202" }]);
 });

@@ -32,7 +32,6 @@ import {
   fetchText,
   mapLegislationType,
   mapVote,
-  mapVoteResult,
   CURRENT_CONGRESS,
 } from "./members";
 import {
@@ -47,7 +46,12 @@ import {
   type BillKeyConflict,
   type BillProposalArgs,
 } from "./bills";
-import { mapBillStatus, rollPassageAdvances } from "./bill-status";
+import {
+  mapBillStatus,
+  rollPassageAdvances,
+  stampMintStatuses,
+  MINT_FLOOR,
+} from "./bill-status";
 import {
   guardBillDetails,
   writeRollVotes,
@@ -64,7 +68,6 @@ import { selectDirect } from "../../lib/heavy-rebuild";
 // ---------------------------------------------------------------------------
 
 type ProposalType = Database["public"]["Enums"]["proposal_type"];
-type ProposalStatus = Database["public"]["Enums"]["proposal_status"];
 type VoteInsert = Database["public"]["Tables"]["votes"]["Insert"];
 
 // ---------------------------------------------------------------------------
@@ -210,6 +213,16 @@ function normalizeSenateDocType(docType: string): string | null {
   if (t === "S.CON.RES." || t === "S.CON.RES" || t === "S. CON. RES.") return "SCONRES";
   if (t === "H.CON.RES." || t === "H.CON.RES" || t === "H. CON. RES.") return "HCONRES";
   return null;
+}
+
+/** FIX-1261's receipt: what this run minted, by status. */
+function countMinted(minted: readonly BillProposalArgs[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const a of minted) {
+    const s = a.status ?? "introduced";
+    out[s] = (out[s] ?? 0) + 1;
+  }
+  return out;
 }
 
 /**
@@ -424,6 +437,8 @@ export async function runVotesPipeline(
   // FIX-1257 — every status this run moved (Step 1's sync evidence and the
   // vote path's passage rolls) and every pair the rule held.
   const statusResult = emptyAdvance();
+  // FIX-1261 — every bill the vote path minted this run (both chambers).
+  const mintedArgs: BillProposalArgs[] = [];
 
   const billDetailsDeps: BillDetailsGuardDeps = {
     presentIds: (ids) => presentBillDetailIds(db, ids),
@@ -623,7 +638,6 @@ export async function runVotesPipeline(
         const actionDateStr = meta["action-date"] ?? "";
         const votedAt      = parseHouseDate(String(actionDateStr));
         const resultStr    = String(meta["vote-result"] ?? "");
-        const proposalStatus = mapVoteResult(resultStr) as ProposalStatus;
         const voteQuestion = String(meta["vote-question"] ?? "");
 
         const recordedVotes: unknown[] = Array.isArray(voteData["recorded-vote"])
@@ -646,7 +660,9 @@ export async function runVotesPipeline(
               billType:        billRef.type,
               chamber:         chamberForBillType(billRef.type),
               type:            mapLegislationType(billRef.type) as ProposalType,
-              status:          proposalStatus,
+              // FIX-1261: a placeholder — stampMintStatuses() decides it at
+              // flush, over every roll this run buffered for the bill.
+              status:          MINT_FLOOR,
               jurisdictionId:  federalId,
               governingBodyId: govBodyId,
               congressGovUrl,
@@ -665,9 +681,11 @@ export async function runVotesPipeline(
     }
   }
 
+  stampMintStatuses(houseBillArgs, houseRollBuffer);
+
   // Batch resolve: one bulk lookup + one bulk insert for novel bills
   console.info(`\n  Resolving ${houseBillArgs.size} unique House bills in batch...`);
-  const houseBillKeyToId = await resolveBillsBatch(db, houseBillArgs, billKeyConflicts);
+  const houseBillKeyToId = await resolveBillsBatch(db, houseBillArgs, billKeyConflicts, mintedArgs);
   proposalsUpserted += [...houseBillKeyToId.values()].filter((v) => v !== null).length;
 
   // FIX-1238: every roll about to be written must reference a proposal that
@@ -720,9 +738,9 @@ export async function runVotesPipeline(
 
   // FIX-1257: a passage roll that passed is primary evidence the bill passed
   // this chamber — advance the bill (holder or novel) to passed_chamber. The
-  // mint status above stays mapVoteResult's (it ignores the question); this
-  // pass is what reads the question. A FAILED roll writes nothing onto an
-  // existing bill: a failed procedural vote is not a failed bill.
+  // mint (FIX-1261) already read the question for a novel bill; this pass is
+  // what moves an EXISTING one. A FAILED roll writes nothing onto an existing
+  // bill: a failed procedural vote is not a failed bill.
   {
     const landed = new Set(houseWrite.landed);
     mergeAdvance(statusResult, await advanceProposalStatuses(db, rollPassageAdvances(
@@ -820,7 +838,6 @@ export async function runVotesPipeline(
         const votedAt      = parseSenateDate(voteDateStr);
         const voteQuestion = String(root["question"] ?? "");
         const resultStr    = String(root["result"] ?? "");
-        const proposalStatus = mapVoteResult(resultStr) as ProposalStatus;
 
         const membersContainer = root["members"] as Record<string, unknown> | null;
         const memberList: unknown[] = membersContainer
@@ -855,7 +872,7 @@ export async function runVotesPipeline(
                   billType:        "PN",
                   chamber:         "senate",
                   type:            "appointment" as ProposalType,
-                  status:          proposalStatus,
+                  status:          MINT_FLOOR, // FIX-1261: stamped at flush
                   jurisdictionId:  federalId,
                   governingBodyId: senateGovBodyId,
                   congressGovUrl:  `https://www.congress.gov/nomination/${CURRENT_CONGRESS}th-congress/${docNumber}`,
@@ -880,7 +897,7 @@ export async function runVotesPipeline(
                     billType,
                     chamber:         chamberForBillType(billType),
                     type:            mapLegislationType(billType) as ProposalType,
-                    status:          proposalStatus,
+                    status:          MINT_FLOOR, // FIX-1261: stamped at flush
                     jurisdictionId:  federalId,
                     governingBodyId: govBodyId,
                     congressGovUrl,
@@ -906,9 +923,11 @@ export async function runVotesPipeline(
     }
   }
 
+  stampMintStatuses(senateBillArgs, senateRollBuffer);
+
   // Batch resolve: one bulk lookup + one bulk insert for novel bills
   console.info(`\n  Resolving ${senateBillArgs.size} unique Senate bills in batch...`);
-  const senateBillKeyToId = await resolveBillsBatch(db, senateBillArgs, billKeyConflicts);
+  const senateBillKeyToId = await resolveBillsBatch(db, senateBillArgs, billKeyConflicts, mintedArgs);
   proposalsUpserted += [...senateBillKeyToId.values()].filter((v) => v !== null).length;
 
   // FIX-1238 — the same guard as the House side.
@@ -1046,6 +1065,9 @@ export async function runVotesPipeline(
         status_held: statusResult.held,
         status_advance_failed: statusResult.failed,
         status_moves: statusResult.moved.slice(0, 100),
+        // FIX-1261: novel bills minted by the vote path, by status. `failed`
+        // never appears: the mint reads the question (bill-status.ts).
+        minted: countMinted(mintedArgs),
       },
     });
 

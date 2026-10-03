@@ -684,12 +684,14 @@ export async function landBillDetails(
  *   then re-fetched through their refs.
  * Returns a Map covering every key (null for any that couldn't be resolved);
  * key conflicts are appended to `conflicts` so the caller can count them in
- * rows_failed.
+ * rows_failed, and the args of every bill this call MINTED (and could resolve
+ * afterwards) to `minted` — FIX-1261's receipt counts them by status.
  */
 export async function resolveBillsBatch(
   db: Db,
   billArgsBuffer: Map<string, BillProposalArgs>,
   conflicts?: BillKeyConflict[],
+  minted?: BillProposalArgs[],
 ): Promise<Map<string, string | null>> {
   if (billArgsBuffer.size === 0) return new Map();
 
@@ -747,6 +749,7 @@ export async function resolveBillsBatch(
     for (const r of freshRefs) {
       resolved.set(r.external_id, r.entity_id);
     }
+    minted?.push(...novelArgs.filter((a) => resolved.get(a.billKey) != null));
   }
 
   return resolved;
