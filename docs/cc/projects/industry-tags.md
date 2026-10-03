@@ -16,6 +16,8 @@ steps:
   - {id: s8, kind: cc, ref: "cc-180", title: "1255 map + defense cohort; upsert provenance guard"}
   - {id: s9, kind: receipt, ref: "FIX-1255", title: "jobid 28 Thu 10-08 — the twelve under Defense, Humana under Health Care", after: 2026-10-08T14:45Z}
   - {id: s10, kind: cc, ref: "cc-182", title: "1240 labels follow tag changes; 1211 scoped donation-edge rebuild", done: 2026-10-03}
+  - {id: s11, kind: cc, ref: "cc-184", title: "CACI NSS joins the defense cohort (806)", done: 2026-10-03}
+  - {id: s12, kind: receipt, ref: "FIX-1255", title: "the first tail after the CACI NSS override — one defense/ai row, no tech", after: 2026-10-04T21:40Z}
 ---
 
 # Industry tag remediation
@@ -35,7 +37,9 @@ dollar-dominant code, and ranked a rule tag ahead of an ai tag. cc-180 settled
 the two groups that left behind (FIX-1255): 524114 health insurers back to
 health, and twelve defense IT and R&D primes under a curated `defense` override.
 It also stopped a rule tag from overwriting an ai row on a shared key
-(FIX-1259). s9 is the contract-side receipt.
+(FIX-1259). s9 is the contract-side receipt. cc-184 added CACI NSS, the one
+sibling cc-180 listed with the same shape, as a thirteenth cohort row in a
+second migration (s11). s12 is its first tail.
 
 s3's date is `done.log`'s (2026-08-01). The plan of record said 2026-07-29, and
 the log wins.

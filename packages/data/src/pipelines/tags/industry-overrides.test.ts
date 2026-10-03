@@ -616,3 +616,68 @@ test("FIX-1255: a uuid-keyed defense override replaces the computed tech NAICS t
     fec_committee_id: `fe:${LLNS}`,
   });
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1255 (cc-184 D2) — CACI NSS joins the cohort in a SECOND migration with
+// its own one-row TSV. The block above pins the applied 20261002010000 file
+// (12 / 805), which is frozen history; this one pins the new file (13 / 806).
+// ---------------------------------------------------------------------------
+
+const CACI_TSV_PATH = join(REPO_ROOT, "docs", "audits", "2026-10-03-fix1255-caci-nss.tsv");
+const CACI_MIGRATION_PATH = join(
+  REPO_ROOT, "supabase", "migrations", "20261003040000_fix1255_caci_nss_override.sql",
+);
+
+function readCaciTsv(): DefenseRow[] {
+  const lines = readFileSync(CACI_TSV_PATH, "utf8").split(/\r?\n/).filter((l) => l.length);
+  assert.equal(
+    lines[0],
+    "financial_entity_id\tdisplay_name\tindustry\tnaics_dominant\tcontract_usd\tcoded_usd\tcurrent_pick\tnote",
+    "the same header as the twelve's TSV",
+  );
+  return lines.slice(1).map((l) => {
+    const c = l.split("\t");
+    return { id: c[0]!, display_name: c[1]!, industry: c[2]!, naics: c[3]!, pick: c[6]! };
+  });
+}
+
+test("FIX-1255 CACI NSS: the TSV is one defense row, picked tech before, not already in the twelve", () => {
+  const rows = readCaciTsv();
+  assert.equal(rows.length, 1);
+  const [r] = rows;
+  assert.match(r!.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  assert.equal(r!.display_name, "CACI NSS, LLC");
+  assert.equal(r!.industry, "defense");
+  assert.equal(r!.pick, "tech");
+  assert.ok(!readDefenseTsv().some((d) => d.id === r!.id), "a second seed of one of the twelve would not grow the cohort");
+});
+
+test("FIX-1255 CACI NSS: the migration seeds exactly its TSV, same source and sector, on the synthetic key", () => {
+  const sql = readFileSync(CACI_MIGRATION_PATH, "utf8");
+  const seeded = new Map<string, string>();
+  for (const m of sql.matchAll(/^ {2}\('fe:([0-9a-f-]{36})', '([0-9a-f-]{36})', '([a-z_]+)'/gm)) {
+    assert.equal(m[1], m[2], "the synthetic key must be 'fe:' || financial_entity_id (the CHECK)");
+    seeded.set(m[2]!, m[3]!);
+  }
+  const tsv = readCaciTsv();
+  assert.equal(seeded.size, tsv.length, "seed row count must match the CACI NSS TSV");
+  for (const r of tsv) assert.equal(seeded.get(r.id), r.industry, `${r.display_name} (${r.id}) missing or mismatched`);
+  const precheck = sql.match(/v_ids\s+uuid\[\] := ARRAY\[([\s\S]*?)\]::uuid\[\]/);
+  assert.ok(precheck, "the pre-check id list must be present");
+  const ids = [...precheck![1]!.matchAll(/'([0-9a-f-]{36})'/g)].map((m) => m[1]!);
+  assert.deepEqual(ids, tsv.map((r) => r.id));
+  assert.match(sql, /'defense_prime_it_rd', 'fix1255-defense-primes-2026-10-01'/);
+  assert.match(sql, /o\.source <> 'fix1255-defense-primes-2026-10-01'/, "the not-curated-elsewhere pre-check");
+  assert.match(sql, /ON CONFLICT \(fec_committee_id\) DO UPDATE/);
+  assert.doesNotMatch(sql, /DELETE\s+FROM\s+public\.entity_tags/i);
+});
+
+test("FIX-1255 CACI NSS: cohort 13 across both migrations, table 806", () => {
+  const cohort = readDefenseTsv().length + readCaciTsv().length;
+  assert.equal(cohort, 13);
+  const total = readTsv().length + readSweepTsv().length + 1 + cohort;
+  assert.equal(total, 806);
+  const sql = readFileSync(CACI_MIGRATION_PATH, "utf8");
+  assert.match(sql, /IF v_cohort <> 13 THEN/);
+  assert.match(sql, /IF v_total <> 806 THEN/);
+});
