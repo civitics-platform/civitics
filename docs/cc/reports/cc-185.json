@@ -1,0 +1,81 @@
+{
+  "cc": "185",
+  "prompt": "cc-prompt-185-fix1261-question-aware-mint-fix1260-senate-vote-result-fix1262-voice-vote-passages.md",
+  "started_at": "2026-10-03T22:57:14Z",
+  "finished_at": "2026-10-03T23:39:56Z",
+  "head_before": "6202dcb0",
+  "head_after": "f90699e7",
+  "commits": [
+    {
+      "sha": "0cf93477",
+      "subject": "feat(data): FIX-1261 — a vote-path mint reads the question: passed_chamber only from a passed passage roll, floor_vote otherwise, never failed; resolution passage questions join PASSAGE_QUESTIONS; novel-bill status is decided at flush over every buffered roll"
+    },
+    {
+      "sha": "f6d7a0c2",
+      "subject": "feat(data): FIX-1260 — the Senate writer reads vote_result (result as a fallback); mapVoteResult knows the LIS vocabulary by suffix; the Senate-results manifest + backfill script"
+    },
+    {
+      "sha": "13d07b99",
+      "subject": "chore(fixes): record prod verification of FIX-1260"
+    },
+    {
+      "sha": "784a876b",
+      "subject": "chore(scripts,audits): FIX-1261 — the vote-path mint-artifact manifest + the direct repair script (bypasses the rank rule by design)"
+    },
+    {
+      "sha": "dccdf51e",
+      "subject": "chore(fixes): FIX-1261 — the repair ran on prod (174 moved off failed, 28 lowered to floor_vote); the 6 rescued enacted untouched"
+    },
+    {
+      "sha": "4409fa6b",
+      "subject": "feat(data): FIX-1262 — mapBillStatus is chamber-aware: a House bill received in the Senate, a Senate bill held at the desk, passed its origin chamber; the voice-vote backfill manifest + script"
+    },
+    {
+      "sha": "a86fdaac",
+      "subject": "chore(fixes): record prod verification of FIX-1262"
+    },
+    {
+      "sha": "f90699e7",
+      "subject": "chore(fixes): sync status after FIX-1260, FIX-1261, FIX-1262"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1260",
+    "FIX-1261",
+    "FIX-1262"
+  ],
+  "fixes_filed": [
+    "FIX-1265"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "Three data writes, no DDL. Each ran from its COMMITTED manifest as the --then of session:wait-for-gate (expected 2 min, census off) under the FIX-950 claim, run from the fix-1261 worktree with the primary checkout's .env.local.prod. (W1) docs/audits/2026-10-04-fix1260-senate-results.json advances[]: ONE SELECT … FROM proposals_advance_status(35 ids, passed_chamber). Gate OK 23:26:52Z; statement at 23:26:54.503Z. Moved 35 (floor_vote→passed_chamber 23, introduced→passed_chamber 12), held 0; read-back 35/35. The votes.metadata backfill half of W1 was NOT run (stopped_items). (W2) docs/audits/2026-10-04-fix1261-mint-artifacts.json: ONE direct UPDATE … WHERE status = current_status that bypasses the rank rule by design (D3). Gate OK 23:30:41Z; statement at 23:30:44.191Z. Moved 202 (failed→passed_chamber 139, failed→floor_vote 35, passed_chamber→floor_vote 28), skipped 0; read-back 202/202. (W3) docs/audits/2026-10-04-fix1262-voice-vote-passages.json: ONE SELECT … FROM proposals_advance_status(350 ids, passed_chamber). Gate OK 23:34:22Z; statement at 23:34:27.469Z. Moved 350 (in_committee 197, introduced 153), held 0; read-back 350/350. proposals n_dead_tup went 4,051 → 4,086 → 4,288 → 4,638 (95,289 live). No VACUUM, CALL, migration or pipeline ran. Every other prod contact was a read: db-query --prod, the manifest builds and dry runs, and session:held. The only external calls were HTTPS GETs to senate.gov: 1 live read plus 1,893 rolls at ≥ 500 ms.",
+  "ci": "green",
+  "stopped_items": [
+    "W1's votes.metadata backfill. The prompt's premise was 'UPDATE roll_calls … 1,893 rows by PK — seconds; not a bulk rewrite; no VACUUM'. The tree contradicts it: there is no roll_calls table (prod to_regclass NULL, 23:00 UTC). The result lives on every member's votes row, so the backfill is 163,251 UPDATEs on a 989k-row, 1,073 MB, 14-index table. Its BEFORE UPDATE trigger stamps votes.updated_at, the watermark the EC votes arm (FIX-1139) and the fix1178a rate signature key on. 163k dead tuples sit below votes' autovacuum floor, so a VACUUM tail would be owed (FIX-943). Nothing reads the value except the writer. Stopped and filed as FIX-1265. The advances half of W1 ran, because its premise (proposals by id, through the RPC) held. The re-fetched results are the evidence of record in the manifest, which W2 reads directly."
+  ],
+  "lane": "app",
+  "project": "bill-status",
+  "owed": [
+    {
+      "fix": "FIX-1261",
+      "what": "the first nightly after 0cf93477 deployed (the 10-04 21:03 UTC congress_votes step): its data_sync_log.metadata carries minted {status: n}, and no novel federal proposal was minted failed — SELECT count(*) FROM proposals WHERE status='failed' AND created_at > '2026-10-03T23:25:47Z' = 0; status_advanced/held readable",
+      "after": "2026-10-04T21:30Z"
+    },
+    {
+      "fix": "FIX-1260",
+      "what": "the first Senate passage roll landed after f6d7a0c2 advances a bill (a congress_votes row with status_advanced > 0 whose status_moves names a senate-… roll_call_id), and every Senate roll landed after the deploy stores a non-empty metadata.vote_result (+ vote_result_text)",
+      "after": "2026-10-10T21:30Z"
+    },
+    {
+      "fix": "FIX-1262",
+      "what": "the first recent-bills sync after 4409fa6b that lists a House bill whose latest action is 'Received in the Senate…' leaves it at passed_chamber or above (no in_committee below a passed bill); scripts/fix1262-backfill-voice-vote-passages.mjs --prod --read-back still exits 0",
+      "after": "2026-10-04T21:30Z"
+    },
+    {
+      "fix": "FIX-1261",
+      "what": "the morning after the second nightly: scripts/fix1261-repair-vote-path-mints.mjs --prod --build-manifest --out <scratch> re-derives classes {i: 0, ii: 0} (it read {0, 0} at 23:36 UTC 10-03) — no federal failed and no vote-path passed_chamber without a passed passage roll",
+      "after": "2026-10-06T12:00Z"
+    }
+  ]
+}
