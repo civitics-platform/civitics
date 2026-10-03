@@ -4,9 +4,11 @@
  * naics-sector-label.ts is a TS copy of the `CASE SUBSTRING(<naics_code> FROM 1
  * FOR 2) … END` that chord_contract_flows_full(), treemap_recipients_by_
  * contracts_full() and refresh_contract_flow_rollups() carry. The migrations
- * are read as text from disk (the FIX-543 / FIX-1237 drift-test pattern): the
- * LAST migration that carries the CASE is the live definition, every copy in it
- * must agree, and the TS table must equal it. A new arm in SQL without the TS
+ * are read as text from disk (the FIX-543 / FIX-1237 drift-test pattern): each
+ * routine's live definition is the NEWEST migration that (re)defines it — not
+ * the newest file carrying a CASE, since cc-183's FIX-1194 migration redefines
+ * the procedure alone — every copy across the three must agree, and the TS
+ * table must equal it. A new arm in SQL without the TS
  * one — or the reverse — fails here instead of splitting one recipient into two
  * sectors across the chord and the Sankey.
  *
@@ -54,29 +56,63 @@ function parseNaicsCases(sqlWithComments: string): ParsedCase[] {
   return out;
 }
 
-/** The newest migration carrying the CASE, and its parsed copies. */
-function latestCase(): { file: string; cases: ParsedCase[] } {
-  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
-  for (let i = files.length - 1; i >= 0; i--) {
-    const cases = parseNaicsCases(readFileSync(join(MIGRATIONS, files[i]!), "utf8"));
-    if (cases.length > 0) return { file: files[i]!, cases };
-  }
-  throw new Error("no migration carries the NAICS CASE");
+/** The three routines that carry the CASE. */
+const CASE_ROUTINES = [
+  "chord_contract_flows_full",
+  "treemap_recipients_by_contracts_full",
+  "refresh_contract_flow_rollups",
+] as const;
+
+/** One routine's last definition in one SQL text, CREATE through its closing dollar-quote; null if absent. */
+function routineDefinition(sqlWithComments: string, name: string): string | null {
+  const sql = sqlWithComments.replace(/--[^\n]*/g, "");
+  const opener = new RegExp(`CREATE OR REPLACE (?:FUNCTION|PROCEDURE) public\\.${name}\\(`, "g");
+  let at = -1;
+  for (const m of sql.matchAll(opener)) at = m.index!;
+  if (at < 0) return null;
+  const tag = /AS (\$[a-z_]*\$)/.exec(sql.slice(at));
+  assert.ok(tag, `${name}: no dollar-quoted body`);
+  const bodyStart = at + tag.index + tag[0].length;
+  const end = sql.indexOf(tag[1]!, bodyStart);
+  assert.ok(end > bodyStart, `${name}: unterminated body`);
+  return sql.slice(at, end);
 }
 
-test("FIX-1247 the TS table equals every copy of the NAICS CASE in the latest migration", () => {
-  const { file, cases } = latestCase();
+/** Each routine's LIVE definition — the newest migration that (re)defines it — and the CASE copies in it. */
+function liveCases(): { where: string[]; cases: ParsedCase[] } {
+  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  const text = new Map<string, string>();
+  const read = (f: string) => text.get(f) ?? text.set(f, readFileSync(join(MIGRATIONS, f), "utf8")).get(f)!;
+  const where: string[] = [];
+  const cases: ParsedCase[] = [];
+  for (const name of CASE_ROUTINES) {
+    let found = false;
+    for (let i = files.length - 1; i >= 0 && !found; i--) {
+      const def = routineDefinition(read(files[i]!), name);
+      if (def === null) continue;
+      where.push(`${name}@${files[i]}`);
+      cases.push(...parseNaicsCases(def));
+      found = true;
+    }
+    assert.ok(found, `no migration defines ${name}`);
+  }
+  return { where, cases };
+}
+
+test("FIX-1247 the TS table equals every copy of the NAICS CASE in each routine's live definition", () => {
+  const { where, cases } = liveCases();
   // chord_contract_flows_full, treemap_recipients_by_contracts_full, and the
-  // procedure's two CTEs — at least those four in the file that defines them.
-  assert.ok(cases.length >= 4, `${file}: expected >= 4 CASE copies, parsed ${cases.length}`);
+  // procedure's two CTEs — at least four copies across the three live bodies.
+  assert.ok(cases.length >= 4, `${where.join(", ")}: expected >= 4 CASE copies, parsed ${cases.length}`);
   for (const [i, c] of cases.entries()) {
-    assert.deepEqual(c.arms, { ...NAICS_SECTOR_LABELS }, `${file} CASE #${i + 1}: arms differ from naics-sector-label.ts`);
-    assert.equal(c.otherwise, NAICS_SECTOR_OTHER, `${file} CASE #${i + 1}: ELSE differs`);
+    assert.deepEqual(c.arms, { ...NAICS_SECTOR_LABELS }, `CASE #${i + 1} (${where.join(", ")}): arms differ from naics-sector-label.ts`);
+    assert.equal(c.otherwise, NAICS_SECTOR_OTHER, `CASE #${i + 1} (${where.join(", ")}): ELSE differs`);
   }
 });
 
 test("FIX-1247 the parser sees a one-arm edit (the drift test can go red)", () => {
-  const { file } = latestCase();
+  const { where } = liveCases();
+  const file = where.find((w) => w.startsWith("refresh_contract_flow_rollups@"))!.split("@")[1]!;
   const sql = readFileSync(join(MIGRATIONS, file), "utf8");
   // Every occurrence: the first may sit in the migration's header comment (the
   // FIX-1254 file writes the CASE once there), which the parser strips.

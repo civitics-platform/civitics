@@ -27,18 +27,25 @@ import { Client } from "pg";
 
 const MIGRATIONS = path.join(__dirname, "..", "..", "..", "..", "supabase", "migrations");
 const MIGRATION = path.join(MIGRATIONS, "20260920130000_fix1194_box_health_probe.sql");
+/** The LATEST migration that (re)defines `fn` — a pinned file keeps passing on a replaced body. */
+const latest = (fn: string): string =>
+  path.join(
+    MIGRATIONS,
+    fs
+      .readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .filter((f) => fs.readFileSync(path.join(MIGRATIONS, f), "utf8").includes(`CREATE OR REPLACE FUNCTION public.${fn}(`))
+      .pop()!,
+  );
 // cc-153: the LATEST migration that (re)defines prod_op_gate, derived as
 // prod-op-gate.test.ts derives it. Pinned to 20260920120000, the rule-93 and
 // c_wd_max_wall_s anchors kept passing on a body two later migrations replaced.
-const GATE = path.join(
-  MIGRATIONS,
-  fs
-    .readdirSync(MIGRATIONS)
-    .filter((f) => f.endsWith(".sql"))
-    .sort()
-    .filter((f) => fs.readFileSync(path.join(MIGRATIONS, f), "utf8").includes("CREATE OR REPLACE FUNCTION public.prod_op_gate("))
-    .pop()!,
-);
+const GATE = latest("prod_op_gate");
+// cc-183: box_is_saturated() was redefined (4 args) by FIX-1194 P1-A.
+const SAT = latest("box_is_saturated");
+// cc-153's migration carries the service_role revoke on record_box_health.
+const REVOKE_SRC = path.join(MIGRATIONS, "20260920150000_fix1220_1194_streak_minutes_gate_d_one_scan_revoke.sql");
 const LOCAL_DSN =
   process.env["SUPABASE_DB_URL"] ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
@@ -63,20 +70,31 @@ function body(src: string, fn: string): string {
 // ---------------------------------------------------------------------------
 
 const SRC = fs.readFileSync(MIGRATION, "utf8");
+const SAT_SRC = fs.readFileSync(SAT, "utf8");
 
 test("FIX-1194: every function's only SET clause is search_path; DEFINER only on the mem stamp", () => {
-  for (const [fn, security] of [
-    ["record_box_health", "SECURITY INVOKER"],
-    ["box_is_saturated", "SECURITY INVOKER"],
-    ["record_box_health_mem", "SECURITY DEFINER"],
+  for (const [fn, security, src] of [
+    ["record_box_health", "SECURITY INVOKER", SRC],
+    ["box_is_saturated", "SECURITY INVOKER", SRC],
+    ["box_is_saturated", "SECURITY INVOKER", SAT_SRC],
+    ["record_box_health_mem", "SECURITY DEFINER", SRC],
   ] as const) {
-    const h = header(SRC, fn);
+    const h = header(src, fn);
     assert.match(h, new RegExp(`\\b${security}\\b`), `${fn} is ${security}`);
     assert.match(h, /\bVOLATILE\b/, `${fn} is VOLATILE`);
     assert.equal((h.match(/\bSET\s+\w+/g) ?? []).length, 1, `${fn}: exactly one SET clause`);
     assert.match(h, /SET search_path TO /, `${fn}: the one SET is search_path`);
-    assert.doesNotMatch(body(SRC, fn), /\bCOMMIT\b|statement_timeout/i, `${fn}: no txn control, no timeout`);
+    assert.doesNotMatch(body(src, fn), /\bCOMMIT\b|statement_timeout/i, `${fn}: no txn control, no timeout`);
   }
+});
+
+test("FIX-1194 P1-A: box_is_saturated() takes p_include_watchdog_wall DEFAULT true, and the 3-arg overload is dropped", () => {
+  assert.notEqual(SAT, MIGRATION, "the live definition is the P1-A migration's");
+  assert.match(header(SAT_SRC, "box_is_saturated"), /p_include_watchdog_wall\s+boolean\s+DEFAULT true/);
+  // Two overloads would make a bare box_is_saturated() ambiguous.
+  assert.match(SAT_SRC, /DROP FUNCTION IF EXISTS public\.box_is_saturated\(int, int, timestamptz\);/);
+  // The wall rule is the ONE rule the switch guards.
+  assert.match(body(SAT_SRC, "box_is_saturated"), /ELSIF v_walls AND v_wall > c_watchdog_wall_s THEN/);
 });
 
 test("FIX-1194: the startup-timeout predicate is prod_op_gate()'s, byte for byte (rule 93)", () => {
@@ -90,7 +108,7 @@ test("FIX-1194: the startup-timeout predicate is prod_op_gate()'s, byte for byte
 test("FIX-1194: box_is_saturated()'s watchdog wall is prod_op_gate()'s c_wd_max_wall_s", () => {
   const gate = fs.readFileSync(GATE, "utf8");
   const g = /c_wd_max_wall_s\s+CONSTANT numeric\s+:=\s+([\d.]+);/.exec(gate);
-  const b = /c_watchdog_wall_s CONSTANT numeric := ([\d.]+);/.exec(body(SRC, "box_is_saturated"));
+  const b = /c_watchdog_wall_s CONSTANT numeric := ([\d.]+);/.exec(body(SAT_SRC, "box_is_saturated"));
   assert.ok(g && b, "both constants found");
   assert.equal(Number(b![1]), Number(g![1]));
 });
@@ -114,10 +132,30 @@ test("FIX-1194: the job is * * * * *, single-statement, with a 60 s budget row (
 test("FIX-1194: grants — the probe runs as postgres only; the reader and the stamp go to service_role", () => {
   assert.match(SRC, /REVOKE ALL ON FUNCTION public\.record_box_health\(timestamptz\) FROM PUBLIC, anon, authenticated;/);
   assert.doesNotMatch(SRC, /GRANT EXECUTE ON FUNCTION public\.record_box_health\(/);
-  for (const sig of ["box_is_saturated(int, int, timestamptz)", "record_box_health_mem(jsonb)"]) {
+  for (const [sig, src] of [
+    ["box_is_saturated(int, int, timestamptz)", SRC],
+    ["box_is_saturated(int, int, timestamptz, boolean)", SAT_SRC],
+    ["record_box_health_mem(jsonb)", SRC],
+  ] as const) {
     const s = sig.replace(/[()]/g, "\\$&");
-    assert.match(SRC, new RegExp(`REVOKE ALL ON FUNCTION public\\.${s} FROM PUBLIC, anon, authenticated;`));
-    assert.match(SRC, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${s} TO service_role;`));
+    assert.match(src, new RegExp(`REVOKE ALL ON FUNCTION public\\.${s} FROM PUBLIC, anon, authenticated;`));
+    assert.match(src, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${s} TO service_role;`));
+  }
+});
+
+test("FIX-1194: record_box_health() — Supabase's default service_role grant is revoked (cc-153), and nothing re-grants it", () => {
+  // Supabase default-grants EXECUTE on every new public function to service_role,
+  // which a PUBLIC/anon/authenticated revoke never reaches — so it is named.
+  assert.match(
+    fs.readFileSync(REVOKE_SRC, "utf8"),
+    /REVOKE EXECUTE ON FUNCTION public\.record_box_health\(timestamptz\) FROM service_role;/,
+  );
+  for (const f of fs.readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql"))) {
+    assert.doesNotMatch(
+      fs.readFileSync(path.join(MIGRATIONS, f), "utf8"),
+      /GRANT EXECUTE ON FUNCTION public\.record_box_health\(/,
+      `${f} re-grants record_box_health`,
+    );
   }
 });
 
@@ -214,6 +252,58 @@ test("FIX-1194: box_is_saturated() — stale / absent / fork_failures / watchdog
         assert.equal(s.saturated, want !== "clear", name);
       });
     }
+  } finally {
+    await c.end();
+  }
+});
+
+test("FIX-1194 P1-A: p_include_watchdog_wall := false ignores the wall — and ONLY the wall", async (t) => {
+  const c = await connect(t);
+  if (!c) return;
+  const sat = async (walls: boolean | null): Promise<Sat & { readings: { thresholds: Record<string, unknown> } }> =>
+    (await c.query("SELECT public.box_is_saturated(180, 3, $1::timestamptz, $2::boolean) AS s", [NOON, walls])).rows[0]!.s;
+  try {
+    // A 5.0 s wall, fresh stamp, no timeouts: the DEFAULT call reads watchdog_wall
+    // (the wrong-but-green shape for a gate), the gates' call reads clear.
+    await inTx(c, async () => {
+      await stamp(c, { ...healthy("2030-03-12 11:59:30+00"), watchdog_max_wall_10m: { budget: 5.0, unit: 0.004 } });
+      assert.equal((await saturated(c)).reason, "watchdog_wall", "the 3-arg call keeps the wall rule");
+      assert.equal((await sat(true)).reason, "watchdog_wall");
+      assert.equal((await sat(null)).reason, "watchdog_wall", "NULL is the default, not 'off'");
+      const off = await sat(false);
+      assert.equal(off.reason, "clear", JSON.stringify(off));
+      assert.equal(off.saturated, false);
+      assert.equal(off.readings.thresholds["watchdog_wall_considered"], false);
+      assert.equal((await sat(true)).readings.thresholds["watchdog_wall_considered"], true);
+    });
+    // The switch never hides the two rules the gates exist for.
+    await inTx(c, async () => {
+      await stamp(c, { ...healthy("2030-03-12 11:50:00+00"), watchdog_max_wall_10m: { budget: 5.0, unit: 0.004 } });
+      assert.equal((await sat(false)).reason, "stale");
+    });
+    await inTx(c, async () => {
+      await stamp(c, { ...healthy("2030-03-12 11:59:30+00"), startup_timeouts_10m: 3 });
+      assert.equal((await sat(false)).reason, "fork_failures");
+    });
+  } finally {
+    await c.end();
+  }
+});
+
+test("FIX-1194: the clone's ACL — service_role cannot execute record_box_health(), and can read box_is_saturated()", async (t) => {
+  const c = await connect(t);
+  if (!c) return;
+  try {
+    const r = await c.query<{ probe: boolean; reader: boolean; gate: boolean | null }>(
+      `SELECT has_function_privilege('service_role', 'public.record_box_health(timestamptz)', 'EXECUTE') AS probe,
+              (SELECT bool_and(has_function_privilege('service_role', p.oid, 'EXECUTE')) FROM pg_proc p
+                WHERE p.proname = 'box_is_saturated' AND p.pronamespace = 'public'::regnamespace) AS reader,
+              (SELECT has_function_privilege('service_role', p.oid, 'EXECUTE') FROM pg_proc p
+                WHERE p.proname = 'box_backoff_gate' AND p.pronamespace = 'public'::regnamespace) AS gate`,
+    );
+    assert.equal(r.rows[0]!.probe, false, "record_box_health is postgres-only");
+    assert.equal(r.rows[0]!.reader, true);
+    assert.notEqual(r.rows[0]!.gate, false, "box_backoff_gate (when migrated) is service_role-callable");
   } finally {
     await c.end();
   }

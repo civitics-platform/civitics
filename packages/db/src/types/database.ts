@@ -6508,9 +6508,14 @@ export type Database = {
         Args: { p_geojson: string; p_id: string }
         Returns: boolean
       }
+      box_backoff_gate: {
+        Args: { p_job: string; p_wait_max_s: number }
+        Returns: Json
+      }
       box_is_saturated: {
         Args: {
           p_fork_failures_10m?: number
+          p_include_watchdog_wall?: boolean
           p_now?: string
           p_stale_seconds?: number
         }
