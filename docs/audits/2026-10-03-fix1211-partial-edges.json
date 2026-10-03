@@ -1,0 +1,60 @@
+{
+  "fix": "FIX-1211",
+  "cc": 182,
+  "database": "prod",
+  "census": {
+    "read_at": "2026-10-03T04:07:55Z",
+    "wall_seconds": 240.9,
+    "instrument": "node scripts/db-query.mjs --prod (READ ONLY, max_parallel_workers_per_gather = 0)",
+    "predicate": "entity_connections with connection_type IN ('donation','opposition') AND evidence_source = 'financial_relationships' whose evidence_ids contain an id with no financial_relationships row (unnest + NOT EXISTS on the FR primary key)",
+    "money_edges_scanned": 9179144,
+    "evidence_ids_scanned": 10551031,
+    "edges_with_a_missing_id": 1,
+    "edges_with_evidence_count_over_100": 0,
+    "blind_spot": "evidence_ids is capped at 100; with zero edges over 100 the census is exhaustive today"
+  },
+  "donors": [
+    {
+      "from_id": "6d1b3de4-01cd-40d7-839e-c5f474d8c19a",
+      "display_name": "TURN LEFT PAC",
+      "entity_type": "pac",
+      "money_edges_before": 9,
+      "partial_edges": [
+        {
+          "id": "db99c5ef-62f0-409c-a1cd-04b3684baeb9",
+          "to_type": "official",
+          "to_id": "d798e047-7b5e-455d-bc61-3efeced94fee",
+          "connection_type": "donation",
+          "before": {
+            "amount_cents": 215399,
+            "evidence_count": 2,
+            "strength": "0.417",
+            "occurred_at": "2026-04-30",
+            "ended_at": "2026-04-30",
+            "derived_at": "2026-08-17T08:00:00.125189Z",
+            "evidence_ids": [
+              "95457219-7f3c-4cd6-97b4-9bf7ebe0edde",
+              "6f27d204-488f-42cd-a38a-c7cdc55f3131"
+            ]
+          },
+          "missing_evidence_ids": ["95457219-7f3c-4cd6-97b4-9bf7ebe0edde"],
+          "missing_evidence_note": "fec_bulk_pac donation, 65400 cents, deleted by the FIX-1106 pac apply (docs/audits/2026-09-22-fix1106-residue-2026-fec_bulk_pac.tsv:212)",
+          "surviving_evidence": [
+            {
+              "id": "6f27d204-488f-42cd-a38a-c7cdc55f3131",
+              "relationship_type": "ie_support",
+              "amount_cents": 149999,
+              "source": "fec_bulk_ie"
+            }
+          ],
+          "expected_after": {
+            "amount_cents": 149999,
+            "evidence_count": 1,
+            "strength": "0.397",
+            "evidence_ids": ["6f27d204-488f-42cd-a38a-c7cdc55f3131"]
+          }
+        }
+      ]
+    }
+  ]
+}
