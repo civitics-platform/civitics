@@ -1559,3 +1559,5 @@
 2026-10-03 | FIX-1261 | 0cf93477 | local-only | feat(data): FIX-1261 — a vote-path mint reads the question: passed_chamber only from a passed passage roll, floor_vote otherwise, never failed; resolution passage questions join PASSAGE_QUESTIONS; novel-bill status is decided at flush over every buffered roll
 2026-10-03 | FIX-1262 | 4409fa6b | local-only | feat(data): FIX-1262 — mapBillStatus is chamber-aware: a House bill received in the Senate, a Senate bill held at the desk, passed its origin chamber; the voice-vote backfill manifest + script
 2026-10-03 | FIX-1264 | c0eb4d2b | local-only | fix(scripts): FIX-1264 — the board settles an owed entry only on a prod-verified done.log row that is not the report's own commit
+2026-10-03 | FIX-1263 | 3d656905 | local-only | fix(data): FIX-1263 — the EC lock-holding cases run under CIVITICS_DB_HEAVY_TESTS; the heavy run serialises DB-backed test files (--test-concurrency=1)
+2026-10-03 | FIX-1268 | f94acfbd | local-only | fix(data): FIX-1268 — USASpending bulk falls back to the prior fiscal year while the new FY's Full archive does not exist yet
