@@ -11,9 +11,16 @@
  *     scoped repair write a different edge than the crawl would.
  *
  * (i) Behavioural, against the local prod-clone, inside one transaction that is
- *     ROLLED BACK — the function does not COMMIT, so nothing persists. Skips
- *     when the local DB is unreachable. Synthetic donors (random uuids; FR has
- *     no FK), so no real edge is touched.
+ *     ROLLED BACK — the function does not COMMIT, so nothing persists. Synthetic
+ *     donors (random uuids; FR has no FK), so no real edge is touched. DOUBLY
+ *     gated like the other heavy files: skips when the local DB is unreachable,
+ *     and requires CIVITICS_DB_HEAVY_TESTS=1 (FIX-1263). Every (i) case holds
+ *     the entity_connections_rebuild advisory key — the holder case at session
+ *     level, the rolled-back cases as the function's transaction-level lock
+ *     until ROLLBACK (the drain case for ~25 s) — and prod_session_state()
+ *     counts any backend's writer key, so a concurrent file's claim test
+ *     (src/lib/prod-session.test.ts) is refused. The heavy run serialises
+ *     files (run-tests.mjs, --test-concurrency=1), so they never overlap there.
  *
  * The wrong-but-green line (rule 105): after the donation row is deleted the
  *     edge still reads 215399 / 2 — the pre-FIX-1211 state, which no writer
@@ -36,6 +43,7 @@ const INCR_SRC = fs.readFileSync(
 
 const LOCAL_DSN =
   process.env["SUPABASE_DB_URL"] ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const HEAVY = process.env["CIVITICS_DB_HEAVY_TESTS"] === "1";
 
 function body(src: string, sig: string): string {
   const i = src.indexOf(sig);
@@ -116,6 +124,10 @@ test("(v) the lock is the crawl's key, transaction-scoped, 55P03 when held", () 
 // ---------------------------------------------------------------------------
 
 async function connect(t: { skip: (m: string) => void }): Promise<Client | null> {
+  if (!HEAVY) {
+    t.skip("set CIVITICS_DB_HEAVY_TESTS=1 to run against the local clone");
+    return null;
+  }
   const c = new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 3000 });
   try {
     await c.connect();

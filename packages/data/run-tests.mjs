@@ -25,7 +25,18 @@ if (files.length === 0) {
 console.log(`Running ${files.length} test file(s):`);
 for (const f of files) console.log(`  ${f}`);
 
-const res = spawnSync("tsx", ["--test", ...files], {
+// FIX-1263: the opt-in DB-heavy run (CIVITICS_DB_HEAVY_TESTS=1) serialises test
+// FILES. node --test runs each file in its own child process, concurrently by
+// default, and several heavy files hold advisory keys that prod_session_state()
+// reads cluster-wide (entity_connections_rebuild, prod_supervised_session, the
+// rollup refresh keys) — so one file's lock made another file's prod-session
+// claim refuse. The default run stays concurrent: the EC test's key-holding
+// cases moved behind the heavy gate. One small holder remains in it —
+// pipeline-lock.test.ts's fec_bulk_pipeline cases, ~0.65 s (FIX-1267).
+const heavy = process.env.CIVITICS_DB_HEAVY_TESTS === "1";
+if (heavy) console.log("CIVITICS_DB_HEAVY_TESTS=1 — running files serially (--test-concurrency=1)");
+
+const res = spawnSync("tsx", ["--test", ...(heavy ? ["--test-concurrency=1"] : []), ...files], {
   stdio: "inherit",
   // tsx resolves from node_modules/.bin (pnpm puts it on PATH); shell:true is
   // required on Windows to find the .cmd shim, harmless on POSIX.
