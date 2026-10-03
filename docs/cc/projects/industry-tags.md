@@ -15,7 +15,7 @@ steps:
   - {id: s7, kind: cc, ref: "cc-176", title: "1252 dominant code + 1245 provenance-first + 1254 label pairs", done: 2026-09-30}
   - {id: s8, kind: cc, ref: "cc-180", title: "1255 map + defense cohort; upsert provenance guard"}
   - {id: s9, kind: receipt, ref: "FIX-1255", title: "jobid 28 Thu 10-08 — the twelve under Defense, Humana under Health Care", after: 2026-10-08T14:45Z}
-  - {id: s10, kind: cc, ref: "cc-182", title: "1240 labels follow tag changes; 1211 scoped donation-edge rebuild"}
+  - {id: s10, kind: cc, ref: "cc-182", title: "1240 labels follow tag changes; 1211 scoped donation-edge rebuild", done: 2026-10-03}
 ---
 
 # Industry tag remediation
