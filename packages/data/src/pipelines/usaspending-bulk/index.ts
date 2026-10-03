@@ -186,8 +186,9 @@ async function discoverFiles(
   prefix:   string,
   type:     "Full" | "Delta",
   reStr:    string,
+  fetch:    (url: string) => Promise<string> = fetchText,
 ): Promise<ArchiveFile[]> {
-  const xml  = await fetchText(`${ARCHIVE_INDEX_URL}?prefix=${encodeURIComponent(prefix)}`);
+  const xml  = await fetch(`${ARCHIVE_INDEX_URL}?prefix=${encodeURIComponent(prefix)}`);
   const re   = new RegExp(reStr);
   const files: ArchiveFile[] = [];
 
@@ -206,12 +207,52 @@ async function discoverFiles(
   return files;
 }
 
-async function discoverFullFiles(cfg: CategoryConfig, fy: number): Promise<ArchiveFile[]> {
+async function discoverFullFiles(
+  cfg:   CategoryConfig,
+  fy:    number,
+  fetch: (url: string) => Promise<string> = fetchText,
+): Promise<ArchiveFile[]> {
   return discoverFiles(
     `FY${fy}_All_${cfg.filePrefix}_Full`,
     "Full",
     `FY${fy}_All_${cfg.filePrefix}_Full_(\\d{8})(?:_(\\d+))?\\.zip$`,
+    fetch,
   );
+}
+
+/** The fiscal-year facts a run stamps into data_sync_log.metadata (FIX-1268). */
+export interface FullFilesResolution {
+  files: ArchiveFile[];
+  fiscal_year_requested: number;
+  /** null when neither year has a Full archive. */
+  fiscal_year_used: number | null;
+  fiscal_year_fallback: boolean;
+}
+
+/**
+ * FIX-1268 — the Full listing for `fy`, falling back to `fy − 1` ONCE.
+ *
+ * currentFy() rolls to the new fiscal year on Oct 1, but USASpending publishes
+ * that year's FY<n>_All_*_Full archive on its own schedule, weeks later. Until
+ * it does, the prior year's Full set is the newest one there is (10-01 failed
+ * every category on "No Full … archive found for FY2027"). Only when neither
+ * year has a Full archive is the run a failure.
+ */
+export async function resolveFullFiles(
+  category: BulkCategory,
+  fy:       number,
+  fetch:    (url: string) => Promise<string> = fetchText,
+): Promise<FullFilesResolution> {
+  const cfg = CATEGORY_CONFIGS[category];
+  const requested = await discoverFullFiles(cfg, fy, fetch);
+  if (requested.length > 0) {
+    return { files: requested, fiscal_year_requested: fy, fiscal_year_used: fy, fiscal_year_fallback: false };
+  }
+  const prior = await discoverFullFiles(cfg, fy - 1, fetch);
+  if (prior.length > 0) {
+    return { files: prior, fiscal_year_requested: fy, fiscal_year_used: fy - 1, fiscal_year_fallback: true };
+  }
+  return { files: [], fiscal_year_requested: fy, fiscal_year_used: null, fiscal_year_fallback: false };
 }
 
 async function discoverDeltaFiles(cfg: CategoryConfig): Promise<ArchiveFile[]> {
@@ -554,12 +595,22 @@ export async function runUsaSpendingBulkPipeline(
     // Fetch Full listing unconditionally (needed whether we run Full or to
     // determine the latest Full date for delta-mode display). Delta listing
     // is deferred — only fetched when we actually need it.
-    const fullFiles = await discoverFullFiles(cfg, fy);
-    console.info(`  FY${fy} Full ${cfg.filePrefix} files: ${fullFiles.length}`);
+    // FIX-1268: fall back to FY−1 once while the new FY's Full is unpublished.
+    const resolved  = await resolveFullFiles(cfg.category, fy);
+    const fullFiles = resolved.files;
+    const fyMeta    = {
+      fiscal_year_requested: resolved.fiscal_year_requested,
+      fiscal_year_used:      resolved.fiscal_year_used,
+      fiscal_year_fallback:  resolved.fiscal_year_fallback,
+    };
+    if (resolved.fiscal_year_fallback) {
+      console.info(`  FY${fy} Full ${cfg.filePrefix} files: 0 — not published yet; falling back to FY${fy - 1}`);
+    }
+    console.info(`  FY${resolved.fiscal_year_used ?? fy} Full ${cfg.filePrefix} files: ${fullFiles.length}`);
 
     if (fullFiles.length === 0) {
-      console.warn(`  No Full archive found for FY${fy} ${cfg.filePrefix}`);
-      await failSync(logId, `No Full ${cfg.filePrefix} archive found for FY${fy}`);
+      console.warn(`  No Full archive found for FY${fy} or FY${fy - 1} ${cfg.filePrefix}`);
+      await failSync(logId, `No Full ${cfg.filePrefix} archive found for FY${fy} or FY${fy - 1}`);
       return { inserted: 0, updated: 0, failed: 1, estimatedMb: 0 };
     }
 
@@ -600,7 +651,7 @@ export async function runUsaSpendingBulkPipeline(
       runMode = "delta";
       if (filesToProcess.length === 0) {
         console.info(`  No new Delta files since ${baseline.lastArchiveDate} — nothing to do`);
-        await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 });
+        await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0, metadata: fyMeta });
         return { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
       }
       console.info(
@@ -694,13 +745,14 @@ export async function runUsaSpendingBulkPipeline(
       updated:     0,
       failed:      totalFailed,
       estimatedMb: 0,  // agent of change — let dashboard derive from DB size
+      metadata:    fyMeta,
     };
 
     console.info("\n  ──────────────────────────────────────────────────");
     console.info(`  USASpending bulk pipeline report (${cfg.category})`);
     console.info("  ──────────────────────────────────────────────────");
     console.info(`  ${"Run mode:".padEnd(30)} ${runMode}`);
-    console.info(`  ${"FY:".padEnd(30)} ${fy}`);
+    console.info(`  ${"FY:".padEnd(30)} ${resolved.fiscal_year_used}${resolved.fiscal_year_fallback ? ` (fallback; FY${fy} not published)` : ""}`);
     console.info(`  ${"Files processed:".padEnd(30)} ${filesToProcess.length}`);
     console.info(`  ${"Relationships upserted:".padEnd(30)} ${totalUpserted}`);
     console.info(`  ${"Failed:".padEnd(30)} ${totalFailed}`);
