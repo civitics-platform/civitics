@@ -638,6 +638,14 @@ jobs:
       # this run's createdAt and conclusion. Without it the script records that
       # section as UNCHECKED rather than guessing.
       GH_TOKEN: ${{ github.token }}
+      # FIX-1194 / FIX-1125 (cc-183) — the off-box memory ring, the only place
+      # the box's swap series exists, and it holds 24 h. With these the receipt
+      # banks the day's summary as `forker.memory_day` (one Upstash LRANGE, no
+      # Postgres); a memory threshold is sized from seven of them. Until the two
+      # repository Actions secrets exist they arrive EMPTY, the script reads
+      # them as absent, and the file says so — the job does not fail.
+      UPSTASH_REDIS_REST_URL:   ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
 
     steps:
       - name: Checkout

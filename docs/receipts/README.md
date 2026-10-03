@@ -68,6 +68,18 @@ never a claim without its instrument.
 | 10 | FEC id divergence (FIX-1189 O2) | the latest `congress_legislator_ids_report` row: counts per class (reconciled to the population), the `double_claim` split, the top 20 `bindable` / `prior_office_live` (O1's targets), one line each for `unlisted_live_id` / `double_claim` / `cross_bioguide_claim`; **missing** when no row in 48 h |
 | 11 | Not capturable here | the named reads with **no SQL surface**, listed so their absence is never read as a clean check |
 
+**Section 9's memory series is banked here and nowhere else** (FIX-1194 /
+FIX-1125, cc-183). The box's swap series lives only in the off-box Upstash ring
+(`civitics:box_health:mem`, 720 samples = 24 h, no TTL), so each day's summary
+is written into the day's JSON as `forker.memory_day`: samples, swap-in and
+swap-out pages/s (p50 / p95 / max), MemAvailable min and median, swap in use at
+its peak, and the count of gaps too long to rate. A memory threshold is sized
+from seven of these. It needs two repository Actions secrets,
+**`UPSTASH_REDIS_REST_URL`** and **`UPSTASH_REDIS_REST_TOKEN`** (the values in
+`.env.local`). `nightly.yml`'s `receipts` job already passes them through. Until
+they exist, `memory_day` is `null` and §9 says why. Adding them is Craig's
+action. The banked series starts the night after they exist.
+
 Section 11 is not filler. `57014` cancellation counts live in `postgres_logs`,
 which the Supabase Logs API serves and SQL cannot reach; GHA step logs age out.
 Saying so is the difference between "checked and clean" and "not checked".

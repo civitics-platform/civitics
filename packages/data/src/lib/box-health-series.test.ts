@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { BoxHealthSample } from "@civitics/db";
-import { MAX_RATE_GAP_S, formatSeries, seriesRows, seriesStats } from "./box-health-series";
+import { MAX_RATE_GAP_S, formatSeries, memoryDay, seriesRows, seriesStats } from "./box-health-series";
 
 const MB = 1024 * 1024;
 const REAL: BoxHealthSample = {
@@ -79,4 +79,40 @@ test("FIX-1125: the printout — a summary line, then a table", () => {
   assert.match(lines[1]!, /^at \(UTC\)\s+avail_mb\s+avail%\s+swap_mb\s+load1\s+swpin\/s\s+swpout\/s\s+scrape_ms$/);
   assert.match(lines[2]!, /^2026-09-24 01:34:00Z\s+399\s+44\.1\s+545\s+0\.14\s+—\s+—\s+493$/);
   assert.equal(formatSeries([], seriesStats([]), 6), "[box-health] no samples in the last 6 h");
+});
+
+test("FIX-1194 / FIX-1125 (cc-183): memoryDay — swap rates p50/p95/max, MemAvailable min/median, swap peak, gaps", () => {
+  // Twenty-one samples 2 min apart, then an 8-minute hole, then one more.
+  // Swap-in: +240 pages per 120 s for 19 intervals (2/s), one +24,000 burst
+  // (200/s); the post-hole interval has no rate. Swap-out: +120 per interval.
+  const newestFirst: BoxHealthSample[] = [];
+  let pin = REAL.pswpin!;
+  let pout = REAL.pswpout!;
+  for (let i = 0; i <= 20; i++) {
+    if (i > 0) { pin += i === 10 ? 24_000 : 240; pout += 120; }
+    newestFirst.unshift(s(2 * i, {
+      pswpin: pin, pswpout: pout,
+      mem_available_bytes: (i === 10 ? 176 : 400 + i) * MB,
+      swap_free_bytes: REAL.swap_free_bytes! - (i === 10 ? 469 : 0) * MB,
+    }));
+  }
+  newestFirst.unshift(s(48, { pswpin: pin + 240, pswpout: pout + 120, mem_available_bytes: 450 * MB }));
+  const rows = seriesRows(newestFirst, { hours: 2, now: new Date(at(49)) });
+  const day = memoryDay(rows, seriesStats(rows, newestFirst));
+  assert.equal(day.samples, 22);
+  assert.equal(day.first_at, at(0));
+  assert.equal(day.last_at, at(48));
+  assert.equal(day.gaps, 1, "the 8-minute hole");
+  // 20 rated intervals: nineteen at 2/s and one at 200/s; the post-hole one is null.
+  assert.deepEqual(day.swapin_per_s, { p50: 2, p95: 2, max: 200 });
+  assert.deepEqual(day.swapout_per_s, { p50: 1, p95: 1, max: 1 });
+  assert.deepEqual(day.mem_available_mb, { min: 176, p50: 410 }, "min is the burst sample; the median is seriesStats'");
+  assert.deepEqual(day.swap_used_mb, { max: 545 + 469 });
+
+  const empty = memoryDay([], seriesStats([]));
+  assert.deepEqual(empty, {
+    samples: 0, first_at: null, last_at: null,
+    swapin_per_s: { p50: null, p95: null, max: null }, swapout_per_s: { p50: null, p95: null, max: null },
+    mem_available_mb: { min: null, p50: null }, swap_used_mb: { max: null }, gaps: 0,
+  });
 });

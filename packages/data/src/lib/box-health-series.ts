@@ -96,6 +96,56 @@ export function seriesStats(rows: SeriesRow[], newestFirst: BoxHealthSample[] = 
   };
 }
 
+/** p50 / p95 / max of a rate column, nearest-rank, over its non-null values. */
+export type RateSummary = { p50: number | null; p95: number | null; max: number | null };
+
+/**
+ * FIX-1194 / FIX-1125 (cc-183) — the day's series, summarised for banking in
+ * `docs/receipts/<day>.json` as `forker.memory_day`. A memory threshold is sized
+ * from seven of these, so every number is one a threshold could be written on:
+ * swap-in / swap-out rates (pages/s), MemAvailable's min and median, swap in use
+ * at its worst, and how many consecutive-sample intervals were too long to rate
+ * (> MAX_RATE_GAP_S). The median is seriesStats' — one median per file.
+ */
+export type MemoryDay = {
+  samples: number;
+  first_at: string | null;
+  last_at: string | null;
+  swapin_per_s: RateSummary;
+  swapout_per_s: RateSummary;
+  mem_available_mb: { min: number | null; p50: number | null };
+  swap_used_mb: { max: number | null };
+  gaps: number;
+};
+
+function nearestRank(sorted: number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))]!;
+}
+
+function summarise(values: Array<number | null>): RateSummary {
+  const v = values.filter((x): x is number => x !== null).sort((a, b) => a - b);
+  return { p50: nearestRank(v, 50), p95: nearestRank(v, 95), max: v.length === 0 ? null : v[v.length - 1]! };
+}
+
+export function memoryDay(rows: SeriesRow[], stats: SeriesStats): MemoryDay {
+  let gaps = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if ((Date.parse(rows[i]!.at) - Date.parse(rows[i - 1]!.at)) / 1000 > MAX_RATE_GAP_S) gaps++;
+  }
+  const swapUsed = rows.map((r) => r.swap_used_mb).filter((x): x is number => x !== null);
+  return {
+    samples: rows.length,
+    first_at: stats.first_at,
+    last_at: stats.last_at,
+    swapin_per_s: summarise(rows.map((r) => r.swapin_per_s)),
+    swapout_per_s: summarise(rows.map((r) => r.swapout_per_s)),
+    mem_available_mb: { min: stats.min_mb, p50: stats.median_mb },
+    swap_used_mb: { max: swapUsed.length === 0 ? null : Math.max(...swapUsed) },
+    gaps,
+  };
+}
+
 const dash = (v: number | null) => (v === null ? "—" : String(v));
 
 /** A fixed-width table, oldest first, with a one-line summary on top. */

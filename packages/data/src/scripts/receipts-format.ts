@@ -23,6 +23,7 @@
 
 import { BINDING_ACTIONS } from "../pipelines/congress/legislator-ids";
 import { nextCronOccurrence, restrictsDayOfMonthOrMonth } from "../lib/cron-next";
+import type { MemoryDay } from "../lib/box-health-series";
 
 /**
  * Verdict vocabulary.
@@ -661,6 +662,12 @@ export interface ForkerSection {
   box_health_mem?: Record<string, unknown> | null;
   /** FIX-1125 — the day's memory series from the OFF-box ring, or why this runner cannot read it. */
   mem_day?: MemDay;
+  /**
+   * FIX-1194 / FIX-1125 (cc-183) — the same day, summarised for banking: swap
+   * rates, MemAvailable min / median, swap peak, gaps. null when this runner
+   * cannot read the ring. A memory threshold is sized from seven of these.
+   */
+  memory_day?: MemoryDay | null;
 }
 
 /** FIX-1125 — the off-box ring's day, as the receipt carries it. */
@@ -805,6 +812,18 @@ export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
         n0(day.last_at) + "; MemAvailable min **" + n0(day.min_mb) + " MB** (at " + n0(day.min_at) +
         ") / median " + n0(day.median_mb) + " MB / max " + n0(day.max_mb) + " MB" +
         (day.mem_total_mb !== null ? " of " + day.mem_total_mb + " MB" : "") + ".",
+    );
+  }
+  const md = f.memory_day ?? null;
+  if (md !== null && md.samples > 0) {
+    const r = (s: { p50: number | null; p95: number | null; max: number | null }) =>
+      n0(s.p50) + " / " + n0(s.p95) + " / " + n0(s.max);
+    out.push("");
+    out.push(
+      "Memory series (24 h, banked as `forker.memory_day`): swap-in p50/p95/max **" + r(md.swapin_per_s) +
+        "** pages/s, swap-out " + r(md.swapout_per_s) + " pages/s; MemAvailable min **" +
+        n0(md.mem_available_mb.min) + " MB** / p50 " + n0(md.mem_available_mb.p50) + " MB; swap in use max " +
+        n0(md.swap_used_mb.max) + " MB; gaps " + md.gaps + " (intervals over 6 min, not rated).",
     );
   }
   return out;

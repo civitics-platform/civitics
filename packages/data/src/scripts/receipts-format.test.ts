@@ -889,6 +889,57 @@ test("FIX-1194: §9 Box health — stale and absent stamps say so; the ring's da
   assert.match(stale, /720 samples 2026-09-11T06:30:00Z → 2026-09-12T06:28:00Z; MemAvailable min \*\*212 MB\*\* \(at 2026-09-11T15:58:00Z\) \/ median 401 MB \/ max 455 MB of 904 MB\./);
 });
 
+/** cc-183 read 6: prod's ring, 08:02 UTC 10-03 — the first day the series was summarised. */
+const MEMORY_DAY = {
+  samples: 720,
+  first_at: "2026-10-02T08:02:22.264Z",
+  last_at: "2026-10-03T08:00:22.255Z",
+  swapin_per_s: { p50: 18.2, p95: 506.4, max: 1584.7 },
+  swapout_per_s: { p50: 3.3, p95: 469.7, max: 1583.1 },
+  mem_available_mb: { min: 176, p50: 457 },
+  swap_used_mb: { max: 1014 },
+  gaps: 0,
+};
+
+test("FIX-1194 (cc-183): §9 — the banked memory series renders when the ring was read; null adds nothing", () => {
+  const banked = boxHealthLines(
+    {
+      ...quiet, box_health: PROBE, box_health_mem: MEM,
+      mem_day: {
+        available: true, n: 720, first_at: MEMORY_DAY.first_at, last_at: MEMORY_DAY.last_at,
+        min_mb: 176, min_at: "2026-10-03T04:54:22.198Z", median_mb: 457, max_mb: 589, mem_total_mb: 904,
+      },
+      memory_day: MEMORY_DAY,
+    },
+    AS_OF,
+  ).join("\n");
+  assert.match(
+    banked,
+    /Memory series \(24 h, banked as `forker\.memory_day`\): swap-in p50\/p95\/max \*\*18\.2 \/ 506\.4 \/ 1584\.7\*\* pages\/s, swap-out 3\.3 \/ 469\.7 \/ 1583\.1 pages\/s; MemAvailable min \*\*176 MB\*\* \/ p50 457 MB; swap in use max 1014 MB; gaps 0 \(intervals over 6 min, not rated\)\./,
+  );
+  const absent = boxHealthLines(
+    { ...quiet, box_health: PROBE, box_health_mem: MEM, mem_day: { available: false, reason: "no Upstash secret" }, memory_day: null },
+    AS_OF,
+  ).join("\n");
+  assert.doesNotMatch(absent, /Memory series \(24 h/);
+  assert.match(absent, /\*\*not available from this runner\*\* — no Upstash secret\./);
+  // An empty ring banks a zero-sample day and draws no rate line.
+  assert.doesNotMatch(
+    boxHealthLines({ ...quiet, memory_day: { ...MEMORY_DAY, samples: 0 } }, AS_OF).join("\n"),
+    /Memory series \(24 h/,
+  );
+});
+
+test("FIX-1194 (cc-183): renderJson — forker.memory_day is the banked object, or an explicit null", () => {
+  const d = fixture();
+  d.forker = { ...d.forker, mem_day: { available: false, reason: "r" }, memory_day: null };
+  const absent = JSON.parse(renderJson(d)) as { forker: Record<string, unknown> };
+  assert.ok("memory_day" in absent.forker, "the key is present when the ring was not read");
+  assert.equal(absent.forker["memory_day"], null);
+  d.forker = { ...d.forker, memory_day: MEMORY_DAY };
+  assert.deepEqual((JSON.parse(renderJson(d)) as { forker: Record<string, unknown> }).forker["memory_day"], MEMORY_DAY);
+});
+
 test("renderMarkdown: §9 carries the Box health subsection and its query", () => {
   const d = fixture();
   d.forker = { ...d.forker, box_health: PROBE, box_health_mem: MEM, mem_day: { available: false, reason: "r" } };

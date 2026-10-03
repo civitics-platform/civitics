@@ -44,7 +44,7 @@ import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
 import { readBoxHealthRing, upstashCredsFromEnv } from "@civitics/db";
-import { seriesRows, seriesStats } from "../lib/box-health-series";
+import { memoryDay, seriesRows, seriesStats, type MemoryDay } from "../lib/box-health-series";
 import { type DispatchStamp, type NightlyRunRow, isAlreadyRanRun } from "./receipts-format";
 import {
   type Bands,
@@ -716,22 +716,34 @@ WHERE key IN ('box_health', 'box_health_mem')`;
 /**
  * FIX-1125 — the day's memory series, from the OFF-box ring. Not SQL: one
  * Upstash LRANGE (one command). Absent credentials are a stated reason, not a
- * failure. The nightly receipts job has no Upstash secret today (the repo's
- * Actions secrets were read 2026-09-24), so on the runner this reads
- * `available: false` and the line points at data:box-health:series.
+ * failure.
+ *
+ * FIX-1194 (cc-183) — and the day's SUMMARY, banked as `forker.memory_day`:
+ * the ring holds 24 h and nothing else keeps the series, so a memory threshold
+ * can only be sized from these files. nightly.yml's receipts job passes
+ * UPSTASH_REDIS_REST_URL / _TOKEN from the repository Actions secrets of the
+ * same names; until both exist they arrive empty, this reads
+ * `available: false`, `memory_day` is null, and the line points at
+ * data:box-health:series.
  */
-async function readMemDay(now: Date): Promise<MemDay> {
+async function readMemDay(now: Date): Promise<{ day: MemDay; memory_day: MemoryDay | null }> {
   const creds = upstashCredsFromEnv(process.env);
   if (!creds) {
     return {
-      available: false,
-      reason: "UPSTASH_REDIS_REST_URL / _TOKEN are not in this runner's environment (the nightly receipts job has no Upstash secret)",
+      day: {
+        available: false,
+        reason:
+          "UPSTASH_REDIS_REST_URL / _TOKEN are not in this runner's environment (nightly.yml's receipts job reads them " +
+          "from the repository Actions secrets of the same names; until both exist the series is not banked)",
+      },
+      memory_day: null,
     };
   }
   const ring = await readBoxHealthRing(creds, fetch);
-  if (!ring.ok) return { available: false, reason: "ring read failed: " + ring.error };
-  const st = seriesStats(seriesRows(ring.samples, { hours: 24, now }), ring.samples);
-  return { available: true, ...st };
+  if (!ring.ok) return { day: { available: false, reason: "ring read failed: " + ring.error }, memory_day: null };
+  const rows = seriesRows(ring.samples, { hours: 24, now });
+  const st = seriesStats(rows, ring.samples);
+  return { day: { available: true, ...st }, memory_day: memoryDay(rows, st) };
 }
 
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
@@ -1124,8 +1136,11 @@ async function main(): Promise<void> {
     // FIX-1194 P1-B / FIX-1125 — the probe, the memory mirror, and the ring's day.
     const boxRows = await r.run<{ key: string; value: Record<string, unknown> }>("box_health", Q_BOX_HEALTH);
     const boxBy = new Map(boxRows.map((row) => [row.key, row.value]));
-    const memDay = await readMemDay(now).catch(
-      (err: unknown): MemDay => ({ available: false, reason: err instanceof Error ? err.message : String(err) }),
+    const mem = await readMemDay(now).catch(
+      (err: unknown): { day: MemDay; memory_day: MemoryDay | null } => ({
+        day: { available: false, reason: err instanceof Error ? err.message : String(err) },
+        memory_day: null,
+      }),
     );
 
     // FIX-1189 O2 — §10.
@@ -1258,7 +1273,8 @@ async function main(): Promise<void> {
         vercel_liveness_at: forkerLivenessAt,
         box_health: boxBy.get("box_health") ?? null,
         box_health_mem: boxBy.get("box_health_mem") ?? null,
-        mem_day: memDay,
+        mem_day: mem.day,
+        memory_day: mem.memory_day,
       },
       legislator_ids: { latest: legRun("latest"), complete: legRun("complete") },
       not_capturable: NOT_CAPTURABLE,
