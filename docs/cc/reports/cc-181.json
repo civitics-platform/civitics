@@ -1,0 +1,65 @@
+{
+  "cc": "181",
+  "prompt": "cc-prompt-181-fix1257-proposal-status-monotonic-passage-rolls-fix1205-revoke-notification.md",
+  "started_at": "2026-10-03T01:55:24Z",
+  "finished_at": "2026-10-03T03:45:00Z",
+  "head_before": "998ae13c",
+  "head_after": "c5eea898",
+  "commits": [
+    {
+      "sha": "16e2cf36",
+      "subject": "feat(data,db): FIX-1257 — proposal_status_rank() + proposals_advance_status(); mapBillStatus returns null for stage-less actions; Step 3 never lowers a status; a passage roll advances an existing bill"
+    },
+    {
+      "sha": "115493ce",
+      "subject": "chore(scripts,audits): FIX-1257 — the passed-status backfill manifest + apply (166 federal bills with a passage roll, introduced/in_committee → passed_chamber)"
+    },
+    {
+      "sha": "ebb4c845",
+      "subject": "feat(app): FIX-1205 — a revoked grant notifies its holder (third ClaimOutcome 'revoked'); createNotification surfaces insert errors"
+    },
+    {
+      "sha": "c5eea898",
+      "subject": "chore(fixes): sync status after FIX-1257, FIX-1205"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1257",
+    "FIX-1205"
+  ],
+  "fixes_filed": [
+    "FIX-1260",
+    "FIX-1261",
+    "FIX-1262"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261003000000_fix1257_proposal_status_advance.sql"
+  ],
+  "prod_writes": "Two, both under the FIX-950 claim from the primary checkout's packages/data. (1) Migration 20261003000000_fix1257_proposal_status_advance.sql (DDL only: proposal_status_rank, proposal_status_advances, proposals_advance_status), applied to Pro as the --then of session:wait-for-gate:prod --expected-minutes 2 --census stop. The gate was blocked twice by the cron-job-budget-watchdog (03:23:39Z, 03:28:39Z) and opened at 03:33:40Z. Census: 0 renders and 0 events in 60 min; edge 0 of 449 requests. The dry run first listed exactly this one file. (2) ONE statement, SELECT … FROM public.proposals_advance_status(166 ids, passed_chamber) at 03:35:27.44759 UTC, from the committed manifest docs/audits/2026-10-03-fix1257-passed-status-backfill.json. It ran via scripts/fix1257-backfill-passed-status.mjs --prod --apply as the --then of session:wait-for-gate:prod --expected-minutes 2 --census off (gate ok 03:35:24Z). It moved 166 rows and held 0. 69 went introduced→passed_chamber and 97 in_committee→passed_chamber. Read-back: 166/166 passed_chamber. Every other prod contact was a read: db-query --prod, the manifest build and dry runs, session:held, and gh. No pipeline, CALL, VACUUM or MV refresh ran on prod. The writer change reaches prod through the 10-03 nightly (congress_votes at about 21:03 UTC).",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2's ±15 STOP fired: 166 regressed bills against the expected 47 + 42. Every one of the 78 extra bills passed on a House suspension, which D2 itself counts as passage. I asked Craig, and he chose to backfill all 166 (2026-10-03 ~02:00 UTC). It was not worked around.",
+    "D1's advance rule, as written, ranks failed (90) above enacted (80), so a failed status could never be superseded. Prod shows every federal failed is a MINT artifact, and 6 bills read enacted only because the old overwrite rescued them. Craig chose to add clause (c): signed/veto_overridden/enacted beat failed/withdrawn/tabled. The rest of D1 is built as written.",
+    "The Senate arm of the D2 vote-path advance is built but inert. Every Senate roll stores vote_result '' (1,893 of 1,893 on prod), so no Senate passage roll can be recognised as passed, and the backfill excludes the 58 bills whose only evidence is a Senate 'On Passage of the Bill' roll. The tree contradicts the prompt's premise ('the result in votes.metadata.vote_result :948'), so this is filed as FIX-1260 rather than fixed here. Fixing the read alone would make every agreed-to Senate cloture motion mint passed_chamber (FIX-1261).",
+    "D3(a) as specified ('Motion to reconsider…' → status_held 1) cannot hold under D1. That text now maps to null and is never sent, so held stays 0. Case (a) asserts that instead, and a sibling case (a') covers a real hold: 'Received in the Senate and … referred to' → in_committee, held 1."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1257",
+      "what": "the next two nightlies' congress_votes rows (10-03 and 10-04) stamp status_advanced / status_held / status_advance_failed in data_sync_log.metadata, and NO backfilled proposal reads below passed_chamber afterwards (re-run scripts/fix1257-backfill-passed-status.mjs --prod --read-back); receipts 10-04/10-05 §1 show no skip line",
+      "after": "2026-10-03T21:30Z"
+    },
+    {
+      "fix": "FIX-1257",
+      "what": "the first recent-bills sync that lists HR 4795 (or any backfilled bill) in its top-50 leaves its status at passed_chamber — the regression cc-180's hand-set was waiting on cannot recur",
+      "after": "2026-10-04T21:30Z"
+    },
+    {
+      "fix": "FIX-1205",
+      "what": "the first real admin revoke on prod (none is manufactured) writes one notifications row with title 'Your access was revoked' and the response carries notified: true — read when it happens, record then",
+      "after": "2026-10-08T00:00Z"
+    }
+  ]
+}
