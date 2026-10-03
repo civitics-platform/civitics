@@ -1,0 +1,59 @@
+{
+  "cc": "183",
+  "prompt": "cc-prompt-183-fix1194-p1a-box-health-gates-donor-rollup-backoff-contract-flow-start-gate-receipts-memory-series.md",
+  "started_at": "2026-10-03T07:59:14Z",
+  "finished_at": "2026-10-03T09:06:12Z",
+  "head_before": "1786833d",
+  "head_after": "0862f623",
+  "commits": [
+    {
+      "sha": "e84f8456",
+      "subject": "feat(db): FIX-1194 — box_is_saturated() takes p_include_watchdog_wall; box_backoff_gate(job, wait_max) waits then answers; donor_rollup_rebuild_bulk backs off at a chunk boundary (partial, resumes); refresh_contract_flow_rollups gets a start gate, a running row and a cancel handler; refresh_agency_staffing_rollup gets the start gate"
+    },
+    {
+      "sha": "b4eda161",
+      "subject": "feat(data): FIX-1194 — receipts bank the box-health memory series (swap-in p50/p95/max, MemAvailable min) when the runner has the Upstash keys"
+    },
+    {
+      "sha": "0862f623",
+      "subject": "chore(fixes): sync status after FIX-1194"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1194"
+  ],
+  "fixes_filed": [
+    "FIX-1263"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261003030000_fix1194_p1a_box_backoff_gates.sql"
+  ],
+  "prod_writes": "One: the migration 20261003030000_fix1194_p1a_box_backoff_gates.sql. It was applied as the --then of session:wait-for-gate:prod --expected-minutes 2 --census stop, run from the primary checkout's packages/data under the FIX-950 claim; the claim held 17 guarded pipelines and released them. The 05:45-09:00 blackout blocked polls at 08:37:45 through 08:57:45; the gate opened at 09:02:44.65Z. Census: 0 renders and 0 events in 60 min; edge 0 of 91. The dry run first listed exactly this file. The migration is metadata DDL only: DROP FUNCTION box_is_saturated(int, int, timestamptz) and CREATE of the 4-arg one; CREATE of box_backoff_gate(text, int); CREATE OR REPLACE of donor_rollup_rebuild_bulk, of refresh_contract_flow_rollups (its search_path proconfig removed) and of refresh_agency_staffing_rollup; REVOKE, GRANT and COMMENT restated. No data statement, CALL, VACUUM or pipeline. Every other prod contact was a read: db-query --prod (reads 1-5 and the read-back), prod_op_gate, the census (Logs API), the dry run, session:held, and gh. Three pushes to main before this report, each through the pre-push hook.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "project": "forker",
+  "owed": [
+    {
+      "fix": "FIX-1194",
+      "what": "donor-rollup-refresh 12:00 UTC Sat 10-03 (the first firing on the new body; 09:00 ran the old one) and Sun 10-04 09:00/12:00: terminal rows complete (caught-up, ~0.1 s) or partial in the EXISTING budget shape, no gate key on a clear box, receipts §2 verdicts unchanged",
+      "after": "2026-10-03T12:30Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "agency-staffing-rollup-refresh Tue 10-06 00:05 UTC: complete, ~40 s, no gate key; contract-flow-rollups-refresh Thu 10-08 14:00 UTC: a running row at 14:00, then complete ~14:32 with recipients 500 / agency_sectors as on 10-01, Σ unchanged",
+      "after": "2026-10-08T14:45Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "a week with ZERO non-landing fork bursts (receipts §9 by-day 10-02 → 10-09 all 0; no 'box saturated' skipped/partial rows, or each one explained by a real burst) → chore(fixes): record prod verification of FIX-1194 (Fixes: FIX-1194, Verified: prod)",
+      "after": "2026-10-09T12:00Z"
+    },
+    {
+      "fix": "FIX-1125",
+      "what": "the first receipts JSON carrying a non-null forker.memory_day — the night after Craig adds UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN as repository Actions secrets; seven of them → the memory-threshold design (forker s6)",
+      "after": "2026-10-03T21:30Z"
+    }
+  ]
+}
