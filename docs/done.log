@@ -1577,3 +1577,7 @@
 2026-10-03 | FIX-1269 | 6e2179b8 | local-only | feat(db,data): FIX-1269 + FIX-1132 + FIX-1270 — the search-index unit stamps its freshness and reads the stats table when current; refresh_entity_connection_stats_mv runs in windows; the arm loop parks after two cancels
 2026-10-03 | FIX-1270 | 6e2179b8 | local-only | feat(db,data): FIX-1269 + FIX-1132 + FIX-1270 — the search-index unit stamps its freshness and reads the stats table when current; refresh_entity_connection_stats_mv runs in windows; the arm loop parks after two cancels
 2026-10-03 | FIX-1273 | 6224b329 | local-only | feat(data): FIX-1273 — upsertTags returns the kept count; the rule tagger stamps kept_* in its data_sync_log metadata; receipts §1 reports it
+2026-10-03 | FIX-1131 | 850cad73 | closes-as-recognized | docs(fixes): FIX-1131 closed as recognized — the rows=200 census was the deliverable (cc-186 §1); the one latent site rewritten by cc-188
+2026-10-03 | FIX-1267 | bc32eda5 | local-only | test(data): FIX-1267 — the pipeline-lock integration cases run only under CIVITICS_DB_HEAVY_TESTS
+2026-10-03 | FIX-1271 | 6153ea10 | local-only | feat(scripts): FIX-1271 — fixes:check fails a duplicate id marker and a trailer whose id the commit subject does not name; fix:add warns when origin is unreachable
+2026-10-03 | FIX-1272 | 94e64623 | local-only | test(data): FIX-1272 — the donor-party heavy case derives its watermark from the procedure's own full-rebuild target
