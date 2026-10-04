@@ -35,7 +35,7 @@ for (const f of files) console.log(`  ${f}`);
 // fec_bulk_pipeline cases (FIX-1267). One holder remains in it:
 // src/lib/prod-session.test.ts's writers-live case takes
 // financial_entity_totals_refresh for a few ms. cc-190's grep found it, and it
-// is filed rather than moved here.
+// is filed as FIX-1275 rather than moved here.
 const heavy = process.env.CIVITICS_DB_HEAVY_TESTS === "1";
 if (heavy) console.log("CIVITICS_DB_HEAVY_TESTS=1 — running files serially (--test-concurrency=1)");
 
