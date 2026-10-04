@@ -6350,7 +6350,6 @@ export type Database = {
       official_homepage_stats_mv: {
         Row: {
           donor_count: number | null
-          financial_relationship_count: number | null
           official_id: string | null
           refreshed_at: string | null
           total_donations_cents: number | null
