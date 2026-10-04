@@ -15,6 +15,8 @@ steps:
   - {id: s7, kind: cc, ref: "cc-188", title: "census builds — the snapshot reads, 1132, 1145, the arm gate + park"}
   - {id: s8, kind: cc, ref: "cc-189", title: "FIX-1124 part 1 — crawls yield to peers (the first dispatcher instance)"}
   - {id: s9, kind: receipt, ref: "FIX-1124", title: "a week of peer_due/peer_running skips with zero crawl↔daily overlaps → part 2 retires the blackout", after: 2026-10-11T12:00Z}
+  - {id: s10, kind: cc, ref: "cc-195", title: "FIX-1145 — the home-page MV reads the two rollups; jobid 24 refreshes it after a run that moved the watermark"}
+  - {id: s11, kind: receipt, ref: "FIX-1145", title: "Mon 06:00 unit 4 ≤ 5 s; the first jobid 24 run that moves the watermark stamps homepage_mv_refreshed true", after: 2026-10-05T09:30Z}
 ---
 
 # Paced ops
@@ -52,3 +54,13 @@ skips `peer_running` while a listed peer's own `running` row exists, and
 waits up to 600 s on an in-flight unit and then runs anyway. The blackout stays
 until a receipt week with zero crawl↔daily overlaps (s9). Then part 2 retires it
 and turns `prod_op_gate` check (c) into the same look-ahead.
+
+**Home-page MV (s10, s11):** cc-195 builds rec (iii), the smallest of cc-188's
+three ways past FIX-1145's stop. `official_homepage_stats_mv` now reads
+`official_donor_totals` and `official_vote_stats` instead of scanning
+`financial_relationships`, and drops the column nothing read. The 06:00 unit
+stays. The MV would otherwise lag each drop by a day, because the donor rollup
+only moves at 09:00 or 12:00. So `donor_rollup_rebuild_bulk` (jobid 24) now
+refreshes the MV right after a run that moved its watermark. The receipt (s11)
+is Monday's 06:00 unit seconds and the first jobid 24 row that carries
+`homepage_mv_refreshed: true`.
