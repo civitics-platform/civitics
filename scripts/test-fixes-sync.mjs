@@ -20,6 +20,12 @@ import {
   buildCompletingShasById,
   doneLogKey,
 } from "./fixes-sync.mjs";
+import {
+  walkFixBullets,
+  duplicateIdMarkers,
+  subjectFixNumbers,
+  trailerSubjectMismatches,
+} from "./lib/fixes-md.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = resolve(HERE, "__fixtures__/fixes-sync-mixed-verified.txt");
@@ -268,6 +274,79 @@ const { violations, skipped } = evaluateTrunkViolations({
 assertEq("violations = only the still-stranded FIX-702", violations.map((v) => v.id), ["FIX-702"]);
 assertEq("FIX-702 violation reports its off-trunk SHA", violations[0].shas, ["ddddddd"]);
 assertEq("FIX-704 (sentinel-only) is skipped, not failed", skipped.map((s) => s.id), ["FIX-704"]);
+
+// FIX-1271 (a): an id on two live bullets — the shape a rebase leaves when two
+// sessions fix:add'ed the same id from their own trees.
+console.log("\nFIX-1271 (a) duplicate id markers:");
+const dupMd = [
+  "# FIXES",
+  "## OPS",
+  "- 🟠 S — **cc-185's filing** — body <!--id:FIX-1265-->",
+  "- 🟡 M — **something else** — body <!--id:FIX-1266-->",
+  "## FEC",
+  "- 🟠 S — **cc-184's filing, same id** — body <!--id:FIX-1265-->",
+].join("\n");
+assertEq(
+  "one id twice → one hit, both line numbers",
+  duplicateIdMarkers(walkFixBullets(dupMd)),
+  [{ id: "FIX-1265", lines: [3, 6] }],
+);
+assertEq(
+  "distinct ids → none",
+  duplicateIdMarkers(walkFixBullets(dupMd.replace(/FIX-1265-->$/, "FIX-1268-->"))),
+  [],
+);
+
+// FIX-1271 (b): the trailer names a FIX the subject does not.
+console.log("\nFIX-1271 (b) trailer vs subject:");
+assertEq(
+  "subject FIX-1263, trailer FIX-1265 → one hit",
+  trailerSubjectMismatches([{ id: "FIX-1265", sha: "c2c968af", note: "feat(x): FIX-1263 — USASpending fallback" }]),
+  [{ sha: "c2c968af", ids: ["FIX-1265"], subjectIds: ["FIX-1263"], subject: "feat(x): FIX-1263 — USASpending fallback" }],
+);
+assertEq(
+  "subject names both trailer ids → none",
+  trailerSubjectMismatches([
+    { id: "FIX-1177", sha: "aaaaaaaa", note: "chore(fixes): record prod verification of FIX-1177, FIX-1172" },
+    { id: "FIX-1172", sha: "aaaaaaaa", note: "chore(fixes): record prod verification of FIX-1177, FIX-1172" },
+  ]),
+  [],
+);
+assertEq(
+  "subject with no FIX tag is exempt",
+  trailerSubjectMismatches([{ id: "FIX-9", sha: "bbbbbbbb", note: "docs: tidy" }]),
+  [],
+);
+assertEq(
+  "a Reopens: row is read by its bare subject, not its `reopened by` note",
+  trailerSubjectMismatches([
+    { id: "FIX-1265", sha: "reopen", commitSha: "cccccccc", note: "reopened by cccccccc fix: FIX-1263 — x", subject: "fix: FIX-1263 — x" },
+  ]).map((m) => [m.sha, m.ids]),
+  [["cccccccc", ["FIX-1265"]]],
+);
+assertEq(
+  "shorthand siblings count as named: FIX-1044/1045/1046, FIX-1014, 936, FIX-826..829",
+  [
+    ...trailerSubjectMismatches([{ id: "FIX-1046", sha: "d1", note: "chore: record FIX-1044/1045/1046" }]),
+    ...trailerSubjectMismatches([{ id: "FIX-936", sha: "d2", note: "chore: FIX-1014, 936, 963" }]),
+    ...trailerSubjectMismatches([{ id: "FIX-828", sha: "d3", note: "chore: FIX-826..829 verified" }]),
+    ...trailerSubjectMismatches([{ id: "FIX-37", sha: "d4", note: "feat: reimplement FIX-036 through FIX-041" }]),
+  ],
+  [],
+);
+assertEq(
+  "a FIX cited for context is not naming the closed one (999c2644's shape)",
+  trailerSubjectMismatches([
+    { id: "FIX-1106", sha: "999c2644", note: "fix(fec): FIX-1106 — retraction class" },
+    { id: "FIX-1074", sha: "999c2644", note: "fix(fec): FIX-1106 — retraction class" },
+  ]).map((m) => m.ids),
+  [["FIX-1074"]],
+);
+assertEq(
+  "subjectFixNumbers stops at prose: `FIX-1187 set 2` is not FIX-2",
+  [...subjectFixNumbers("fix(officials): FIX-1187 set 2 — four Senators")],
+  [1187],
+);
 
 if (failures.length) {
   console.error("\nFAIL:\n" + failures.join("\n"));

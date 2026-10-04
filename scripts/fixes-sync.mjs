@@ -37,6 +37,10 @@
 //                                            case (done.log claims a FIX shipped whose code
 //                                            is off-trunk) is still enforced on every push,
 //                                            as is the FIX-1016 checkbox assertion.
+//
+//   Both check modes also exit 1 on the two FIX-1271 collision guards: an id on
+//   two live docs/FIXES.md bullets, and a not-yet-logged commit whose trailer
+//   names a FIX its own subject does not (subjects with no FIX tag are exempt).
 
 import { execSync } from "node:child_process";
 // No writeFileSync: FIX-1016 D4 left this script with exactly one write, and it
@@ -46,7 +50,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 import { deriveStatus } from "./lib/fix-status.mjs";
-import { walkFixBullets } from "./lib/fixes-md.mjs";
+import { walkFixBullets, duplicateIdMarkers, trailerSubjectMismatches } from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -245,6 +249,18 @@ function classifySha(sha, trunk) {
   }
   _shaClassCache.set(cacheKey, verdict);
   return verdict;
+}
+
+// FIX-1271 (b) scope: the completions whose commit HEAD carries ahead of trunk —
+// what a push from this checkout is about to land. 8-char prefixes, the width
+// scanCommits records. Empty when trunk is not judgeable (a shallow clone's
+// `trunk..HEAD` is not the outgoing set).
+function outgoingCompletions(completions, trunk) {
+  if (!trunkJudgeable(trunk)) return [];
+  const res = git(`rev-list ${trunk}..HEAD`);
+  if (res.code !== 0 || !res.out) return [];
+  const ahead = new Set(res.out.split("\n").map((s) => s.trim().slice(0, 8)).filter(Boolean));
+  return completions.filter((c) => ahead.has(c.commitSha ?? c.sha));
 }
 
 // Pure decision core (injectable resolver → unit-testable without git).
@@ -481,7 +497,8 @@ function scanCommits() {
     // `reopen` (that is what the derivation reads), and the COMMIT sha is
     // carried in the note so the dedup key can tell two reopens apart.
     // `commitSha` rides on the object for the off-trunk filter only; it is not
-    // a column and never reaches the file.
+    // a column and never reaches the file. Nor is `subject`, which FIX-1271's
+    // trailer/subject check reads (the note above is not the bare subject).
     for (const id of parsed.reopensIds) {
       completions.push({
         id,
@@ -490,6 +507,7 @@ function scanCommits() {
         date: dateText,
         verified: "reopen",
         note: `reopened by ${shortSha} ${noteText}`,
+        subject: noteText,
       });
     }
   }
@@ -526,6 +544,8 @@ function readFixesMd() {
   const bullets = walkFixBullets(readFileSync(FIXES_PATH, "utf8"));
   return {
     bullets: bullets.filter((b) => b.id),
+    // FIX-1271 (a): this file only — see duplicateIdMarkers for why not the archive.
+    duplicates: duplicateIdMarkers(bullets),
     // A live bullet with no `<!--id:FIX-NNN-->` marker cannot be referenced by a
     // commit trailer, so it can never be closed. `pnpm fixes:housekeep` assigns
     // one. (Archived bullets are exempt — the COMPLETED section is a holding
@@ -601,7 +621,19 @@ function main() {
   const allCompleted = new Set(
     [...derived].filter(([, v]) => v.status === "closed").map(([id]) => id),
   );
-  const { bullets: liveBullets, missingMarker } = readFixesMd();
+  const { bullets: liveBullets, missingMarker, duplicates } = readFixesMd();
+
+  // FIX-1271 (b): a trailer id the commit's own subject does not name. Scoped
+  // to rows done.log has not logged yet — history carries 37 such commits
+  // (subjects that cite another FIX for context) and must keep passing. And
+  // NOT to `newEntries` alone: that set is trunk-filtered, so under the
+  // pre-push hook, where the commit being pushed is by definition not on
+  // origin/main yet, it would never contain the one commit this exists for.
+  // The commits HEAD carries ahead of trunk are added for that reason.
+  const outgoing = trunk
+    ? outgoingCompletions(scanned, trunk).filter((c) => !done.keys.has(doneLogKey(c)))
+    : [];
+  const subjectMismatches = trailerSubjectMismatches([...newEntries, ...outgoing]);
 
   // FIX-1016 D7 detector. It licenced the strip: at the moment the checkboxes
   // were removed it asserted that every one of them agreed with the derived
@@ -623,6 +655,8 @@ function main() {
     liveBulletsOpen: liveBullets.filter((b) => !allCompleted.has(b.id)).length,
     checkboxesFound: liveBullets.filter((b) => b.box !== null).length,
     checkboxMismatches: boxMismatches.length,
+    duplicateIdMarkers: duplicates.length,
+    trailerSubjectMismatches: subjectMismatches.length,
   };
 
   console.log("fixes:sync —", DRY ? "DRY RUN" : CHECK_TRUNK ? "CHECK MODE (trunk-only)" : CHECK ? "CHECK MODE" : "APPLIED");
@@ -648,6 +682,23 @@ function main() {
       "  docs/done.log is the source of truth. Either the bullet was hand-edited, or a\n" +
         "  completion row is missing. Do NOT hand-fix the box — append the row, or run\n" +
         "  `pnpm fix:reopen` — then re-run. (`pnpm fixes:status <id>` shows the log's answer.)",
+    );
+  }
+  if (duplicates.length) {
+    console.error(`\n✗ ${duplicates.length} id(s) on more than one live bullet in docs/FIXES.md (FIX-1271):`);
+    for (const d of duplicates) console.error(`    ✗ duplicate id marker ${d.id} at lines ${d.lines.join(", ")}`);
+    console.error(
+      "  Two sessions allocated the same id. The one that landed second re-allocates: a fresh\n" +
+        "  `pnpm fix:add` after `git pull --rebase`, then the new id in the marker AND every trailer.",
+    );
+  }
+  if (subjectMismatches.length) {
+    console.error(`\n✗ ${subjectMismatches.length} commit(s) whose trailer names a FIX its subject does not (FIX-1271):`);
+    for (const m of subjectMismatches)
+      console.error(`    ✗ ${m.ids.join(", ")} in trailer, subject names ${m.subjectIds.join(", ")} — ${m.subject}`);
+    console.error(
+      "  A re-allocated id changed in one place and not the other. Fix the commit (it is not on\n" +
+        "  trunk yet) so subject and trailer agree; name every id the trailer closes in the subject.",
     );
   }
   if (missingMarker.length && !anyCheck) {
@@ -710,6 +761,16 @@ function main() {
     console.error(
       "\ndocs/FIXES.md carries checkbox state that contradicts docs/done.log. See above.",
     );
+    process.exit(1);
+  }
+  // FIX-1271: both enforced in BOTH check modes, so the pre-push hook refuses
+  // the push that would land a collision rather than CI finding it after.
+  if (anyCheck && duplicates.length > 0) {
+    console.error("\ndocs/FIXES.md carries a FIX id on more than one bullet. See above.");
+    process.exit(1);
+  }
+  if (anyCheck && subjectMismatches.length > 0) {
+    console.error("\nA commit's trailer closes a FIX its subject does not name. See above.");
     process.exit(1);
   }
   // The trunk-ancestry guard is the dangerous case — enforced on every push.

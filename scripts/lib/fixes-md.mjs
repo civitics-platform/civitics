@@ -201,6 +201,92 @@ export function walkFixBullets(text) {
 }
 
 /**
+ * FIX-1271 (a): ids carried by more than one live bullet. Two sessions that
+ * `fix:add` from their own trees can allocate the same id; once one rebases
+ * onto the other, the file holds the marker twice and every reader silently
+ * picks one of the two bullets. Scope is docs/FIXES.md ONLY — the archive
+ * carries a historical duplicate (FIX-194, twice) that fixes:status already
+ * resolves live-wins, and it is not where a new collision can land.
+ *
+ * @param {{id: string|null, lineNo: number}[]} bullets — walkFixBullets output
+ * @returns {{id: string, lines: number[]}[]} one entry per duplicated id
+ */
+export function duplicateIdMarkers(bullets) {
+  const linesById = new Map();
+  for (const b of bullets ?? []) {
+    if (!b.id) continue;
+    if (!linesById.has(b.id)) linesById.set(b.id, []);
+    linesById.get(b.id).push(b.lineNo);
+  }
+  return [...linesById]
+    .filter(([, lines]) => lines.length > 1)
+    .map(([id, lines]) => ({ id, lines }));
+}
+
+/**
+ * FIX-1271 (b): the FIX numbers a commit SUBJECT names. A `FIX-n` tag plus the
+ * shorthand siblings that follow it — `FIX-1044/1045/1046`, `FIX-997 / 982`,
+ * `FIX-1014, 936, 963`, `FIX-826..829` and `FIX-036 through FIX-041` (a range
+ * of at most 50). Numbers, not
+ * strings, so `FIX-037` and `FIX-37` agree. Reading a sibling can only ADD a
+ * number, so a loose read makes the check more permissive, never stricter.
+ */
+export function subjectFixNumbers(subject) {
+  const s = String(subject ?? "");
+  const nums = new Set();
+  const tagRe = /FIX-(\d+)/g;
+  let m;
+  while ((m = tagRe.exec(s))) {
+    let prev = Number(m[1]);
+    nums.add(prev);
+    const sib = /\s*(\/|,|\+|&|\.\.|and\b|through\b)\s*(?:FIX-)?(\d+)\b/y;
+    sib.lastIndex = tagRe.lastIndex;
+    let k;
+    while ((k = sib.exec(s))) {
+      const n = Number(k[2]);
+      if ((k[1] === ".." || k[1] === "through") && n > prev && n - prev <= 50) for (let i = prev + 1; i < n; i++) nums.add(i);
+      nums.add(n);
+      prev = n;
+      tagRe.lastIndex = sib.lastIndex;
+    }
+  }
+  return nums;
+}
+
+/**
+ * FIX-1271 (b): a trailer id the commit's own subject does not name. When a
+ * session re-allocates a collided id it has to change it in two places — the
+ * bullet's marker and every trailer — and doing one is the failure this
+ * catches: `feat(x): FIX-1263 — …` carrying `Fixes: FIX-1265`. A subject with
+ * NO FIX tag is exempt (most commits with a trailer still name nothing in the
+ * subject). Applies to `Fixes:`, `Closes:` and `Reopens:` alike — a reopen of
+ * the wrong id is the same mistake.
+ *
+ * @param {{id: string, sha?: string, commitSha?: string, subject?: string, note?: string}[]} completions
+ *   one per (commit, id) — fixes-sync's scanCommits shape. `subject` is the raw
+ *   subject; `note` is the fallback (it IS the subject on Fixes:/Closes: rows).
+ * @returns {{sha: string, ids: string[], subjectIds: string[], subject: string}[]} one per commit
+ */
+export function trailerSubjectMismatches(completions) {
+  const byCommit = new Map();
+  for (const c of completions ?? []) {
+    const subject = c.subject ?? c.note ?? "";
+    const named = subjectFixNumbers(subject);
+    if (named.size === 0) continue;
+    if (named.has(Number(String(c.id).replace(/^FIX-/, "")))) continue;
+    const sha = c.commitSha ?? c.sha ?? "";
+    const key = `${sha}\0${subject}`;
+    if (!byCommit.has(key)) {
+      const subjectIds = [...new Set(String(subject).match(/FIX-\d+/g))];
+      byCommit.set(key, { sha, ids: [], subjectIds, subject });
+    }
+    const hit = byCommit.get(key);
+    if (!hit.ids.includes(c.id)) hit.ids.push(c.id);
+  }
+  return [...byCommit.values()];
+}
+
+/**
  * Detect a file's dominant line ending so a rewrite can put it back. FIXES.md
  * and done.log are pinned to LF by .gitattributes (FIX-361), but a one-off
  * working-tree edit by a misconfigured editor should round-trip rather than

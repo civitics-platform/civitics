@@ -172,6 +172,11 @@ function readOriginMainFixes() {
     execSync("git fetch origin --quiet", { stdio: "ignore", timeout: 15000 });
   } catch {
     // Offline / no remote — a previously-fetched origin/main may still resolve.
+    // FIX-1271: but say so. Silence here is how a stale allocation collides.
+    process.stderr.write(
+      "fix:add — WARN origin/main unreachable — allocation is LOCAL-ONLY " +
+        "(collision risk; re-check the id against origin before any trailer)\n",
+    );
   }
   try {
     return execSync("git show origin/main:docs/FIXES.md", { encoding: "utf8", timeout: 15000 });
