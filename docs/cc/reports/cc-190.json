@@ -1,0 +1,65 @@
+{
+  "cc": "190",
+  "prompt": "cc-prompt-190-hygiene-fix1271-fixadd-guard-fix1272-heavy-watermark-fix1267-lock-gate-fix1131-close-worktree-teardown.md",
+  "started_at": "2026-10-04T04:32:02Z",
+  "finished_at": "2026-10-04T05:44:00Z",
+  "head_before": "bc3bff88",
+  "head_after": "a9bdcd4a",
+  "commits": [
+    {
+      "sha": "6153ea10",
+      "subject": "feat(scripts): FIX-1271 — fixes:check fails a duplicate id marker and a trailer whose id the commit subject does not name; fix:add warns when origin is unreachable"
+    },
+    {
+      "sha": "94e64623",
+      "subject": "test(data): FIX-1272 — the donor-party heavy case derives its watermark from the procedure's own full-rebuild target"
+    },
+    {
+      "sha": "bc32eda5",
+      "subject": "test(data): FIX-1267 — the pipeline-lock integration cases run only under CIVITICS_DB_HEAVY_TESTS"
+    },
+    {
+      "sha": "850cad73",
+      "subject": "docs(fixes): FIX-1131 closed as recognized — the rows=200 census was the deliverable (cc-186 §1); the one latent site rewritten by cc-188"
+    },
+    {
+      "sha": "6282982d",
+      "subject": "feat(cc): the /cc runner tears its worktree down — Step 4 + the template name session:worktree:done as the sanctioned no-approval step; cc:prompt --done prints the slot; the board counts stray worktrees; CLAUDE.md's deletion rule and hook line corrected"
+    },
+    {
+      "sha": "3b4d9d2a",
+      "subject": "docs(fixes): file FIX-1275 (prod-session.test.ts holds a writer key in the default run); FIX-1271 rule-as-built append"
+    },
+    {
+      "sha": "a9bdcd4a",
+      "subject": "chore(fixes): sync status after FIX-1271 / FIX-1272 / FIX-1267 / FIX-1131"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1271",
+    "FIX-1272",
+    "FIX-1267",
+    "FIX-1131"
+  ],
+  "fixes_filed": [
+    "FIX-1275"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "D3's stop condition fired, as the prompt foresaw: after the gate, one default-run test still takes a c_writer_locks key. src/lib/prod-session.test.ts:271 (the writers-live claim case) takes financial_entity_totals_refresh. Filed as FIX-1275 (rule 106) and not gated here. That case is the default run's only proof of the writers-live refusal, so the fix is a design choice.",
+    "D6: fix-1273 (cc-191's worktree) skipped. cc-191 finished and removed its marker, so nothing names the tree, and its branch is merged. Its session may still have that directory as its cwd, though, and removing it is the paused-session hazard the prompt cites against a Stop hook. Left for Craig or the next session's session:check.",
+    "No permission prompt was raised in this run."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1271",
+      "what": "the next concurrent pair of CC sessions: both fix:add allocations distinct AND, if one collides anyway, the pre-push hook REFUSES the second push (quote the refusal line in that session's report)",
+      "after": "2026-10-05T00:00Z"
+    }
+  ]
+}
