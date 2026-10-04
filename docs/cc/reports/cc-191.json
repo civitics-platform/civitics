@@ -1,0 +1,56 @@
+{
+  "cc": "191",
+  "prompt": "cc-prompt-191-fec-fix1273-kept-count-receipt-fix1266-top200-pick-audit-fix1274-usaspending-bucket-read.md",
+  "started_at": "2026-10-04T04:30:14Z",
+  "finished_at": "2026-10-04T05:35:00Z",
+  "head_before": "bc3bff88",
+  "head_after": "0a707002",
+  "commits": [
+    {
+      "sha": "6224b329",
+      "subject": "feat(data): FIX-1273 — upsertTags returns the kept count; the rule tagger stamps kept_* in its data_sync_log metadata; receipts §1 reports it"
+    },
+    {
+      "sha": "6d9fa9d4",
+      "subject": "docs(audits): FIX-1266 — the top-200 donor pick audit (reads only; proposed overrides as a TSV for Craig's verdicts)"
+    },
+    {
+      "sha": "8b3f0490",
+      "subject": "docs(audits): FIX-1274 — the USASpending bucket read: publish timing, what a delta covers, the catch-up sized"
+    },
+    {
+      "sha": "0a707002",
+      "subject": "chore(fixes): sync status after FIX-1273"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1273"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Nothing stopped. No stop condition fired, and no permission prompt was raised in this run. The D2 STOP rule ('say so first') is answered under read 3: two of the three named picks still stand and one moved."
+  ],
+  "lane": "fec",
+  "project": "industry-tags",
+  "owed": [
+    {
+      "fix": "FIX-1273",
+      "what": "the Sun 10-04 21:00 UTC nightly's tag_rules row carries kept_proposals / kept_financial_entities / kept_officials / kept_total (FE expected ≈ 16–17, the 10-02/10-03 figure) and the Mon 10-05 receipt §1 prints the line → chore(fixes): record prod verification of FIX-1273",
+      "after": "2026-10-04T22:30Z"
+    },
+    {
+      "fix": "FIX-1266",
+      "what": "Craig's verdicts on the proposed-overrides TSV → the override migration (a later sweep; 808 → 808 + n)",
+      "after": "2026-10-05T00:00Z"
+    },
+    {
+      "fix": "FIX-1274",
+      "what": "the Thu 10-08 scheduled run under FIX-1268: fiscal_year_used 2026; contracts rows > 0 from the delta then in the bucket; compare its coverage against §3 of the audit",
+      "after": "2026-10-08T17:30Z"
+    }
+  ]
+}
