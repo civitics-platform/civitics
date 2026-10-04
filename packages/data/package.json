@@ -25,6 +25,8 @@
     "data:votes": "tsx --env-file=../../.env.local src/pipelines/congress/votes.ts",
     "data:committees": "tsx --env-file=../../.env.local src/pipelines/congress/committees.ts",
     "data:legislator-ids-report": "tsx --env-file=../../.env.local src/pipelines/congress/legislator-ids-report.ts",
+    "data:promote:candidates": "tsx --env-file=../../.env.local src/scripts/promote-candidates-run.ts",
+    "data:promote:candidates:prod": "tsx --env-file=../../.env.local.prod src/scripts/promote-candidates-run.ts --allow-prod",
     "data:jurisdictions": "tsx --env-file=../../.env.local src/jurisdictions/us-states.ts",
     "data:sync": "tsx --env-file=../../.env.local src/pipelines/index.ts",
     "data:status": "tsx --env-file=../../.env.local src/pipelines/index.ts status",

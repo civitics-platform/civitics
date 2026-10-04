@@ -16,7 +16,7 @@ import {
   CURRENT_CONGRESS,
 } from "./members";
 import { startSync, completeSync, failSync } from "../sync-log";
-import { runCandidateToElectedPromotion } from "./promote-candidates";
+import { isPromotionDatasetKeyEnabled, runCandidateToElectedPromotion } from "./promote-candidates";
 import { runReconcileFormerMembers } from "./reconcile-former-members";
 
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
@@ -302,8 +302,12 @@ export async function runOfficialsPipeline(
   // resolve to the same person. Non-fatal — a failure here doesn't void the
   // upstream ingest. The resolver band-aid (sections.ts subtitle filter)
   // stays in place as defense-in-depth.
+  //
+  // FIX-1189: the dataset-key pass runs only under
+  // CIVITICS_PROMOTION_DATASET_KEY=1. The step prints its pass counters to the
+  // log and writes no sync-log metadata (FIX-758: this pipeline owns none).
   try {
-    await runCandidateToElectedPromotion({ db });
+    await runCandidateToElectedPromotion({ db, datasetKey: isPromotionDatasetKeyEnabled() });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  promote-candidates step failed (non-fatal): ${msg}`);

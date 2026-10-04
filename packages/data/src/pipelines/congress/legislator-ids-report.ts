@@ -90,13 +90,17 @@ const HISTORICAL_FLOOR = 10_000;
 // Reads
 // ---------------------------------------------------------------------------
 
-interface Feed {
+export interface Feed {
   listings: Listing[];
   ref: { url: string; etag: string | null; last_modified: string | null };
 }
 
-/** One fetch, one retry — a flake on the only external read should not cost the night. */
-async function fetchFeed(url: string, floor: number): Promise<Feed> {
+/**
+ * One fetch, one retry — a flake on the only external read should not cost the
+ * night. Exported for the promotion's dataset key (FIX-1189), which fetches the
+ * current file once more in the congress phase.
+ */
+export async function fetchFeed(url: string, floor: number): Promise<Feed> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
