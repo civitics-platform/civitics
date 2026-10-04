@@ -733,7 +733,7 @@ max 171.9 ms — are direct-connection callers and carry the 3 h bound.)
 ### 3.2 The `SET` sites (rule 122)
 
 `grep -rniE "SET +(LOCAL +)?statement_timeout|set_config\( *'statement_timeout'"`
-over `apps/civitics`, `packages/db/src`, `packages/data/src` (2026-10-03 23:58
+over `apps/civitics`, `packages/db/src`, `packages/data/src` (2026-10-03 ~23:38
 UTC): **apps/civitics — 0 executable sites. packages/db — 0.** Every hit in
 `packages/data` is a `client.query("SET statement_timeout = …")` on a
 `pg.Client`/`Pool` the code constructs itself (`direct-pg-upsert.ts:48`,
@@ -770,7 +770,7 @@ Supavisor docs were not fetched.
 **And the pool churns.** Re-read at 23:53:35 UTC, the nine `backend_start`s
 are: **one** at 2026-09-22 22:32:52 (39 s after the restart — the long-lived
 connection, consistent with PostgREST's schema-cache `LISTEN` channel) and
-**eight** at 23:53:24–23:53:27, i.e. minutes old. Request-serving backends are
+**eight** at 23:53:24–23:53:27, i.e. seconds old at the re-read. Request-serving backends are
 recycled continuously, so a login-time role GUC lives only as long as a
 recycled backend — minutes, not days. That is the "pool churning normally"
 condition the bullet named as the receipt.
@@ -838,7 +838,7 @@ SELECT proname FROM pg_proc WHERE proname ILIKE '%probe%' OR prosrc ILIKE '%curr
 ### 4.1 The premise does not hold
 
 **`get_official_page` contains no `_conn`.** Its prod body (`pg_get_functiondef`,
-read 2026-10-03 23:50 UTC; byte-identical to the clone's) is a single
+read 2026-10-03 ~23:39 UTC; byte-identical to the clone's) is a single
 `jsonb_build_object` of votes, career history, promises, civic responses,
 comments and a contracts top-10 — it never touches `entity_connections`. A
 search of every public `prosrc` on prod for `_conn\M` returns **one** routine:
@@ -877,7 +877,7 @@ the `_conn` share of that call, and the share is zero by inspection.
 
 **Instrument:** `EXPLAIN (ANALYZE, BUFFERS)` · **database:** clone (6.94M EC
 rows; ×1.503 to prod) · **unit:** ms, 8 kB buffers · **window:** 2026-10-03
-~23:55 UTC, `work_mem = 64MB`, `max_parallel_workers_per_gather = 0` (the
+~23:41 UTC, `work_mem = 64MB`, `max_parallel_workers_per_gather = 0` (the
 window function's own proconfig), first window cold, the rest warm.
 
 | shape | groups | time | buffers hit | buffers read | total buffers |
@@ -903,7 +903,7 @@ fraction, quoted for orientation only — rule 132.)
 **Instrument:** a join of `entity_search_index.connection_count` (built from a
 live `_conn` at the 06:00 daily, `refreshed_at` 2026-10-03 06:01:15) against
 `entity_connection_stats_mv.connection_count` · **database:** prod · **unit:**
-entities · **window:** read 2026-10-03 23:44 UTC.
+entities · **window:** read 2026-10-03 ~23:40 UTC.
 
 | kind | entities | equal | `_conn` higher | MV higher | missing in MV | max |diff| |
 |---|---:|---:|---:|---:|---:|---:|
@@ -1032,7 +1032,7 @@ FROM live l LEFT JOIN entity_connection_stats_mv m ON m.entity_id = l.id;
 | wall | **p50 48.4 s, p90 56.0 s, max 58.3 s, min 44.4 s** over 30 runs | `data_sync_log.metadata.unit_seconds`, prod, 2026-09-04 → 10-03 |
 | when | ≈ 06:00:10 → 06:01:00 (units 1–3 ≈ 27.5 s before it) — inside the ring reading that carried the day's worst swap-in (06:02, §6) | same |
 | planner settings it runs under | `work_mem = 128MB` (in-body), **parallel ON** (the daily cadence keeps the server default `max_parallel_workers_per_gather = 1`; only the weekly sets 0) | `prosrc` + `pg_settings`, prod |
-| its prod plan (plain EXPLAIN, `work_mem 128MB`, 1 worker) | `Finalize GroupAggregate` ← `Gather Merge` (1 worker) ← `Partial HashAggregate` (est. 6,491 groups) ← **`Parallel Seq Scan on financial_relationships`**, filter `to_type = 'official'` | prod, 2026-10-04 00:10 UTC |
+| its prod plan (plain EXPLAIN, `work_mem 128MB`, 1 worker) | `Finalize GroupAggregate` ← `Gather Merge` (1 worker) ← `Partial HashAggregate` (est. 6,491 groups) ← **`Parallel Seq Scan on financial_relationships`**, filter `to_type = 'official'` | prod, 2026-10-03 ~23:50 UTC |
 | with parallel off (plain EXPLAIN) | `HashAggregate` ← `Bitmap Heap Scan` on `financial_relationships_to` (est. 6,501,789 rows) | prod |
 | readers | `apps/civitics/app/page.tsx:407` (home, `vote_count, donor_count, total_donations_cents`); `officials/components/OfficialCard.tsx:93` (same three); `app/api/officials/[id]/summary/route.ts:156` (`donor_count, total_donations_cents`) | grep, tree `81e55351` |
 | **`financial_relationship_count`** | **no reader** — it appears only in the generated `packages/db/src/types/database.ts` | grep |
@@ -1040,7 +1040,7 @@ FROM live l LEFT JOIN entity_connection_stats_mv m ON m.entity_id = l.id;
 ### 5.3 Three of the four columns already exist, exactly
 
 **Instrument:** a join of the MV against the two rollups · **database:** prod ·
-**unit:** officials · **window:** read 2026-10-04 ~00:15 UTC (MV built 10-03
+**unit:** officials · **window:** read 2026-10-03 ~23:51 UTC (MV built 10-03
 06:00; `official_donor_totals` by `donor-rollup-refresh` `0 9,12 * * *`;
 `official_vote_stats` by `vote-stats-refresh` `30 3 * * *`).
 
@@ -1203,7 +1203,7 @@ pages/s, MB · **window:** 2026-10-02 23:46 → 10-03 23:44 UTC.
 | 04:22 | 982.9 | 287 | — | — | **cc-182** |
 | 22:32 | 953.1 | 360 | — | nightly_cron:enrichment-tail; tag_rules | status snapshot :30 + nightly tail |
 | 23:02 | 834.6 | 303 | — | — | status snapshot :00 (+ cc-184/185/186 ad-hoc reads) |
-| 23:44 | 833.2 | 359 | — | — | plausibly ad-hoc reads (this census's 367k-row prod join ran ~23:43) |
+| 23:44 | 833.2 | 359 | — | — | plausibly ad-hoc reads — this census's prod reads ran throughout 23:33–23:58, alongside cc-184/185 |
 | 04:50 | 810.5 | 234 | fe-vacuum-analyze (12 s) | — | **cc-182** |
 
 **Eight of the fifteen — including the day's MemAvailable minimum (176 MB at
@@ -1290,7 +1290,7 @@ The bursts inside 03:00–06:30 sit on (i) the half-hour snapshot (03:02, 03:32,
 daily. Of the four FIX-1125 candidates in the stack, only the 06:00 daily owns a
 burst.
 
-### 6.5 The memory GUCs (prod, `pg_settings` / `pg_db_role_setting` / `pg_proc`, read 2026-10-04 00:02 UTC)
+### 6.5 The memory GUCs (prod, `pg_settings` / `pg_db_role_setting` / `pg_proc`, read 2026-10-03 ~23:49 UTC)
 
 | knob | value | scope | worst-case multiplier |
 |---|---|---|---|
@@ -1339,7 +1339,7 @@ pgss `temp_blks_written` by role, since 2026-09-22 22:32:13 (11.04 d): **`postgr
 
 ### 6.7 Backends
 
-`pg_stat_activity`, prod, 2026-10-04 00:02 UTC: client backends `authenticator`
+`pg_stat_activity`, prod, 2026-10-03 ~23:49 UTC: client backends `authenticator`
 idle 9 · `supabase_admin` idle 2 · `pgbouncer` idle 1 · `postgres` active 1 (this
 read); plus pg_cron launcher, pg_net worker, logical-replication launcher,
 autovacuum launcher, archiver, bgwriter, checkpointer, walwriter. Idle-in-pool:
@@ -2071,7 +2071,7 @@ SELECT a.n, a.member, count(*) AS stub_keys,
 **Instrument:** direct reads of `financial_entities`, `entity_tags`,
 `external_source_refs`, `franklin_seed_map`, `financial_relationships`,
 `financial_entity_industry_overrides` · **database:** prod · **unit:** rows,
-cents · **window:** read 2026-10-04 ~00:00 UTC.
+cents · **window:** read 2026-10-03 ~23:44 UTC.
 
 **Both are fictional.** Each row carries `is_synthetic = true`, a `seed_key` in
 its `metadata`, and a `franklin_seed_map` row from 2026-06-19 09:41 — they are
