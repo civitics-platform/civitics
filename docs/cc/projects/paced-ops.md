@@ -12,6 +12,7 @@ steps:
   - {id: s4, kind: cc, ref: "cc-179", title: "weekly-merge prompt — not paced (design D2)"}
   - {id: s5, kind: op, ref: "FIX-1258", title: "compaction: pg_repack if available, else deferred (design D5)", after: 2026-10-13}
   - {id: s6, kind: design, ref: "", title: "generic paced runner — lifted with the first windowable op (1240 backfill / dp full cycle / 1211)"}
+  - {id: s7, kind: cc, ref: "cc-188", title: "census builds — the snapshot reads, 1132, 1145, the arm gate + park"}
   - {id: s8, kind: cc, ref: "cc-189", title: "FIX-1124 part 1 — crawls yield to peers (the first dispatcher instance)"}
   - {id: s9, kind: receipt, ref: "FIX-1124", title: "a week of peer_due/peer_running skips with zero crawl↔daily overlaps → part 2 retires the blackout", after: 2026-10-11T12:00Z}
 ---
@@ -35,6 +36,14 @@ reads.
 
 **The generic runner (s6)** is decoupled from FIX-1248, which retires census
 decision 5. It is built with the first op that genuinely needs windows.
+
+**Census builds (s7):** cc-188 landed the measure-first census's levers that
+fit the box as it is. FIX-1269 covers the status snapshot's two reads (a
+partial index and a freshness stamp). FIX-1132 has the 06:00 search-index unit
+read the stats table when it is provably current. FIX-1270 parks a generic EC
+arm after two consecutive cancels. Two items stopped on prod evidence: FIX-1145's
+rollup read would make the home page's donor numbers lag each weekend drop by a
+day, and the `_external` content fingerprint would still change every week.
 
 **Peer yield (s8, s9):** FIX-1124 part 1 (cc-189) is the first instance of a
 crawl reading what is running and what is due instead of a clock. `crawl_gate`
