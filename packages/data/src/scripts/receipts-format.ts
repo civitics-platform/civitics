@@ -668,7 +668,62 @@ export interface ForkerSection {
    * cannot read the ring. A memory threshold is sized from seven of these.
    */
   memory_day?: MemoryDay | null;
+  /**
+   * FIX-1124 — both crawls' LIFETIME skip counters, `pipeline_state.<key>.skips`
+   * verbatim (`{<reason>: n, last_skip_at, last_skip_reason}`). Banked so the
+   * next file can take a delta: nothing else keeps a history of them.
+   */
+  crawl_skips?: CrawlSkips | null;
+  /** FIX-1124 — the previous nominal day's `forker.crawl_skips`, or why there is none. */
+  crawl_skips_baseline?: CrawlSkipsBaseline;
+  /** FIX-1124 — crawl units whose running span overlapped a peer's, last 24 h. */
+  crawl_overlaps_24h?: CrawlOverlapRow[];
 }
+
+/** FIX-1124 — one crawl's lifetime counters, as `pipeline_state` holds them. */
+export type CrawlSkipCounters = Record<string, number | string | null>;
+
+export interface CrawlSkips {
+  ec_crawl: CrawlSkipCounters | null;
+  fe_crawl: CrawlSkipCounters | null;
+  /** When this file read them — the delta's interval is read_at to read_at. */
+  read_at: string;
+}
+
+export type CrawlSkipsBaseline =
+  | { available: true; file: string; skips: CrawlSkips }
+  | { available: false; file: string; reason: string };
+
+/**
+ * FIX-1124 — one overlap: a crawl unit (`entity_connections_rebuild` /
+ * `financial_entity_totals_refresh`) whose span met a peer's
+ * (`refresh_derived_mvs` / `run_rule_taggers`). A peer that waited in
+ * peer_wait_gate starts its span after the wait: it was not running then.
+ */
+export interface CrawlOverlapRow {
+  crawl: string;
+  crawl_status: string | null;
+  crawl_start: string | null;
+  crawl_end: string | null;
+  peer: string;
+  peer_cadence: string | null;
+  peer_start: string | null;
+  peer_end: string | null;
+}
+
+/**
+ * FIX-1124 — the reasons the "Crawl skips" table prints, in this order: the two
+ * peer reasons first (what part 1 added), then the clock and the cooldown, then
+ * the two throttles. A reason a crawl has never recorded reads 0.
+ */
+export const CRAWL_SKIP_REASONS = [
+  "peer_running",
+  "peer_due",
+  "blackout",
+  "cycle_cooldown",
+  "backoff",
+  "peer_backoff",
+] as const;
 
 /** FIX-1125 — the off-box ring's day, as the receipt carries it. */
 export type MemDay =
@@ -824,6 +879,113 @@ export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
         "** pages/s, swap-out " + r(md.swapout_per_s) + " pages/s; MemAvailable min **" +
         n0(md.mem_available_mb.min) + " MB** / p50 " + n0(md.mem_available_mb.p50) + " MB; swap in use max " +
         n0(md.swap_used_mb.max) + " MB; gaps " + md.gaps + " (intervals over 6 min, not rated).",
+    );
+  }
+  return out;
+}
+
+/** FIX-1124 — the nominal day before `date` (YYYY-MM-DD), whose file is the delta's baseline. */
+export function previousNominalDay(date: string): string {
+  return new Date(Date.parse(date + "T00:00:00Z") - 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * FIX-1124 — the baseline from the previous day's JSON text (`null` = no such
+ * file). Pure: the caller reads the file, so a missing, unparseable or
+ * pre-FIX-1124 file is a stated reason and never a throw.
+ */
+export function crawlSkipsBaselineFrom(file: string, json: string | null): CrawlSkipsBaseline {
+  if (json === null) return { available: false, file, reason: file + " does not exist" };
+  let parsed: { forker?: { crawl_skips?: CrawlSkips | null } };
+  try {
+    parsed = JSON.parse(json) as typeof parsed;
+  } catch (err) {
+    return { available: false, file, reason: file + " is unparseable (" + (err instanceof Error ? err.message : String(err)) + ")" };
+  }
+  const skips = parsed.forker?.crawl_skips ?? null;
+  if (skips === null || typeof skips.read_at !== "string") {
+    return { available: false, file, reason: file + " carries no forker.crawl_skips (it predates FIX-1124)" };
+  }
+  return { available: true, file, skips };
+}
+
+/**
+ * FIX-1124 — the §9 "Crawl skips" lines: each crawl's skip counters as a 24 h
+ * delta against the previous day's file (the counters are lifetime totals and
+ * nothing else keeps their history), then the crawl↔peer overlap count. Pure,
+ * so both shapes — baseline present / absent — are testable without a file.
+ */
+export function crawlSkipLines(f: ForkerSection): string[] {
+  const out: string[] = [];
+  const cur = f.crawl_skips ?? null;
+  if (cur === null) {
+    out.push("Crawl skips: not read.");
+    return out;
+  }
+  const base = f.crawl_skips_baseline;
+  const crawls = ["ec_crawl", "fe_crawl"] as const;
+  const count = (c: CrawlSkipCounters | null | undefined, reason: string): number => {
+    const v = c?.[reason];
+    return typeof v === "number" ? v : 0;
+  };
+  const was = base?.available === true ? base.skips : null;
+
+  if (base?.available === true) {
+    const hours = (Date.parse(cur.read_at) - Date.parse(base.skips.read_at)) / 3_600_000;
+    out.push(
+      "Crawl skips — delta of the lifetime counters against `" + base.file + "` (read " + base.skips.read_at +
+        " → " + cur.read_at + (Number.isFinite(hours) ? ", " + hours.toFixed(1) + " h" : "") +
+        "). A skip that writes no `data_sync_log` row (every reason but the two throttles) is visible only here.",
+    );
+  } else {
+    out.push(
+      "Crawl skips — **no baseline** (" + (base === undefined ? "previous day's file not read" : base.reason) +
+        "), so these are the LIFETIME counters, read " + cur.read_at + ". The next file takes its delta against this one.",
+    );
+  }
+  out.push("");
+  out.push(
+    table(
+      ["crawl", ...CRAWL_SKIP_REASONS, "last skip"],
+      crawls.map((k) => {
+        const now = cur[k];
+        return [
+          k,
+          ...CRAWL_SKIP_REASONS.map((r) => {
+            if (was === null) return count(now, r);
+            const d = count(now, r) - count(was[k], r);
+            // A negative delta is a counter someone reset, not negative skips.
+            return d < 0 ? "reset (" + count(now, r) + ")" : d;
+          }),
+          now === null ? "—" : String(now["last_skip_reason"] ?? "—") + " @ " + String(now["last_skip_at"] ?? "—"),
+        ];
+      }),
+    ).trimEnd(),
+  );
+
+  const ov = f.crawl_overlaps_24h ?? [];
+  out.push("");
+  out.push(
+    "Crawl↔peer overlaps, last 24 h: **" + ov.length + "**" +
+      (ov.length === 0
+        ? " — no crawl unit's span met a `refresh_derived_mvs` or `run_rule_taggers` run."
+        : ". The weekly cadences share these pipeline names and are not peer_due (not daily-form), so a " +
+          "Tuesday row may be one; the `cadence` column says."),
+  );
+  if (ov.length > 0) {
+    out.push("");
+    out.push(
+      table(
+        ["crawl", "status", "crawl span", "peer", "cadence", "peer span"],
+        ov.map((r) => [
+          r.crawl,
+          r.crawl_status,
+          (r.crawl_start ?? "—") + " → " + (r.crawl_end ?? "running"),
+          r.peer,
+          r.peer_cadence,
+          (r.peer_start ?? "—") + " → " + (r.peer_end ?? "running"),
+        ]),
+      ).trimEnd(),
     );
   }
   return out;
@@ -1582,6 +1744,17 @@ export function renderMarkdown(d: ReceiptsData): string {
   );
   p("");
   for (const line of boxHealthLines(d.forker, d.generated_at)) p(line);
+  // FIX-1124 — the crawls yield to the 06:xx jobs by reading them, not a clock.
+  p("");
+  p("### Peers — crawl skips and crawl↔daily overlaps (FIX-1124)");
+  p("");
+  p(
+    "`ec-crawl` and `fe-crawl` skip `peer_running` while `refresh_derived_mvs` or `run_rule_taggers` " +
+      "has a running row, and `peer_due` from 1,800 s before either daily slot to 60 s after it. " +
+      "The blackout still stands until a week of these shows zero overlaps; then part 2 retires it.",
+  );
+  p("");
+  for (const line of crawlSkipLines(d.forker)) p(line);
   p(
     queryBlock(d.queries, [
       "forker_24h",
@@ -1590,6 +1763,8 @@ export function renderMarkdown(d: ReceiptsData): string {
       "forker_cancels",
       "forker_vercel_liveness",
       "box_health",
+      "crawl_skips",
+      "crawl_overlaps",
     ]),
   );
 

@@ -64,7 +64,7 @@ never a claim without its instrument.
 | 6 | Interlock footprint | `prod_session_state()` now, and every `skipped` row in the last 24 h with its reason (FIX-950) |
 | 7 | Canary conditions | the last `canary_check` run's keyed conditions, tier and unchanged-run counter (FIX-1036) |
 | 8 | SLD linkage | total / linked / residual, and the residual by state and chamber (FIX-913 / FIX-859 / FIX-914) |
-| 9 | The forker (FIX-1194) | startup timeouts by hour and by day, who was running in each burst hour, budget cancels and which path acted, box health |
+| 9 | The forker (FIX-1194) | startup timeouts by hour and by day, who was running in each burst hour, budget cancels and which path acted, box health; **Peers** (FIX-1124): both crawls' skip counters as a 24 h delta, and crawl↔daily overlaps |
 | 10 | FEC id divergence (FIX-1189 O2) | the latest `congress_legislator_ids_report` row: counts per class (reconciled to the population), the `double_claim` split, the top 20 `bindable` / `prior_office_live` (O1's targets), one line each for `unlisted_live_id` / `double_claim` / `cross_bioguide_claim`; **missing** when no row in 48 h |
 | 11 | Not capturable here | the named reads with **no SQL surface**, listed so their absence is never read as a clean check |
 
@@ -79,6 +79,22 @@ from seven of these. It needs two repository Actions secrets,
 `.env.local`). `nightly.yml`'s `receipts` job already passes them through. Until
 they exist, `memory_day` is `null` and §9 says why. Adding them is Craig's
 action. The banked series starts the night after they exist.
+
+**Section 9's crawl skip counters are banked here too** (FIX-1124, cc-189).
+`ec-crawl` and `fe-crawl` record every skip in
+`pipeline_state.<ec_crawl|fe_crawl>.skips` as a LIFETIME total. Only the two
+throttles (`backoff`, `peer_backoff`) also write a `data_sync_log` row; the
+peer reasons, `blackout` and `cycle_cooldown` write none (FIX-1111). So each
+day's JSON banks the counters as `forker.crawl_skips`, and the next file prints
+the delta against the previous nominal day's file, read from the directory it
+writes to. When that file is missing or predates FIX-1124, the section says
+**no baseline** and prints the lifetime totals instead. Beside the table:
+**crawl↔peer overlaps**, the crawl units whose running span met a
+`refresh_derived_mvs` or `run_rule_taggers` run in the last 24 h. A daily that
+waited in `peer_wait_gate` counts from the end of its wait. The weekly cadences
+share those pipeline names, so a Tuesday row can be a weekly; the `cadence`
+column says. A week of zero overlaps is the receipt that retires the blackout
+(FIX-1124 part 2).
 
 Section 11 is not filler. `57014` cancellation counts live in `postgres_logs`,
 which the Supabase Logs API serves and SQL cannot reach; GHA step logs age out.

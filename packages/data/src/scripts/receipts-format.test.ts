@@ -43,6 +43,11 @@ import {
   legislatorIdsLines,
   LEGISLATOR_IDS_STALE_HOURS,
   type LegislatorIdsSection,
+  type CrawlSkips,
+  CRAWL_SKIP_REASONS,
+  crawlSkipLines,
+  crawlSkipsBaselineFrom,
+  previousNominalDay,
 } from "./receipts-format";
 
 const BAND: Band = { lo_s: 0, hi_s: 140, source: "test" };
@@ -1149,4 +1154,133 @@ test("FIX-1251: `scheduled` renders plain in the table (not a fault), `missing` 
   const md = renderMarkdown(d);
   assert.match(md, /\| scheduled \| monthly · next 2026-10-01T12:00:00Z \|/);
   assert.match(md, /\| \*\*missing\*\* \| no firing in the lookback window \|/);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1124 — §9 "Peers": the crawls' skip counters as a 24 h delta, and overlaps
+// ---------------------------------------------------------------------------
+
+/** cc-189 read 3: prod's lifetime counters, 01:49 UTC 10-04, before part 1 landed. */
+const SKIPS_1003: CrawlSkips = {
+  ec_crawl: {
+    backoff: 178, blackout: 436, cycle_cooldown: 1830,
+    last_skip_at: "2026-10-04T01:00:00.318728+00:00", last_skip_reason: "cycle_cooldown",
+  },
+  fe_crawl: {
+    backoff: 100, peer_backoff: 63,
+    last_skip_at: "2026-09-21T13:30:00.278717+00:00", last_skip_reason: "peer_backoff",
+  },
+  read_at: "2026-10-04T01:49:36.267Z",
+};
+/** A day later: one morning of the expected skips (ec 5 firings, fe 3) plus the day's cooldowns. */
+const SKIPS_1004: CrawlSkips = {
+  ec_crawl: {
+    backoff: 178, blackout: 445, cycle_cooldown: 1902, peer_due: 4, peer_running: 1,
+    last_skip_at: "2026-10-05T01:00:00.2Z", last_skip_reason: "cycle_cooldown",
+  },
+  fe_crawl: {
+    backoff: 100, peer_backoff: 63, peer_due: 3,
+    last_skip_at: "2026-10-04T06:30:00.1Z", last_skip_reason: "peer_due",
+  },
+  read_at: "2026-10-05T01:49:00.000Z",
+};
+
+test("FIX-1124: previousNominalDay — the day before, across a month and a year", () => {
+  assert.equal(previousNominalDay("2026-10-05"), "2026-10-04");
+  assert.equal(previousNominalDay("2026-10-01"), "2026-09-30");
+  assert.equal(previousNominalDay("2027-01-01"), "2026-12-31");
+});
+
+test("FIX-1124: crawlSkipsBaselineFrom — absent, unparseable, pre-FIX-1124 and banked files", () => {
+  assert.deepEqual(crawlSkipsBaselineFrom("2026-10-03.json", null), {
+    available: false, file: "2026-10-03.json", reason: "2026-10-03.json does not exist",
+  });
+  const bad = crawlSkipsBaselineFrom("2026-10-03.json", "{not json");
+  assert.equal(bad.available, false);
+  assert.match(bad.available ? "" : bad.reason, /^2026-10-03\.json is unparseable \(/);
+  const old = crawlSkipsBaselineFrom("2026-10-03.json", JSON.stringify({ forker: { by_hour_24h: [] } }));
+  assert.deepEqual(old, {
+    available: false, file: "2026-10-03.json",
+    reason: "2026-10-03.json carries no forker.crawl_skips (it predates FIX-1124)",
+  });
+  const banked = crawlSkipsBaselineFrom("2026-10-04.json", JSON.stringify({ forker: { crawl_skips: SKIPS_1003 } }));
+  assert.deepEqual(banked, { available: true, file: "2026-10-04.json", skips: SKIPS_1003 });
+});
+
+test("FIX-1124: §9 Peers — baseline present renders the 24 h delta per reason, peer reasons first", () => {
+  const text = crawlSkipLines({
+    ...quiet,
+    crawl_skips: SKIPS_1004,
+    crawl_skips_baseline: { available: true, file: "2026-10-04.json", skips: SKIPS_1003 },
+    crawl_overlaps_24h: [],
+  }).join("\n");
+  assert.deepEqual([...CRAWL_SKIP_REASONS], ["peer_running", "peer_due", "blackout", "cycle_cooldown", "backoff", "peer_backoff"]);
+  assert.match(text, /^Crawl skips — delta of the lifetime counters against `2026-10-04\.json` \(read 2026-10-04T01:49:36\.267Z → 2026-10-05T01:49:00\.000Z, 24\.0 h\)/);
+  assert.match(text, /\| crawl \| peer_running \| peer_due \| blackout \| cycle_cooldown \| backoff \| peer_backoff \| last skip \|/);
+  assert.match(text, /\| ec_crawl \| 1 \| 4 \| 9 \| 72 \| 0 \| 0 \| cycle_cooldown @ 2026-10-05T01:00:00\.2Z \|/);
+  assert.match(text, /\| fe_crawl \| 0 \| 3 \| 0 \| 0 \| 0 \| 0 \| peer_due @ 2026-10-04T06:30:00\.1Z \|/);
+  assert.match(text, /Crawl↔peer overlaps, last 24 h: \*\*0\*\* — no crawl unit's span met/);
+});
+
+test("FIX-1124: §9 Peers — no baseline prints the lifetime counters and says why", () => {
+  const text = crawlSkipLines({
+    ...quiet,
+    crawl_skips: SKIPS_1003,
+    crawl_skips_baseline: {
+      available: false, file: "2026-10-03.json",
+      reason: "2026-10-03.json carries no forker.crawl_skips (it predates FIX-1124)",
+    },
+  }).join("\n");
+  assert.match(text, /^Crawl skips — \*\*no baseline\*\* \(2026-10-03\.json carries no forker\.crawl_skips \(it predates FIX-1124\)\), so these are the LIFETIME counters, read 2026-10-04T01:49:36\.267Z\./);
+  assert.match(text, /\| ec_crawl \| 0 \| 0 \| 436 \| 1830 \| 178 \| 0 \|/);
+  assert.match(text, /\| fe_crawl \| 0 \| 0 \| 0 \| 0 \| 100 \| 63 \|/);
+  // Not read at all is its own line, not an empty table.
+  assert.deepEqual(crawlSkipLines({ ...quiet }), ["Crawl skips: not read."]);
+});
+
+test("FIX-1124: §9 Peers — a counter that went DOWN is a reset, never negative skips", () => {
+  const text = crawlSkipLines({
+    ...quiet,
+    crawl_skips: { ...SKIPS_1004, ec_crawl: { blackout: 2 } },
+    crawl_skips_baseline: { available: true, file: "2026-10-04.json", skips: SKIPS_1003 },
+  }).join("\n");
+  assert.match(text, /\| ec_crawl \| 0 \| 0 \| reset \(2\) \| reset \(0\) \| reset \(0\) \| 0 \| — @ — \|/);
+});
+
+test("FIX-1124: §9 Peers — overlaps render a row each, with the peer's cadence (cc-189 read 4's shape)", () => {
+  const text = crawlSkipLines({
+    ...quiet,
+    crawl_skips: SKIPS_1003,
+    crawl_skips_baseline: { available: false, file: "x.json", reason: "x.json does not exist" },
+    crawl_overlaps_24h: [
+      {
+        crawl: "financial_entity_totals_refresh", crawl_status: "complete",
+        crawl_start: "2026-10-03T06:30:00.220Z", crawl_end: "2026-10-03T06:30:00.306Z",
+        peer: "run_rule_taggers", peer_cadence: "daily",
+        peer_start: "2026-10-03T06:30:00.192Z", peer_end: "2026-10-03T06:33:12.555Z",
+      },
+    ],
+  }).join("\n");
+  assert.match(text, /Crawl↔peer overlaps, last 24 h: \*\*1\*\*\. The weekly cadences share these pipeline names/);
+  assert.match(text, /\| financial_entity_totals_refresh \| complete \| 2026-10-03T06:30:00\.220Z → 2026-10-03T06:30:00\.306Z \| run_rule_taggers \| daily \| 2026-10-03T06:30:00\.192Z → 2026-10-03T06:33:12\.555Z \|/);
+});
+
+test("FIX-1124: renderMarkdown — §9 carries the Peers subsection; renderJson banks forker.crawl_skips", () => {
+  const d = fixture();
+  d.forker = {
+    ...d.forker,
+    crawl_skips: SKIPS_1003,
+    crawl_skips_baseline: { available: false, file: "2026-09-11.json", reason: "2026-09-11.json does not exist" },
+    crawl_overlaps_24h: [],
+  };
+  const md = renderMarkdown(d);
+  const s9 = md.slice(md.indexOf("## 9."), md.indexOf("## 10."));
+  assert.match(s9, /### Peers — crawl skips and crawl↔daily overlaps \(FIX-1124\)/);
+  assert.match(s9, /\*\*no baseline\*\* \(2026-09-11\.json does not exist\)/);
+  const json = JSON.parse(renderJson(d)) as { forker: { crawl_skips: CrawlSkips } };
+  assert.deepEqual(json.forker.crawl_skips, SKIPS_1003);
+  // The next day's reader takes exactly what this file banked.
+  assert.deepEqual(crawlSkipsBaselineFrom("2026-09-12.json", renderJson(d)), {
+    available: true, file: "2026-09-12.json", skips: SKIPS_1003,
+  });
 });

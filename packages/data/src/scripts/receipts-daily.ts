@@ -67,9 +67,14 @@ import {
   type ForkerCancelRow,
   type ForkerRunningRow,
   type MemDay,
+  type CrawlOverlapRow,
+  type CrawlSkipCounters,
+  type CrawlSkips,
   BURST_THRESHOLD,
   compareToBand,
+  crawlSkipsBaselineFrom,
   nominalDate,
+  previousNominalDay,
   renderJson,
   renderMarkdown,
   verdictsFor,
@@ -714,6 +719,41 @@ FROM public.pipeline_state
 WHERE key IN ('box_health', 'box_health_mem')`;
 
 /**
+ * FIX-1124 — both crawls' LIFETIME skip counters. Nothing keeps their history,
+ * so each file banks them and the next takes the delta. The peer reasons (and
+ * blackout / cycle_cooldown) write no data_sync_log row by design (FIX-1111),
+ * which is why the counters are the only instrument for them.
+ */
+const Q_CRAWL_SKIPS = `
+SELECT key, value->'skips' AS skips, clock_timestamp() AS read_at
+FROM public.pipeline_state
+WHERE key IN ('ec_crawl', 'fe_crawl')`;
+
+/**
+ * FIX-1124 — crawl units whose running span met a peer's, last 24 h. A peer that
+ * waited in peer_wait_gate starts its span after the wait (its started_at is the
+ * CALL's transaction start, before the wait). skipped / deferred rows did no
+ * work; reaped rows have no end and would read as running until now.
+ */
+const Q_CRAWL_OVERLAPS = `
+SELECT c.pipeline AS crawl, c.status AS crawl_status, c.started_at AS crawl_start, c.completed_at AS crawl_end,
+       d.pipeline AS peer, d.metadata->>'cadence' AS peer_cadence,
+       d.started_at + make_interval(secs => COALESCE((d.metadata->'gate'->>'waited_s')::int, 0)) AS peer_start,
+       d.completed_at AS peer_end
+FROM public.data_sync_log c
+JOIN public.data_sync_log d
+  ON d.pipeline IN ('refresh_derived_mvs', 'run_rule_taggers')
+ AND d.status NOT IN ('skipped', 'deferred', 'reaped')
+ AND d.started_at >= now() - interval '30 hours'
+ AND c.started_at < COALESCE(d.completed_at, now())
+ AND COALESCE(c.completed_at, now())
+     > d.started_at + make_interval(secs => COALESCE((d.metadata->'gate'->>'waited_s')::int, 0))
+WHERE c.pipeline IN ('entity_connections_rebuild', 'financial_entity_totals_refresh')
+  AND c.status NOT IN ('skipped', 'deferred', 'reaped')
+  AND c.started_at >= now() - interval '24 hours'
+ORDER BY c.started_at`;
+
+/**
  * FIX-1125 — the day's memory series, from the OFF-box ring. Not SQL: one
  * Upstash LRANGE (one command). Absent credentials are a stated reason, not a
  * failure.
@@ -1143,6 +1183,37 @@ async function main(): Promise<void> {
       }),
     );
 
+    // FIX-1124 — the crawl counters, the previous day's as the baseline (from the
+    // directory THIS run writes to, so a local run never diffs against prod's
+    // file), and the overlaps.
+    const crawlRows = await r.run<{ key: string; skips: CrawlSkipCounters | null; read_at: unknown }>(
+      "crawl_skips",
+      Q_CRAWL_SKIPS,
+    );
+    const crawlBy = new Map(crawlRows.map((row) => [row.key, row.skips ?? null]));
+    const crawlSkips: CrawlSkips = {
+      ec_crawl: crawlBy.get("ec_crawl") ?? null,
+      fe_crawl: crawlBy.get("fe_crawl") ?? null,
+      read_at: iso(crawlRows[0]?.read_at) ?? now.toISOString(),
+    };
+    const baselineFile = previousNominalDay(date) + ".json";
+    const baselinePath = join(resolveReceiptPaths(args, isLocal).outDir, baselineFile);
+    const crawlBaseline = crawlSkipsBaselineFrom(
+      baselineFile,
+      existsSync(baselinePath) ? readFileSync(baselinePath, "utf8") : null,
+    );
+    const overlapRows = await r.run<Record<string, unknown>>("crawl_overlaps", Q_CRAWL_OVERLAPS);
+    const crawlOverlaps: CrawlOverlapRow[] = overlapRows.map((v) => ({
+      crawl: str(v["crawl"]) ?? "(unnamed)",
+      crawl_status: str(v["crawl_status"]),
+      crawl_start: iso(v["crawl_start"]),
+      crawl_end: iso(v["crawl_end"]),
+      peer: str(v["peer"]) ?? "(unnamed)",
+      peer_cadence: str(v["peer_cadence"]),
+      peer_start: iso(v["peer_start"]),
+      peer_end: iso(v["peer_end"]),
+    }));
+
     // FIX-1189 O2 — §10.
     const legRows = await r.run<Record<string, unknown>>("legislator_ids", Q_LEGISLATOR_IDS);
     const legRun = (which: string): LegislatorIdsRun | null => {
@@ -1275,6 +1346,9 @@ async function main(): Promise<void> {
         box_health_mem: boxBy.get("box_health_mem") ?? null,
         mem_day: mem.day,
         memory_day: mem.memory_day,
+        crawl_skips: crawlSkips,
+        crawl_skips_baseline: crawlBaseline,
+        crawl_overlaps_24h: crawlOverlaps,
       },
       legislator_ids: { latest: legRun("latest"), complete: legRun("complete") },
       not_capturable: NOT_CAPTURABLE,
