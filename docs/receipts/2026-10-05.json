@@ -1,12 +1,12 @@
 {
   "nominal_date": "2026-10-05",
-  "generated_at": "2026-10-04T22:55:52.325Z",
+  "generated_at": "2026-10-04T23:45:12.029Z",
   "target": "PROD (Supabase Pro)",
   "target_host": "aws-0-us-west-2.pooler.supabase.com:5432",
   "nightly": {
     "created_at": "2026-10-04T21:00:12Z",
     "run_id": 37234284568,
-    "conclusion": "",
+    "conclusion": "success",
     "jobs": [
       {
         "name": "fec-phase",
@@ -34,9 +34,9 @@
       },
       {
         "name": "receipts",
-        "conclusion": null,
+        "conclusion": "success",
         "started_at": "2026-10-04T22:55:28Z",
-        "completed_at": "0001-01-01T00:00:00Z"
+        "completed_at": "2026-10-04T22:56:19Z"
       }
     ],
     "slot_utc": "21:00",
@@ -90,8 +90,17 @@
         "dispatched_by": "vercel-cron",
         "created_at": "2026-10-04T21:00:12Z",
         "offset_hours": 0.0033333333333333335,
-        "conclusion": null,
+        "conclusion": "success",
         "already_ran": false
+      },
+      {
+        "run_id": 37244831398,
+        "event": "schedule",
+        "dispatched_by": "schedule",
+        "created_at": "2026-10-04T23:44:16Z",
+        "offset_hours": 2.7377777777777776,
+        "conclusion": null,
+        "already_ran": true
       }
     ],
     "dispatcher": {
@@ -158,9 +167,9 @@
       "schedule": "* * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-10-04T22:55:00.345Z",
-      "last_end": "2026-10-04T22:55:02.216Z",
-      "duration_s": 1.871519,
+      "last_start": "2026-10-04T23:45:00.094Z",
+      "last_end": "2026-10-04T23:45:00.192Z",
+      "duration_s": 0.097519,
       "cron_status": "succeeded",
       "return_message": "1 row",
       "sync_status": null,
@@ -194,9 +203,9 @@
       "schedule": "*/2 * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-10-04T22:54:00.259Z",
-      "last_end": "2026-10-04T22:54:00.355Z",
-      "duration_s": 0.095746,
+      "last_start": "2026-10-04T23:44:00.101Z",
+      "last_end": "2026-10-04T23:44:00.147Z",
+      "duration_s": 0.045907,
       "cron_status": "succeeded",
       "return_message": "1 row",
       "sync_status": null,
@@ -230,9 +239,9 @@
       "schedule": "*/2 * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-10-04T22:54:00.262Z",
-      "last_end": "2026-10-04T22:54:00.280Z",
-      "duration_s": 0.018684,
+      "last_start": "2026-10-04T23:44:00.074Z",
+      "last_end": "2026-10-04T23:44:00.093Z",
+      "duration_s": 0.018576,
       "cron_status": "succeeded",
       "return_message": "1 row",
       "sync_status": null,
@@ -360,12 +369,12 @@
       "schedule": "*/15 * * * *",
       "active": true,
       "pipeline": "entity_connections_rebuild",
-      "last_start": "2026-10-04T22:45:00.431Z",
-      "last_end": "2026-10-04T22:45:01.896Z",
-      "duration_s": 1.4657,
+      "last_start": "2026-10-04T23:45:00.097Z",
+      "last_end": "2026-10-04T23:45:14.868Z",
+      "duration_s": 14.771089,
       "cron_status": "succeeded",
       "return_message": "CALL",
-      "sync_status": "deferred",
+      "sync_status": "partial",
       "skip_reason": null,
       "phase_seconds": null,
       "band": null,
@@ -454,12 +463,12 @@
       "schedule": "*/30 * * * *",
       "active": true,
       "pipeline": "financial_entity_totals_refresh",
-      "last_start": "2026-10-04T22:30:00.225Z",
-      "last_end": "2026-10-04T22:30:00.438Z",
-      "duration_s": 0.21326,
+      "last_start": "2026-10-04T23:30:00.111Z",
+      "last_end": "2026-10-04T23:36:40.237Z",
+      "duration_s": 400.125106,
       "cron_status": "succeeded",
       "return_message": "CALL",
-      "sync_status": "deferred",
+      "sync_status": "partial",
       "skip_reason": null,
       "phase_seconds": null,
       "band": null,
@@ -1035,19 +1044,19 @@
       {
         "relation": "entity_connections",
         "pct_all_visible": 99.9,
-        "n_dead_tup": 3873,
+        "n_dead_tup": 12097,
         "relpages": 373641
       },
       {
         "relation": "financial_entities",
         "pct_all_visible": 100,
-        "n_dead_tup": 0,
+        "n_dead_tup": 53259,
         "relpages": 245569
       },
       {
         "relation": "financial_relationships",
         "pct_all_visible": 99.9,
-        "n_dead_tup": 46491,
+        "n_dead_tup": 46701,
         "relpages": 631265
       }
     ],
@@ -1560,7 +1569,7 @@
         "bucket": "2026-10-04 09:00",
         "jobname": "entity-connection-stats-rebuild",
         "start_time": "2026-08-24T16:00:00.110Z",
-        "wall_s": 3567363.349669,
+        "wall_s": 3570315.922045,
         "status": "failed"
       }
     ],
@@ -1573,74 +1582,74 @@
         "acted_via": "pg_cron"
       }
     ],
-    "vercel_liveness_at": "2026-10-04T22:54:18.341037+00:00",
+    "vercel_liveness_at": "2026-10-04T23:44:18.275087+00:00",
     "box_health": {
-      "at": "2026-10-04T22:56:00.726563+00:00",
+      "at": "2026-10-04T23:45:00.100395+00:00",
       "backends": {
         "active": 2,
-        "client": 27,
+        "client": 12,
         "idle_in_txn": 0,
         "lock_waiting": 0,
         "max_connections": 60,
         "longest_active_s": 0
       },
-      "probe_ms": 44.9,
-      "oldest_running_s": null,
+      "probe_ms": 89.5,
+      "oldest_running_s": 0,
       "watchdog_runs_10m": {
-        "unit": 4,
-        "budget": 4
+        "unit": 5,
+        "budget": 5
       },
       "running_over_budget": 0,
       "startup_timeouts_10m": 0,
       "startup_timeouts_60m": 0,
-      "running_budgeted_jobs": 0,
+      "running_budgeted_jobs": 1,
       "watchdog_max_wall_10m": {
-        "unit": 0.733,
-        "budget": 1.108
+        "unit": 0.237,
+        "budget": 1.41
       }
     },
     "box_health_mem": {
-      "at": "2026-10-04T22:54:23.175666+00:00",
-      "load1": 1.54,
-      "pswpin": 106825320,
-      "pswpout": 108373231,
+      "at": "2026-10-04T23:44:22.672097+00:00",
+      "load1": 0.05,
+      "pswpin": 107446810,
+      "pswpout": 109032763,
       "oom_kill": 0,
-      "route_at": "2026-10-04T22:54:22.216Z",
-      "scrape_ms": 573,
-      "pgmajfault": 62656051,
+      "route_at": "2026-10-04T23:44:22.205Z",
+      "scrape_ms": 305,
+      "pgmajfault": 63040215,
       "mem_total_bytes": 948195328,
-      "swap_free_bytes": 354521088,
+      "swap_free_bytes": 307826688,
       "swap_total_bytes": 1073737728,
-      "mem_available_bytes": 291713024
+      "mem_available_bytes": 409280512
     },
     "mem_day": {
       "available": true,
       "n": 715,
-      "first_at": "2026-10-03T22:56:22.276Z",
-      "last_at": "2026-10-04T22:54:22.216Z",
+      "first_at": "2026-10-03T23:46:22.217Z",
+      "last_at": "2026-10-04T23:44:22.205Z",
       "min_mb": 194,
       "min_at": "2026-10-04T09:32:22.207Z",
-      "median_mb": 430,
+      "median_mb": 429,
       "max_mb": 543,
       "mem_total_mb": 904
     },
     "memory_day": {
       "samples": 715,
-      "first_at": "2026-10-03T22:56:22.276Z",
-      "last_at": "2026-10-04T22:54:22.216Z",
+      "first_at": "2026-10-03T23:46:22.217Z",
+      "last_at": "2026-10-04T23:44:22.205Z",
       "swapin_per_s": {
-        "p50": 40.9,
+        "p50": 40.5,
         "p95": 684.2,
         "max": 1970.4
       },
       "swapout_per_s": {
-        "p50": 13.9,
-        "p95": 707.7,
+        "p50": 12.3,
+        "p95": 738.8,
         "max": 2078.1
       },
       "mem_available_mb": {
         "min": 194,
-        "p50": 430
+        "p50": 429
       },
       "swap_used_mb": {
         "max": 1024
@@ -1665,7 +1674,7 @@
         "peer_running": 2,
         "last_skip_reason": "peer_backoff"
       },
-      "read_at": "2026-10-04T22:56:03.927Z"
+      "read_at": "2026-10-04T23:45:16.679Z"
     },
     "crawl_skips_baseline": {
       "available": false,
@@ -4132,169 +4141,169 @@
     {
       "key": "nightly_phases",
       "sql": "\nSELECT started_at, status,\n       metadata->>'phase'                        AS phase,\n       (metadata->>'duration_ms')::numeric/1000  AS duration_s,\n       (metadata->>'peak_rss_mb')::numeric       AS peak_rss_mb,\n       metadata->>'skip_reason'                  AS skip_reason,\n       (metadata->>'is_weekly')::boolean         AS is_weekly,\n       metadata->>'github_run_id'                AS github_run_id,\n       metadata->>'dispatched_by'                AS dispatched_by\nFROM public.data_sync_log\nWHERE pipeline IN ('nightly_cron','nightly_killed')\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at",
-      "elapsed_ms": 40,
+      "elapsed_ms": 25,
       "error": null
     },
     {
       "key": "votes_skips",
       "sql": "\nSELECT rows_failed, metadata->'skipped_rolls' AS skipped_rolls\nFROM public.data_sync_log\nWHERE pipeline = 'congress_votes'\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at DESC\nLIMIT 1",
-      "elapsed_ms": 60,
+      "elapsed_ms": 18,
       "error": null
     },
     {
       "key": "tag_rules_kept",
       "sql": "\nSELECT status, rows_inserted,\n       metadata->'kept_total'              AS kept_total,\n       metadata->'kept_proposals'          AS kept_proposals,\n       metadata->'kept_financial_entities' AS kept_financial_entities,\n       metadata->'kept_officials'          AS kept_officials\nFROM public.data_sync_log\nWHERE pipeline = 'tag_rules'\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at DESC\nLIMIT 1",
-      "elapsed_ms": 130,
+      "elapsed_ms": 17,
       "error": null
     },
     {
       "key": "gha_dispatch_nightly",
       "sql": "\nSELECT value\nFROM public.pipeline_state\nWHERE key = 'gha_dispatch_nightly'",
-      "elapsed_ms": 62,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "cron_jobs",
       "sql": "\nWITH jp AS (\n\nWITH job AS (\n  SELECT j.jobid, j.jobname, j.active, j.schedule,\n         (regexp_match(j.command, '(?:CALL|SELECT)\\s+(?:public\\.)?([a-z_0-9]+)\\s*\\(', 'i'))[1] AS proc\n  FROM cron.job j\n), src AS (\n  SELECT job.*,\n         -- Comment-only lines removed; inline trailing comments left alone,\n         -- since a live literal can sit on a line that ends in one.\n         regexp_replace(pr.prosrc, '(?n)^[ \\t]*--[^\\n]*$', '', 'g') AS body,\n         pr.prosrc AS raw\n  FROM job\n  LEFT JOIN pg_proc pr\n         ON pr.proname = job.proc\n        AND pr.pronamespace = 'public'::regnamespace\n)\nSELECT jobid, jobname, active, schedule, proc,\n       COALESCE(\n         (regexp_match(body, 'data_sync_log\\s*\\([^)]*\\)\\s*VALUES\\s*\\(\\s*''([a-z_0-9]+)''', 'i'))[1],\n         (regexp_match(body, 'c_pipeline\\s+text\\s*:=\\s*''([a-z_0-9]+)''', 'i'))[1]\n       )                                                                AS pipeline,\n       COALESCE(raw ILIKE '%INSERT INTO public.data_sync_log%', false)  AS writes_dsl,\n       COALESCE(raw ILIKE '%prod_session_state%', false)                AS guarded\nFROM src\nORDER BY jobname\n), last_run AS (\n  SELECT DISTINCT ON (d.jobid)\n         d.jobid, d.status, d.return_message, d.start_time, d.end_time\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - make_interval(days => $1::int)\n  ORDER BY d.jobid, d.start_time DESC\n)\nSELECT j.jobid, j.jobname, j.schedule, j.active,\n       jp.pipeline,\n       r.start_time, r.end_time,\n       r.status                                                   AS cron_status,\n       r.return_message,\n       EXTRACT(epoch FROM (r.end_time - r.start_time))::numeric   AS duration_s,\n       s.status                                                   AS sync_status,\n       s.metadata->>'skip_reason'                                 AS skip_reason,\n       -- FIX-1178 (d) — the daily rule-tagger's delete/insert split, when the\n       -- run stamped one. Absent for every other job and for a cadence that\n       -- timed nothing, which renders as an em dash rather than a zero.\n       s.metadata->>'phase_seconds'                               AS phase_seconds\nFROM cron.job j\nJOIN jp ON jp.jobid = j.jobid\nLEFT JOIN last_run r ON r.jobid = j.jobid\nLEFT JOIN LATERAL (\n  SELECT l.status, l.metadata\n  FROM public.data_sync_log l\n  WHERE r.start_time IS NOT NULL\n    AND jp.pipeline IS NOT NULL\n    AND l.pipeline = jp.pipeline\n    AND l.metadata->>'source' LIKE 'pg_cron%'\n    AND l.started_at BETWEEN r.start_time - interval '90 seconds'\n                         AND COALESCE(r.end_time, r.start_time) + interval '90 seconds'\n  ORDER BY abs(EXTRACT(epoch FROM (l.started_at - r.start_time))) ASC\n  LIMIT 1\n) s ON true\nORDER BY j.jobname",
-      "elapsed_ms": 3220,
+      "elapsed_ms": 152,
       "error": null
     },
     {
       "key": "daily_run",
       "sql": "\n(SELECT 'latest' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)",
-      "elapsed_ms": 31,
+      "elapsed_ms": 17,
       "error": null
     },
     {
       "key": "vm_now",
       "sql": "\nSELECT c.relname                                                       AS relation,\n       CASE WHEN c.relpages = 0 THEN NULL\n            ELSE ROUND(100.0 * c.relallvisible / c.relpages, 1) END    AS pct_all_visible,\n       s.n_dead_tup,\n       c.relpages\nFROM pg_class c\nLEFT JOIN pg_stat_user_tables s ON s.relid = c.oid\nWHERE c.oid IN ('public.entity_connections'::regclass,\n                'public.financial_entities'::regclass,\n                'public.financial_relationships'::regclass)\nORDER BY c.relname",
-      "elapsed_ms": 398,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "weekly_run",
       "sql": "\nSELECT d.start_time AS started_at, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS elapsed_seconds\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = 'refresh-derived-mvs-weekly'\nORDER BY d.start_time DESC\nLIMIT 1",
-      "elapsed_ms": 33,
+      "elapsed_ms": 25,
       "error": null
     },
     {
       "key": "vacuums",
       "sql": "\nSELECT j.jobname, d.start_time, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS duration_s\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = ANY($1::text[])\n  AND d.start_time >= now() - make_interval(days => $2::int)\nORDER BY d.start_time DESC\nLIMIT 24",
-      "elapsed_ms": 51,
+      "elapsed_ms": 41,
       "error": null
     },
     {
       "key": "vm_probes",
       "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key LIKE 'vm_probe:%'\nORDER BY key",
-      "elapsed_ms": 212,
+      "elapsed_ms": 15,
       "error": null
     },
     {
       "key": "fec_state",
       "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('fec_drop_probe','fec_indiv_watermark','fec_bulk_run_state')",
-      "elapsed_ms": 21,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "fec_emit",
       "sql": "\nSELECT DISTINCT ON (cycle_year, source)\n       cycle_year, source, run_id, started_at, complete_at, keys\nFROM public.fec_emit_runs\nORDER BY cycle_year DESC, source, started_at DESC",
-      "elapsed_ms": 131,
+      "elapsed_ms": 24,
       "error": null
     },
     {
       "key": "fec_emit_keys_est",
       "sql": "\nSELECT reltuples::bigint AS est FROM pg_class WHERE oid = 'public.fec_emit_keys'::regclass",
-      "elapsed_ms": 33,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "prod_session",
       "sql": "SELECT public.prod_session_state() AS state",
-      "elapsed_ms": 361,
+      "elapsed_ms": 20,
       "error": null
     },
     {
       "key": "skips_24h",
       "sql": "\nSELECT pipeline, started_at,\n       metadata->>'skip_reason' AS skip_reason,\n       metadata->>'source'      AS source\nFROM public.data_sync_log\nWHERE status = 'skipped'\n  AND started_at >= now() - interval '24 hours'\nORDER BY started_at DESC\nLIMIT 100",
-      "elapsed_ms": 476,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "canary",
       "sql": "\nSELECT started_at, metadata->'conditions' AS conditions\nFROM public.data_sync_log\nWHERE pipeline = 'canary_check'\nORDER BY started_at DESC\nLIMIT 1",
-      "elapsed_ms": 323,
+      "elapsed_ms": 32,
       "error": null
     },
     {
       "key": "sld_coverage",
       "sql": "\nSELECT count(*) AS total,\n       count(*) FILTER (WHERE o.metadata->>'district_jurisdiction_id' IS NOT NULL) AS linked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)",
-      "elapsed_ms": 2768,
+      "elapsed_ms": 111,
       "error": null
     },
     {
       "key": "sld_residual",
       "sql": "\nSELECT p.name AS state, gb.type AS chamber, count(*) AS unlinked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)\n  AND o.metadata->>'district_jurisdiction_id' IS NULL\nGROUP BY p.name, gb.type\nORDER BY count(*) DESC, p.name",
-      "elapsed_ms": 33,
+      "elapsed_ms": 27,
       "error": null
     },
     {
       "key": "forker_24h",
       "sql": "\nSELECT to_char(date_trunc('hour', d.start_time), 'YYYY-MM-DD HH24:00') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '24 hours'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
-      "elapsed_ms": 175,
+      "elapsed_ms": 117,
       "error": null
     },
     {
       "key": "forker_7d",
       "sql": "\nSELECT to_char(date_trunc('day', d.start_time), 'YYYY-MM-DD') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '7 days'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
-      "elapsed_ms": 121,
+      "elapsed_ms": 115,
       "error": null
     },
     {
       "key": "forker_running",
       "sql": "\nWITH bursts AS (\n  SELECT date_trunc('hour', d.start_time) AS bucket, count(*) AS failures\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - interval '24 hours'\n    AND d.status = 'failed'\n    AND d.return_message ILIKE '%startup timeout%'\n  GROUP BY 1\n  HAVING count(*) >= $1::int\n)\nSELECT to_char(b.bucket, 'YYYY-MM-DD HH24:00') AS bucket,\n       x.jobname,\n       x.start_time,\n       x.wall_s,\n       x.status\nFROM bursts b\nLEFT JOIN LATERAL (\n  SELECT COALESCE(j.jobname, '(unscheduled jobid ' || d.jobid || ')') AS jobname,\n         d.start_time,\n         EXTRACT(epoch FROM (COALESCE(d.end_time, now()) - d.start_time))::numeric AS wall_s,\n         d.status\n  FROM cron.job_run_details d\n  LEFT JOIN cron.job j ON j.jobid = d.jobid\n  WHERE d.start_time <= b.bucket + interval '1 hour'\n    AND COALESCE(d.end_time, now()) >= b.bucket\n    AND NOT (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%')\n  ORDER BY (COALESCE(d.end_time, now()) - d.start_time) DESC\n  LIMIT 1\n) x ON true\nORDER BY b.bucket DESC",
-      "elapsed_ms": 150,
+      "elapsed_ms": 131,
       "error": null
     },
     {
       "key": "forker_cancels",
       "sql": "\nSELECT acted_at, jobname, age_seconds, budget_seconds, acted_via\nFROM public.cron_job_budget_action\nWHERE acted_at >= now() - interval '7 days'\nORDER BY acted_at DESC\nLIMIT 50",
-      "elapsed_ms": 105,
+      "elapsed_ms": 17,
       "error": null
     },
     {
       "key": "forker_vercel_liveness",
       "sql": "\nSELECT value->>'at' AS at\nFROM public.pipeline_state\nWHERE key = 'cron_watchdog_vercel'",
-      "elapsed_ms": 21,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "box_health",
       "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('box_health', 'box_health_mem')",
-      "elapsed_ms": 20,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "crawl_skips",
       "sql": "\nSELECT key, value->'skips' AS skips, clock_timestamp() AS read_at\nFROM public.pipeline_state\nWHERE key IN ('ec_crawl', 'fe_crawl')",
-      "elapsed_ms": 70,
+      "elapsed_ms": 14,
       "error": null
     },
     {
       "key": "crawl_overlaps",
       "sql": "\nSELECT c.pipeline AS crawl, c.status AS crawl_status, c.started_at AS crawl_start, c.completed_at AS crawl_end,\n       d.pipeline AS peer, d.metadata->>'cadence' AS peer_cadence,\n       d.started_at + make_interval(secs => COALESCE((d.metadata->'gate'->>'waited_s')::int, 0)) AS peer_start,\n       d.completed_at AS peer_end\nFROM public.data_sync_log c\nJOIN public.data_sync_log d\n  ON d.pipeline IN ('refresh_derived_mvs', 'run_rule_taggers')\n AND d.status NOT IN ('skipped', 'deferred', 'reaped')\n AND d.started_at >= now() - interval '30 hours'\n AND c.started_at < COALESCE(d.completed_at, now())\n AND COALESCE(c.completed_at, now())\n     > d.started_at + make_interval(secs => COALESCE((d.metadata->'gate'->>'waited_s')::int, 0))\nWHERE c.pipeline IN ('entity_connections_rebuild', 'financial_entity_totals_refresh')\n  AND c.status NOT IN ('skipped', 'deferred', 'reaped')\n  AND c.started_at >= now() - interval '24 hours'\nORDER BY c.started_at",
-      "elapsed_ms": 226,
+      "elapsed_ms": 30,
       "error": null
     },
     {
       "key": "ec_arm_parked",
       "sql": "\nSELECT value\nFROM public.pipeline_state\nWHERE key = 'ec_arm_parked'",
-      "elapsed_ms": 20,
+      "elapsed_ms": 13,
       "error": null
     },
     {
       "key": "legislator_ids",
       "sql": "\n(SELECT 'latest' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_report'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_report'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'bind' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_bind'\n ORDER BY started_at DESC\n LIMIT 1)",
-      "elapsed_ms": 83,
+      "elapsed_ms": 43,
       "error": null
     }
   ]
