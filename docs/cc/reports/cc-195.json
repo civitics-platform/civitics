@@ -1,0 +1,45 @@
+{
+  "cc": "195",
+  "prompt": "cc-prompt-195-fix1145-homepage-mv-reads-rollups-jobid24-refreshes-after-watermark.md",
+  "started_at": "2026-10-04T20:12:41Z",
+  "finished_at": "2026-10-04T23:10:00Z",
+  "head_before": "8d3e947a",
+  "head_after": "cfcf75b6",
+  "commits": [
+    {
+      "sha": "99156c77",
+      "subject": "feat(db): FIX-1145 — official_homepage_stats_mv reads official_donor_totals + official_vote_stats (the unread financial_relationship_count dropped); donor_rollup_rebuild_bulk refreshes it after a run that moved the watermark"
+    },
+    {
+      "sha": "bdc7759e",
+      "subject": "chore(fixes): record prod verification of FIX-1145 — the MV swapped on prod (39,037 rows; three equalities 39,037/39,037); the hook live"
+    },
+    {
+      "sha": "cfcf75b6",
+      "subject": "chore(fixes): sync status after FIX-1145"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1145"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261004190000_fix1145_homepage_stats_mv_reads_rollups.sql"
+  ],
+  "prod_writes": "ONE migration, 20261004190000, applied to Pro as the --then of session:wait-for-gate:prod (expected 3 min, census stop, 60 s polls, max wait 16 min) under the FIX-950 claim, from the primary checkout's packages/data with --workdir the fix-1145 worktree. Gate ok 23:05:28Z after the Sunday nightly (finished 22:56:19Z). Census pass: 3 renders / 3 events in 60 min, ratio 1.52, floor 6; edge 1 of 1,248 = 0.08 %. The claim held 17 guarded pipelines for about 30 s, then released. The dry run listed exactly this one file. The migration is a no-lock-window MV swap: _new built WITH DATA from official_vote_stats + official_donor_totals, 39,037 rows; pre-swap 0 differing; DROP + RENAME + index rename. It also does CREATE OR REPLACE of donor_rollup_rebuild_bulk (+22 / -0, grants restated). No CALL, VACUUM, pipeline or hand-fired refresh on prod; the only MV population was the migration's own build. Every other prod contact was a read: db-query --prod, prod_op_gate, the census (Logs API), two db-push dry runs, session:held, gh. Pushes to main: two, each through the pre-push hook with held=false.",
+  "ci": "green",
+  "stopped_items": [
+    "No stop condition fired. Read 2 found 0 differing lines. Read 3 equalities held for every official: 39,037 / 39,037 each, 0 differing. The cohort grew from 37,417, see 'What contradicted'. The dry run listed one file, held=false at every push, and the gate opened at 23:05:28Z, before 23:15Z. No permission prompt fired.",
+    "Not attempted before the nightly: at 20:33Z prod_op_gate(180) read ok (span to 20:39, 26 min before the 21:00 dispatch). The prompt's rule was 'not open by 20:15Z → push the code outside 20:30–21:30, then gate after the nightly', and it was 20:33. Followed as written."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1145",
+      "what": "Mon 10-05 06:00 UTC daily: unit_seconds.official_homepage_stats_mv ≤ 5 s (was p50 48.4 s); Mon 09:00 UTC jobid 24: donor_rollup_refresh row complete with homepage_mv_refreshed true (or the first firing that moves the watermark); the home page's donor cells unchanged → chore(fixes): record prod verification of FIX-1145 (Fixes: FIX-1145 / Verified: prod)",
+      "after": "2026-10-05T09:30Z"
+    }
+  ]
+}
