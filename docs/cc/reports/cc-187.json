@@ -1,0 +1,111 @@
+{
+  "cc": "187",
+  "prompt": "cc-prompt-187-sweep-1177-1172-freshness-holds-1244-825-684-501-1206-1265-closes-1204-tsv-filings.md",
+  "started_at": "2026-10-04T01:45:45Z",
+  "finished_at": "2026-10-04T02:25:20Z",
+  "head_before": "29e0b8f2",
+  "head_after": "7e5ad11b",
+  "commits": [
+    {
+      "sha": "37ccf056",
+      "subject": "feat(db): FIX-1177 + FIX-1172 — check_rollup_freshness honours a FIX-950 hold (status held) and both readers restart the freshness clock at a deliberate stand-down"
+    },
+    {
+      "sha": "e293de67",
+      "subject": "docs: FIX-1244 — the archive docs' relative links point one level deeper; the resolved known-breaks removed"
+    },
+    {
+      "sha": "42118bfa",
+      "subject": "fix(data): FIX-825 — the moderation harness's pollution watch counts auth.users and public.users"
+    },
+    {
+      "sha": "50c1bf72",
+      "subject": "fix(app): FIX-684 — the district page's metadata reads the name only; the boundary map stays (product call); loadDistrict is request-cached"
+    },
+    {
+      "sha": "05c8cba8",
+      "subject": "feat(db): FIX-501 — group_donor_rollup stores the top 200 donors per cohort; FIX-1204 — PCMA and NRA PVF join the overrides on the uuid arm (808; the two synthetic rows excluded)"
+    },
+    {
+      "sha": "c62390bb",
+      "subject": "chore(fixes): record prod verification of FIX-1177, FIX-1172"
+    },
+    {
+      "sha": "6c50c93d",
+      "subject": "chore(fixes): FIX-1204 — the two override rows landed on prod (808)"
+    },
+    {
+      "sha": "ed95ef9e",
+      "subject": "docs(fixes): file FIX-1271 — fix:add can allocate an id another session already landed — fixes:check should fail a duplicate id marker and a trailer whose bullet does not match its commit"
+    },
+    {
+      "sha": "dbfa2eec",
+      "subject": "docs(fixes): file FIX-1272 — donor-party-full-rebuild.test.ts case (i) sets its watermark from now(), so on a month-stale clone the procedure correctly picks crawl and the heavy suite fails"
+    },
+    {
+      "sha": "a82b22d8",
+      "subject": "docs(fixes): file FIX-1273 — The FIX-1259 kept-as-another-writer's-provenance counts exist only in the GHA log — the tagger's data_sync_log row does not carry them, so a regression is invisible to the receipts"
+    },
+    {
+      "sha": "1deffcf7",
+      "subject": "docs(fixes): file FIX-1274 — USASpending has ingested 0 contract and assistance rows since 2026-08-13 — the weekly run never sees the rolling delta file"
+    },
+    {
+      "sha": "e287bb4d",
+      "subject": "docs(fixes): FIX-1206 closed as recognized, FIX-1265 closed as no-op (Craig 2026-10-03); FIX-684 product call appended; cc-loop s1/s2 relabelled"
+    },
+    {
+      "sha": "7e5ad11b",
+      "subject": "chore(fixes): sync status after cc-187"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1177",
+    "FIX-1172",
+    "FIX-1244",
+    "FIX-825",
+    "FIX-684",
+    "FIX-501",
+    "FIX-1204",
+    "FIX-1206",
+    "FIX-1265"
+  ],
+  "fixes_filed": [
+    "FIX-1271",
+    "FIX-1272",
+    "FIX-1273",
+    "FIX-1274"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261004010000_fix1177_1172_freshness_honours_holds.sql",
+    "supabase/migrations/20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql"
+  ],
+  "prod_writes": "Two migrations, applied to Pro at 02:12 UTC 2026-10-04 in ONE gated db push. It ran as the --then of session:wait-for-gate:prod (expected 2 min, census stop) under the FIX-950 claim: gate ok 02:12:12Z, census pass, 17 guarded pipelines held for about a minute and then released. M1 is CREATE OR REPLACE check_rollup_freshness plus a read-only parity DO block. M2 is CREATE OR REPLACE refresh_group_donor_rollup (not executed), plus 2 INSERTs into financial_entity_industry_overrides (806 → 808). No CALL, no VACUUM, no MV refresh.",
+  "ci": "green",
+  "stopped_items": [
+    "M2 had no dry run of its own. M1's dry run (01:5x UTC) listed exactly one file. By the time the gate opened (02:12), M2 had been written into the same worktree, so the push applied BOTH files (the CLI's [Y/n] auto-accepts on a non-TTY). M2 was the final, rehearsed, locally applied file, and the read-back shows 0 differing lines. But the prompt's sequence (a separate M2 dry run and gated push) did not happen.",
+    "The FIX-684 'before' measurement was denied by the permission prompt and not retried. The denied command chained the item-4 commit with restoring the old page via 'git show HEAD~1:<page> > <page>', three fresh renders, and 'git checkout -- <page>'. The commit was re-run alone. The before figure (2 geometry RPCs per render) is from reading the code, not measured.",
+    "The FIX-684 prod receipt was not taken. curl to civitics.com/districts/<id> got 403 at the edge, and prod pg_stat_statements held no query_districts entry to diff. Recorded as 'deploy-only, no receipt', the prompt's stated alternative. The WAF was not worked around.",
+    "F2 (FIX-1272) is filed, not built. It is not a one-line assertion fix: the assertion is right for a full rebuild, and the fixture's lag is wrong (§4.3). Flipping it to 'crawl' would make case (i) wrong-but-green.",
+    "The data suite read 5 failures once after the rebase: prod-session.test.ts' three claim cases and prod-op-gate.test.ts' 'all clear at 12:00'. The cause was cc-188's local entity_connections_rebuild park test holding the EC advisory lock and a 'running' data_sync_log row on the shared clone. The same suites passed 1303/0 before the rebase, and none of the changed code touches those paths. The heavy serial suite was not run."
+  ],
+  "lane": "hygiene",
+  "owed": [
+    {
+      "fix": "FIX-501",
+      "what": "group-donor-rollup-refresh Wed 10-07 03:10 UTC (jobid 49): status complete; group_donor_rollup rows <= 200 per cohort (about 47.2k at today's 236 over-200 cohorts; the prompt's 573 x 200 bound also holds); summary sums equal to the 09-30 state (2,672,434,174,177 cents / 543,815 donors, give or take a week's drift); wall vs the 09-30 1 m 50 s (09-09..09-30: 56 s, 4 m 54 s, 1 m 41 s, 1 m 50 s) → chore(fixes): record prod verification of FIX-501",
+      "after": "2026-10-07T03:30Z"
+    },
+    {
+      "fix": "FIX-1204",
+      "what": "the first nightly tail after the override landed: PCMA carries health/curated and NRA PVF lobby/curated as their picks; overrides 808 resolved, 0 orphans",
+      "after": "2026-10-04T21:40Z"
+    },
+    {
+      "fix": "FIX-1172",
+      "what": "the next supervised prod session longer than 45 min (cc-188's or cc-189's claim): no 'stale rollup: financial_entity_totals_refresh' report line during or after it; the canary's hold-stale key unchanged",
+      "after": "2026-10-04T12:00Z"
+    }
+  ]
+}
