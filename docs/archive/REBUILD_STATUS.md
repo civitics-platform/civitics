@@ -5,7 +5,7 @@
 > backlog. All Stage 1B pipeline rewrites landed (FEC bulk, USASpending —
 > 841k contracts via FIX-118 bulk archive, Regulations, OpenStates,
 > CourtListener, Legistar, tags, AI). Live work tracking moved to
-> `docs/FIXES.md` and `docs/SESSION_LOG.md`.
+> `docs/FIXES.md` and `docs/archive/SESSION_LOG.md`.
 >
 > Remaining ⬜ items below are not rebuild scope — they are future pipeline
 > expansions (cosponsorship / federal register / lobbying stubs, older FEC
@@ -23,7 +23,7 @@ _Updated at the end of every session that touched rebuild work._
 | Stage 0 — Investigation + writer catalog | ✅ Complete | `STAGE_0_WRITER_CATALOG.md` |
 | Stage 1A — Shadow schema + migrations | ✅ Complete | Migrations `20260421000000–20260421000007` applied locally |
 | Stage 1B — Pipeline shadow rewrites | 🔄 Partial | See table below — Option C shipped only congress; rest deferred |
-| Stage 2 — Cutover to Pro | ✅ **Complete (2026-04-22)** | Shadow→public promoted; Vercel flipped; `main` is prod. See `docs/MIGRATION_RUNBOOK.md` |
+| Stage 2 — Cutover to Pro | ✅ **Complete (2026-04-22)** | Shadow→public promoted; Vercel flipped; `main` is prod. See `docs/archive/MIGRATION_RUNBOOK.md` |
 | Stage 3 — Local data rollout | ⬜ Not started | 5 metros locked in (SEA, SF, AUS, DC + NYC pending token) |
 
 ---
@@ -121,7 +121,7 @@ Post-cutover Pro row counts (snapshot at 2026-04-22, immediately after cutover):
 Post-FIX-101 + FIX-118 (current snapshot, archived 2026-04-26):
 - FEC bulk: 16,263 donations · 1,824 financial_entities (2026-04-23)
 - USASpending bulk: ~841,264 contracts (2026-04-25, FIX-118 archive pipeline)
-- See `docs/SESSION_LOG.md` 2026-04-23 / 2026-04-25 entries for full breakdown.
+- See `docs/archive/SESSION_LOG.md` 2026-04-23 / 2026-04-25 entries for full breakdown.
 
 ---
 
@@ -135,7 +135,6 @@ Post-FIX-101 + FIX-118 (current snapshot, archived 2026-04-26):
 | `supabase/migrations/20260421*` | Shadow migrations (applied locally, then moved to public via promotion) |
 | `supabase/migrations/20260422000000_promote_shadow_to_public.sql` | Cutover migration |
 | `supabase/migrations/20260422000001_fix_promoted_function_bodies.sql` | Trigger body fix (post-promotion) |
-| `docs/MIGRATION_RUNBOOK.md` | The runbook that executed the cutover |
-| `docs/audits/post-cutover/2026-04-22.md` | Post-cutover integrity audit |
-| `packages/data/docs/audits/post-cutover/2026-04-22.md` | Same, newer location |
-| `docs/SESSION_LOG.md` | Session-by-session work log |
+| `docs/archive/MIGRATION_RUNBOOK.md` | The runbook that executed the cutover |
+| `packages/data/docs/audits/post-cutover/2026-04-22.md` | Post-cutover integrity audit (written under `packages/data/`, the pipeline's cwd) |
+| `docs/archive/SESSION_LOG.md` | Session-by-session work log |

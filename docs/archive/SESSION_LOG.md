@@ -9,7 +9,7 @@
 
 **Driver:** PR 4 canary fired 2026-05-17 reporting 4 "missing" nightly_cron rows
 over 2026-05-10 → 2026-05-16. Audit
-([docs/audits/missing-nightlies-2026-05-10-to-16.md](audits/missing-nightlies-2026-05-10-to-16.md))
+([docs/audits/missing-nightlies-2026-05-10-to-16.md](../audits/missing-nightlies-2026-05-10-to-16.md))
 showed two distinct root causes:
 
 1. **Canary false positives (5/13 + 5/16).** `nightly_cron` rows DID exist but
@@ -397,7 +397,7 @@ Copy-Item .env.local.dev .env.local
 
 - `packages/data/src/drain/status.ts` (new) + `packages/data/package.json` (added `data:drain:status`) — keep.
 - `.claude/agents/drain-worker.md` (new) + `.claude/settings.local.json` (added install denies) — keep.
-- `docs/SESSION_LOG.md`, `CLAUDE.md` — this entry + the runbook.
+- `docs/archive/SESSION_LOG.md`, `CLAUDE.md` — this entry + the runbook.
 - `.env.example` was already dirty pre-session, unrelated.
 
 **⚠️ Action needed:** review + commit the files above. No DB migrations this session.
@@ -549,8 +549,8 @@ Copy-Item .env.local.dev .env.local
 
 **Done — docs + post-cutover backlog:**
 
-- New: `docs/MIGRATION_RUNBOOK.md` (archives plan §4 as actuals + lessons).
-- Updated: `CLAUDE.md`, `docs/OPERATIONS.md`, `docs/REBUILD_STATUS.md` to reflect two-tier env (local Docker + Pro), `main` as prod, schema now `public.*`.
+- New: `docs/archive/MIGRATION_RUNBOOK.md` (archives plan §4 as actuals + lessons).
+- Updated: `CLAUDE.md`, `docs/OPERATIONS.md`, `docs/archive/REBUILD_STATUS.md` to reflect two-tier env (local Docker + Pro), `main` as prod, schema now `public.*`.
 - Filed POST-CUTOVER section in `docs/FIXES.md`: FIX-097 (chord/treemap RPCs), FIX-098 (officials-breakdown RPCs), FIX-099 (search_graph_entities), FIX-100 (rebuild_entity_connections derivation), FIX-101 (deferred pipeline re-runs), FIX-102 (307 orphan proposals cleanup), FIX-103 (officials_breakdown `.catch is not a function`), FIX-104 (recreate proposal_trending_24h + refresh fn).
 
 **Done — smoke-test fixes (same session):**
