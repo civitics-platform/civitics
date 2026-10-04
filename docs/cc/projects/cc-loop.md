@@ -6,8 +6,8 @@ status: active
 plan: workflow-ideas-autonomy-and-parallel-sessions-2026-09-12
 goal: "P1 · Infrastructure"
 steps:
-  - {id: s1, kind: op, ref: "FIX-1016", title: "status from done.log", done: 2026-09-11}
-  - {id: s2, kind: op, ref: "FIX-1175", title: "/cc, report front matter, cc:verify", done: 2026-09-11}
+  - {id: s1, kind: cc, ref: "cc-122", title: "status from done.log (FIX-1016)", done: 2026-09-11}
+  - {id: s2, kind: cc, ref: "cc-122", title: "/cc, report front matter, cc:verify (FIX-1175)", done: 2026-09-11}
   - {id: s3, kind: op, ref: "FIX-1176", title: "receipts job", done: 2026-09-13}
   - {id: s4, kind: cc, ref: "cc-171", title: "lanes, projects, owed, the board"}
   - {id: s5, kind: cc, ref: "cc-172", title: "backlog, goals, windows, cron history, docs archive"}
