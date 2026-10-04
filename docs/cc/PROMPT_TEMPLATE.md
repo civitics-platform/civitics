@@ -176,7 +176,8 @@ CC reads this before starting. Each line is a rule that has cost a real session.
   `pnpm session:worktree <fix-id>`. Create it before `cc:prompt <n> --start`
   and run that from inside it, so the marker names the slot. `/cc` Step 4 tears
   it down after the report push with `pnpm session:worktree:done <slot>`, run
-  from the primary checkout. That is the sanctioned teardown of a merged tree
+  from the primary checkout in a tool call that STARTS there (a `cd` in the
+  same command still EPERMs). That is the sanctioned teardown of a merged tree
   and needs no approval. A failure is reported as `worktree LEFT: <slot> —
   <reason>`, never retried with `rm` (cc-190).
 - `main` advances only by fast-forward from a rebased branch:

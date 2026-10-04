@@ -244,10 +244,15 @@ FAILs, receipts owed, in flight, open count, stray worktrees). Put that line in
 the chat. The board writes outside the repo and is never committed.
 
 Then tear down the worktree(s) this run created, from the **primary checkout**.
-Never run it from inside the tree: Windows will not remove the shell's own cwd.
+Never run it from inside the tree: Windows will not remove a directory that is
+any process's cwd. That includes the shell the command *started* in. A `cd`
+earlier in the same command is **not enough**: Git-for-Windows' outer `bash.exe`
+launcher keeps the starting directory, and cc-190's own teardown hit EPERM on
+exactly that, then succeeded on the next call. So use two separate tool calls:
 
 ```bash
-cd <primary checkout> && pnpm session:worktree:done <slot>
+cd <primary checkout> && git pull --ff-only     # call 1: the session now starts here
+pnpm session:worktree:done <slot>               # call 2: started outside the tree
 ```
 
 Do this for the slot `--done` printed (`teardown next: …`, which carries the

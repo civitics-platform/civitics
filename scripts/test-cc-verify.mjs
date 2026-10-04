@@ -436,12 +436,12 @@ const MAIN = "C:/Users/Craig/Documents/Civitics/App";
 assertEq(
   "a slot marker → the session:worktree:done line, run from the primary",
   teardownLine("C:/Users/Craig/Documents/Civitics/civitics-worktrees/fix-1271", MAIN),
-  `teardown next: cd "${MAIN}" && pnpm session:worktree:done 1271`,
+  `teardown next (two calls; the second must START outside the tree): cd "${MAIN}"   then   pnpm session:worktree:done 1271`,
 );
 assertEq(
   "Windows separators and a trailing slash resolve the same slot",
   teardownLine("C:\\Users\\Craig\\Documents\\Civitics\\civitics-worktrees\\fix-1263-land\\", MAIN),
-  `teardown next: cd "${MAIN}" && pnpm session:worktree:done 1263-land`,
+  `teardown next (two calls; the second must START outside the tree): cd "${MAIN}"   then   pnpm session:worktree:done 1263-land`,
 );
 assertTrue(
   "a marker naming the primary checkout records no slot (cc-191 ran --start there)",

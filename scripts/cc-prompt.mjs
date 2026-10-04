@@ -78,7 +78,10 @@ export function teardownLine(markerWorktree, mainRoot) {
   }
   const m = /\/civitics-worktrees\/fix-([^/]+)$/i.exec(wt);
   if (!m) return `cc:prompt — the marker names ${wt}, which is not a session:worktree slot; leave it to a human.`;
-  return `teardown next: cd "${main}" && pnpm session:worktree:done ${m[1]}`;
+  // Two calls, not `cd … && …`: the shell a command STARTS in keeps its cwd
+  // handle (Git-for-Windows' bash.exe launcher), so a same-command cd still
+  // EPERMs the teardown. cc-190 measured it on its own tree.
+  return `teardown next (two calls; the second must START outside the tree): cd "${main}"   then   pnpm session:worktree:done ${m[1]}`;
 }
 
 function main() {
