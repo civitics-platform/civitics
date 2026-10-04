@@ -1561,3 +1561,14 @@
 2026-10-03 | FIX-1264 | c0eb4d2b | local-only | fix(scripts): FIX-1264 — the board settles an owed entry only on a prod-verified done.log row that is not the report's own commit
 2026-10-03 | FIX-1263 | 3d656905 | local-only | fix(data): FIX-1263 — the EC lock-holding cases run under CIVITICS_DB_HEAVY_TESTS; the heavy run serialises DB-backed test files (--test-concurrency=1)
 2026-10-03 | FIX-1268 | f94acfbd | local-only | fix(data): FIX-1268 — USASpending bulk falls back to the prior fiscal year while the new FY's Full archive does not exist yet
+2026-10-03 | FIX-1172 | c62390bb | prod-only | chore(fixes): record prod verification of FIX-1177, FIX-1172
+2026-10-03 | FIX-1172 | 37ccf056 | local-only | feat(db): FIX-1177 + FIX-1172 — check_rollup_freshness honours a FIX-950 hold (status held) and both readers restart the freshness clock at a deliberate stand-down
+2026-10-03 | FIX-1177 | c62390bb | prod-only | chore(fixes): record prod verification of FIX-1177, FIX-1172
+2026-10-03 | FIX-1177 | 37ccf056 | local-only | feat(db): FIX-1177 + FIX-1172 — check_rollup_freshness honours a FIX-950 hold (status held) and both readers restart the freshness clock at a deliberate stand-down
+2026-10-03 | FIX-1204 | 6c50c93d | prod-only | chore(fixes): FIX-1204 — the two override rows landed on prod (808)
+2026-10-03 | FIX-1206 | e287bb4d | closes-as-recognized | docs(fixes): FIX-1206 closed as recognized, FIX-1265 closed as no-op (Craig 2026-10-03); FIX-684 product call appended; cc-loop s1/s2 relabelled
+2026-10-03 | FIX-1244 | e293de67 | local-only | docs: FIX-1244 — the archive docs' relative links point one level deeper; the resolved known-breaks removed
+2026-10-03 | FIX-1265 | e287bb4d | closes-as-no-op | docs(fixes): FIX-1206 closed as recognized, FIX-1265 closed as no-op (Craig 2026-10-03); FIX-684 product call appended; cc-loop s1/s2 relabelled
+2026-10-03 | FIX-501 | 05c8cba8 | local-only | feat(db): FIX-501 — group_donor_rollup stores the top 200 donors per cohort; FIX-1204 — PCMA and NRA PVF join the overrides on the uuid arm (808; the two synthetic rows excluded)
+2026-10-03 | FIX-684 | 50c1bf72 | local-only | fix(app): FIX-684 — the district page's metadata reads the name only; the boundary map stays (product call); loadDistrict is request-cached
+2026-10-03 | FIX-825 | 42118bfa | local-only | fix(data): FIX-825 — the moderation harness's pollution watch counts auth.users and public.users
