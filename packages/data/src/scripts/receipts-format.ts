@@ -460,6 +460,11 @@ export interface NightlySection {
    * when the window has no votes row.
    */
   votes_skips?: VotesSkips | null;
+  /**
+   * FIX-1273 — the window's latest `tag_rules` row and its kept counts.
+   * Optional so older files type-check; null when the window has no row.
+   */
+  tag_rules_kept?: TagRulesKept | null;
 }
 
 /** FIX-1238 — one `data_sync_log.metadata.skipped_rolls[]` entry, as rendered. */
@@ -491,6 +496,44 @@ export function votesSkipsLine(v: VotesSkips | null | undefined): string | null 
   return (
     "**congress_votes skipped " + v.skipped_rolls.length + " roll(s)** — the bill has no `bill_details` row " +
     "(FIX-1238; `rows_failed` " + (v.rows_failed ?? "—") + "): " + rolls
+  );
+}
+
+/**
+ * FIX-1273 — the window's latest `tag_rules` row. The `kept_*` fields are the
+ * FIX-1259 provenance guard's counts: rows a rule tagger handed to the upsert
+ * that were left alone because the existing row is another writer's (ai,
+ * curated). Null on a row written before FIX-1273, which carried no kept
+ * metadata.
+ */
+export interface TagRulesKept {
+  status: string | null;
+  rows_inserted: number | null;
+  kept_total: number | null;
+  kept_proposals: number | null;
+  kept_financial_entities: number | null;
+  kept_officials: number | null;
+}
+
+/**
+ * FIX-1273 — the one §1 line for the rule taggers. Unlike the skip line it
+ * always renders: a kept count of zero is a reading, and the regression it
+ * exists to catch is the count moving. `undefined` is a receipts file written
+ * before FIX-1273 and renders nothing.
+ */
+export function tagRulesKeptLine(k: TagRulesKept | null | undefined): string | null {
+  if (k === undefined) return null;
+  const head = "**Rule taggers** (`tag_rules`): ";
+  if (k === null) return head + "missing — no `tag_rules` row in the window (FIX-1273)";
+  const n = (v: number | null): string => (v === null ? "—" : v.toLocaleString("en-US"));
+  const status = k.status === "complete" ? "" : " · status `" + (k.status ?? "—") + "`";
+  if (k.kept_total === null) {
+    return head + n(k.rows_inserted) + " rows upserted" + status + " · (no kept metadata) — the row predates FIX-1273";
+  }
+  return (
+    head + n(k.rows_inserted) + " rows upserted" + status + " · kept as another writer's: " +
+    n(k.kept_proposals) + " proposals / " + n(k.kept_financial_entities) + " financial entities / " +
+    n(k.kept_officials) + " officials (FIX-1259)"
   );
 }
 
@@ -1444,7 +1487,13 @@ export function renderMarkdown(d: ReceiptsData): string {
     p(skips);
     p("");
   }
-  p(queryBlock(d.queries, ["nightly_phases", "gha_dispatch_nightly", "votes_skips"]));
+  const kept = tagRulesKeptLine(d.nightly.tag_rules_kept);
+  if (kept) {
+    p("");
+    p(kept);
+    p("");
+  }
+  p(queryBlock(d.queries, ["nightly_phases", "gha_dispatch_nightly", "votes_skips", "tag_rules_kept"]));
 
   // 2 -------------------------------------------------------------------
   p("## 2. pg_cron jobs vs their bands");

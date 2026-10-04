@@ -575,8 +575,19 @@ const TAG_COLUMNS = [
 // Every caller clears its own rows first (proposals and officials their rule
 // rows, financial entities rule + curated), so same-provenance conflicts only
 // arise inside one run's own set.
-export async function upsertTags(client: Client, tags: TagInsert[]): Promise<number> {
-  if (tags.length === 0) return 0;
+//
+// FIX-1273: returns the kept count beside rows processed, so runRuleBasedTagger
+// can stamp it into the tag_rules data_sync_log row. Until then it existed only
+// as the GHA log line below, and a regression in it was invisible to receipts.
+export interface TagWriteCount {
+  /** Rows processed — every row handed to bulkUpsert, kept ones included. */
+  upserted: number;
+  /** Rows left alone because the existing row has another provenance. */
+  kept: number;
+}
+
+export async function upsertTags(client: Client, tags: TagInsert[]): Promise<TagWriteCount> {
+  if (tags.length === 0) return { upserted: 0, kept: 0 };
   const rows = tags.map((t) => [
     t.entity_type, t.entity_id, t.tag, t.tag_category,
     t.display_label, t.display_icon, t.visibility,
@@ -600,10 +611,9 @@ export async function upsertTags(client: Client, tags: TagInsert[]): Promise<num
   }
   // Without skipUnchangedRows every insert and every same-provenance update is
   // counted, so the shortfall is exactly the rows the guard left alone.
-  console.info(
-    `    entity_tags: ${upserted - changed} row(s) kept as another writer's provenance (FIX-1259)`,
-  );
-  return upserted;
+  const kept = upserted - changed;
+  console.info(`    entity_tags: ${kept} row(s) kept as another writer's provenance (FIX-1259)`);
+  return { upserted, kept };
 }
 
 /**
@@ -768,7 +778,7 @@ async function fetchAllPaged<T>(
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function tagProposals(db: any): Promise<number> {
+async function tagProposals(db: any): Promise<TagWriteCount> {
   console.info("\n  [1/3] Tagging proposals...");
 
   // Paginated -- proposals is 91,302 rows (prod, as of 2026-09-04), far past
@@ -794,7 +804,7 @@ async function tagProposals(db: any): Promise<number> {
 
   if (proposals.length === 0) {
     console.info("    No proposals found. Skipping.");
-    return 0;
+    return { upserted: 0, kept: 0 };
   }
 
   console.info(`    Processing ${proposals.length} proposals`);
@@ -898,7 +908,7 @@ async function tagProposals(db: any): Promise<number> {
   // fresh set onto a table that was never cleared — the exact stale-table
   // outcome FIX-443's ordering was written to prevent, never applied here. A pg
   // error throws, so a failed clear now aborts the rebuild.
-  const totalUpserted = await withTagRebuild(async (client) => {
+  const written = await withTagRebuild(async (client) => {
     const cleared = await client.query(
       `DELETE FROM public.entity_tags
         WHERE entity_type = 'proposal' AND generated_by = 'rule'`,
@@ -906,8 +916,8 @@ async function tagProposals(db: any): Promise<number> {
     console.info(`    Cleared ${cleared.rowCount ?? 0} prior proposal rule tags`);
     return timed(`proposal tags upsert (n=${allTags.length})`, () => upsertTags(client, allTags));
   });
-  console.info(`    Upserted ${totalUpserted} proposal tags`);
-  return totalUpserted;
+  console.info(`    Upserted ${written.upserted} proposal tags`);
+  return written;
 }
 
 // ---------------------------------------------------------------------------
@@ -920,7 +930,7 @@ async function tagProposals(db: any): Promise<number> {
 // authoritative DELETE owns every official rule tag, so anything that wrote
 // industry rows from outside would silently vanish on the next nightly.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function tagOfficials(db: any): Promise<number> {
+export async function tagOfficials(db: any): Promise<TagWriteCount> {
   // [3/3] since FIX-959 — runs AFTER tagFinancialEntities + the sector-affinity
   // refresh, so the industry pills read a rollup that already reflects tonight's
   // donor tag changes.
@@ -950,7 +960,7 @@ export async function tagOfficials(db: any): Promise<number> {
 
   if (officials.length === 0) {
     console.info("    No officials found. Skipping.");
-    return 0;
+    return { upserted: 0, kept: 0 };
   }
 
   console.info(`    Processing ${officials.length} officials`);
@@ -1229,7 +1239,7 @@ export async function tagOfficials(db: any): Promise<number> {
   // mid-upsert used to strand a committed DELETE (FIX-945's shape, ~7.1k rows
   // here), and a failed `.delete()` used to log and then upsert onto an uncleared
   // table. A pg error throws, so the rebuild aborts instead.
-  const totalUpserted = await withTagRebuild(async (client) => {
+  const written = await withTagRebuild(async (client) => {
     const cleared = await client.query(
       `DELETE FROM public.entity_tags
         WHERE entity_type = 'official' AND generated_by = 'rule'`,
@@ -1237,8 +1247,8 @@ export async function tagOfficials(db: any): Promise<number> {
     console.info(`    Cleared ${cleared.rowCount ?? 0} prior official rule tags`);
     return timed(`official tags upsert (n=${allTags.length})`, () => upsertTags(client, allTags));
   });
-  console.info(`    Upserted ${totalUpserted} official tags`);
-  return totalUpserted;
+  console.info(`    Upserted ${written.upserted} official tags`);
+  return written;
 }
 
 // ---------------------------------------------------------------------------
@@ -1412,7 +1422,7 @@ export function dedupeIndustryTags<T extends { entity_id: string; tag: string; t
 // authoritative clears (rule via RPC, curated via clearCuratedIndustryTags) own
 // every industry row on the table, so anything written from outside is wiped on
 // the next nightly and anything written twice from inside accumulates.
-export async function tagFinancialEntities(_db: unknown): Promise<number> {
+export async function tagFinancialEntities(_db: unknown): Promise<TagWriteCount> {
   // [2/3] since FIX-959 — the donor-side tag writes must land before the
   // sector-affinity refresh and tagOfficials read them.
   console.info("\n  [2/3] Tagging financial entities...");
@@ -1679,7 +1689,7 @@ export async function tagFinancialEntities(_db: unknown): Promise<number> {
   });
   // [FIX-716] size tags moved to pg_cron run_rule_taggers('weekly'); this
   // function now returns only the industry tag count.
-  console.info(`    Wrote ${industryUpserted} industry tags (size tags now on pg_cron)`);
+  console.info(`    Wrote ${industryUpserted.upserted} industry tags (size tags now on pg_cron)`);
   return industryUpserted;
 }
 
@@ -1745,17 +1755,30 @@ export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
     await timed("phase: sector-affinity refresh (FIX-958)", () => refreshSectorAffinityFromTagChanges());
     const officialTags     = await timed("phase: tagOfficials", () => tagOfficials(db));
     // [FIX-716] pre-vote timing tags moved to pg_cron run_rule_taggers('daily').
-    const tagsCreated      = proposalTags + officialTags + financialTags;
+    const tagsCreated      = proposalTags.upserted + officialTags.upserted + financialTags.upserted;
 
     console.info("\n  ─────────────────────────────────────────────────");
     console.info("  Rule-based tagger report");
     console.info("  ─────────────────────────────────────────────────");
-    console.info(`  ${"Proposal tags:".padEnd(32)} ${proposalTags}`);
-    console.info(`  ${"Official tags:".padEnd(32)} ${officialTags}`);
-    console.info(`  ${"Financial entity tags:".padEnd(32)} ${financialTags}`);
+    console.info(`  ${"Proposal tags:".padEnd(32)} ${proposalTags.upserted}`);
+    console.info(`  ${"Official tags:".padEnd(32)} ${officialTags.upserted}`);
+    console.info(`  ${"Financial entity tags:".padEnd(32)} ${financialTags.upserted}`);
     console.info(`  ${"Total:".padEnd(32)} ${tagsCreated}`);
 
-    await completeSync(logId, { inserted: tagsCreated, updated: 0, failed: 0, estimatedMb: 0 });
+    // FIX-1273: the FIX-1259 kept counts ride the FIX-911 metadata channel, so
+    // the receipts read them from data_sync_log rather than the GHA log.
+    await completeSync(logId, {
+      inserted: tagsCreated,
+      updated: 0,
+      failed: 0,
+      estimatedMb: 0,
+      metadata: {
+        kept_proposals: proposalTags.kept,
+        kept_financial_entities: financialTags.kept,
+        kept_officials: officialTags.kept,
+        kept_total: proposalTags.kept + financialTags.kept + officialTags.kept,
+      },
+    });
     return { tagsCreated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

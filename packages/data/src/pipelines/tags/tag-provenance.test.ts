@@ -51,10 +51,25 @@ test("upsertTags only overwrites rows whose generated_by matches the incoming ro
   );
 });
 
-test("upsertTags returns rows processed, not rows written — a kept row still counts", async () => {
+// FIX-1273 — the kept count leaves the function, so the rule tagger can stamp it
+// into data_sync_log instead of only printing it to the GHA log.
+test("upsertTags returns { upserted: 2, kept: 1 } when the server wrote 1 of 2", async () => {
   // The server wrote 1 of 2: the other conflicted with a different provenance.
   const { client } = captureClient(1);
   const n = await upsertTags(client, [tag("00000000-0000-4000-8000-000000000001", "tech"),
                                       tag("00000000-0000-4000-8000-000000000002", "defense")]);
-  assert.equal(n, 2);
+  assert.deepEqual(n, { upserted: 2, kept: 1 });
+});
+
+test("upsertTags reports kept 0 when the server wrote every row", async () => {
+  const { client } = captureClient(2);
+  const n = await upsertTags(client, [tag("00000000-0000-4000-8000-000000000001", "tech"),
+                                      tag("00000000-0000-4000-8000-000000000002", "defense")]);
+  assert.deepEqual(n, { upserted: 2, kept: 0 });
+});
+
+test("upsertTags on an empty set writes nothing and keeps nothing", async () => {
+  const { client, sql } = captureClient(0);
+  assert.deepEqual(await upsertTags(client, []), { upserted: 0, kept: 0 });
+  assert.equal(sql.length, 0);
 });

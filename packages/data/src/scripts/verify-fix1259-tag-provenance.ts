@@ -124,8 +124,11 @@ async function main(): Promise<void> {
       ruleTag(RULE_HELD, "tech", "541519"),
       ruleTag(EMPTY, "health", "524114"),
     ];
+    // FIX-1273: the kept count upsertTags returns is the server's rowCount
+    // shortfall — against a real table it must be exactly (a)'s one row.
+    let kept: number | null = null;
     if (OLD_BUILDER) await specUpsert(pg, batch, false);
-    else await upsertTags(pg, batch);
+    else kept = (await upsertTags(pg, batch)).kept;
 
     console.info("\n=== (a) ai row + incoming rule on the same key ===");
     const aiAfter = await rowsFor(pg, AI_HELD);
@@ -134,6 +137,7 @@ async function main(): Promise<void> {
     check(JSON.stringify(aiAfter) === JSON.stringify(aiBefore), "row byte-identical (confidence, ai_model, metadata)",
       `before ${JSON.stringify(aiBefore)} after ${JSON.stringify(aiAfter)}`);
     check(aChanged === 0, "the statement writes 0 rows for it", `wrote ${aChanged}`);
+    if (!OLD_BUILDER) check(kept === 1, "upsertTags reports it as kept: 1 (FIX-1273)", `kept ${kept}`);
 
     console.info("\n=== (b) rule row + incoming rule with new metadata ===");
     const ruleAfter = await rowsFor(pg, RULE_HELD);

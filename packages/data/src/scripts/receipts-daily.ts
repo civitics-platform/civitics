@@ -63,6 +63,7 @@ import {
   type VmRow,
   type VmProbeRow,
   type VotesSkips,
+  type TagRulesKept,
   type ForkerBucketRow,
   type ForkerCancelRow,
   type ForkerRunningRow,
@@ -355,6 +356,24 @@ const Q_VOTES_SKIPS = `
 SELECT rows_failed, metadata->'skipped_rolls' AS skipped_rolls
 FROM public.data_sync_log
 WHERE pipeline = 'congress_votes'
+  AND started_at >= $1::timestamptz
+  AND started_at <  $2::timestamptz
+ORDER BY started_at DESC
+LIMIT 1`;
+
+/**
+ * FIX-1273 — the nightly window's latest `tag_rules` row. `kept_*` is the
+ * FIX-1259 provenance guard's count per tagger, written by runRuleBasedTagger
+ * through the FIX-911 metadata channel; absent on rows before FIX-1273.
+ */
+const Q_TAG_RULES_KEPT = `
+SELECT status, rows_inserted,
+       metadata->'kept_total'              AS kept_total,
+       metadata->'kept_proposals'          AS kept_proposals,
+       metadata->'kept_financial_entities' AS kept_financial_entities,
+       metadata->'kept_officials'          AS kept_officials
+FROM public.data_sync_log
+WHERE pipeline = 'tag_rules'
   AND started_at >= $1::timestamptz
   AND started_at <  $2::timestamptz
 ORDER BY started_at DESC
@@ -1030,6 +1049,24 @@ async function main(): Promise<void> {
             })),
           };
 
+    // FIX-1273 — the window's tag_rules row and the FIX-1259 kept counts.
+    const keptRows = await r.run<Record<string, unknown>>("tag_rules_kept", Q_TAG_RULES_KEPT, [
+      windowStart.toISOString(),
+      windowEnd.toISOString(),
+    ]);
+    const k0 = keptRows[0];
+    const tagRulesKept: TagRulesKept | null =
+      k0 === undefined
+        ? null
+        : {
+            status: str(k0["status"]),
+            rows_inserted: num(k0["rows_inserted"]),
+            kept_total: num(k0["kept_total"]),
+            kept_proposals: num(k0["kept_proposals"]),
+            kept_financial_entities: num(k0["kept_financial_entities"]),
+            kept_officials: num(k0["kept_officials"]),
+          };
+
     const dispatchRows = await r.run<Record<string, unknown>>("gha_dispatch_nightly", Q_GHA_DISPATCH_NIGHTLY);
     const dv = (dispatchRows[0]?.["value"] ?? null) as Record<string, unknown> | null;
     const dispatcher: DispatchStamp | null =
@@ -1267,6 +1304,7 @@ async function main(): Promise<void> {
         runs,
         dispatcher,
         votes_skips: votesSkips,
+        tag_rules_kept: tagRulesKept,
       },
       cron_jobs: cronJobs,
       daily: {

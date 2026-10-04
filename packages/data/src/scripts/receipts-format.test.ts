@@ -34,6 +34,7 @@ import {
   verdictsFor,
   monthlyNotYetDue,
   votesSkipsLine,
+  tagRulesKeptLine,
   VERCEL_LIVENESS_STALE_MIN,
   vercelLivenessVerdict,
   BOX_HEALTH_MEM_STALE_MIN,
@@ -1091,6 +1092,53 @@ test("FIX-1238: renderMarkdown puts the skip line in section 1, after the Phases
   const at = md.indexOf("congress_votes skipped 1 roll(s)");
   assert.ok(at > md.indexOf("### Phases") && at < md.indexOf("## 2. pg_cron jobs"));
   assert.doesNotMatch(md.slice(at, md.indexOf("\n", at)), /key held by/);
+});
+
+// FIX-1273 — the rule taggers' FIX-1259 kept counts get one §1 line, read off
+// the tag_rules data_sync_log row. Figures are the 10-03 nightly's (cc-191
+// read 2): 108,113 upserted; kept 0 / 16 / 0.
+const TAG_RULES_ROW = {
+  status: "complete",
+  rows_inserted: 108113,
+  kept_total: 16,
+  kept_proposals: 0,
+  kept_financial_entities: 16,
+  kept_officials: 0,
+};
+
+test("FIX-1273: tagRulesKeptLine names rows upserted and the kept count per tagger", () => {
+  assert.equal(
+    tagRulesKeptLine(TAG_RULES_ROW),
+    "**Rule taggers** (`tag_rules`): 108,113 rows upserted · kept as another writer's: " +
+      "0 proposals / 16 financial entities / 0 officials (FIX-1259)",
+  );
+});
+
+test("FIX-1273: a window with no tag_rules row reads missing; a pre-FIX-1273 file renders nothing", () => {
+  assert.match(tagRulesKeptLine(null)!, /missing — no `tag_rules` row in the window/);
+  assert.equal(tagRulesKeptLine(undefined), null);
+  assert.doesNotMatch(renderMarkdown(fixture()), /Rule taggers/);
+});
+
+test("FIX-1273: a row written before the change reads (no kept metadata), not zero", () => {
+  const line = tagRulesKeptLine({
+    ...TAG_RULES_ROW,
+    kept_total: null,
+    kept_proposals: null,
+    kept_financial_entities: null,
+    kept_officials: null,
+  })!;
+  assert.match(line, /108,113 rows upserted · \(no kept metadata\)/);
+  assert.doesNotMatch(line, /kept as another writer's/);
+});
+
+test("FIX-1273: a non-complete row says so; renderMarkdown puts the line in section 1", () => {
+  assert.match(tagRulesKeptLine({ ...TAG_RULES_ROW, status: "failed" })!, /status `failed`/);
+  const d = fixture();
+  d.nightly.tag_rules_kept = TAG_RULES_ROW;
+  const md = renderMarkdown(d);
+  const at = md.indexOf("**Rule taggers**");
+  assert.ok(at > md.indexOf("### Phases") && at < md.indexOf("## 2. pg_cron jobs"));
 });
 
 // FIX-1251 — a monthly job that has not come round yet reads `scheduled`, not

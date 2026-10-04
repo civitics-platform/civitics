@@ -56,7 +56,7 @@ never a claim without its instrument.
 
 | # | Section | Reads |
 |---|---|---|
-| 1 | The nightly | slot, `createdAt`, offset, nominal day, `isWeekly`; the run's per-**job** conclusions; per-**phase** status / duration / `peak_rss_mb` / `skip_reason` |
+| 1 | The nightly | slot, `createdAt`, offset, nominal day, `isWeekly`; the run's per-**job** conclusions; per-**phase** status / duration / `peak_rss_mb` / `skip_reason`; **Rule taggers** (FIX-1273): the window's `tag_rules` row — rows upserted, and the FIX-1259 kept-as-another-writer's count per tagger (proposals / financial entities / officials) from its `metadata.kept_*`; `missing` when the window has no row, `(no kept metadata)` on a row written before FIX-1273 |
 | 2 | pg_cron jobs vs their bands | every job in `cron.job`: last firing, duration, cron status, band, verdict |
 | 3 | The 06:00 UTC daily | `units_ok`/`units`, wall, `rebuild_entity_search_index` vs its band (FIX-1152), the run's own `vm_before`, the visibility map now, and when the weekly last ran |
 | 4 | Hour-04 vacuums | `ec-`/`fe-vacuum-analyze` durations — FIX-1169's series |
