@@ -188,8 +188,21 @@ the duration of the session, and `list_scheduled_rollup_pipelines()` NULLs both
 thresholds below are suppressed while a session holds the box, and restored the
 moment it releases.
 
-The thresholds are still the measured facts, and still what applies the instant
-a hold ends (prod, 2026-09-11):
+**cc-187 closed the two gaps that left** (`20261004010000_fix1177_1172_…`):
+
+- `check_rollup_freshness()` itself now reads `rollup_watch_overrides`. A held
+  pipeline answers `status: 'held'` and a retired one `status: 'retired'`, both
+  with `stale: false`. Before this, only the canary's registry gate stopped a
+  held pipeline from reporting.
+- **After release, the clock restarts from the stand-down.** `hours_since_complete`
+  (and so `stale`, and the canary's escalation) is measured from the later of the
+  last `complete` and the newest `skipped` row whose `metadata->>'skip_reason'`
+  starts `prod session held: `. The un-restarted age is still reported, as
+  `hours_since_data`. A skip is still never a closure: `last_complete_at` and
+  the registry's cadence are unchanged.
+
+The thresholds are still the measured facts, and still what applies, from the
+last stand-down, once a hold ends (prod, 2026-09-11):
 
 | Pipeline | cadence | reports after | escalates after |
 |---|---|---|---|

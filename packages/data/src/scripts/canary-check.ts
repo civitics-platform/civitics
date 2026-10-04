@@ -343,6 +343,12 @@ type RollupStatus = {
   reports: boolean;
   escalates: boolean;
   hoursSinceComplete: number | null;
+  /** FIX-1177/1172 — check_rollup_freshness' own verdict word ('retired' |
+   *  'held' | 'missing' | 'stale' | 'fresh'); null on a pre-migration env. */
+  freshnessStatus: string | null;
+  /** FIX-1172 — hours since the last complete, NOT restarted by a held skip
+   *  (hoursSinceComplete is). The data age a stand-down must never hide. */
+  hoursSinceData: number | null;
   lastCompleteAt: string | null;
   lastStatus: string | null;
   lastError: string | null;
@@ -573,7 +579,10 @@ async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStat
     if (!row) continue;
     const r = row as {
       stale?: boolean;
+      status?: string | null;
+      hold_reason?: string | null;
       hours_since_complete?: number | null;
+      hours_since_data?: number | null;
       last_complete_at?: string | null;
       last_status?: string | null;
       last_error?: string | null;
@@ -587,7 +596,14 @@ async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStat
     // reached 'complete' in the lookback (nightly_killed, edgar_daily,
     // nightly-sync — none of them ever write a closure row). Those stay LISTED
     // in rollup_freshness for the trail; they just do not generate a finding.
-    const reports = stale && w.reportAfterHours !== null && !w.retired && !w.held;
+    //
+    // FIX-1177 — the freshness function now reads rollup_watch_overrides too,
+    // and answers 'held' / 'retired' itself. Either source is enough: the
+    // registry falls back to a literal with held=false when its RPC fails, and
+    // a held pipeline must not page on that path either.
+    const retired = w.retired || r.status === "retired";
+    const held = w.held || r.status === "held";
+    const reports = stale && w.reportAfterHours !== null && !retired && !held;
     out.push({
       pipeline,
       maxAgeHours,
@@ -599,9 +615,9 @@ async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStat
       jobname,
       driver:             w.driver,
       hasActiveJob:       w.hasActiveJob,
-      retired:            w.retired,
-      held:               w.held,
-      holdReason:         w.holdReason,
+      retired,
+      held,
+      holdReason:         w.holdReason ?? r.hold_reason ?? null,
       orphan:             w.orphan,
       hasClosures:        w.hasClosures,
       stale,
@@ -616,10 +632,12 @@ async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStat
       // an observed median with under 4 supporting gaps, a driver that has not
       // closed a cycle yet (fe-crawl), and the orphan class. Otherwise: past
       // two-plus cycles.
-      escalates:          escalateAfterHours === null ? false
+      escalates:          escalateAfterHours === null || held || retired ? false
                           : hours === null ? true
                           : hours > escalateAfterHours,
       hoursSinceComplete: hours,
+      freshnessStatus:    r.status ?? null,
+      hoursSinceData:     r.hours_since_data ?? null,
       lastCompleteAt:     r.last_complete_at ?? null,
       lastStatus:         r.last_status ?? null,
       lastError:          r.last_error ?? null,

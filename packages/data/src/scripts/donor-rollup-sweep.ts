@@ -135,6 +135,8 @@ interface Freshness {
   last_complete_at: string | null;
   hours_since_complete: number | null;
   stale: boolean;
+  /** FIX-1177 — 'retired' | 'held' | 'missing' | 'stale' | 'fresh'; absent pre-migration. */
+  status?: string;
   last_status: string | null;
   last_error: string | null;
   sweep_in_progress: boolean | null;
@@ -153,7 +155,7 @@ async function reportState(client: Client, label: string): Promise<Freshness> {
   const s = await readState(client);
   console.info(
     `[sweep] ${label}: last_complete=${s.last_complete_at ?? "never"} ` +
-      `(${s.hours_since_complete ?? "?"}h ago, stale=${s.stale}) ` +
+      `(${s.hours_since_complete ?? "?"}h ago, stale=${s.stale}${s.status ? ` status=${s.status}` : ""}) ` +
       `last_status=${s.last_status ?? "-"} sweep_in_progress=${s.sweep_in_progress ?? false}` +
       (s.sweep_cursor ? ` cursor=${s.sweep_cursor}` : ""),
   );
