@@ -18,6 +18,7 @@ steps:
   - {id: s10, kind: cc, ref: "cc-182", title: "1240 labels follow tag changes; 1211 scoped donation-edge rebuild", done: 2026-10-03}
   - {id: s11, kind: cc, ref: "cc-184", title: "CACI NSS joins the defense cohort (806)", done: 2026-10-03}
   - {id: s12, kind: receipt, ref: "FIX-1255", title: "the first tail after the CACI NSS override — one defense/ai row, no tech", after: 2026-10-04T21:40Z}
+  - {id: s13, kind: cc, ref: "cc-191", title: "1273 kept counts to data_sync_log + receipts; 1266 audit (reads)"}
 ---
 
 # Industry tag remediation
@@ -40,6 +41,14 @@ It also stopped a rule tag from overwriting an ai row on a shared key
 (FIX-1259). s9 is the contract-side receipt. cc-184 added CACI NSS, the one
 sibling cc-180 listed with the same shape, as a thirteenth cohort row in a
 second migration (s11). s12 is its first tail.
+
+cc-191 (s13) moved the FIX-1259 kept counts into the `tag_rules` sync row and
+receipts §1 (FIX-1273). It also audited the top-200 donor picks (FIX-1266):
+193 right, 1 wrong, 3 none, 3 unsure, 1.24% of the dollars. The proposed
+overrides wait on Craig's verdicts in
+`docs/audits/2026-10-04-fix1266-proposed-overrides.tsv`. The vocabulary is
+**16 keys**, as the live CHECK and `VALID_INDUSTRIES` agree (read 2026-10-04); s1's "17" is the
+historical title.
 
 s3's date is `done.log`'s (2026-08-01). The plan of record said 2026-07-29, and
 the log wins.
