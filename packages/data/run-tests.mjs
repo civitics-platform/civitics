@@ -31,8 +31,11 @@ for (const f of files) console.log(`  ${f}`);
 // reads cluster-wide (entity_connections_rebuild, prod_supervised_session, the
 // rollup refresh keys) — so one file's lock made another file's prod-session
 // claim refuse. The default run stays concurrent: the EC test's key-holding
-// cases moved behind the heavy gate. One small holder remains in it —
-// pipeline-lock.test.ts's fec_bulk_pipeline cases, ~0.65 s (FIX-1267).
+// cases moved behind the heavy gate, and so did pipeline-lock.test.ts's
+// fec_bulk_pipeline cases (FIX-1267). One holder remains in it:
+// src/lib/prod-session.test.ts's writers-live case takes
+// financial_entity_totals_refresh for a few ms. cc-190's grep found it, and it
+// is filed rather than moved here.
 const heavy = process.env.CIVITICS_DB_HEAVY_TESTS === "1";
 if (heavy) console.log("CIVITICS_DB_HEAVY_TESTS=1 — running files serially (--test-concurrency=1)");
 

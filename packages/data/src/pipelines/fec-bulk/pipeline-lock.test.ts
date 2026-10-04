@@ -5,8 +5,10 @@
  *   1. Pure: the `FEC_PIPELINE_LOCK=off` bypass parser.
  *   2. Integration: two concurrent `acquireFecPipelineLock()` calls against the
  *      LOCAL Docker DB — the second must be refused, and must succeed again once
- *      the first releases. SKIPPED (not failed) when no local DB is reachable so
- *      `pnpm test` stays green on a machine with Docker down / in CI.
+ *      the first releases. Run only under CIVITICS_DB_HEAVY_TESTS=1 (FIX-1267:
+ *      they take a prod_session_state() writer key), and SKIPPED (not failed)
+ *      when no local DB is reachable so `pnpm test` stays green with Docker down
+ *      / in CI.
  *
  * The integration case is the two-invocation proof the FIX-1067 bullet asks for,
  * reduced to the interlock itself so it does not need two 2.5-hour pipeline runs
@@ -67,11 +69,30 @@ async function localDbReachable(): Promise<boolean> {
   }
 }
 
-test("interlock: a second concurrent invocation is refused, and admitted after release", async (t) => {
+/**
+ * FIX-1267 — the integration cases run only under CIVITICS_DB_HEAVY_TESTS=1.
+ * Each one takes `fec_bulk_pipeline`, which is one of prod_session_state()'s
+ * writer keys (`c_writer_locks`), so a default local run held it for ~0.65 s
+ * and a concurrent prod-session claim test on the shared clone could be
+ * refused by it. The heavy run is serial (run-tests.mjs passes
+ * --test-concurrency=1), so there it holds the key alone.
+ */
+const HEAVY = process.env["CIVITICS_DB_HEAVY_TESTS"] === "1";
+
+async function integrationGate(t: { skip: (m: string) => void }): Promise<boolean> {
+  if (!HEAVY) {
+    t.skip("set CIVITICS_DB_HEAVY_TESTS=1 — takes the fec_bulk_pipeline writer key on the local clone");
+    return false;
+  }
   if (!(await localDbReachable())) {
     t.skip("local Docker DB not reachable");
-    return;
+    return false;
   }
+  return true;
+}
+
+test("interlock: a second concurrent invocation is refused, and admitted after release", async (t) => {
+  if (!(await integrationGate(t))) return;
 
   // First invocation — takes the lock.
   const first = await acquireFecPipelineLock();
@@ -98,10 +119,7 @@ test("interlock: a second concurrent invocation is refused, and admitted after r
 });
 
 test("interlock: FEC_PIPELINE_LOCK=off bypasses cleanly", async (t) => {
-  if (!(await localDbReachable())) {
-    t.skip("local Docker DB not reachable");
-    return;
-  }
+  if (!(await integrationGate(t))) return;
   const held = await acquireFecPipelineLock();
   assert.equal(held.acquired, true);
   try {
@@ -116,10 +134,7 @@ test("interlock: FEC_PIPELINE_LOCK=off bypasses cleanly", async (t) => {
 });
 
 test("interlock: session scope means a dead holder strands nothing", async (t) => {
-  if (!(await localDbReachable())) {
-    t.skip("local Docker DB not reachable");
-    return;
-  }
+  if (!(await integrationGate(t))) return;
   const { Client } = await import("pg");
 
   // Simulate a crashed pipeline: take the lock on a connection, then drop the
