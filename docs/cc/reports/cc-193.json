@@ -1,0 +1,59 @@
+{
+  "cc": "193",
+  "prompt": "cc-prompt-193-promotion-by-dataset-key-fix1189-o1-writer-accent-fold-code.md",
+  "started_at": "2026-10-04T17:37:58Z",
+  "finished_at": "2026-10-04T18:31:00Z",
+  "head_before": "02f052e9",
+  "head_after": "e4fb509c",
+  "commits": [
+    {
+      "sha": "b257989c",
+      "subject": "feat(data): FIX-1189 — the promotion pairs a candidate stub with its elected row by the congress-legislators dataset key; a standalone runner with --dry-run"
+    },
+    {
+      "sha": "d9c47b97",
+      "subject": "feat(data): FIX-1189 O1 — the legislator-ids writer (bind / promote / append prior ids) behind CIVITICS_LEGISLATOR_IDS_BIND, as a nightly step before the fec phase; receipts §10 prints what it did"
+    },
+    {
+      "sha": "73c5169e",
+      "subject": "fix(data): FIX-1277 — the own-seat and shared-id gates fold accents instead of deleting them; normName folds too"
+    },
+    {
+      "sha": "529a6b5c",
+      "subject": "feat(data): the legislator-ids stamp lists every row of a small class (top_20 → ≤ 50)"
+    },
+    {
+      "sha": "88769a85",
+      "subject": "docs(fixes): file FIX-1278 official_redirects, append FIX-948 lis_member_id rides O1; the cc-194 landing plan + the set-3 manifest"
+    },
+    {
+      "sha": "e4fb509c",
+      "subject": "chore(fixes): sync status after FIX-1277"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1277"
+  ],
+  "fixes_filed": [
+    "FIX-1277",
+    "FIX-1278"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2: the first two attachment-count queries on prod were cancelled by their own SET statement_timeout (120 s, then 170 s). EXPLAIN showed full index scans: entity_tags and external_relationships are indexed (type, id) and the queries gave only the id. Re-run with the type predicate, both finished in 13 s. No prod backend was left running and the timeout was never raised.",
+    "Worktree: pnpm session:worktree 1189 refused because branch feature/fix-1189 already exists (cc-170's, fully merged). I used slot 1189-o1 rather than delete someone else's branch.",
+    "No permission prompt fired. No stop condition fired: none of the 11 elected rows holds a live id, no stub has votes or memberships, the listing names the census's stub for all 13, neither tail contradicts a decision, and the clone shows no conflict or dataset_ambiguous."
+  ],
+  "lane": "ops",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1189",
+      "what": "cc-194 Mon 10-05 evening: the 11 promoted by dataset key (detected=11 promoted=11 failed=0), Cisneros + Self via shape B, O1 dry-run plan = {promote 2, prior_append 29, bind 0}; then the Tue 10-06 21:00 UTC nightly's first O1 write and Wed's receipt §10",
+      "after": "2026-10-06T03:30Z"
+    }
+  ]
+}
