@@ -44,6 +44,8 @@
  * creates is caught by the refusal guard rather than silently resolved.
  */
 
+import { foldDiacritics } from "./diacritics";
+
 /** A row from `officials` as the bioguide map needs it. */
 export interface BioguideRow {
   id:         string;
@@ -78,9 +80,7 @@ export interface BuiltMap {
  * Senate XML's ASCII spelling produce the same key.
  */
 export function normalizeSurname(raw: string | null | undefined): string {
-  return (raw ?? "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+  return foldDiacritics(raw ?? "")
     .trim()
     .toLowerCase();
 }

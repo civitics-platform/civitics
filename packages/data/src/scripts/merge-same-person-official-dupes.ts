@@ -89,6 +89,7 @@ import { readOwnerSchedulesOnce } from "../lib/cron-job-pipelines";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
+import { sqlFoldUpper } from "../pipelines/congress/diacritics";
 
 /** Sanity bound — the FIX-930 clone measured 47 eligible pairs. */
 const MAX_PAIRS = 200;
@@ -615,11 +616,15 @@ WITH seat AS (
          -- FIX-1187 — the IDENTITY set (current + prior office ids). Kept
          -- separate from live_fec, which is what the seat gate decodes.
          ${authoritativeClaimsJsonb("o")}  AS auth_claims,
-         regexp_replace(upper(COALESCE(NULLIF(o.last_name,''), o.full_name)),'[^A-Z]','','g') AS surname,
+         -- FIX-1277: accents FOLD before the strip (sqlFoldUpper's table,
+         -- pipelines/congress/diacritics.ts). upper() alone keeps Á and the
+         -- strip then deleted it — BARRAGÁN keyed as BARRAGN (census
+         -- 2026-10-04 line 1685).
+         regexp_replace(${sqlFoldUpper("COALESCE(NULLIF(o.last_name,''), o.full_name)")},'[^A-Z]','','g') AS surname,
          -- District as an int. Elected rows read 'District 11', candidate rows
          -- '11'; Senate / President / at-large collapse to 0 on both sides.
          COALESCE(NULLIF(regexp_replace(COALESCE(o.district_name,''),'[^0-9]','','g'),'')::int, 0) AS district_int,
-         regexp_replace(upper(COALESCE(NULLIF(o.first_name,''), split_part(o.full_name,' ',1))),'[^A-Z]','','g') AS firstnorm
+         regexp_replace(${sqlFoldUpper("COALESCE(NULLIF(o.first_name,''), split_part(o.full_name,' ',1))")},'[^A-Z]','','g') AS firstnorm
     FROM officials o
     LEFT JOIN jurisdictions j ON j.id = o.jurisdiction_id
    WHERE o.tier IN ('elected','candidate')
@@ -722,10 +727,11 @@ async function verifySharedIdInDb(
             (${authoritativeClaimsJsonb("s")} ? m.fec_id) AS survivor_claims_it,
             -- FIX-929's 3-letter first-name key. '' means "cannot compare",
             -- which the client below treats as undecidable, never as agreement.
-            NULLIF(left(regexp_replace(upper(COALESCE(NULLIF(s.first_name,''),
-                   split_part(s.full_name,' ',1))),'[^A-Z]','','g'), 3), '') AS survivor_fkey,
-            NULLIF(left(regexp_replace(upper(COALESCE(NULLIF(d.first_name,''),
-                   split_part(d.full_name,' ',1))),'[^A-Z]','','g'), 3), '') AS dup_fkey,
+            -- FIX-1277: accents fold before the strip (Ángel keyed as NGE).
+            NULLIF(left(regexp_replace(${sqlFoldUpper(`COALESCE(NULLIF(s.first_name,''),
+                   split_part(s.full_name,' ',1))`)},'[^A-Z]','','g'), 3), '') AS survivor_fkey,
+            NULLIF(left(regexp_replace(${sqlFoldUpper(`COALESCE(NULLIF(d.first_name,''),
+                   split_part(d.full_name,' ',1))`)},'[^A-Z]','','g'), 3), '') AS dup_fkey,
             (att.votes + att.career + att.cmte + att.promises + att.cosponsor
              + att.comments + att.civic + att.lobby + att.sponsored + att.actions
              + att.extrel)::text AS dup_attachments,
@@ -858,9 +864,12 @@ async function verifyOwnSeatInDb(
             upper(js.short_name)              AS survivor_state,
             COALESCE(NULLIF(regexp_replace(COALESCE(s.district_name,''),'[^0-9]','','g'),''),'0')
                                               AS survivor_district,
-            regexp_replace(upper(COALESCE(NULLIF(s.last_name,''), s.full_name)),'[^A-Z]','','g')
+            -- FIX-1277: accents FOLD before the strip; upper() alone keeps Á
+            -- and the strip deleted it (census 2026-10-04 line 1685 — the
+            -- first refusal for 6 of the 12 FIX-1189 stubs).
+            regexp_replace(${sqlFoldUpper("COALESCE(NULLIF(s.last_name,''), s.full_name)")},'[^A-Z]','','g')
                                               AS survivor_surname,
-            regexp_replace(upper(COALESCE(NULLIF(d.last_name,''), d.full_name)),'[^A-Z]','','g')
+            regexp_replace(${sqlFoldUpper("COALESCE(NULLIF(d.last_name,''), d.full_name)")},'[^A-Z]','','g')
                                               AS dup_surname,
             -- Decision 5, mechanized. Every NON-derived thing that can hang off
             -- an officials row. A stub is merge-safe only if it is money +

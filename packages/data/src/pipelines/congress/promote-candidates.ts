@@ -40,6 +40,7 @@
 import type { createAdminClient } from "@civitics/db";
 import { afterKey } from "@civitics/db";
 import { promoteCandidatesDirect } from "../../lib/heavy-rebuild";
+import { foldDiacritics } from "./diacritics";
 import { currentFecId, type Listing } from "./legislator-ids";
 import { fetchFeed, LEGISLATORS_CURRENT_URL } from "./legislator-ids-report";
 import { ROSTER_FLOOR } from "./reconcile-former-members";
@@ -102,9 +103,16 @@ function candidateRoleFamilyOf(roleTitle: string | null): "senator" | "represent
   return null;
 }
 
-function normName(s: string | null): string {
+/**
+ * FIX-1277 — accents fold (Barragán → barragan, the FEC spelling) instead of
+ * staying distinct. Not enough on its own for any of the FIX-1189 eleven —
+ * each also differs by a middle name, a second surname or a different word,
+ * which is what the dataset key is for — but the key stops being wrong on the
+ * part it does compare. Byte-identical for ASCII names.
+ */
+export function normName(s: string | null): string {
   if (!s) return "";
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
+  return foldDiacritics(s).trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export interface ElectedInput {
