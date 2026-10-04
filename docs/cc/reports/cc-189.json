@@ -1,0 +1,54 @@
+{
+  "cc": "189",
+  "prompt": "cc-prompt-189-fix1124-crawl-yields-to-peers-running-and-due-not-the-clock.md",
+  "started_at": "2026-10-04T01:46:11Z",
+  "finished_at": "2026-10-04T02:34:00Z",
+  "head_before": "29e0b8f2",
+  "head_after": "bd43b806",
+  "commits": [
+    {
+      "sha": "bf01fdef",
+      "subject": "feat(db): FIX-1124 — crawl_gate yields to peers that are running or due (yield_to on the crawl config; cron_next_daily; peer_running / peer_due); refresh_derived_mvs waits ≤ 600 s on an in-flight crawl unit (peer_wait_gate); ec_crawl + fe_crawl seeded with the two 06:xx jobs"
+    },
+    {
+      "sha": "bb37cf0f",
+      "subject": "feat(data): FIX-1124 — the receipts bank both crawls' skip counters and render the 24 h delta + crawl↔daily overlaps in §9"
+    },
+    {
+      "sha": "bd43b806",
+      "subject": "chore(fixes): sync status after FIX-1124"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1124"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261004075000_fix1124_crawl_yield_to_peers.sql"
+  ],
+  "prod_writes": "One migration, 20261004075000_fix1124_crawl_yield_to_peers.sql, applied to Pro at 02:27:48 UTC 2026-10-04. It ran as the --then of session:wait-for-gate:prod (expected 2 min, census stop) from the primary checkout's packages/data under the FIX-950 claim: gate ok 02:27:47Z with nothing blocking, census pass, 17 guarded pipelines held for under a minute and then released. The dry run listed exactly this file. Contents: CREATE OR REPLACE crawl_gate and refresh_derived_mvs; new cron_next_daily and peer_wait_gate; REVOKE/GRANT/COMMENT; and one UPDATE adding yield_to to the two pipeline_state rows ec_crawl and fe_crawl (schema_migrations records 14 statements). No CALL, no VACUUM, no MV refresh.",
+  "ci": "green",
+  "stopped_items": [
+    "Migration version moved from 20261004060000 to 20261004075000 before the push. cc-187 pushed 20261004070000 to Pro at 02:12 UTC, which left 060000 below the prod head (rule 142). The local schema_migrations row was moved to match (local only).",
+    "Local apply used db-query --local --file plus a hand-inserted schema_migrations row, not supabase migration up --local. The CLI refused because cc-187's 20261004010000 was on the shared local DB while its file was not yet in this tree.",
+    "The @civitics/data suite read 5 failures twice (prod-op-gate 'all clear at 12:00' and three prod-session claim cases). Cause: cc-188's every-minute cc188-park-test job running run_entity_connections_rebuild on the shared local DB, a live heavy writer those tests assert is absent. The clean run between its firings, at 02:22 UTC, was 1,301 pass / 0 fail. CI is green on both code commits.",
+    "B7's literal-instant cells (05:40Z, 05:29Z, 06:15Z, 06:31Z) were tested on cron_next_daily, not on crawl_gate. crawl_gate has no p_now, and adding one would change its signature. Its peer_due branch was exercised instead against test cron jobs scheduled relative to the live clock: due in 20 min, due in ~32 min, fired this minute, fired 2 min ago.",
+    "refresh_derived_mvs('daily') was not re-run with nothing in flight to show that no gate key lands. That path follows from peer_wait_gate cell D1 ({clear: true, waited_s: 0}) and the UPDATE's guard (NOT clear OR waited_s > 0); it was not observed directly.",
+    "No permission prompt fired this run."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1124",
+      "what": "the first morning after landing (05:00–07:00 UTC): ec_crawl.skips shows peer_due at the 05:30/05:45 firings (lead 1,800 s before 06:00) and peer_running during the daily's wall, then clear; fe_crawl likewise at its */30 firings; the daily's running row carries NO gate key (no unit was in flight) or a gate with waited_s ≤ 600; receipts §9 'Crawl skips' line renders the delta",
+      "after": "2026-10-05T07:30Z"
+    },
+    {
+      "fix": "FIX-1124",
+      "what": "a week (10-05 → 10-11): peer_due ≥ 1/day on both crawls, zero crawl running rows overlapping refresh_derived_mvs or rule_taggers running rows (receipts §9 overlap count 0 every day), no daily lost to the wait → part 2 (retire the blackout; prod_op_gate (c) look-ahead; Verified: prod)",
+      "after": "2026-10-11T12:00Z"
+    }
+  ]
+}
