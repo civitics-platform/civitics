@@ -6781,6 +6781,10 @@ export type Database = {
         }
       }
       cron_cadence_hours: { Args: { p_schedule: string }; Returns: number }
+      cron_next_daily: {
+        Args: { p_now?: string; p_schedule: string }
+        Returns: string
+      }
       derive_nh_floterials: { Args: never; Returns: number }
       detect_brigade_candidates: {
         Args: {
@@ -7359,6 +7363,10 @@ export type Database = {
       normalize_pv_path: { Args: { p: string }; Returns: string }
       official_donor_totals_backfill: { Args: never; Returns: number }
       official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
+      peer_wait_gate: {
+        Args: { p_pipelines: string[]; p_wait_max_s: number }
+        Returns: Json
+      }
       primary_industry_tag: {
         Args: { p_entity_ids: string[] }
         Returns: {

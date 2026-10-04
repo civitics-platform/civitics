@@ -12,6 +12,8 @@ steps:
   - {id: s4, kind: cc, ref: "cc-179", title: "weekly-merge prompt — not paced (design D2)"}
   - {id: s5, kind: op, ref: "FIX-1258", title: "compaction: pg_repack if available, else deferred (design D5)", after: 2026-10-13}
   - {id: s6, kind: design, ref: "", title: "generic paced runner — lifted with the first windowable op (1240 backfill / dp full cycle / 1211)"}
+  - {id: s8, kind: cc, ref: "cc-189", title: "FIX-1124 part 1 — crawls yield to peers (the first dispatcher instance)"}
+  - {id: s9, kind: receipt, ref: "FIX-1124", title: "a week of peer_due/peer_running skips with zero crawl↔daily overlaps → part 2 retires the blackout", after: 2026-10-11T12:00Z}
 ---
 
 # Paced ops
@@ -33,3 +35,11 @@ reads.
 
 **The generic runner (s6)** is decoupled from FIX-1248, which retires census
 decision 5. It is built with the first op that genuinely needs windows.
+
+**Peer yield (s8, s9):** FIX-1124 part 1 (cc-189) is the first instance of a
+crawl reading what is running and what is due instead of a clock. `crawl_gate`
+skips `peer_running` while a listed peer's own `running` row exists, and
+`peer_due` from 1,800 s before its daily slot to 60 s after it. The 06:00 daily
+waits up to 600 s on an in-flight unit and then runs anyway. The blackout stays
+until a receipt week with zero crawl↔daily overlaps (s9). Then part 2 retires it
+and turns `prod_op_gate` check (c) into the same look-ahead.
