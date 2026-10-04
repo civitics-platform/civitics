@@ -11,6 +11,7 @@ steps:
   - {id: s3, kind: op, ref: "FIX-1176", title: "receipts job", done: 2026-09-13}
   - {id: s4, kind: cc, ref: "cc-171", title: "lanes, projects, owed, the board"}
   - {id: s5, kind: cc, ref: "cc-172", title: "backlog, goals, windows, cron history, docs archive"}
+  - {id: s6, kind: cc, ref: "cc-190", title: "the runner tears its worktree down; fixes:check guards fix:add collisions (FIX-1271)"}
 ---
 
 # The CC loop
@@ -25,3 +26,7 @@ week from those files. With cc-172 (FIX-1243) the board also shows the open
 FIXES.md backlog per lane, groups plans under their PHASE_GOALS.md phase,
 collapses finished plans, gives each prompt a run-window pill, and sizes each
 pg_cron firing from the receipts history.
+
+With cc-190 the runner tears down the worktree it created, and the board counts
+any merged worktree a run left behind. `fixes:check` now refuses a FIX id that two
+sessions allocated, before the second one lands.

@@ -16,6 +16,8 @@
 //   pnpm cc:prompt 172 --done   Step 4: remove the marker, AFTER the report
 //                               commit is pushed. A missing marker is not an
 //                               error (a re-run, or it was never written).
+//                               First prints the teardown line for the slot
+//                               the marker names (cc-190) — it deletes nothing.
 //
 // A prompt with no front matter (everything before cc-171) is legal: it prints
 // `front_matter: null` and a problem line saying so, and exits 0.
@@ -51,6 +53,34 @@ export function markerBody({ n, startedAt, worktree, prompt }) {
   return `${JSON.stringify({ cc: Number(n), started_at: startedAt, worktree, prompt })}\n`;
 }
 
+/**
+ * What `--done` tells the agent to tear down (cc-190 D5). The marker's
+ * `worktree` is the root `--start` ran in; a `pnpm session:worktree` slot is
+ * `<…>/civitics-worktrees/fix-<slot>`. Pure — the tests drive it with strings.
+ *
+ * Returns the line to print. Never deletes: the teardown is
+ * `pnpm session:worktree:done`, run from the PRIMARY checkout (Windows will not
+ * remove a directory that is the shell's cwd), and that script refuses unmerged
+ * work by itself.
+ */
+export function teardownLine(markerWorktree, mainRoot) {
+  const norm = (p) => String(p ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+  const wt = norm(markerWorktree);
+  const main = norm(mainRoot);
+  if (!wt) {
+    return "cc:prompt — no worktree recorded in the marker; tear down by name any slot this run created.";
+  }
+  if (wt.toLowerCase() === main.toLowerCase()) {
+    return (
+      "cc:prompt — the marker names the primary checkout (--start ran there), so it records no slot; " +
+      "tear down by name any slot this run created."
+    );
+  }
+  const m = /\/civitics-worktrees\/fix-([^/]+)$/i.exec(wt);
+  if (!m) return `cc:prompt — the marker names ${wt}, which is not a session:worktree slot; leave it to a human.`;
+  return `teardown next: cd "${main}" && pnpm session:worktree:done ${m[1]}`;
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const n = argv.find((a) => /^\d+$/.test(a));
@@ -66,8 +96,18 @@ function main() {
   if (done) {
     if (!existsSync(marker)) {
       console.log(`cc:prompt — no marker at ${marker} (nothing to remove).`);
+      console.log(teardownLine(null, cfg.mainCheckoutRoot));
       return 0;
     }
+    // Print the slot BEFORE the marker goes — once it is gone, so is the record
+    // of which tree this run worked in.
+    let recorded = null;
+    try {
+      recorded = JSON.parse(readFileSync(marker, "utf8")).worktree ?? null;
+    } catch {
+      recorded = null;
+    }
+    console.log(teardownLine(recorded, cfg.mainCheckoutRoot));
     unlinkSync(marker);
     console.log(`cc:prompt — removed ${marker}.`);
     return 0;

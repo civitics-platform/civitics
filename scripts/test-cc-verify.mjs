@@ -15,7 +15,7 @@
 
 import { parseFrontMatter, verifyReport, loadReportFrontMatter, PASS, FAIL, UNCHECKED } from "./cc-verify.mjs";
 import { renderSidecar } from "./cc-report-json.mjs";
-import { readPrompt, markerBody } from "./cc-prompt.mjs";
+import { readPrompt, markerBody, teardownLine } from "./cc-prompt.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
 
 const failures = [];
@@ -429,6 +429,28 @@ assertEq(
   "marker body is the D4 shape",
   JSON.parse(markerBody({ n: "171", startedAt: "2026-09-28T03:43:00Z", worktree: "/w", prompt: "p.md" })),
   { cc: 171, started_at: "2026-09-28T03:43:00Z", worktree: "/w", prompt: "p.md" },
+);
+
+console.log("\nteardownLine (cc:prompt --done, cc-190):");
+const MAIN = "C:/Users/Craig/Documents/Civitics/App";
+assertEq(
+  "a slot marker → the session:worktree:done line, run from the primary",
+  teardownLine("C:/Users/Craig/Documents/Civitics/civitics-worktrees/fix-1271", MAIN),
+  `teardown next: cd "${MAIN}" && pnpm session:worktree:done 1271`,
+);
+assertEq(
+  "Windows separators and a trailing slash resolve the same slot",
+  teardownLine("C:\\Users\\Craig\\Documents\\Civitics\\civitics-worktrees\\fix-1263-land\\", MAIN),
+  `teardown next: cd "${MAIN}" && pnpm session:worktree:done 1263-land`,
+);
+assertTrue(
+  "a marker naming the primary checkout records no slot (cc-191 ran --start there)",
+  /primary checkout.*records no slot/.test(teardownLine("c:/users/craig/documents/civitics/app/", MAIN)),
+);
+assertTrue("no marker → tear down by name", /tear down by name/.test(teardownLine(null, MAIN)));
+assertTrue(
+  "a path that is not a slot is left to a human, never torn down",
+  /not a session:worktree slot/.test(teardownLine("D:/elsewhere/tree", MAIN)),
 );
 
 if (failures.length) {

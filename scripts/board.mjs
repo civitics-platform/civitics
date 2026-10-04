@@ -42,7 +42,7 @@
 //
 // Exit 0 always, except on a read error.
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -536,6 +536,32 @@ function readJson(p) {
   }
 }
 
+/**
+ * cc-190 D5 — registered worktrees a finished run left behind: not the primary
+ * checkout, on a branch that is an ancestor of origin/main (nothing on it is
+ * unlanded), and named by no `.running` marker's `worktree`. Pure: `porcelain`
+ * is `git worktree list --porcelain`; `isMerged(branch)` answers the ancestry
+ * question. A detached HEAD has no branch to judge and is not counted.
+ *
+ * Known blind spot: a fresh worktree whose run wrote its marker from the
+ * primary checkout (cc-191 did) is owned but unnamed, and its untouched branch
+ * is trivially merged — so it counts. Running `--start` inside the worktree
+ * is the cure; `.claude/commands/cc.md` Step 2 says so.
+ */
+export function strayWorktrees(porcelain, { mainRoot, markerWorktrees = [], isMerged }) {
+  const norm = (p) => String(p ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const owned = new Set(markerWorktrees.filter(Boolean).map(norm));
+  const out = [];
+  for (const block of String(porcelain ?? "").replace(/\r\n/g, "\n").split(/\n\s*\n/)) {
+    const path = /^worktree (.+)$/m.exec(block)?.[1]?.trim();
+    if (!path || norm(path) === norm(mainRoot) || owned.has(norm(path))) continue;
+    const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1]?.trim();
+    if (!branch || !isMerged(branch)) continue;
+    out.push({ path, branch, prunable: /^prunable\b/m.test(block) });
+  }
+  return out;
+}
+
 /** Read every input file. Throws only when a directory that must exist cannot be read. */
 export function loadBoardInputs(paths) {
   const reports = [];
@@ -795,7 +821,17 @@ export function openBadgeText(openCount, pc) {
  */
 export function buildBoard(
   inputs,
-  { nowMs, verify, lanes = DEFAULT_LANES, head = "", paths = {}, sectionLanes = {}, projectsView = "default" },
+  {
+    nowMs,
+    verify,
+    lanes = DEFAULT_LANES,
+    head = "",
+    paths = {},
+    sectionLanes = {},
+    projectsView = "default",
+    // cc-190 D5: strayWorktrees() output, or null when git was not read (tests).
+    strays = null,
+  },
 ) {
   const statusMap = deriveStatus(parseDoneLog(inputs.doneLogText));
   const universe = buildUniverse({ statusMap, fixesText: inputs.fixesText, archiveText: inputs.archiveText });
@@ -1411,12 +1447,14 @@ export function buildBoard(
     prod_day_collisions: collisionCards,
     receipts_stale: receiptsStale.stale,
     max_id: maxId,
+    ...(strays ? { stray_worktrees: strays.length } : {}),
   };
   const inFlightText = `${badges.in_flight.running} running${badges.in_flight.stale ? ` + ${badges.in_flight.stale} stale?` : ""} · ${badges.in_flight.drafted} drafted`;
   const badgeLine =
     `interlock ${interlock.text} | verify FAILs ${badges.verify_fails} | owed ${badges.owed.receipts} ` +
     `(${badges.owed.reports} reports) | in flight ${inFlightText} | ${badges.open_text}` +
-    `${collisionCards ? ` | ⚠ ${collisionCards} cards share a prod day` : ""}${receiptsStale.stale ? ` | ${receiptsStale.text}` : ""}`;
+    `${collisionCards ? ` | ⚠ ${collisionCards} cards share a prod day` : ""}${receiptsStale.stale ? ` | ${receiptsStale.text}` : ""}` +
+    `${strays ? ` | stray worktrees: ${strays.length}` : ""}`;
 
   return {
     generated_at: isoSeconds(nowMs),
@@ -1428,6 +1466,7 @@ export function buildBoard(
     receipts_stale: receiptsStale,
     badges,
     badge_line: badgeLine,
+    ...(strays ? { stray_worktrees: strays } : {}),
     phases: phases.map((p) => ({ n: p.n, name: p.name, label: p.label, token: p.token })),
     projects_view: projectsView,
     projects,
@@ -1877,7 +1916,10 @@ function usage(stream = process.stderr) {
  * The command, with every tree-dependent piece injected so the tests drive it
  * against scripts/__fixtures__/board/. Returns the exit code.
  */
-export function run(argv, { paths, lanes, head, verify, sectionLanes = {}, stdout = process.stdout, stderr = process.stderr }) {
+export function run(
+  argv,
+  { paths, lanes, head, verify, sectionLanes = {}, worktrees = null, stdout = process.stdout, stderr = process.stderr },
+) {
   const dry = argv.includes("--dry-run");
   const jsonOnly = argv.includes("--json");
   const nowIdx = argv.indexOf("--now");
@@ -1902,7 +1944,16 @@ export function run(argv, { paths, lanes, head, verify, sectionLanes = {}, stdou
     usage(stderr);
     return 1;
   }
-  const board = buildBoard(inputs, { nowMs, verify, lanes, head, paths, sectionLanes, projectsView });
+  // `worktrees` = { porcelain, isMerged, mainRoot } from main(); null in tests
+  // that do not exercise it, and then the badge says nothing about strays.
+  const strays = worktrees
+    ? strayWorktrees(worktrees.porcelain, {
+        mainRoot: worktrees.mainRoot,
+        markerWorktrees: inputs.markers.map((m) => m.body?.worktree),
+        isMerged: worktrees.isMerged,
+      })
+    : null;
+  const board = buildBoard(inputs, { nowMs, verify, lanes, head, paths, sectionLanes, projectsView, strays });
   const json = renderBoardJson(board);
   if (dry) {
     stdout.write(json);
@@ -1946,7 +1997,25 @@ function main() {
   const vctx = buildVerifyContext(cfg, { fetch: false, gh: false, batch: true });
   const verify = (fm, loaded) =>
     verifyReport(fm, { ...vctx, frontMatterSource: loaded.source, frontMatterDrift: loaded.drift });
-  return run(argv, { paths: resolvePaths(cfg), lanes: cfg.lanes, sectionLanes: cfg.sectionLanes, head, verify });
+  // cc-190 D5 — the stray-worktree count. Read-only git; a failure leaves the
+  // badge silent rather than wrong.
+  let worktrees = null;
+  try {
+    const porcelain = execSync("git worktree list --porcelain", {
+      cwd: cfg.mainCheckoutRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const isMerged = (branch) =>
+      spawnSync("git", ["merge-base", "--is-ancestor", `refs/heads/${branch}`, "origin/main"], {
+        cwd: cfg.mainCheckoutRoot,
+        stdio: "ignore",
+      }).status === 0;
+    worktrees = { porcelain, isMerged, mainRoot: cfg.mainCheckoutRoot };
+  } catch {
+    worktrees = null;
+  }
+  return run(argv, { paths: resolvePaths(cfg), lanes: cfg.lanes, sectionLanes: cfg.sectionLanes, head, verify, worktrees });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main());

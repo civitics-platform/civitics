@@ -49,6 +49,7 @@ import {
   cronHistory,
   historyReceiptNames,
   stepStatus,
+  strayWorktrees,
 } from "./board.mjs";
 import { verifyReport } from "./cc-verify.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
@@ -507,6 +508,52 @@ const full = runWith(["--now", NOW], fullDir);
 assertEq("default writes board.json + index.html", readdirSync(fullDir).sort(), ["board.json", "index.html"]);
 assertTrue("default prints the badge line", /^board — interlock held by cc-902/.test(full.out), full.out);
 assertEq("a bad --now is a usage error", runWith(["--now", "not-a-date"], resolve(tmpRoot, "bad")).code, 1);
+
+// -- 9. stray worktrees (cc-190 D5) -------------------------------------------
+console.log("\nstray worktrees:");
+const PORCELAIN = [
+  "worktree C:/Civitics/App",
+  "HEAD aaaaaaaa",
+  "branch refs/heads/main",
+  "",
+  "worktree C:/Civitics/civitics-worktrees/fix-1131",
+  "HEAD bbbbbbbb",
+  "branch refs/heads/feature/fix-1131",
+  "prunable gitdir file points to non-existent location",
+  "",
+  "worktree C:/Civitics/civitics-worktrees/fix-1271",
+  "HEAD cccccccc",
+  "branch refs/heads/feature/fix-1271",
+  "",
+  "worktree C:/Civitics/civitics-worktrees/fix-918",
+  "HEAD dddddddd",
+  "branch refs/heads/feature/fix-918",
+  "",
+  "worktree C:/Civitics/civitics-worktrees/scratch",
+  "HEAD eeeeeeee",
+  "detached",
+  "",
+].join("\n");
+const mergedSet = new Set(["main", "feature/fix-1131", "feature/fix-1271"]);
+const strays = strayWorktrees(PORCELAIN, {
+  mainRoot: "C:\\Civitics\\App\\",
+  markerWorktrees: ["C:/Civitics/civitics-worktrees/fix-1271", undefined],
+  isMerged: (b) => mergedSet.has(b),
+});
+assertEq(
+  "merged + unowned only: primary, the marker's tree, the unmerged branch and a detached HEAD are out",
+  strays.map((s) => [s.branch, s.prunable]),
+  [["feature/fix-1131", true]],
+);
+assertEq(
+  "without the marker the run's own merged tree counts too",
+  strayWorktrees(PORCELAIN, { mainRoot: "C:/Civitics/App", isMerged: (b) => mergedSet.has(b) }).length,
+  2,
+);
+const sb = buildBoard(inputs, { ...opts, strays });
+assertTrue("the badge line counts them", / \| stray worktrees: 1$/.test(sb.badge_line), sb.badge_line);
+assertEq("board.json carries the count and the list", [sb.badges.stray_worktrees, sb.stray_worktrees?.length], [1, 1]);
+assertTrue("no git read (null) → no stray badge", !/stray worktrees/.test(board.badge_line) && !("stray_worktrees" in board.badges));
 
 rmSync(tmpRoot, { recursive: true, force: true });
 

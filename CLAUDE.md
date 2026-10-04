@@ -895,7 +895,7 @@ See `packages/db/CLAUDE.md` for full client documentation.
 
 Auto-approved: pnpm commands, file creation/editing, directory creation, git read ops, git commits and pushes
 
-Always requires approval: any deletion (rm/rmdir), destructive git, .env changes, global installs, external network calls
+Always requires approval: any deletion (rm/rmdir), destructive git, .env changes, global installs, external network calls (`pnpm session:worktree:done <id>` is the sanctioned teardown of a merged worktree and is not a deletion needing approval)
 
 Never without explicit confirmation: DROP/TRUNCATE/DELETE SQL, modifying existing migrations, changes to .gitignore, exposing credentials
 
@@ -980,11 +980,15 @@ unmerged). Standing rules:
 - **`fixes:sync` runs only AFTER** the fix commits are on `origin/main` — never
   from a worktree pre-merge (that is the stranded-PR failure mode).
 - A **pre-push hook** (`.githooks/pre-push`, wired via `core.hooksPath` by the
-  root `prepare` script — no husky) runs `pnpm fixes:check` and aborts the push
-  on FIXES.md/done.log drift.
+  root `prepare` script — no husky) reads `session:held` (FIX-1250), typechecks
+  `@civitics/data`, then runs `pnpm fixes:check:trunk`. That aborts the push on
+  a trunk-ancestry violation, a hand-reintroduced checkbox, a duplicate FIX id
+  marker or a trailer its commit subject does not name (FIX-1271). Drift is not
+  gated here; `fixes-integrity.yml` checks it on PRs.
 - Start each session with **`pnpm session:check`** (read-only reconciliation).
   Tear down a finished worktree with **`pnpm session:worktree:done <fix-id>`**
-  (refuses to remove unmerged work without `--force`).
+  (refuses to remove unmerged work without `--force`). Run it from the primary
+  checkout. A `/cc` run does this in Step 4 without asking.
 
 Full landing recipe is printed by `pnpm session:worktree <fix-id>`. (Assumes
 `main` is push-able; if branch protection is later enabled, the `:main` push

@@ -86,6 +86,12 @@ The marker (`{"cc", "started_at", "worktree", "prompt"}`) is what the board
 reads as `running`. Step 4 removes it; a crash leaves it, and the board renders
 one older than 24 h as `running · stale?`, never as `running`.
 
+When the prompt names a worktree (`pnpm session:worktree <id>`), create it
+FIRST and run `--start` from inside it. `worktree` records the root `--start`
+ran in. A marker written from the primary checkout names no slot, so Step 4
+cannot tell you what to tear down. The board then also counts your live tree
+as a stray once its branch is merged (cc-191 did this; cc-190 found it).
+
 The prompt file is the instruction set. Follow it exactly, including its Phase 0
 reads, its stated prod-access posture, and its stop conditions. Read
 `docs/cc/PROMPT_TEMPLATE.md` for the standing rules every prompt assumes rather
@@ -234,8 +240,26 @@ pnpm board                      # writes <boardDir>/board.json + index.html
 ```
 
 `pnpm board` prints one badge line (interlock as of the latest receipt, verify
-FAILs, receipts owed, in flight, open count). Put that line in the chat. The
-board writes outside the repo and is never committed.
+FAILs, receipts owed, in flight, open count, stray worktrees). Put that line in
+the chat. The board writes outside the repo and is never committed.
+
+Then tear down the worktree(s) this run created, from the **primary checkout**.
+Never run it from inside the tree: Windows will not remove the shell's own cwd.
+
+```bash
+cd <primary checkout> && pnpm session:worktree:done <slot>
+```
+
+Do this for the slot `--done` printed (`teardown next: …`, which carries the
+absolute primary path), plus any other slot the prompt had you create. This is
+the sanctioned teardown of a merged worktree and **needs no approval**.
+CLAUDE.md's deletion rule covers `rm`/`rmdir` of files, not this script, and the
+script refuses unmerged work by itself. If it exits non-zero (an orphan dir,
+EPERM), REPORT it in the chat as `worktree LEFT: <slot> — <reason>`. Never retry
+with `rm`. If the run tore down a second worktree before the report commit, the
+report's front matter may say so in an optional
+`worktrees: [{slot, result}]` line. Otherwise the chat line is the record, and
+the next session's `session:check` is the audit.
 
 ---
 
