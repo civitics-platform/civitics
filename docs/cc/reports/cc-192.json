@@ -1,0 +1,93 @@
+{
+  "cc": "192",
+  "prompt": "cc-prompt-192-morning-records-owed-settlement-06-daily-crawl-peers-jobid56-donor-rows.md",
+  "started_at": "2026-10-04T18:57:38Z",
+  "finished_at": "2026-10-04T19:40:00Z",
+  "head_before": "28afaebe",
+  "head_after": "c9925b5e",
+  "commits": [
+    {
+      "sha": "f52d58b5",
+      "subject": "chore(fixes): record prod verification of FIX-1238 — jobid 56's first firing (02:37 UTC 10-03, 24.8 s); the votes-vacuum band seeded"
+    },
+    {
+      "sha": "872c060e",
+      "subject": "chore(fixes): record prod verification of FIX-1256 — roll 2026-house-295 landed in the 10-01 nightly (433 votes, 0 skipped, no hand-fire)"
+    },
+    {
+      "sha": "31d59c4b",
+      "subject": "chore(fixes): record prod verification of FIX-1240 — the 10-03 tail stamped rollup_labels_updated {odr 40, dpr 0}; drift reads 0 / 0"
+    },
+    {
+      "sha": "1946af4c",
+      "subject": "chore(fixes): record prod verification of FIX-1251 — the five monthlies fired Thu 10-01 and read no-band in receipts 2026-10-02"
+    },
+    {
+      "sha": "884dcc91",
+      "subject": "docs(fixes): append the Sunday 10-04 readings to FIX-1194, FIX-1132, FIX-1124, FIX-1269, FIX-1125, FIX-1012 and FIX-1257 (partial evidence, no records)"
+    },
+    {
+      "sha": "c9925b5e",
+      "subject": "chore(fixes): sync status after FIX-1238, FIX-1240, FIX-1251, FIX-1256 (cc-192 prod records)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1238",
+    "FIX-1256",
+    "FIX-1240",
+    "FIX-1251"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1269 NOT recorded; a regression candidate (the prompt's STOP: evidence contradicts the FIX). The read half holds: 7.4 / 12.6 blocks per call over 34 ticks, and the sort has been gone since the 06:01Z stamp. The swap-in half does not. The :02/:32 signature the FIX was filed against is still present after the deploy: a mean of 523.5 pages/s over 10:02-19:02Z against 83.4 at every other minute, 32.0 % of the window's swap-in. So the snapshot was not its source. The figures are appended to FIX-1269 and FIX-1125. The 48-tick and banked-day receipt stays owed.",
+    "FIX-1194 P1-A: a regression candidate, so the week verdict cannot be written as specified. Sun 10-04 09:00 logged a non-landing fork burst: 6 job startup timeouts at 09:18 and 09:24 on the probe and both */2 watchdogs, the first since 09-27. The donor bulk run beside it took 2,498.1 s, 5.3x its Sunday peers, and backed off at no chunk boundary even though box_is_saturated(false) should have read fork_failures. What the gate saw is unrecoverable, because box_health keeps only the latest stamp. Appended, not recorded. The 10-09 record step meets a by-day of 6 on 10-04.",
+    "FIX-1124 was not recorded, although the prompt said to record it if the counters moved. They moved exactly as designed (ec 3 due / 2 running, fe 1 / 2, no gate key on the daily). But the entry's evidence also names receipts §9's 'Crawl skips' line, and the first file to carry it is tonight's 2026-10-05.json. The entry's after date (10-05) is also later than a 10-04 record row, so the board could not settle it with one. Appended; it stays owed.",
+    "FIX-1132 read conn_source = 'windows': appended per the prompt, and both entries stay owed.",
+    "FIX-1012, FIX-1257 and FIX-1125 (passed, not named in the prompt) have partial evidence and were appended, not recorded. irs990 has not run since the drops; the 10-04 congress_votes row is tonight's; memory_day is 1 of 7.",
+    "FIX-1236 (opportunistic; no real 5xx on a revalidate page) and FIX-1172 (no supervised session over 45 min yet) are passed but were left untouched, per the prompt and their own text.",
+    "No permission prompt was raised in this run."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1124",
+      "what": "receipts 2026-10-05 §9 'Crawl skips' renders the counters (the first banked file, with no baseline: lifetime = since the 10-04 02:28Z landing; 19:00Z 10-04 read ec peer_due 3 / peer_running 2, fe 1 / 2), and the 10-05 05:30-06:30 window repeats the yields with no gate key on the daily → chore(fixes): record prod verification of FIX-1124",
+      "after": "2026-10-05T07:30Z"
+    },
+    {
+      "fix": "FIX-1132",
+      "what": "the first 06:00 daily whose pipeline_state.entity_search_index reads conn_source = 'stats_table' (10-04 read 'windows': 'entity_connections changed since the stats arm last banked'; the invalidating write was the crawl's own 05:00 unit), with unit_seconds.rebuild_entity_search_index well under the 247 s p50 (10-04: 239.6 s) → record",
+      "after": "2026-10-04T06:30Z"
+    },
+    {
+      "fix": "FIX-1269",
+      "what": "the 48th tick (~10-05 02:30Z): pgss (a) / (a2) still < 100 blocks/call (19:35Z 10-04: 7.4 / 12.6 over 34 ticks from cc-188's 02:41:40Z baseline) and (c) absent; receipts 2026-10-05 forker.memory_day (the first post-deploy banked day) vs 2026-10-04.json's p95 548.8. The :02/:32 signature was NOT gone (10:02-19:02Z mean 523.5 vs 83.4 pages/s; 19:32Z 356 pages/s); if the banked day agrees, re-attribute the half-hour driver before any record",
+      "after": "2026-10-05T12:00Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "the week verdict (receipts §9 by-day 10-02 → 10-09): 10-04 already reads 6 non-landing startup timeouts (09:18 / 09:24, donor bulk 2,498.1 s beside a 1,806.2 s ec-crawl unit), so the zero-burst criterion has failed as written. Decide whether to re-scope it or reopen, and find out why the chunk-boundary gate did not back off",
+      "after": "2026-10-09T12:00Z"
+    },
+    {
+      "fix": "FIX-1125",
+      "what": "seven receipts JSONs with a non-null forker.memory_day (the first is 2026-10-04.json; the seventh is 2026-10-10.json) → the memory-threshold design (forker s6), which must not assume the snapshot drives the :02/:32 bursts",
+      "after": "2026-10-09T23:30Z"
+    },
+    {
+      "fix": "FIX-1012",
+      "what": "irs990's first run after the drops (Mon 10-05 ~21:08Z; last ran 09-28) completes with no resolve_entity_by_canonical timeouts; financial_entities HOT ratio after tonight's Sunday full fec_bulk vs 40.2 % since cc-175's epoch read",
+      "after": "2026-10-05T21:30Z"
+    },
+    {
+      "fix": "FIX-1257",
+      "what": "the 10-04 nightly's congress_votes row stamps status_advanced / status_held / status_advance_failed (10-03 read 1 / 116 / 0), scripts/fix1257-backfill-passed-status.mjs --prod --read-back exits 0, and receipts 10-05 §1 carries no skip line",
+      "after": "2026-10-03T21:30Z"
+    }
+  ]
+}
