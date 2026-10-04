@@ -678,6 +678,13 @@ export interface ForkerSection {
   crawl_skips_baseline?: CrawlSkipsBaseline;
   /** FIX-1124 — crawl units whose running span overlapped a peer's, last 24 h. */
   crawl_overlaps_24h?: CrawlOverlapRow[];
+  /**
+   * FIX-1270 — `pipeline_state.ec_arm_parked` verbatim: the generic EC arms
+   * parked after two consecutive cancels, `{<arm>: {since, cancels,
+   * last_detail, fp, log_id}}`. `{}` (or an absent key) is nothing parked;
+   * undefined is a file that predates the reader.
+   */
+  ec_arm_parked?: Record<string, Record<string, unknown>> | null;
 }
 
 /** FIX-1124 — one crawl's lifetime counters, as `pipeline_state` holds them. */
@@ -989,6 +996,32 @@ export function crawlSkipLines(f: ForkerSection): string[] {
     );
   }
   return out;
+}
+
+/**
+ * FIX-1270 — the §9 "Parked EC arms" line. A parked arm is skipped by every
+ * crawl firing until its source fingerprint moves or an operator deletes its
+ * key, so its edges are as stale as `since`: this line is where that shows.
+ * Pure; empty is the healthy reading and says so.
+ */
+export function parkedArmLines(f: ForkerSection): string[] {
+  const parked = f.ec_arm_parked;
+  if (parked === undefined) return ["Parked EC arms (FIX-1270): not read."];
+  const arms = Object.entries(parked ?? {});
+  if (arms.length === 0) {
+    return ["Parked EC arms (FIX-1270): **none** — no generic arm has two consecutive cancels."];
+  }
+  const s = (v: unknown): string => (v === null || v === undefined ? "—" : String(v));
+  return [
+    "Parked EC arms (FIX-1270): **" + arms.length + "** — skipped by every firing until the source " +
+      "fingerprint moves, or until `pipeline_state.ec_arm_parked->'<arm>'` is deleted. Their edges are as " +
+      "stale as `since`.",
+    "",
+    table(
+      ["arm", "since", "cancels", "fp parked on", "last cancel"],
+      arms.map(([arm, v]) => [arm, s(v["since"]), s(v["cancels"]), s(v["fp"]), s(v["last_detail"])]),
+    ).trimEnd(),
+  ];
 }
 
 /**
@@ -1755,6 +1788,8 @@ export function renderMarkdown(d: ReceiptsData): string {
   );
   p("");
   for (const line of crawlSkipLines(d.forker)) p(line);
+  p("");
+  for (const line of parkedArmLines(d.forker)) p(line);
   p(
     queryBlock(d.queries, [
       "forker_24h",
@@ -1765,6 +1800,7 @@ export function renderMarkdown(d: ReceiptsData): string {
       "box_health",
       "crawl_skips",
       "crawl_overlaps",
+      "ec_arm_parked",
     ]),
   );
 

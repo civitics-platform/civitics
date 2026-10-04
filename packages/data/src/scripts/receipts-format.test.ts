@@ -46,6 +46,7 @@ import {
   type CrawlSkips,
   CRAWL_SKIP_REASONS,
   crawlSkipLines,
+  parkedArmLines,
   crawlSkipsBaselineFrom,
   previousNominalDay,
 } from "./receipts-format";
@@ -1283,4 +1284,31 @@ test("FIX-1124: renderMarkdown — §9 carries the Peers subsection; renderJson 
   assert.deepEqual(crawlSkipsBaselineFrom("2026-09-12.json", renderJson(d)), {
     available: true, file: "2026-09-12.json", skips: SKIPS_1003,
   });
+});
+
+test("FIX-1270: §9 Parked EC arms — empty is the healthy reading and says so", () => {
+  assert.deepEqual(parkedArmLines({ ...quiet, ec_arm_parked: {} }), [
+    "Parked EC arms (FIX-1270): **none** — no generic arm has two consecutive cancels.",
+  ]);
+  assert.deepEqual(parkedArmLines({ ...quiet, ec_arm_parked: null }), [
+    "Parked EC arms (FIX-1270): **none** — no generic arm has two consecutive cancels.",
+  ]);
+  // A file written before the reader existed is "not read", never "none".
+  assert.deepEqual(parkedArmLines({ ...quiet }), ["Parked EC arms (FIX-1270): not read."]);
+});
+
+test("FIX-1270: §9 Parked EC arms — a parked arm renders a row with since, cancels, fp and the cancel", () => {
+  const text = parkedArmLines({
+    ...quiet,
+    ec_arm_parked: {
+      rebuild_entity_connections_contracts: {
+        since: "2026-10-04T02:28:00.077Z", cancels: 2, fp: "n=3901112;t=2026-08-31 12:00:00+00",
+        last_detail: "rebuild_entity_connections_contracts: canceling statement due to user request",
+        log_id: "461dad58-04c4-42a2-ab06-63779a4ba557",
+      },
+    },
+  }).join("\n");
+  assert.match(text, /^Parked EC arms \(FIX-1270\): \*\*1\*\* — skipped by every firing until the source fingerprint moves/);
+  assert.match(text, /\| arm \| since \| cancels \| fp parked on \| last cancel \|/);
+  assert.match(text, /\| rebuild_entity_connections_contracts \| 2026-10-04T02:28:00\.077Z \| 2 \| n=3901112;t=2026-08-31 12:00:00\+00 \| rebuild_entity_connections_contracts: canceling statement due to user request \|/);
 });

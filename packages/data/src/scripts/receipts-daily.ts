@@ -730,6 +730,15 @@ FROM public.pipeline_state
 WHERE key IN ('ec_crawl', 'fe_crawl')`;
 
 /**
+ * FIX-1270 — the generic EC arms parked after two consecutive cancels. One key;
+ * an absent row is nothing parked, the same as `{}`.
+ */
+const Q_EC_ARM_PARKED = `
+SELECT value
+FROM public.pipeline_state
+WHERE key = 'ec_arm_parked'`;
+
+/**
  * FIX-1124 — crawl units whose running span met a peer's, last 24 h. A peer that
  * waited in peer_wait_gate starts its span after the wait (its started_at is the
  * CALL's transaction start, before the wait). skipped / deferred rows did no
@@ -1213,6 +1222,12 @@ async function main(): Promise<void> {
       peer_start: iso(v["peer_start"]),
       peer_end: iso(v["peer_end"]),
     }));
+    // FIX-1270 — parked EC arms; no row is nothing parked.
+    const parkedRows = await r.run<{ value: Record<string, Record<string, unknown>> | null }>(
+      "ec_arm_parked",
+      Q_EC_ARM_PARKED,
+    );
+    const ecArmParked = parkedRows[0]?.value ?? {};
 
     // FIX-1189 O2 — §10.
     const legRows = await r.run<Record<string, unknown>>("legislator_ids", Q_LEGISLATOR_IDS);
@@ -1349,6 +1364,7 @@ async function main(): Promise<void> {
         crawl_skips: crawlSkips,
         crawl_skips_baseline: crawlBaseline,
         crawl_overlaps_24h: crawlOverlaps,
+        ec_arm_parked: ecArmParked,
       },
       legislator_ids: { latest: legRun("latest"), complete: legRun("complete") },
       not_capturable: NOT_CAPTURABLE,
