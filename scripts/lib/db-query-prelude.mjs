@@ -41,5 +41,14 @@ export function buildPrelude({ call, readOnly, timeout, claimant = null }) {
     if (claimant != null) p += `SET civitics.prod_session_claimant = ${sqlLiteral(claimant)};\n`;
     return p;
   }
-  return readOnly ? "SET TRANSACTION READ ONLY;\n" : "";
+  // cc-188 (candidate 236) — an ad-hoc --prod read runs with parallelism OFF.
+  // It logs in as `postgres`, whose parallel workers each map a DSM segment;
+  // cc-182's census reads hit the 128 MB DSM refusal and were 8 of the 15
+  // worst swap-in minutes on the ring. LOCAL scopes it to the
+  // --single-transaction wrapper, so nothing outlives the read on a pooled
+  // session. A read that wants a parallel plan sets it back itself. Not on
+  // --call: a procedure sets its own planner GUCs.
+  return readOnly
+    ? "SET LOCAL max_parallel_workers_per_gather = 0;\nSET TRANSACTION READ ONLY;\n"
+    : "";
 }

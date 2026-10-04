@@ -539,7 +539,11 @@ node scripts/db-query.mjs --local --call "CALL public.some_proc();"
 ```
 
 `--prod` wraps the SQL in one transaction with `SET TRANSACTION READ ONLY`, so
-any write fails closed. `--call` drops `--single-transaction` so a PROCEDURE
+any write fails closed. It also runs `SET LOCAL max_parallel_workers_per_gather
+= 0` first (cc-188): ad-hoc reads log in as `postgres`, each parallel worker
+maps a DSM segment, and cc-182's census reads hit the 128 MB DSM refusal and
+were 8 of the 15 worst swap-in minutes. A read that needs a parallel plan sets
+it back explicitly. `--call` drops `--single-transaction` so a PROCEDURE
 that COMMITs internally (the FIX-703/704/715/717/718 pg_cron family) can run,
 and prepends `SET statement_timeout` (`--timeout <interval>`, default `60min`)
 as a runaway backstop. **`--call` is local by default:** `--prod --call` is a

@@ -18,7 +18,13 @@ console.log("db-query — prelude");
 
 {
   const p = buildPrelude({ call: false, readOnly: true, timeout: "60min" });
-  check("plain --prod is read-only and nothing else", p === "SET TRANSACTION READ ONLY;\n", JSON.stringify(p));
+  check("plain --prod turns parallelism off, then is read-only, and nothing else (cc-188)",
+    p === "SET LOCAL max_parallel_workers_per_gather = 0;\nSET TRANSACTION READ ONLY;\n", JSON.stringify(p));
+}
+{
+  const p = buildPrelude({ call: true, readOnly: false, timeout: "60min" });
+  check("--call does NOT touch parallelism (a procedure sets its own)",
+    !p.includes("max_parallel_workers_per_gather"), JSON.stringify(p));
 }
 {
   const p = buildPrelude({ call: false, readOnly: false, timeout: "60min" });
