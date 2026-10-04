@@ -22,8 +22,11 @@ import {
   classifyBinding,
   currentFecId,
   parseLegislators,
+  planBinding,
+  planBindings,
   reconcileReport,
   type BindingRow,
+  type BindingWrite,
   type ClaimsMap,
   type Listing,
   type PopulationRow,
@@ -348,4 +351,129 @@ test("reconcileReport names a broken partition rather than passing it", () => {
   assert.match(reconcileReport(report, 2).join(), /≠ 2 current members/);
   const badSplit = { ...report, double_claim_split: { current_id: 1, other_id: 0 } };
   assert.match(reconcileReport(badSplit, 1).join(), /double_claim split sums to 1, class is 0/);
+});
+
+// ── O1 — planBinding / planBindings (FIX-1189, cc-193) ──────────────────────
+//
+// One fixture per class O1 acts on, each with its wrong-but-green twin (rule
+// 105): the same class where a write would be WRONG, which must plan null. The
+// idempotence test applies a plan in memory and re-plans: zero.
+
+const plan = (r: BindingRow, claims: ClaimsMap = NO_CLAIMS) => planBinding(r, classifyBinding(r, MORAN, claims), claims);
+
+test("O1 bindable → bind: live ← the current id, the listed prior ids appended in the same write", () => {
+  assert.deepEqual(plan(row({})), {
+    official_id: "00000000-0000-0000-0000-000000000001",
+    kind: "bind",
+    expect_live: null,
+    set_live: "S0KS00315",
+    add_prior: ["H6KS01179"],
+  });
+});
+
+test("O1 bindable, twin: the current id is RETIRED on the row → null (writing it would change nothing, forever)", () => {
+  const r = row({ merged: ["S0KS00315"] });
+  assert.equal(classifyBinding(r, MORAN, NO_CLAIMS).action, "bindable", "the classifier still says bindable");
+  assert.equal(plan(r), null);
+});
+
+test("O1 prior_office_live → promote: live ← current, the old live id → prior", () => {
+  assert.deepEqual(plan(row({ live: "H6KS01179" })), {
+    official_id: "00000000-0000-0000-0000-000000000001",
+    kind: "promote",
+    expect_live: "H6KS01179",
+    set_live: "S0KS00315",
+    add_prior: ["H6KS01179"],
+  });
+});
+
+test("O1 prior_office_live, twin: another row (a stub) holds the current id → null", () => {
+  const r = row({ live: "H6KS01179" });
+  const stubClaims = buildClaimsMap([row({ official_id: "stub", bioguide: null, live: "S0KS00315" })]);
+  // Through the classifier the stub makes this a double_claim, which plans null …
+  assert.equal(classifyBinding(r, MORAN, stubClaims).action, "double_claim");
+  assert.equal(plan(r, stubClaims), null);
+  // … and the plan refuses on its own, without leaning on the classifier's order.
+  const forced = { action: "prior_office_live" as const, live: "S0KS00315", prior: ["H6KS01179"], current_id: "S0KS00315", reason: "" };
+  assert.equal(planBinding(r, forced, stubClaims), null);
+  assert.notEqual(planBinding(r, forced, NO_CLAIMS), null, "the same classification with no stub does plan");
+});
+
+test("O1 prior_incomplete → prior_append: the missing listed ids, live untouched", () => {
+  assert.deepEqual(plan(row({ live: "S0KS00315" })), {
+    official_id: "00000000-0000-0000-0000-000000000001",
+    kind: "prior_append",
+    expect_live: "S0KS00315",
+    set_live: null,
+    add_prior: ["H6KS01179"],
+  });
+});
+
+test("O1 prior_incomplete, twin: the missing id is RETIRED on the row → null", () => {
+  const r = row({ live: "S0KS00315", merged: ["H6KS01179"] });
+  assert.equal(classifyBinding(r, MORAN, NO_CLAIMS).action, "prior_incomplete");
+  assert.equal(plan(r), null);
+});
+
+test("O1 every other class plans nothing", () => {
+  const cases: Array<[BindingRow, ClaimsMap, string]> = [
+    [row({ live: "S0KS00315", prior: ["H6KS01179"] }), NO_CLAIMS, "noop"],
+    [row({ live: "S0XX99999" }), NO_CLAIMS, "unlisted_live_id"],
+    [row({}), buildClaimsMap([row({ official_id: "stub", bioguide: null, live: "S0KS00315" })]), "double_claim"],
+    [row({}), buildClaimsMap([row({ official_id: "x", bioguide: "OTHER", live: "H6KS01179" })]), "cross_bioguide_claim"],
+    [row({ bioguide: null }), NO_CLAIMS, "no_bioguide"],
+  ];
+  for (const [r, claims, expected] of cases) {
+    const c = classifyBinding(r, r.bioguide ? MORAN : null, claims);
+    assert.equal(c.action, expected);
+    assert.equal(planBinding(r, c, claims), null, expected);
+  }
+  const castor = row({ bioguide: CASTOR.bioguide });
+  assert.equal(planBinding(castor, classifyBinding(castor, CASTOR, NO_CLAIMS), NO_CLAIMS), null, "ambiguous_current");
+  const lag = row({ bioguide: "NOT_LISTED" });
+  assert.equal(planBinding(lag, classifyBinding(lag, null, NO_CLAIMS), NO_CLAIMS), null, "dataset_lag");
+});
+
+/** What BIND_SQL does to one row, in memory. */
+function applyInMemory(r: BindingRow, w: BindingWrite): BindingRow {
+  if (r.live !== w.expect_live) return r; // refused_changed
+  const live = w.set_live ?? r.live;
+  const prior = w.add_prior.length > 0
+    ? [...r.prior.filter((id) => id !== w.set_live), ...w.add_prior.filter((id) => id !== w.set_live && !r.prior.includes(id))]
+    : r.prior;
+  return { ...r, live, prior };
+}
+
+test("O1 idempotence: apply the plan, re-plan the same population — zero writes", () => {
+  const rows: BindingRow[] = [
+    row({ official_id: "a" }), //                                bind
+    row({ official_id: "b", bioguide: REP.bioguide, live: null }), // bind (single id)
+  ];
+  // A second member for the promote / prior_append rows, so no id is claimed twice.
+  const ALT: Listing = { ...MORAN, bioguide: "ALT", fec: ["H1AA01001", "S1AA00001"] };
+  const ALT2: Listing = { ...MORAN, bioguide: "ALT2", fec: ["H2BB02002", "S2BB00002"] };
+  rows.push(row({ official_id: "c", bioguide: "ALT", live: "H1AA01001" })); //  promote
+  rows.push(row({ official_id: "d", bioguide: "ALT2", live: "S2BB00002" })); // prior_append
+  const current = [MORAN, REP, ALT, ALT2];
+  const first = planBindings(rows, current, buildClaimsMap(rows));
+  assert.deepEqual(first.map((p) => p.kind).sort(), ["bind", "bind", "prior_append", "promote"]);
+  const after = rows.map((r) => {
+    const w = first.find((p) => p.official_id === r.official_id);
+    return w ? applyInMemory(r, w) : r;
+  });
+  assert.deepEqual(planBindings(after, current, buildClaimsMap(after)), [], "a second run plans 0");
+  for (const r of after) assert.equal(classifyBinding(r, current.find((l) => l.bioguide === r.bioguide)!, buildClaimsMap(after)).action, "noop");
+});
+
+test("O1 planBindings: two claimless rows of one member would both bind the same id → both dropped", () => {
+  const rows = [row({ official_id: "x1" }), row({ official_id: "x2" })];
+  assert.equal(classifyBinding(rows[0]!, MORAN, buildClaimsMap(rows)).action, "bindable", "each alone looks bindable");
+  assert.deepEqual(planBindings(rows, [MORAN], buildClaimsMap(rows)), []);
+  // twin: one row binds
+  assert.equal(planBindings([rows[0]!], [MORAN], buildClaimsMap([rows[0]!])).length, 1);
+});
+
+test("O1 planBindings: a row the CURRENT file does not list is never written (historical-only, or unlisted)", () => {
+  const r = row({ official_id: "h", bioguide: "H_ONLY" });
+  assert.deepEqual(planBindings([r], [MORAN], NO_CLAIMS), []);
 });

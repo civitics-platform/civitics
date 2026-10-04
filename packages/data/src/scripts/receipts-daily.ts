@@ -498,7 +498,9 @@ UNION ALL
 
 /**
  * FIX-1189 O2 — §10. The Q_DAILY_RUN split: the latest row of any status says
- * what happened, the latest `complete` one carries the numbers.
+ * what happened, the latest `complete` one carries the numbers. O1 (cc-193)
+ * adds the writer's latest `congress_legislator_ids_bind` row, any status;
+ * none exists until CIVITICS_LEGISLATOR_IDS_BIND is set.
  */
 const Q_LEGISLATOR_IDS = `
 (SELECT 'latest' AS which, started_at, status, error_message, metadata
@@ -511,6 +513,12 @@ UNION ALL
  FROM public.data_sync_log
  WHERE pipeline = 'congress_legislator_ids_report'
    AND status = 'complete'
+ ORDER BY started_at DESC
+ LIMIT 1)
+UNION ALL
+(SELECT 'bind' AS which, started_at, status, error_message, metadata
+ FROM public.data_sync_log
+ WHERE pipeline = 'congress_legislator_ids_bind'
  ORDER BY started_at DESC
  LIMIT 1)`;
 
@@ -1404,7 +1412,7 @@ async function main(): Promise<void> {
         crawl_overlaps_24h: crawlOverlaps,
         ec_arm_parked: ecArmParked,
       },
-      legislator_ids: { latest: legRun("latest"), complete: legRun("complete") },
+      legislator_ids: { latest: legRun("latest"), complete: legRun("complete"), bind: legRun("bind") },
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
     };

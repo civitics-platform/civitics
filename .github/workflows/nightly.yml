@@ -252,6 +252,16 @@ jobs:
       CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
       CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
+      # ── FIX-1189 — two switches, both deliberately UNSET (cc-193) ─────────
+      # The congress-legislators dataset key in the promotion (congress
+      # officials, step 1b) and the O1 id writer (step 1e, before fec_bulk)
+      # both run in this job. Each is off unless set to "1". cc-194 lands the
+      # first promotion by hand in a supervised session and dry-runs O1 on
+      # prod, THEN adds:
+      #   CIVITICS_PROMOTION_DATASET_KEY: "1"
+      #   CIVITICS_LEGISLATOR_IDS_BIND:   "1"
+      # so the first unattended run of either is the Tuesday 2026-10-06
+      # nightly. Turning either off again is deleting its line.
 
     steps:
       # FIX-963 — stamp this job's start so the mark-killed post-step can bind

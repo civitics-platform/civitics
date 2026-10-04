@@ -1151,6 +1151,32 @@ export interface LegislatorIdsRun {
 export interface LegislatorIdsSection {
   latest: LegislatorIdsRun | null;
   complete: LegislatorIdsRun | null;
+  /**
+   * FIX-1189 O1 — the writer's latest `congress_legislator_ids_bind` row, any
+   * status. Absent in files written before cc-193; null until the writer's
+   * flag is set and it has run once.
+   */
+  bind?: LegislatorIdsRun | null;
+}
+
+/** The writer's line — what O1 did on its latest run. Empty when it never ran. */
+export function legislatorIdsBindLines(bind: LegislatorIdsRun | null | undefined): string[] {
+  if (bind === undefined || bind === null) return [];
+  const meta = bind.metadata ?? {};
+  const head = "O1 writer (`congress_legislator_ids_bind`) " + esc(bind.started_at) + " — ";
+  if (bind.status === "complete") {
+    const a = (meta["acted"] ?? {}) as Record<string, unknown>;
+    return [
+      head + "acted: bound **" + num0(a["bound"]) + "**, promoted **" + num0(a["promoted"]) +
+        "**, prior_appended **" + num0(a["prior_appended"]) + "**, refused_changed **" +
+        num0(a["refused_changed"]) + "** (a refusal is a row whose live id moved after the read).",
+      "",
+    ];
+  }
+  if (bind.status === "skipped") {
+    return [head + "skipped: " + esc(String(meta["skip_reason"] ?? "(no reason)")) + ".", ""];
+  }
+  return [head + "**" + esc(bind.status) + "**" + (bind.error ? ": " + esc(bind.error) : "") + ".", ""];
 }
 
 /** A report older than this is `missing` — a nightly step that skipped a night. */
@@ -1282,6 +1308,7 @@ export function legislatorIdsLines(
     out.push("Latest run " + esc(latest.started_at) + " — complete, " + (latestAge ?? 0).toFixed(1) + " h before this file.");
     out.push("");
   }
+  out.push(...legislatorIdsBindLines(s.bind));
   const c = s.complete;
   if (c === null || c.metadata === null) {
     out.push("_No complete report yet — nothing to count._");
@@ -1860,8 +1887,9 @@ export function renderMarkdown(d: ReceiptsData): string {
     "The nightly enrichment-light step `congress_legislator_ids_report` compares every federal elected " +
       "row's FEC candidate ids (`authoritativeClaims()`: live + prior, retired excluded) with " +
       "`unitedstates/congress-legislators`' `id.fec[]` for that bioguide. **Report-only**: it writes " +
-      "nothing to `officials`. O1, the writer, is gated on a week of these (design D2). `bindable` and " +
-      "`prior_office_live` are the two classes O1 would act on.",
+      "nothing to `officials`. O1, the writer (`congress_legislator_ids_bind`, the fec phase's step before " +
+      "`fec_bulk`, behind `CIVITICS_LEGISLATOR_IDS_BIND`), acts on `bindable`, `prior_office_live` and " +
+      "`prior_incomplete`; its line below appears once it has run.",
   );
   p("");
   for (const line of legislatorIdsLines(d.legislator_ids, d.generated_at, BINDING_ACTIONS)) p(line);

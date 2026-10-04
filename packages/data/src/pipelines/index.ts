@@ -37,7 +37,7 @@ import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
 import { runBulkPeoplePipeline } from "./openstates-bulk/people";
 import { runOfficialsPipeline, runVotesPipeline, runCommitteesPipeline } from "./congress";
-import { runLegislatorIdReport } from "./congress/legislator-ids-report";
+import { runLegislatorIdBindStep, runLegislatorIdReport } from "./congress/legislator-ids-report";
 import { runExecutiveSeed } from "./executive/seed";
 import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
@@ -373,6 +373,7 @@ export interface NightlySyncResults {
     elections?: NightlyPipelineResult;
     congress_committees?: NightlyPipelineResult;
     congress_legislator_ids_report?: NightlyPipelineResult; // FIX-1189 O2 (read-only)
+    congress_legislator_ids_bind?: NightlyPipelineResult; // FIX-1189 O1 (the writer, fec phase)
     agency_leadership?: NightlyPipelineResult;
     agency_enrichment?: NightlyPipelineResult;
     entity_connections_rebuild?: NightlyPipelineResult;
@@ -671,6 +672,39 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       results.pipelines.edgar_daily = { status: "failed", error: msg };
       results.errors.push(`EDGAR daily: ${msg}`);
     }
+  }
+
+  // 1e. FIX-1189 O1 — the congress-legislators FEC id writer
+  //     (congress_legislator_ids_bind). Binds a sitting member's current id,
+  //     promotes a prior-office live id, appends missing prior ids — the plan
+  //     from the same classifier the enrichment-light report stamps.
+  //
+  //     Placed HERE, last in the daily block: after 1b's promotion (so it sees
+  //     the night's promoted rows rather than the stubs they replaced) and
+  //     before the fec_bulk chain below, which runs in this same GHA job — so
+  //     a Sunday drop's cn{yy} stage reads the bindings and does not mint a
+  //     stub for a member whose id was just written.
+  //
+  //     Unlike the daily ingest above it is a WRITER that stands down under a
+  //     supervised prod session (FIX-950), with the fec chain's skip_reason
+  //     spelling. Behind CIVITICS_LEGISLATOR_IDS_BIND=1; unset, it logs
+  //     `disabled` and writes nothing. Never fails the run: a failure is a
+  //     `failed` stamp of its own, recorded here, not an error that turns the
+  //     phase `partial`.
+  {
+    const t0 = Date.now();
+    const r = await runLegislatorIdBindStep({
+      writersRun: writersRun(true, hold),
+      holdReason: prodSessionHoldReason(prodSession?.reason ?? null),
+    });
+    results.pipelines.congress_legislator_ids_bind =
+      r.status === "complete"
+        ? {
+            status: "complete",
+            rows_added: r.acted ? r.acted.bound + r.acted.promoted + r.acted.prior_appended : 0,
+            duration_ms: Date.now() - t0,
+          }
+        : { status: r.status, ...(r.reason ? { error: r.reason } : {}) };
   }
 
   } // end Phase 1 daily pipelines (FIX-292)

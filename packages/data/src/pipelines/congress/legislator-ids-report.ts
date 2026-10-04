@@ -8,9 +8,21 @@
  * `rows_inserted = 0`, the counts and top-20s in `metadata`. The receipts file
  * renders it (receipts-format.ts §10).
  *
- * READ-ONLY. No write to `officials`, and no flag that enables one — O1, the
- * writer, is a separate prompt gated on a week of these reports (design D2).
- * The one row this writes is its own `data_sync_log` stamp.
+ * REPORT-ONLY BY DEFAULT. Without `--apply` nothing writes `officials`; the
+ * one row the report writes is its own `data_sync_log` stamp, exactly as O2
+ * shipped.
+ *
+ * O1, THE WRITER (FIX-1189, cc-193; design D3). `--apply` turns the three
+ * actionable classes into `officials.source_ids` writes (`planBindings()` in
+ * ./legislator-ids): bind, promote, append prior ids. One UPDATE statement for
+ * the whole plan, each row keyed by UUID with its CURRENT live id asserted in
+ * the WHERE (the FIX-1195 restore shape) — a row another writer moved after
+ * the read is refused and counted, never overwritten. The stamp is then
+ * `congress_legislator_ids_bind`, carrying `acted {bound, promoted,
+ * prior_appended, refused_changed}` and the plan. Idempotent: the rows it
+ * writes read `noop` on the next run, which plans nothing. In the nightly it is
+ * its own step at the end of the fec phase's daily block, behind
+ * CIVITICS_LEGISLATOR_IDS_BIND=1 (`runLegislatorIdBindStep`).
  *
  * NO SILENT ZERO. A fetch failure, a short file, a short population or a
  * partition that does not reconcile stamps `failed` with the reason — never an
@@ -18,25 +30,32 @@
  * counts only `complete` rows, so a failing report goes stale rather than
  * reading as a clean night.
  *
- * `--dry-run` (rule 141): this script has NO write mode to dry-run. The flag
- * suppresses the one `data_sync_log` stamp and prints the metadata it would
- * have carried — which is how a prod dry run stays read-only.
+ * `--dry-run` (rule 141): plan-only. Suppresses every write — the stamp and,
+ * with `--apply`, the UPDATE — and prints the metadata it would have carried
+ * plus O1's plan. That is how a prod dry run stays read-only.
  *
  * Run standalone:
- *   pnpm --filter @civitics/data data:legislator-ids-report             # local, stamps
- *   pnpm --filter @civitics/data data:legislator-ids-report -- --dry-run
+ *   pnpm --filter @civitics/data data:legislator-ids-report                      # local, stamps the report
+ *   pnpm --filter @civitics/data data:legislator-ids-report -- --dry-run         # plan-only, writes nothing
+ *   pnpm --filter @civitics/data data:legislator-ids-report -- --apply           # O1: writes, stamps the bind row
+ *   pnpm --filter @civitics/data data:legislator-ids-report -- --apply --dry-run # O1's plan, writes nothing
+ * `--apply` against prod also needs `--allow-prod`; report-only mode does not.
  */
 
 import { createAdminClient, selectAllKeyset, afterKey } from "@civitics/db";
-import { startSync, completeSync, failSync } from "../sync-log";
+import { buildDbUrl } from "../../lib/heavy-rebuild";
+import { startSync, completeSync, failSync, skipSync } from "../sync-log";
 import { ROSTER_FLOOR } from "./reconcile-former-members";
 import {
   bindingRowFromSourceIds,
   buildClaimsMap,
   buildReport,
   parseLegislators,
+  planBindings,
   reconcileReport,
   type BindingRow,
+  type BindingWrite,
+  type BindingWriteKind,
   type LegislatorIdReport,
   type Listing,
   type PopulationRow,
@@ -45,6 +64,28 @@ import {
 type Db = ReturnType<typeof createAdminClient>;
 
 export const REPORT_PIPELINE = "congress_legislator_ids_report";
+
+/** FIX-1189 O1 — the writer's own stamp; receipts §10 reads its `acted`. */
+export const BIND_PIPELINE = "congress_legislator_ids_bind";
+
+/**
+ * FIX-1189 O1 — the nightly's switch for the writer, from the workflow env.
+ * Unset until cc-194's supervised dry run; the Tuesday 2026-10-06 nightly is
+ * the first write.
+ */
+export const LEGISLATOR_IDS_BIND_ENV = "CIVITICS_LEGISLATOR_IDS_BIND";
+
+export function isLegislatorIdsBindEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env[LEGISLATOR_IDS_BIND_ENV] === "1";
+}
+
+/**
+ * The bound on O1's one UPDATE, SET as its own statement before it (FIX-1128:
+ * a routine-level timeout bounds nothing). The plan is ~31 PK-keyed rows on
+ * prod today; 30 s is three orders of magnitude of headroom and still ends a
+ * statement stuck behind a lock long before the fec phase notices.
+ */
+export const BIND_STATEMENT_TIMEOUT = "30s";
 
 /**
  * The same host `committees.ts` reads `committees-current.json` from — GitHub
@@ -204,7 +245,114 @@ export interface LegislatorIdReportResult {
   status: "complete" | "failed";
   report?: LegislatorIdReport;
   metadata?: Record<string, unknown>;
+  /** O1's plan — computed on every run, written only with `apply`. */
+  plans?: BindingWrite[];
+  /** O1's outcome — only when the plan was applied. */
+  acted?: BindActed;
   error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// O1 — the write
+// ---------------------------------------------------------------------------
+
+export interface BindActed {
+  bound: number;
+  promoted: number;
+  prior_appended: number;
+  /** Planned, but the row's live id had changed since the read — not written. */
+  refused_changed: number;
+}
+
+/** `kind` → the `acted` key it counts under. */
+const ACTED_KEY: Record<BindingWriteKind, keyof Omit<BindActed, "refused_changed">> = {
+  bind: "bound",
+  promote: "promoted",
+  prior_append: "prior_appended",
+};
+
+/**
+ * The whole plan as ONE statement. `||` merge on the live row (the FIX-1187
+ * shape-B / persistNewFecIds shape) so a concurrent writer's other keys
+ * survive, the SET reads `o.source_ids` so a row re-checked under READ
+ * COMMITTED is rebuilt from its new version, and the prior array is
+ * append-if-absent: existing order kept, the new live id dropped from it.
+ * Not `jsonb_set`, which returns NULL — wiping `source_ids` — when handed a
+ * NULL value.
+ */
+export const BIND_SQL = `
+WITH plan AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb)
+    AS x(official_id uuid, expect_live text, set_live text, add_prior jsonb)
+)
+UPDATE officials o
+   SET source_ids =
+         COALESCE(o.source_ids, '{}'::jsonb)
+         || CASE WHEN p.set_live IS NOT NULL
+                 THEN jsonb_build_object('fec_candidate_id', p.set_live)
+                 ELSE '{}'::jsonb END
+         || CASE WHEN jsonb_array_length(p.add_prior) > 0
+                 THEN jsonb_build_object('prior_fec_candidate_ids', (
+                   SELECT COALESCE(jsonb_agg(s.v ORDER BY s.ord), '[]'::jsonb)
+                     FROM (
+                       SELECT e.v, e.ord
+                         FROM jsonb_array_elements_text(
+                                CASE WHEN jsonb_typeof(o.source_ids->'prior_fec_candidate_ids') = 'array'
+                                     THEN o.source_ids->'prior_fec_candidate_ids' ELSE '[]'::jsonb END
+                              ) WITH ORDINALITY AS e(v, ord)
+                        WHERE e.v IS DISTINCT FROM p.set_live
+                       UNION ALL
+                       SELECT a.v, 1000000 + a.ord
+                         FROM jsonb_array_elements_text(p.add_prior) WITH ORDINALITY AS a(v, ord)
+                        WHERE a.v IS DISTINCT FROM p.set_live
+                          AND NOT (CASE WHEN jsonb_typeof(o.source_ids->'prior_fec_candidate_ids') = 'array'
+                                        THEN o.source_ids->'prior_fec_candidate_ids' ? a.v ELSE false END)
+                     ) s))
+                 ELSE '{}'::jsonb END,
+       updated_at = now()
+  FROM plan p
+ WHERE o.id = p.official_id
+   AND o.source_ids->>'fec_candidate_id' IS NOT DISTINCT FROM p.expect_live
+RETURNING o.id::text AS id`;
+
+/** Apply the plan; returns the ids actually written. */
+async function applyBindings(plans: BindingWrite[]): Promise<Set<string>> {
+  if (plans.length === 0) return new Set();
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: buildDbUrl() });
+  await client.connect();
+  try {
+    await client.query(`SET statement_timeout = '${BIND_STATEMENT_TIMEOUT}'`);
+    const res = await client.query<{ id: string }>(BIND_SQL, [JSON.stringify(plans)]);
+    return new Set(res.rows.map((r) => r.id));
+  } finally {
+    await client.end();
+  }
+}
+
+/** Fold the per-row outcome into the stamp's `acted` counts. */
+export function actedFrom(plans: BindingWrite[], written: Set<string>): BindActed {
+  const acted: BindActed = { bound: 0, promoted: 0, prior_appended: 0, refused_changed: 0 };
+  for (const p of plans) {
+    if (written.has(p.official_id)) acted[ACTED_KEY[p.kind]]++;
+    else acted.refused_changed++;
+  }
+  return acted;
+}
+
+/** One line per planned write, for the log and the dry run. */
+function planLines(plans: BindingWrite[], names: Map<string, string>): string[] {
+  const byKind = { bind: 0, promote: 0, prior_append: 0 };
+  for (const p of plans) byKind[p.kind]++;
+  return [
+    `  O1 plan: ${plans.length} write(s) — bind ${byKind.bind}, promote ${byKind.promote}, prior_append ${byKind.prior_append}`,
+    ...plans.map(
+      (p) =>
+        `    ${p.kind.padEnd(12)} ${(names.get(p.official_id) ?? "?").padEnd(30)} ${p.official_id}  ` +
+        `live ${p.expect_live ?? "(none)"}${p.set_live ? ` → ${p.set_live}` : ""}` +
+        (p.add_prior.length > 0 ? `  prior += ${p.add_prior.join(", ")}` : ""),
+    ),
+  ];
 }
 
 /** Everything the stamp carries, beyond the classifier's own report. */
@@ -230,9 +378,16 @@ export function stampMetadata(
  * The nightly step. Never throws: every failure is a `failed` stamp and a
  * `failed` result, so the caller records it and moves on.
  */
-export async function runLegislatorIdReport(opts: { dryRun?: boolean; db?: Db } = {}): Promise<LegislatorIdReportResult> {
-  console.info("\n=== FIX-1189 O2 — congress-legislators FEC id divergence report (read-only) ===");
-  const logId = opts.dryRun ? "" : await startSync(REPORT_PIPELINE);
+export async function runLegislatorIdReport(
+  opts: { dryRun?: boolean; apply?: boolean; db?: Db } = {},
+): Promise<LegislatorIdReportResult> {
+  const apply = opts.apply === true;
+  console.info(
+    apply
+      ? `\n=== FIX-1189 O1 — congress-legislators FEC id writer${opts.dryRun ? " (DRY RUN — plan only, writes nothing)" : ""} ===`
+      : "\n=== FIX-1189 O2 — congress-legislators FEC id divergence report (read-only) ===",
+  );
+  const logId = opts.dryRun ? "" : await startSync(apply ? BIND_PIPELINE : REPORT_PIPELINE);
   try {
     const db = opts.db ?? createAdminClient();
     const readAt = new Date();
@@ -272,13 +427,46 @@ export async function runLegislatorIdReport(opts: { dryRun?: boolean; db?: Db } 
         `dataset ambiguous current: ${report.dataset_ambiguous_current}; via historical: ${report.matched_via_historical}`,
     );
 
+    // O1's plan, from the same reading the report classified. Printed for the
+    // writer and for any dry run; the nightly report's own output is unchanged.
+    const plans = planBindings(population, current.listings, claims);
+    const names = new Map(population.map((r) => [r.official_id, r.name]));
+    if (apply || opts.dryRun) for (const line of planLines(plans, names)) console.info(line);
+
+    let acted: BindActed | undefined;
+    if (apply) {
+      if (opts.dryRun) {
+        console.info("  --apply --dry-run: the plan above was NOT written (rule 141).");
+      } else {
+        const written = await applyBindings(plans);
+        acted = actedFrom(plans, written);
+        console.info(
+          `  O1 acted: bound ${acted.bound}, promoted ${acted.promoted}, prior_appended ${acted.prior_appended}, ` +
+            `refused_changed ${acted.refused_changed} (statement_timeout ${BIND_STATEMENT_TIMEOUT})`,
+        );
+        metadata["acted"] = acted;
+        metadata["plan"] = plans.map((p) => ({
+          ...p,
+          name: names.get(p.official_id) ?? null,
+          outcome: written.has(p.official_id) ? "written" : "refused_changed",
+        }));
+        metadata["bind_statement_timeout"] = BIND_STATEMENT_TIMEOUT;
+      }
+    }
+
     if (opts.dryRun) {
       console.info("  --dry-run: no data_sync_log stamp written. Metadata it would carry:");
       console.info(JSON.stringify(metadata, null, 2));
     } else {
-      await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0, metadata });
+      await completeSync(logId, {
+        inserted: 0,
+        updated: acted ? acted.bound + acted.promoted + acted.prior_appended : 0,
+        failed: 0,
+        estimatedMb: 0,
+        metadata,
+      });
     }
-    return { status: "complete", report, metadata };
+    return { status: "complete", report, metadata, plans, ...(acted ? { acted } : {}) };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  legislator-ids report failed: ${msg}`);
@@ -288,11 +476,60 @@ export async function runLegislatorIdReport(opts: { dryRun?: boolean; db?: Db } 
 }
 
 // ---------------------------------------------------------------------------
+// The nightly step — O1 (FIX-1189)
+// ---------------------------------------------------------------------------
+
+export interface BindStepResult {
+  status: "complete" | "failed" | "skipped";
+  acted?: BindActed;
+  /** Why it did not run, or why it failed. */
+  reason?: string;
+}
+
+/**
+ * The fec phase's `congress_legislator_ids_bind` step. Never throws.
+ *
+ *   flag unset  → logs `disabled`, writes NOTHING (no officials write, no stamp)
+ *   held        → a `skipped` stamp whose skip_reason is the FIX-950
+ *                 'prod session held: …' spelling, exactly like the fec chain
+ *   otherwise   → `runLegislatorIdReport({ apply: true })`
+ */
+export async function runLegislatorIdBindStep(opts: {
+  /** `writersRun(runFec, hold)` — false under a supervised prod session. */
+  writersRun: boolean;
+  /** `prodSessionHoldReason(...)`, used only when held. */
+  holdReason: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<BindStepResult> {
+  if (!isLegislatorIdsBindEnabled(opts.env)) {
+    console.info(`  [legislator-ids-bind] disabled — ${LEGISLATOR_IDS_BIND_ENV} unset; nothing read, nothing written`);
+    return { status: "skipped", reason: `disabled — ${LEGISLATOR_IDS_BIND_ENV} unset` };
+  }
+  if (!opts.writersRun) {
+    console.warn(`  [legislator-ids-bind] ⏸  ${opts.holdReason}`);
+    const logId = await startSync(BIND_PIPELINE);
+    await skipSync(logId, opts.holdReason);
+    return { status: "skipped", reason: opts.holdReason };
+  }
+  const r = await runLegislatorIdReport({ apply: true });
+  return r.status === "complete"
+    ? { status: "complete", ...(r.acted ? { acted: r.acted } : {}) }
+    : { status: "failed", reason: r.error };
+}
+
+// ---------------------------------------------------------------------------
 // Standalone entry point
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
-  runLegislatorIdReport({ dryRun: process.argv.includes("--dry-run") })
+  const argv = process.argv;
+  // Report-only mode is unchanged (it never needed the flag); the writer does.
+  const prod = /supabase\.co/i.test(process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "");
+  if (prod && argv.includes("--apply") && !argv.includes("--allow-prod")) {
+    console.error("✗ --apply against PROD needs --allow-prod. Refusing to write prod by accident.");
+    process.exit(1);
+  }
+  runLegislatorIdReport({ dryRun: argv.includes("--dry-run"), apply: argv.includes("--apply") })
     .then((r) => process.exit(r.status === "complete" ? 0 : 1))
     .catch((err) => {
       console.error("Fatal error:", err);

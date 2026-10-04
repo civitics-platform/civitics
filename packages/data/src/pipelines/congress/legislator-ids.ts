@@ -388,6 +388,99 @@ export function classifyBinding(
 }
 
 // ---------------------------------------------------------------------------
+// O1 — the writer's plan (FIX-1189, cc-193)
+// ---------------------------------------------------------------------------
+
+export type BindingWriteKind = "bind" | "promote" | "prior_append";
+
+/**
+ * One `officials.source_ids` write. Applied as a merge keyed by UUID with the
+ * row's CURRENT live id asserted in the WHERE (the FIX-1195 restore shape), so
+ * a row another writer changed after the read is refused, never overwritten.
+ */
+export interface BindingWrite {
+  official_id: string;
+  kind: BindingWriteKind;
+  /** The `fec_candidate_id` the row must still hold — null means "holds none". */
+  expect_live: string | null;
+  /** The new `fec_candidate_id`, or null to leave it. */
+  set_live: string | null;
+  /** Ids appended to `prior_fec_candidate_ids` (each absent from it), sorted. */
+  add_prior: string[];
+}
+
+/**
+ * The write a class turns into, or null. Design D3 (ratified): O1 acts on
+ * three classes and reports the rest.
+ *
+ *   bindable           → bind: live ← the current id, plus any listed prior ids
+ *   prior_office_live  → promote: live ← the current id, the old live → prior
+ *   prior_incomplete   → prior_append: the missing listed ids → prior
+ *   everything else    → null
+ *
+ * A bind writes the prior ids in the same statement so the row reads `noop` on
+ * the next run instead of `prior_incomplete` — one write, and a second run
+ * plans nothing.
+ *
+ * Refusals on top of the classifier's, each a case the classifier cannot see:
+ *   - another row claims the id that would become live (the classifier puts
+ *     such a row in double_claim first, but the plan does not rely on that);
+ *   - the id that would become live, or one to append, is RETIRED on this row
+ *     (`merged_fec_candidate_ids`) — `authoritativeClaims()` drops a retired
+ *     id, so writing it would change nothing and plan the same write forever.
+ */
+export function planBinding(row: BindingRow, c: Classification, claims: ClaimsMap): BindingWrite | null {
+  const retired = new Set(row.merged);
+  const inPrior = new Set(row.prior);
+  const othersClaim = (id: string): boolean =>
+    (claims.get(id) ?? []).some((x) => x.official_id !== row.official_id);
+  const additions = (exclude: string | null): string[] =>
+    sorted((c.prior ?? []).filter((id) => id !== exclude && !inPrior.has(id) && !retired.has(id)));
+
+  switch (c.action) {
+    case "bindable": {
+      if (!c.live || retired.has(c.live) || othersClaim(c.live)) return null;
+      return { official_id: row.official_id, kind: "bind", expect_live: row.live, set_live: c.live, add_prior: additions(c.live) };
+    }
+    case "prior_office_live": {
+      if (!c.live || row.live === null || retired.has(c.live) || othersClaim(c.live)) return null;
+      return { official_id: row.official_id, kind: "promote", expect_live: row.live, set_live: c.live, add_prior: additions(c.live) };
+    }
+    case "prior_incomplete": {
+      const add = additions(row.live);
+      if (add.length === 0) return null;
+      return { official_id: row.official_id, kind: "prior_append", expect_live: row.live, set_live: null, add_prior: add };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Every write O1 would make for a population. Only rows the CURRENT file lists
+ * are written: a row keyed only through the historical file is a former member
+ * still marked elected, and what is "current" for them is not O1's to decide.
+ *
+ * Two plans that would make the same id live (two rows of one bioguide, both
+ * claimless, both `bindable`) would manufacture a double claim; both are
+ * dropped and reported by the caller as a plan of zero.
+ */
+export function planBindings(rows: BindingRow[], current: Listing[], claims: ClaimsMap): BindingWrite[] {
+  const byBioguide = new Map(current.map((l) => [l.bioguide, l]));
+  const plans: BindingWrite[] = [];
+  for (const row of rows) {
+    if (!row.bioguide) continue;
+    const listing = byBioguide.get(row.bioguide);
+    if (!listing) continue;
+    const w = planBinding(row, classifyBinding(row, listing, claims), claims);
+    if (w) plans.push(w);
+  }
+  const live = new Map<string, number>();
+  for (const p of plans) if (p.set_live) live.set(p.set_live, (live.get(p.set_live) ?? 0) + 1);
+  return plans.filter((p) => p.set_live === null || live.get(p.set_live) === 1);
+}
+
+// ---------------------------------------------------------------------------
 // The report
 // ---------------------------------------------------------------------------
 

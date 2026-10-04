@@ -42,6 +42,7 @@ import {
   boxHealthLines,
   stampLivenessVerdict,
   legislatorIdsLines,
+  legislatorIdsBindLines,
   LEGISLATOR_IDS_STALE_HOURS,
   type LegislatorIdsSection,
   type CrawlSkips,
@@ -1026,6 +1027,32 @@ test("FIX-1189 §10: no row in 48 h is `missing`, and so is no row ever", () => 
   const never = legislatorIdsLines({ latest: null, complete: null }, LEG_AS_OF, LEG_CLASSES).join("\n");
   assert.match(never, /\*\*missing\*\*.*\(none ever\)/);
   assert.match(never, /No complete report yet/);
+});
+
+test("FIX-1189 O1 §10: the writer's line appears only once it has run, in each status", () => {
+  const run = { started_at: "2026-09-28T23:05:00Z", status: "complete", error: null, metadata: legMeta() };
+  const none = legislatorIdsLines({ latest: run, complete: run }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.doesNotMatch(none, /O1 writer/, "no bind key (a pre-cc-193 file) → no line");
+  const nil = legislatorIdsLines({ latest: run, complete: run, bind: null }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.doesNotMatch(nil, /O1 writer/, "the flag never set → no row → no line");
+
+  const acted = {
+    started_at: "2026-10-06T21:03:00Z", status: "complete", error: null,
+    metadata: { acted: { bound: 0, promoted: 2, prior_appended: 29, refused_changed: 0 } },
+  };
+  const md = legislatorIdsLines({ latest: run, complete: run, bind: acted }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(md, /O1 writer \(`congress_legislator_ids_bind`\) 2026-10-06T21:03:00Z — acted: bound \*\*0\*\*, promoted \*\*2\*\*, prior_appended \*\*29\*\*, refused_changed \*\*0\*\*/);
+
+  const held = {
+    started_at: "2026-10-06T21:03:00Z", status: "skipped", error: null,
+    metadata: { skip_reason: "prod session held: cc-194" },
+  };
+  assert.match(
+    legislatorIdsBindLines(held).join("\n"),
+    /— skipped: prod session held: cc-194\./,
+  );
+  const failed = { started_at: "2026-10-06T21:03:00Z", status: "failed", error: "canceling statement due to statement timeout", metadata: null };
+  assert.match(legislatorIdsBindLines(failed).join("\n"), /— \*\*failed\*\*: canceling statement/);
 });
 
 test("FIX-1189 §10: a failed latest run says so and still carries the last COMPLETE numbers, labelled", () => {
