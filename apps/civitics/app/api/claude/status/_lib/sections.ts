@@ -532,6 +532,12 @@ export async function getPipelines(db: Db) {
         .select("*", { count: "exact", head: true })
         .eq("status", "pending")
         .eq("task_type", "summary"),
+      // FIX-1269 — the two processing counts ride the partial index
+      // enrichment_queue_processing_claimed_idx (claimed_at) WHERE status =
+      // 'processing' as Index Only Scans. Without it each was a Seq Scan of the
+      // 274 MB heap for ~44 rows (58k blocks read per call). Keep both filters
+      // to exactly this shape, or the planner cannot use the partial. The two
+      // pending counts above already ride idx_enrichment_queue_pending_by_task.
       db
         .from("enrichment_queue")
         .select("*", { count: "exact", head: true })
@@ -905,6 +911,45 @@ async function checkDerivedDrift(
   return { drifted, total_rules: DRIFT_RULES.length };
 }
 
+/**
+ * FIX-1269 — when entity_search_index was last built, read from the one-row
+ * stamp rebuild_entity_search_index() writes as its last step
+ * (pipeline_state 'entity_search_index'.refreshed_at — the same now() every row
+ * carries, so it equals max(refreshed_at)). The old read sorted all 367,713
+ * rows for that one value on every 30-minute snapshot tick: 15,285 blocks read per
+ * call on prod (census 2026-10-04 §6).
+ *
+ * The sort survives ONLY as the fallback for an absent key — the window between
+ * this deploy and the first daily build that writes the stamp; after one 06:00
+ * run it is never taken. A failed stamp read is returned as the failure, never
+ * retried as the sort: the expensive read is the wrong thing to reach for when
+ * the cheap one just failed.
+ */
+export async function readSearchIndexFreshness(
+  db: Db,
+): Promise<{ data: { refreshed_at: string | null } | null; error: { message: string } | null }> {
+  const stamp = await db
+    .from("pipeline_state")
+    .select("value")
+    .eq("key", "entity_search_index")
+    .maybeSingle();
+  if (stamp.error) return { data: null, error: stamp.error };
+  if (stamp.data) {
+    const at = (stamp.data.value as { refreshed_at?: unknown } | null)?.refreshed_at;
+    return { data: { refreshed_at: typeof at === "string" ? at : null }, error: null };
+  }
+  const legacy = await db
+    .from("entity_search_index")
+    .select("refreshed_at")
+    .order("refreshed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return {
+    data: (legacy.data as { refreshed_at: string | null } | null) ?? null,
+    error: legacy.error ?? null,
+  };
+}
+
 // ── 7. Self-tests ────────────────────────────────────────────────────────────
 //
 // FIX-332: accepts shared promises so the dashboard cron's two duplicate
@@ -1044,17 +1089,10 @@ export async function getSelfTests(
         .limit(OPEN_COMMENT_CARD_LIMIT),
     ),
 
-    // FIX-1094: same read /search's own header displays (app/api/browse/
-    // execute.ts) — newest refreshed_at on the search substrate itself, not on
-    // the browse_facet_counts rollup that is stamped alongside it.
-    timed("self_tests:search_index_freshness", () =>
-      db
-        .from("entity_search_index")
-        .select("refreshed_at")
-        .order("refreshed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ),
+    // FIX-1094: the freshness of the search substrate itself, not of the
+    // browse_facet_counts rollup that is stamped alongside it.
+    // FIX-1269: read through the one-row stamp the build writes, not a sort.
+    timed("self_tests:search_index_freshness", () => readSearchIndexFreshness(db)),
 
     timed("self_tests:anthropic_usage", () =>
       opts?.sharedAnthropicUsagePromise ?? getAnthropicUsage(),
