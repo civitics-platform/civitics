@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { createPublicClient } from "@civitics/db";
 import type { MultiPolygon, Polygon } from "geojson";
 import { DeferredDistrictMap } from "../components/DeferredDistrictMap";
@@ -37,6 +38,12 @@ interface DistrictRow {
 
 interface ParentRow { name: string | null }
 
+interface DistrictMetaRow {
+  name:     string | null;
+  metadata: Record<string, unknown> | null;
+  parent:   ParentRow | null;
+}
+
 interface OfficialRow {
   id:           string;
   full_name:    string;
@@ -45,12 +52,15 @@ interface OfficialRow {
   district_name: string | null;
 }
 
-async function loadDistrict(id: string): Promise<{
+// FIX-684: request-cached, so the page's one call is the one geometry read per
+// render. The boundary map stays on every district, empty leaves included
+// (Craig, 2026-10-03) — only generateMetadata stopped calling this.
+const loadDistrict = cache(async (id: string): Promise<{
   district: DistrictRow;
   parent: ParentRow | null;
   officials: OfficialRow[];
   geometry: Polygon | MultiPolygon | null;
-} | null> {
+} | null> => {
   const supabase = createPublicClient();
 
   const { data: district } = await withDbTimeout(
@@ -108,21 +118,39 @@ async function loadDistrict(id: string): Promise<{
     officials: ((officialsRes.data as OfficialRow[] | null) ?? []),
     geometry,
   };
+});
+
+// FIX-684: the title needs the district's name, its chamber and its parent's
+// name — one jurisdictions read with the parent embedded through the
+// parent_id self-FK. It used to run loadDistrict(), so every request paid the
+// query_districts geometry RPC twice (metadata + page).
+async function loadDistrictMeta(id: string): Promise<DistrictMetaRow | null> {
+  const { data } = await withDbTimeout(
+    createPublicClient()
+      .from("jurisdictions")
+      .select("name, metadata, parent:parent_id(name)")
+      .eq("id", id)
+      .eq("type", "district")
+      .maybeSingle<DistrictMetaRow>(),
+    3000,
+    "district:metadata",
+  );
+  return data ?? null;
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   // FIX-683: a district is a jurisdictions row, so the same jurisdiction_page_cache
-  // membership test gates its noindex. Run it alongside loadDistrict (no extra
-  // latency on the critical path).
+  // membership test gates its noindex. Run it alongside the metadata read (no
+  // extra latency on the critical path).
   const [data, lookup] = await Promise.all([
-    loadDistrict(id),
+    loadDistrictMeta(id),
     lookupJurisdictionCache(createPublicClient(), id),
   ]);
   if (!data) return { title: "District not found" };
   const stateName = data.parent?.name ?? "";
-  const chamber = (data.district.metadata?.["chamber"] as string | undefined) ?? "";
-  const title = `${data.district.name ?? "District"}${stateName ? ` — ${stateName}` : ""}`;
+  const chamber = (data.metadata?.["chamber"] as string | undefined) ?? "";
+  const title = `${data.name ?? "District"}${stateName ? ` — ${stateName}` : ""}`;
   return {
     title,
     description: `Boundary, representatives, and election info for ${title} (${chamber} chamber).`,
