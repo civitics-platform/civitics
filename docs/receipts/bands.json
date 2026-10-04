@@ -19,6 +19,12 @@
     "source": "BORROWED, not independently derived: FIX-1169's series reports ec- and fe-vacuum-analyze together (124 s / 133 s, cc-prompt-118 Item 5) and cc-prompt-123 D3 names only the EC ceiling. Re-derive from this job's own series once the receipts file has collected one."
   },
 
+  "votes-vacuum-analyze": {
+    "lo_s": 0,
+    "hi_s": 29,
+    "source": "PROVISIONAL, n=1 (cc-192, FIX-1238). Taken from the job's first firing: prod cron.job_run_details 2026-10-03T02:37:00Z, wall 24.8 s, succeeded. hi_s is 24.8 s + 15 % = 28.52 s, rounded up; that is the re-base rule's upper margin applied to the one point. lo_s is 0, as for the other vacuum bands. That firing cleared a backlog: the 2026-10-02 04:25 pre-ec probe read votes at 31,826 dead tuples and 82.6 % all-visible, and the 10-03 and 10-04 probes read 0 dead and 100 %. Later firings should find almost nothing to clean, so this ceiling is probably loose. Re-derive from five firings (the fifth is 2026-10-31) with [P10 - 10 %, P90 + 15 %]."
+  },
+
   "donor-rollup-refresh": {
     "lo_s": 0,
     "hi_s": 400,
