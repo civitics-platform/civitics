@@ -1581,3 +1581,4 @@
 2026-10-03 | FIX-1267 | bc32eda5 | local-only | test(data): FIX-1267 — the pipeline-lock integration cases run only under CIVITICS_DB_HEAVY_TESTS
 2026-10-03 | FIX-1271 | 6153ea10 | local-only | feat(scripts): FIX-1271 — fixes:check fails a duplicate id marker and a trailer whose id the commit subject does not name; fix:add warns when origin is unreachable
 2026-10-03 | FIX-1272 | 94e64623 | local-only | test(data): FIX-1272 — the donor-party heavy case derives its watermark from the procedure's own full-rebuild target
+2026-10-04 | FIX-1277 | 73c5169e | local-only | fix(data): FIX-1277 — the own-seat and shared-id gates fold accents instead of deleting them; normName folds too
