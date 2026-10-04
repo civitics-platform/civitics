@@ -173,9 +173,27 @@ async function watermark(c: Client): Promise<string | null> {
   return (v?.["last_indexed_at"] as string | undefined) ?? null;
 }
 
-async function setWatermarkDaysAgo(c: Client, days: number): Promise<string> {
-  const r = await c.query<{ w: string }>(`SELECT (now() - make_interval(days => $1))::text AS w`, [days]);
+/**
+ * FIX-1272 — a watermark the procedure reads as "a full rebuild is due", from
+ * the procedure's OWN arithmetic over the same rows: its lag is
+ * LEAST(max(financial_relationships.updated_at), fr_watermark_horizon()) minus
+ * the watermark, and it picks `full` when that exceeds
+ * donor_party_crawl.full_rebuild_lag_days (default 14, floor 1). The old
+ * `now() - 60 days` was true on a fresh clone and false on a month-stale one:
+ * FR max 2026-09-03, lag_days 30, run 10-04 → a 29-day lag → `crawl`, which is
+ * the procedure being right and the fixture being wrong. `marginDays` puts the
+ * lag that far past the threshold.
+ */
+async function setWatermarkForFullRebuild(c: Client, marginDays = 2): Promise<string> {
+  const r = await c.query<{ w: string | null }>(`
+    SELECT (LEAST((SELECT max(updated_at) FROM public.financial_relationships),
+                  public.fr_watermark_horizon())
+            - make_interval(days => GREATEST(COALESCE(
+                (SELECT (value->>'full_rebuild_lag_days')::int
+                   FROM public.pipeline_state WHERE key = 'donor_party_crawl'), 14), 1) + $1::int)
+           )::text AS w`, [marginDays]);
   const w = r.rows[0]!.w;
+  assert.ok(w !== null, "financial_relationships is empty — no full-rebuild target to sit behind");
   await putKey(c, "donor_party_rollup_watermark", { last_indexed_at: w });
   return w;
 }
@@ -245,13 +263,15 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
 
     try {
       // ── (i) a full rebuild, end to end ────────────────────────────────────
-      const w0 = await setWatermarkDaysAgo(a, 60);
+      const w0 = await setWatermarkForFullRebuild(a);
       const notices: string[] = [];
       const ms1 = await callProc(a, notices);
       const l1 = await lastLog(a);
       const md1 = l1.metadata;
       console.info(`[fix1212 (i)] ${l1.status} mode=${md1["mode"]} wall=${(ms1 / 1000).toFixed(1)} s ` +
         `rows=${md1["rollup_rows"]} windows_run=${JSON.stringify(md1["windows_run"])}`);
+      console.info(`[fix1272 (i)] watermark set=${w0} cycle_target=${md1["cycle_target"]} ` +
+        `lag=${((new Date(md1["cycle_target"] as string).getTime() - new Date(w0).getTime()) / 86_400_000).toFixed(2)} d`);
       console.info(`[fix1212 (i)] stage_seconds=${JSON.stringify(md1["stage_seconds"])}`);
       console.info(`[fix1212 (i)] apply_seconds=${JSON.stringify(md1["apply_seconds"])}`);
       assert.equal(md1["mode"], "full");
@@ -288,7 +308,7 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
       assert.equal(mv.rows[0]!.n, whole.rows[0]!.n, "one MV row per (donor, party) group");
 
       // ── (ii) the resume: cap after three windows, then finish ─────────────
-      const w2 = await setWatermarkDaysAgo(a, 60);
+      const w2 = await setWatermarkForFullRebuild(a);
       await putKey(a, "donor_party_crawl", { ...(origCrawl ?? {}), max_units: 3 });
       const ms2a = await callProc(a);
       const l2a = await lastLog(a);
@@ -315,7 +335,7 @@ test("FIX-1212 (i)-(iv): windowed full rebuild — completes, resumes, survives 
         "the resumed cycle writes the target captured by the FIRST call, not a new one");
 
       // ── (iii) atomicity: cancel inside a window's apply ───────────────────
-      await setWatermarkDaysAgo(a, 60);
+      await setWatermarkForFullRebuild(a);
       for (let w = 1; w <= 16; w++) {
         await a.query(
           `INSERT INTO public.donor_party_rollup_mv
