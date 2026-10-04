@@ -1201,12 +1201,30 @@ interface LegislatorIdEntry {
   state?: string | null;
   live?: string | null;
   current_id?: string | null;
+  reason?: string;
+  double_claim_split?: "current_id" | "other_id";
 }
 
 function entriesOf(meta: Record<string, unknown>, cls: string): LegislatorIdEntry[] {
   const top = (meta["top_20"] ?? {}) as Record<string, unknown>;
   const list = top[cls];
   return Array.isArray(list) ? (list as LegislatorIdEntry[]) : [];
+}
+
+/** How many current-id double claims §10 lists — every one the stamp carries. */
+export const LEGISLATOR_IDS_CURRENT_LIST_MAX = 50;
+
+/**
+ * The double claims whose member's CURRENT id sits on another row — the
+ * money-on-a-stub shape. Stamps from cc-193 on mark each entry; an older stamp
+ * is read off its reason string (`<current_id> also claimed by …`).
+ */
+function currentIdDoubleClaims(meta: Record<string, unknown>): LegislatorIdEntry[] {
+  return entriesOf(meta, "double_claim").filter((e) =>
+    e.double_claim_split !== undefined
+      ? e.double_claim_split === "current_id"
+      : !!e.current_id && (e.reason ?? "").includes(e.current_id + " also claimed by"),
+  );
 }
 
 /** The numbers of one complete report, rendered. */
@@ -1248,10 +1266,35 @@ function legislatorIdsReportLines(meta: Record<string, unknown>, classes: readon
     out.push(
       table(
         ["name", "state", "live", "current id"],
-        entriesOf(meta, cls).map((e) => [e.name ?? "—", e.state ?? null, e.live ?? null, e.current_id ?? null]),
+        entriesOf(meta, cls)
+          .slice(0, 20)
+          .map((e) => [e.name ?? "—", e.state ?? null, e.live ?? null, e.current_id ?? null]),
       ),
     );
   }
+  // cc-193 (D5): the current-id half of double_claim in full — the rows the
+  // promotion's dataset key exists for. Up to 50, i.e. every one the stamp lists.
+  const cur = currentIdDoubleClaims(meta);
+  const curCount = num0(split["current_id"]);
+  out.push(
+    "#### `double_claim` with the member's CURRENT id on another row — " +
+      (cur.length >= curCount ? "all " + curCount : cur.length + " of " + curCount + " (the stamp lists no more)"),
+  );
+  out.push("");
+  out.push(
+    table(
+      ["name", "state", "live", "current id", "held by"],
+      cur
+        .slice(0, LEGISLATOR_IDS_CURRENT_LIST_MAX)
+        .map((e) => [
+          e.name ?? "—",
+          e.state ?? null,
+          e.live ?? null,
+          e.current_id ?? null,
+          heldBy(e.reason ?? "", e.current_id ?? null),
+        ]),
+    ),
+  );
   for (const cls of ["unlisted_live_id", "double_claim", "cross_bioguide_claim"]) {
     const names = entriesOf(meta, cls)
       .slice(0, 5)
@@ -1262,6 +1305,13 @@ function legislatorIdsReportLines(meta: Record<string, unknown>, classes: readon
   }
   out.push("");
   return out;
+}
+
+/** The first 8 of the row id holding `current` — from the classifier's reason. */
+function heldBy(reason: string, current: string | null): string | null {
+  if (!current) return null;
+  const m = reason.match(new RegExp(current + " also claimed by ([0-9a-f]{8})"));
+  return m ? m[1]! + "…" : null;
 }
 
 function num0(v: unknown): number {

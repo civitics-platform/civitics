@@ -497,7 +497,17 @@ export interface ReportEntry {
   dataset_ids: string[];
   current_id: string | null;
   reason: string;
+  /** double_claim only: which half of `double_claim_split` this row is in. */
+  double_claim_split?: "current_id" | "other_id";
 }
+
+/**
+ * How many rows the stamp lists per class (cc-193, D5). A class of up to this
+ * many is listed IN FULL; a bigger one lists this many and is flagged in
+ * `top_20_truncated`. Was 20, which carried only 7 of the 13 current-id
+ * double claims (cc-186 §7).
+ */
+export const REPORT_LIST_CAP = 50;
 
 export interface LegislatorIdReport {
   population: number;
@@ -511,8 +521,15 @@ export interface LegislatorIdReport {
    * O1 must not treat as the same defect. Sums to counts.double_claim.
    */
   double_claim_split: { current_id: number; other_id: number };
-  /** Top 20 per non-noop class, by name then official_id. */
+  /**
+   * Per non-noop class: EVERY row when the class has ≤ REPORT_LIST_CAP, else
+   * the first REPORT_LIST_CAP — by name then official_id, except that
+   * double_claim lists its current-id rows first, so the actionable half is
+   * never the half cut. The name is kept for the stamp's readers (cc-193).
+   */
   top_20: Partial<Record<BindingAction, ReportEntry[]>>;
+  /** The classes `top_20` cut short. Absent key = listed in full. */
+  top_20_truncated: Partial<Record<BindingAction, true>>;
   dataset_members: number;
   /** Current members matched to at least one population row. */
   matched_dataset_members: number;
@@ -563,9 +580,10 @@ export function buildReport(
     }
     const c = classifyBinding(row, listing, claims);
     counts[c.action]++;
+    let split: ReportEntry["double_claim_split"];
     if (c.action === "double_claim") {
-      if (c.current_id !== null && (c.contested ?? []).includes(c.current_id)) doubleSplit.current_id++;
-      else doubleSplit.other_id++;
+      split = c.current_id !== null && (c.contested ?? []).includes(c.current_id) ? "current_id" : "other_id";
+      doubleSplit[split]++;
     }
     if (c.action === "noop") continue;
     (entries[c.action] ??= []).push({
@@ -577,14 +595,21 @@ export function buildReport(
       dataset_ids: listing ? sorted(listing.fec) : [],
       current_id: c.current_id,
       reason: c.reason,
+      ...(split ? { double_claim_split: split } : {}),
     });
   }
 
   const top_20: Partial<Record<BindingAction, ReportEntry[]>> = {};
+  const top_20_truncated: Partial<Record<BindingAction, true>> = {};
+  const currentFirst = (e: ReportEntry): number => (e.double_claim_split === "current_id" ? 0 : 1);
   for (const [action, list] of Object.entries(entries) as Array<[BindingAction, ReportEntry[]]>) {
     top_20[action] = [...list]
-      .sort((a, b) => a.name.localeCompare(b.name) || a.official_id.localeCompare(b.official_id))
-      .slice(0, 20);
+      .sort(
+        (a, b) =>
+          currentFirst(a) - currentFirst(b) || a.name.localeCompare(b.name) || a.official_id.localeCompare(b.official_id),
+      )
+      .slice(0, REPORT_LIST_CAP);
+    if (list.length > REPORT_LIST_CAP) top_20_truncated[action] = true;
   }
 
   const unmatched = current.filter((l) => !matched.has(l.bioguide));
@@ -593,6 +618,7 @@ export function buildReport(
     counts,
     double_claim_split: doubleSplit,
     top_20,
+    top_20_truncated,
     dataset_members: current.length,
     matched_dataset_members: matched.size,
     members_with_multiple_rows: [...matched.values()].filter((n) => n > 1).length,

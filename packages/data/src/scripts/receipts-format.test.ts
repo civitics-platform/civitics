@@ -1029,6 +1029,42 @@ test("FIX-1189 §10: no row in 48 h is `missing`, and so is no row ever", () => 
   assert.match(never, /No complete report yet/);
 });
 
+test("cc-193 D5 §10: every current-id double claim the stamp carries is listed — 13 of 13, not 5", () => {
+  const meta = legMeta();
+  meta["double_claim_split"] = { current_id: 13, other_id: 46 };
+  const cur = Array.from({ length: 13 }, (_, i) => ({
+    name: `Member ${String(i).padStart(2, "0")}`, state: "CA-" + i, live: null, current_id: `H4CA${String(i).padStart(5, "0")}`,
+    reason: `H4CA${String(i).padStart(5, "0")} also claimed by ${String(i).padStart(8, "a")}-0000 (no bioguide)`,
+    double_claim_split: "current_id",
+  }));
+  const other = Array.from({ length: 37 }, (_, i) => ({
+    name: `Other ${i}`, state: "TX-" + i, live: "S0TX00000", current_id: "S0TX00000",
+    reason: "H8TX00000 also claimed by bbbbbbbb-0000 (no bioguide)", double_claim_split: "other_id",
+  }));
+  (meta["top_20"] as Record<string, unknown>)["double_claim"] = [...cur, ...other];
+  const run = { started_at: "2026-09-28T23:05:00Z", status: "complete", error: null, metadata: meta };
+  const md = legislatorIdsLines({ latest: run, complete: run }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(md, /#### `double_claim` with the member's CURRENT id on another row — all 13/);
+  for (let i = 0; i < 13; i++) assert.ok(md.includes(`| Member ${String(i).padStart(2, "0")} |`), `member ${i}`);
+  assert.ok(md.includes("| H4CA00000 | aaaaaaa0… |"), "held-by column names the stub");
+  assert.doesNotMatch(md, /\| Other 0 \| TX-0 \|/, "other-office rows are not in the current-id table");
+});
+
+test("cc-193 D5 §10 twin: an OLDER stamp (7 of 13, no split marker) is read off the reason and says it is short", () => {
+  const meta = legMeta();
+  meta["double_claim_split"] = { current_id: 13, other_id: 46 };
+  (meta["top_20"] as Record<string, unknown>)["double_claim"] = [
+    { name: "Ashley Hinson", state: "IA-2", live: null, current_id: "H0IA01174", reason: "H0IA01174 also claimed by 369bd6b6-2e5c (no bioguide)" },
+    { name: "Ben Ray Luján", state: "NM", live: null, current_id: "S0NM00058", reason: "H8NM03196 also claimed by 6dc78f88-fe6f (no bioguide); S0NM00058 also claimed by 93a6040f-402c (no bioguide)" },
+    { name: "Bill Foo", state: "TX-1", live: "S1", current_id: "S1", reason: "H1 also claimed by cccccccc-0000 (no bioguide)" },
+  ];
+  const run = { started_at: "2026-09-28T23:05:00Z", status: "complete", error: null, metadata: meta };
+  const md = legislatorIdsLines({ latest: run, complete: run }, LEG_AS_OF, LEG_CLASSES).join("\n");
+  assert.match(md, /CURRENT id on another row — 2 of 13 \(the stamp lists no more\)/);
+  assert.ok(md.includes("| Ben Ray Luján | NM | — | S0NM00058 | 93a6040f… |"));
+  assert.doesNotMatch(md, /\| Bill Foo \|/);
+});
+
 test("FIX-1189 O1 §10: the writer's line appears only once it has run, in each status", () => {
   const run = { started_at: "2026-09-28T23:05:00Z", status: "complete", error: null, metadata: legMeta() };
   const none = legislatorIdsLines({ latest: run, complete: run }, LEG_AS_OF, LEG_CLASSES).join("\n");

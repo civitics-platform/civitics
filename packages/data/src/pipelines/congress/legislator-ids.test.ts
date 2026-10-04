@@ -25,6 +25,7 @@ import {
   planBinding,
   planBindings,
   reconcileReport,
+  REPORT_LIST_CAP,
   type BindingRow,
   type BindingWrite,
   type ClaimsMap,
@@ -351,6 +352,53 @@ test("reconcileReport names a broken partition rather than passing it", () => {
   assert.match(reconcileReport(report, 2).join(), /≠ 2 current members/);
   const badSplit = { ...report, double_claim_split: { current_id: 1, other_id: 0 } };
   assert.match(reconcileReport(badSplit, 1).join(), /double_claim split sums to 1, class is 0/);
+});
+
+// ── The stamp's lists (cc-193, D5) ──────────────────────────────────────────
+
+/** prod's 10-03 shape: 13 current-id double claims + 46 prior/other-office ones. */
+function doubleClaimPopulation(nCurrent: number, nOther: number) {
+  const rows: PopulationRow[] = [];
+  const listings: Listing[] = [];
+  const stubs: BindingRow[] = [];
+  for (let i = 0; i < nCurrent; i++) {
+    const b = `C${String(i).padStart(3, "0")}`;
+    const id = `H0AA${String(i).padStart(2, "0")}${String(i).padStart(3, "0")}`;
+    listings.push({ bioguide: b, name: `Cur ${i}`, fec: [id], currentType: "rep", state: "AA", district: i });
+    // Named so they sort LAST — the cut must still keep them.
+    rows.push({ ...row({ official_id: `cur-${i}`, bioguide: b }), name: `Zz Current ${String(i).padStart(2, "0")}` });
+    stubs.push(row({ official_id: `stub-c${i}`, bioguide: null, live: id }));
+  }
+  for (let i = 0; i < nOther; i++) {
+    const b = `O${String(i).padStart(3, "0")}`;
+    const h = `H1BB${String(i).padStart(2, "0")}${String(i).padStart(3, "0")}`;
+    const s = `S1BB${String(i).padStart(5, "0")}`;
+    listings.push({ bioguide: b, name: `Oth ${i}`, fec: [h, s], currentType: "sen", state: "BB", district: null });
+    rows.push({ ...row({ official_id: `oth-${i}`, bioguide: b, live: s }), name: `Aa Other ${String(i).padStart(2, "0")}` });
+    stubs.push(row({ official_id: `stub-o${i}`, bioguide: null, live: h }));
+  }
+  return { rows, listings, claims: buildClaimsMap([...rows, ...stubs]) };
+}
+
+test("D5: a class over 50 lists 50 and says it was cut — and every current-id double claim is among them", () => {
+  const { rows, listings, claims } = doubleClaimPopulation(13, 46);
+  const r = buildReport(rows, listings, [], claims);
+  assert.equal(r.counts.double_claim, 59);
+  assert.deepEqual(r.double_claim_split, { current_id: 13, other_id: 46 });
+  const listed = r.top_20.double_claim!;
+  assert.equal(listed.length, REPORT_LIST_CAP);
+  assert.equal(r.top_20_truncated.double_claim, true);
+  const cur = listed.filter((e) => e.double_claim_split === "current_id");
+  assert.equal(cur.length, 13, "all 13, though their names sort after every other-office row");
+  assert.ok(listed.slice(0, 13).every((e) => e.double_claim_split === "current_id"), "current-id rows first");
+  assert.deepEqual(reconcileReport(r, listings.length), []);
+});
+
+test("D5 twin: a class of ≤ 50 is listed IN FULL and not flagged", () => {
+  const { rows, listings, claims } = doubleClaimPopulation(13, 33);
+  const r = buildReport(rows, listings, [], claims);
+  assert.equal(r.top_20.double_claim!.length, 46);
+  assert.equal(r.top_20_truncated.double_claim, undefined);
 });
 
 // ── O1 — planBinding / planBindings (FIX-1189, cc-193) ──────────────────────
