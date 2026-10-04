@@ -1,0 +1,44 @@
+# FIX-1189 — office-promotion manifest (shape B), SET 3: Gilbert Ray Cisneros + Keith Self.
+# THIS FILE IS AN AUTHORISATION. Written and committed by cc-193 (2026-10-04),
+# BEFORE any apply (rule 42); applied by cc-194 in its supervised session, after
+# the eleven dataset-key promotions. Decision D4 of
+# claude/design-promotion-miss-fix1189-o1-2026-10-03.md (ratified 2026-10-03).
+#
+# THE COLUMN IS NAMED senate_stub BECAUSE THE TOOL NAMES IT SO. These two are
+# HOUSE stubs. merge-same-person-official-dupes.ts's --promote-manifest was
+# built for FIX-1187 set 2 (four House-to-Senate moves) and reads the column by
+# name; it never checks the stub's office character. The shape is identical:
+# the elected row holds a PRIOR id live, the member's CURRENT id and its money
+# sit on a tier='candidate' row.
+#
+# PROD STATE READ 2026-10-04 17:40-17:48 UTC (cc-193 read 2):
+#   survivor (elected Representative, holds the PRIOR id live)   FR rows        $
+#     Gilbert Ray Cisneros  1f0fcc25  H8CA39174                     2,029   $5,384,249
+#     Keith Self            0104dd77  H2TX00064                       308     $556,182
+#   stub (tier candidate, holds the CURRENT id and its money)
+#     Gilbert Cisneros      a1766a0b  H4CA31170                        68     $213,523
+#     Keith Self            60de154b  H2TX03290                       159     $392,313
+#   Both stubs: 0 votes, 0 committee memberships, 0 external_relationships.
+#
+# DATASET READ 2026-10-04 17:48 UTC (cc-193 read 3), legislators-current.json
+# ETag W/"6ab4f9aa-166a83", Last-Modified Thu, 24 Sep 2026 10:21:30 GMT:
+#   C001123 id.fec ["H8CA39174","H4CA31170"], last term rep CA-31 -> current H4CA31170
+#   S001224 id.fec ["H2TX03290","H2TX00064"], last term rep TX-3  -> current H2TX03290
+#   (Self's current id was INFERRED by cc-186; read 3 confirms it.)
+#
+# GATES (verifySharedIdInDb's SQL run by hand, read-only, 2026-10-04 17:49 UTC):
+#   pre-write: survivor live = prior_id   Cisneros yes, Self yes
+#   stub live = current_id                Cisneros yes, Self yes
+#   first-name key                        GIL / GIL, KEI / KEI
+#   decision-5 attachments (11 tables)    0 and 0
+#   donor-cycle overlap (stub keys shared with the survivor) 21/68 = 30.9 %, 67/159 = 42.1 %
+#   (overlap is informational; the shape-B gate does not test it)
+#
+# WHAT A ROW AUTHORISES, in one transaction:
+#   1. survivor.source_ids.fec_candidate_id         <- current_id
+#      survivor.source_ids.prior_fec_candidate_ids  += prior_id
+#   2. merge the stub into the survivor as an ordinary pair on current_id
+#   3. retire current_id on the stub (fec_candidate_id -> merged_fec_candidate_ids)
+survivor	senate_stub	current_id	prior_id	evidence
+1f0fcc25-c88d-4112-9e90-e873d106d32d	a1766a0b-a4ee-4117-afb6-6aec28a1af18	H4CA31170	H8CA39174	congress-legislators id.fec[] for C001123 lists H4CA31170 as the current-office id; stub a1766a0b-a4ee-4117-afb6-6aec28a1af18 holds it (cc-186 §7; cc-193 read 3)
+0104dd77-938f-4f0f-aa18-cb5c04b51f1d	60de154b-9dde-4eb9-9b0f-d519172335a9	H2TX03290	H2TX00064	congress-legislators id.fec[] for S001224 lists H2TX03290 as the current-office id; stub 60de154b-9dde-4eb9-9b0f-d519172335a9 holds it (cc-186 §7; cc-193 read 3)

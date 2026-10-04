@@ -10,6 +10,8 @@ steps:
   - {id: s2, kind: cc, ref: "cc-170", title: "O2 — classifyBinding() + nightly report step, no writes"}
   - {id: s3, kind: receipt, ref: "FIX-1189", title: "a week of congress_legislator_ids_report rows", after: 2026-10-06}
   - {id: s4, kind: cc, ref: "", title: "O1 — the writer; design §4 as write actions; supervised first run"}
+  - {id: s5, kind: cc, ref: "cc-193", title: "promotion by dataset key + O1 code"}
+  - {id: s6, kind: cc, ref: "cc-194", title: "the supervised landing"}
 ---
 
 # Congress-legislators FEC ids (FIX-1189)
