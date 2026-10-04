@@ -1,0 +1,3 @@
+financial_entity_id	display_name	industry	naics_dominant	contract_usd	coded_usd	current_pick	note
+ae4d58df-917c-47ef-80c9-0ebf8d096189	Pharmaceutical Care Management Association	health		0.00	0.00	health	pharmacy-benefit managers trade association; donations only ($15,000), no contract rows; was health/rule 0.80 (Craig 2026-10-03)
+dac6b3f9-aebc-406d-a587-01998408f03b	National Rifle Association of America Political Victory Fund	lobby		0.00	0.00	lobby	single-issue advocacy: firearms (Craig 2026-10-03); lobby is the industry — no secondary axis; donations only ($1,500); was lobby/rule 0.80

@@ -681,3 +681,92 @@ test("FIX-1255 CACI NSS: cohort 13 across both migrations, table 806", () => {
   assert.match(sql, /IF v_cohort <> 13 THEN/);
   assert.match(sql, /IF v_total <> 806 THEN/);
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1204 (cc-187 D7) — the two real NULL-committee donors join on the uuid
+// arm in their own migration and TSV; the other two the 09-20 selection named
+// (RIDGE_COAL, CUMBERLAND above) are is_synthetic Franklin seed rows and are
+// excluded, by the pre-check's is_synthetic gate as well as by omission.
+// ---------------------------------------------------------------------------
+
+const NULL_COMMITTEE_TSV_PATH = join(
+  REPO_ROOT, "docs", "audits", "2026-10-03-fix1204-null-committee-overrides.tsv",
+);
+const NULL_COMMITTEE_MIGRATION_PATH = join(
+  REPO_ROOT, "supabase", "migrations",
+  "20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql",
+);
+
+function readNullCommitteeTsv(): DefenseRow[] {
+  const lines = readFileSync(NULL_COMMITTEE_TSV_PATH, "utf8").split(/\r?\n/).filter((l) => l.length);
+  assert.equal(
+    lines[0],
+    "financial_entity_id\tdisplay_name\tindustry\tnaics_dominant\tcontract_usd\tcoded_usd\tcurrent_pick\tnote",
+    "the same header as the FIX-1255 TSVs",
+  );
+  return lines.slice(1).map((l) => {
+    const c = l.split("\t");
+    return { id: c[0]!, display_name: c[1]!, industry: c[2]!, naics: c[3]!, pick: c[6]! };
+  });
+}
+
+test("FIX-1204: the TSV is PCMA → health and NRA PVF → lobby, and neither synthetic row", () => {
+  const rows = readNullCommitteeTsv();
+  assert.deepEqual(
+    rows.map((r) => [r.id, r.industry]),
+    [
+      ["ae4d58df-917c-47ef-80c9-0ebf8d096189", "health"],
+      ["dac6b3f9-aebc-406d-a587-01998408f03b", "lobby"],
+    ],
+  );
+  for (const r of rows) assert.ok((VALID_INDUSTRIES as readonly string[]).includes(r.industry), `${r.industry} is in the vocabulary`);
+  const ids = rows.map((r) => r.id);
+  assert.ok(!ids.includes(RIDGE_COAL) && !ids.includes(CUMBERLAND), "the two Franklin seed rows are never curated");
+  const elsewhere = [...readDefenseTsv(), ...readCaciTsv()].map((r) => r.id);
+  for (const id of ids) assert.ok(!elsewhere.includes(id), `${id} is not already in the FIX-1255 cohort`);
+});
+
+test("FIX-1204: the migration seeds exactly its TSV on the synthetic key, behind the is_synthetic gate", () => {
+  const sql = readFileSync(NULL_COMMITTEE_MIGRATION_PATH, "utf8");
+  const seeded = new Map<string, string>();
+  for (const m of sql.matchAll(/^ {2}\('fe:([0-9a-f-]{36})', '([0-9a-f-]{36})', '([a-z_]+)'/gm)) {
+    assert.equal(m[1], m[2], "the synthetic key must be 'fe:' || financial_entity_id (the CHECK)");
+    seeded.set(m[2]!, m[3]!);
+  }
+  const tsv = readNullCommitteeTsv();
+  assert.equal(seeded.size, tsv.length, "seed row count must match the TSV");
+  for (const r of tsv) assert.equal(seeded.get(r.id), r.industry, `${r.display_name} (${r.id}) missing or mismatched`);
+  const precheck = sql.match(/v_ids\s+uuid\[\] := ARRAY\[([\s\S]*?)\]::uuid\[\]/);
+  assert.ok(precheck, "the pre-check id list must be present");
+  assert.deepEqual([...precheck![1]!.matchAll(/'([0-9a-f-]{36})'/g)].map((m) => m[1]!), tsv.map((r) => r.id));
+  assert.match(sql, /WHERE fe\.id = ANY \(v_ids\) AND COALESCE\(fe\.is_synthetic, false\)/, "the synthetic gate");
+  assert.match(sql, /fe\.fec_committee_id IS NOT NULL/, "the committee-arm gate");
+  assert.match(sql, /o\.source <> 'fix1204-null-committee-2026-10-03'/, "the not-curated-elsewhere gate");
+  assert.equal((sql.match(/'null_committee_donor', 'fix1204-null-committee-2026-10-03'/g) ?? []).length, 2);
+  assert.match(sql, /single-issue advocacy: firearms/);
+  assert.match(sql, /ON CONFLICT \(fec_committee_id\) DO UPDATE/);
+  assert.doesNotMatch(sql, /DELETE\s+FROM\s+public\.entity_tags/i);
+});
+
+test("FIX-1204: cohort 2, table 808", () => {
+  const cohort = readNullCommitteeTsv().length;
+  assert.equal(cohort, 2);
+  const total = readTsv().length + readSweepTsv().length + 1 + readDefenseTsv().length + readCaciTsv().length + cohort;
+  assert.equal(total, 808);
+  const sql = readFileSync(NULL_COMMITTEE_MIGRATION_PATH, "utf8");
+  assert.match(sql, /IF v_cohort <> 2 THEN/);
+  assert.match(sql, /IF v_total <> 808 THEN/);
+});
+
+test("FIX-1204: the lobby override replaces the rule row with a curated one; no secondary axis", () => {
+  const NRA = "dac6b3f9-aebc-406d-a587-01998408f03b";
+  const out = applyIndustryOverrides([ruleTag(NRA, "lobby"), ruleTag(NRA, "small_donation", "size")], [
+    { entity_id: NRA, fec_committee_id: `fe:${NRA}`, industry: "lobby",
+      audited_sector: "null_committee_donor", source: "fix1204-null-committee-2026-10-03" },
+  ]);
+  const industry = out.filter((t) => t.tag_category === "industry");
+  assert.equal(industry.length, 1, "one industry tag — no second axis");
+  assert.equal(industry[0]!.tag, "lobby");
+  assert.equal(industry[0]!.generated_by, "curated");
+  assert.equal(out.filter((t) => t.tag_category === "size").length, 1, "size tags untouched");
+});
