@@ -27,22 +27,11 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { FIXTURES, INSERT_EPHEMERAL_AUTH_USER } from "./fixtures";
+import { POLLUTION_TABLES, pollutionCountSql, pollutionLabel } from "./pollution-tables";
 import { writeReport, printStdoutTable } from "./reporter";
 import type { AuditRow, HarnessReport, TxContext } from "./types";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
-
-// Tables a fixture could mutate. The rollback should leave every count unchanged.
-const POLLUTION_TABLES = [
-  "entity_comments",
-  "content_flags",
-  "comment_ratings",
-  "entity_positions",
-  "position_events",
-  "evidence_cards",
-  "citations",
-  "investigations",
-];
 
 interface Args {
   dbUrl: string;
@@ -107,8 +96,8 @@ function gitSha(): string {
 async function tableCounts(client: Client): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   for (const t of POLLUTION_TABLES) {
-    const res = await client.query(`SELECT count(*)::bigint AS n FROM public.${t}`);
-    counts.set(t, Number(res.rows[0].n));
+    const res = await client.query(pollutionCountSql(t));
+    counts.set(pollutionLabel(t), Number(res.rows[0].n));
   }
   return counts;
 }
@@ -242,7 +231,7 @@ async function main(): Promise<void> {
   const after = await tableCounts(client);
   await client.end();
 
-  const pollution = POLLUTION_TABLES.map((t) => {
+  const pollution = POLLUTION_TABLES.map(pollutionLabel).map((t) => {
     const b = before.get(t) ?? 0;
     const a = after.get(t) ?? 0;
     return { table: t, before: b, after: a, delta: a - b };
