@@ -1,0 +1,87 @@
+{
+  "cc": "188",
+  "prompt": "cc-prompt-188-census-builds-snapshot-reads-fix1132-stats-table-fix1145-rollups-external-gate-livelock-park-dbquery-parallel-off.md",
+  "started_at": "2026-10-04T01:45:49Z",
+  "finished_at": "2026-10-04T03:02:44Z",
+  "head_before": "29e0b8f2",
+  "head_after": "49f52bc8",
+  "commits": [
+    {
+      "sha": "369c363c",
+      "subject": "chore(scripts): db-query --prod reads turn parallelism off (the 128 MB DSM refusal; candidate 236)"
+    },
+    {
+      "sha": "ed023b1e",
+      "subject": "docs(fixes): file FIX-1269 (the status snapshot's two reads), FIX-1270 (the arm-loop park)"
+    },
+    {
+      "sha": "064f5251",
+      "subject": "chore(scripts): FIX-1269 — fix1269-create-snapshot-index.mjs (one gated CREATE INDEX CONCURRENTLY)"
+    },
+    {
+      "sha": "6e2179b8",
+      "subject": "feat(db,data): FIX-1269 + FIX-1132 + FIX-1270 — the search-index unit stamps its freshness and reads the stats table when current; refresh_entity_connection_stats_mv runs in windows; the arm loop parks after two cancels"
+    },
+    {
+      "sha": "0d7fac97",
+      "subject": "chore(db): FIX-1269 — the CIC twin migration"
+    },
+    {
+      "sha": "1bad4b15",
+      "subject": "feat(app): FIX-1269 — the status snapshot counts processing rows through the partial index and reads the search-index freshness stamp"
+    },
+    {
+      "sha": "f0c3d5b4",
+      "subject": "feat(data): FIX-1270 — receipts §9 gains a \"Parked EC arms\" line"
+    },
+    {
+      "sha": "c954dd51",
+      "subject": "docs(fixes): FIX-1131 / 1075 / 1125 appends from cc-188"
+    },
+    {
+      "sha": "49f52bc8",
+      "subject": "chore(fixes): sync status after FIX-1269 / FIX-1132 / FIX-1270"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1269",
+    "FIX-1132",
+    "FIX-1270"
+  ],
+  "fixes_filed": [
+    "FIX-1269",
+    "FIX-1270"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261004100000_fix1269_1132_1270_search_index_stamp_stats_read_arm_park.sql",
+    "supabase/migrations/20261004120000_fix1269_enrichment_queue_processing_index_twin.sql"
+  ],
+  "prod_writes": "Two gated writes, each the --then of session:wait-for-gate:prod (census stop) under the FIX-950 claim, from the primary checkout's packages/data; each claim held 17 guarded pipelines for about a minute and released them. (W1) ONE CREATE INDEX CONCURRENTLY IF NOT EXISTS enrichment_queue_processing_claimed_idx ON enrichment_queue (claimed_at) WHERE status = 'processing', via scripts/fix1269-create-snapshot-index.mjs --prod --apply: gate ok 02:12:52Z (census 0 renders / 0 events in 60 min; edge 0 of 353), build 02:12:56-02:13:00 UTC, wall 3.9 s, indisvalid = true, 16 kB, plus a COMMENT ON INDEX. (W2) ONE db push of two files: gate ok 02:36:53Z (census 0 / 0; edge 0 of 1,846). The dry run first listed exactly these two. 20261004100000 is CREATE OR REPLACE of rebuild_entity_search_index, run_entity_connections_rebuild, refresh_entity_connection_stats_mv and two new functions (ec_stats_table_currency, ec_stats_table_is_current), with REVOKE/GRANT restated: no data statement. 20261004120000 is the index twin, a no-op on prod (42P07 'already exists, skipping'). No CALL, VACUUM, MV refresh, pipeline or hand-fired rebuild on prod. Every other prod contact was a read: db-query --prod, prod_op_gate via the gate, the census (Logs API), two db-push dry runs, session:held, gh. M-B (FIX-1145) was not written. Pushes to main: four, each through the pre-push hook with held=false.",
+  "ci": "green",
+  "stopped_items": [
+    "D3 / FIX-1145 STOPPED at read 5 (the prompt's own stop: a rollup staler than the MV's cadence). official_donor_totals is written only by jobid 24 donor-rollup-refresh at 09:00 and 12:00 UTC, so at the MV's 06:00 build it holds the previous 12:00 state. FR official-donation writes land on the weekend drop nights (sweep targets 09-19 22:42, 09-21 00:18, 09-26 21:07, 09-27 22:37 UTC). Today's 06:00 MV picks a drop up about 7 h later; built from the rollup it would lag each drop by about 24 h more. M-B was not written, database.ts was not regenerated, FIX-1145 stays OPEN. Options are under 'What contradicted'.",
+    "D5 (the _external content fingerprint) STOPPED: the tree and prod contradict its premise, so nothing was filed or built. The LittleSis writer never writes ingested_at (not in REL_COLUMNS), so it moves only on INSERT, and each of the last six weekly ingests inserted 42-145 new rows; the arm's output grew every week. A count + max(source_updated_at) fingerprint would have run all six. external_relationships.id is gen_random_uuid() (not monotonic) and the table has no updated_at.",
+    "A harness artifact on the SHARED local clone, not a body defect. The first OLD-body park firing was unscheduled mid-run, which closed pg_cron's libpq connection, and the backend died at its next RAISE ('connection to client lost'). That stranded one LOCAL data_sync_log row 'running' (marked failed by hand) and held the EC advisory lock long enough for cc-187's prod-session / prod-op-gate tests to flake on the clone. The harness was fixed (a one-shot minute slot, unscheduled only after the run ends) and the OLD phase re-run clean; cc-187 was told, and told again when the clone was clean at 02:32.",
+    "No permission prompt was raised in this run."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1269",
+      "what": "48 snapshot ticks after the deploy: pgss shared_blks_read/calls for both processing counts under 100 blocks (was 55-58k) and the entity_search_index refreshed_at sort gone from pgss once the 06:00 stamp exists; the ring's next banked day: swap-in p95 well below 506 pages/s and the half-hour signature gone from the worst-15 → chore(fixes): record prod verification",
+      "after": "2026-10-05T12:00Z"
+    },
+    {
+      "fix": "FIX-1132",
+      "what": "the first 06:00 daily after M-A (2026-10-04): pipeline_state.entity_search_index.conn_source and conn_reason (stats_table, or windows with the fingerprint reason; at landing the stats table was NOT current), and metadata.unit_seconds.rebuild_entity_search_index vs its 7-day p50 247 s (stats path expected well under) → record",
+      "after": "2026-10-04T06:30Z"
+    },
+    {
+      "fix": "FIX-1270",
+      "what": "no generic arm has two canceled entries in recent_units without an ec_arm_parked entry; receipts §9 'Parked EC arms' line present (none is fine)",
+      "after": "2026-10-06T12:00Z"
+    }
+  ]
+}
