@@ -1,0 +1,45 @@
+{
+  "cc": "186",
+  "prompt": "cc-prompt-186-measure-first-census-1131-1075-1181-1132-1145-memory-attribution-11-stub-census.md",
+  "started_at": "2026-10-03T23:31:12Z",
+  "finished_at": "2026-10-04T00:14:00Z",
+  "head_before": "784a876b",
+  "head_after": "c1e5d284",
+  "commits": [
+    {
+      "sha": "d27df535",
+      "subject": "docs(audits): the measure-first census — FIX-1131 rows=200 hits, FIX-1075 EC arm timings, FIX-1181 the pooled timeout, FIX-1132 measured look, FIX-1145 plan shapes, the nightly stack's memory by job and GUC (FIX-1125), the 11 unpaired candidate stubs (FIX-1189 O1 / FIX-1020), FIX-1204's two entities"
+    },
+    {
+      "sha": "2f6fb898",
+      "subject": "docs(fixes): FIX-1131 / 1075 / 1181 / 1145 / 1125 / 1189 / 1020 / 1204 appends from the measure-first census; FIX-1132 GO"
+    },
+    {
+      "sha": "c1e5d284",
+      "subject": "docs(audits): cc-186 census — correct seven read timestamps to the real 23:33-23:58 UTC window"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "R4(a)/(b): the three-official EXPLAIN (ANALYZE, BUFFERS) of get_official_page with and without _conn was not run. The tree contradicted the premise: get_official_page has no _conn. The only _conn is in rebuild_entity_search_index (the daily unit 9). The substitution was measured there instead (§4).",
+    "R3(c): the Supavisor docs were not fetched. pg_stat_activity shows PostgREST connecting directly as authenticator (application_name postgrest), not through Supavisor, so the question of whether transaction mode runs DISCARD ALL does not apply to that path.",
+    "R6(a): the 10-02 swap-in series is gone. The Upstash ring holds 24 h, so it now covers 10-02 23:46 → 10-03 23:44. The 10-04 receipt banks a one-day summary only. The 10-02 Gantt is reported without a swap series beside it, and '10-02 17:32' could not be re-read.",
+    "R6(b): the global work_mem is not readable. SELECT … FROM pg_file_settings returned 'permission denied for function pg_show_all_file_settings'. That is an SQL error, not a permission prompt.",
+    "R7: one delegated prod read went past the prompt's 2-minute bound (the first, untyped anchor census) and was stopped; a second hit its 115 s client wrapper. Neither left a backend running on prod. Both were narrowed and re-run. The timeout was never raised.",
+    "R5(c)(iii): the random_page_cost sweep has nothing to report. No value flips the plan, because the planner already takes the index at 1.1, 2.0, 3.0 and 4.0.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1132",
+      "what": "the first refresh-derived-mvs-daily firing after the guarded MV read ships in rebuild_entity_search_index: the unit's wall vs the 30-d p50 241.5 s, which branch the fingerprint guard took (MV or the 16 live windows), and entity_search_index.connection_count equal to entity_connection_stats_mv for every entity",
+      "after": "2026-10-05T06:15Z"
+    }
+  ]
+}
