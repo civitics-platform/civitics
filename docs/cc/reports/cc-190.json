@@ -4,7 +4,7 @@
   "started_at": "2026-10-04T04:32:02Z",
   "finished_at": "2026-10-04T05:44:00Z",
   "head_before": "bc3bff88",
-  "head_after": "a9bdcd4a",
+  "head_after": "fd93a2ca",
   "commits": [
     {
       "sha": "6153ea10",
@@ -33,6 +33,10 @@
     {
       "sha": "a9bdcd4a",
       "subject": "chore(fixes): sync status after FIX-1271 / FIX-1272 / FIX-1267 / FIX-1131"
+    },
+    {
+      "sha": "fd93a2ca",
+      "subject": "docs(fixes): file FIX-1276 — session:worktree:done refuses a registered-but-prunable worktree as dirty"
     }
   ],
   "fixes_closed": [
@@ -42,7 +46,8 @@
     "FIX-1131"
   ],
   "fixes_filed": [
-    "FIX-1275"
+    "FIX-1275",
+    "FIX-1276"
   ],
   "fixes_reopened": [],
   "migrations_pushed": [],
@@ -51,6 +56,8 @@
   "stopped_items": [
     "D3's stop condition fired, as the prompt foresaw: after the gate, one default-run test still takes a c_writer_locks key. src/lib/prod-session.test.ts:271 (the writers-live claim case) takes financial_entity_totals_refresh. Filed as FIX-1275 (rule 106) and not gated here. That case is the default run's only proof of the writers-live refusal, so the fix is a design choice.",
     "D6: fix-1273 (cc-191's worktree) skipped. cc-191 finished and removed its marker, so nothing names the tree, and its branch is merged. Its session may still have that directory as its cwd, though, and removing it is the paused-session hazard the prompt cites against a Stop hook. Left for Craig or the next session's session:check.",
+    "D6: fix-1177 LEFT, EPERM. A live `next dev -p 3187` (PIDs 17284 → 2620 → 16764, started 19:00 PDT 10-03, cwd fix-1177/apps/civitics) holds next-swc / bufferutil / utf-8-validate .node files. It is a process lock, not AV. Not killed; the process is not this run's.",
+    "D6: all five sweep slots first REFUSED by the plain session:worktree:done ('could not read git status' → 'refusing to remove a dirty worktree'). Their .git files were gone while they were still registered (prunable). Filed as FIX-1276. Unblocked with `git worktree prune` (dry run first: exactly the five admin entries) and a re-run of the same command. No --force was used anywhere.",
     "No permission prompt was raised in this run."
   ],
   "lane": "hygiene",
