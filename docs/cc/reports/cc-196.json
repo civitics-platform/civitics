@@ -1,0 +1,72 @@
+{
+  "cc": "196",
+  "prompt": "cc-prompt-196-fix1266-override-cohort-super-pac-keyword-pass-reads-connected-org.md",
+  "started_at": "2026-10-05T04:10:13Z",
+  "finished_at": "2026-10-05T09:22:00Z",
+  "head_before": "b096fd16",
+  "head_after": "5a5c3b04",
+  "commits": [
+    {
+      "sha": "e4d37277",
+      "subject": "feat(db): FIX-1266 — six committee-arm pick overrides (RTX PAC → defense; VIEW PAC, Equality PAC, Senate Conservatives Fund → none; In Union USA, UAW Education Fund → labor); 814"
+    },
+    {
+      "sha": "27bfab5c",
+      "subject": "fix(data): FIX-1280 — the keyword pass tags O/U/V/W committees by their connected organisation, never by their own cause words"
+    },
+    {
+      "sha": "0642abee",
+      "subject": "fix(db): FIX-1279 — promote_candidate_to_elected adopts the elected row's full_name, first/last name, district, photo and website (congress.gov is authoritative for a sitting member)"
+    },
+    {
+      "sha": "eb95f345",
+      "subject": "chore(fixes): FIX-1266 — the six override rows landed on prod (814)"
+    },
+    {
+      "sha": "e543fb4e",
+      "subject": "chore(fixes): record prod verification of FIX-1279 — the RPC body on prod equals the file; ACL unchanged"
+    },
+    {
+      "sha": "5a5c3b04",
+      "subject": "chore(fixes): sync status after FIX-1266, FIX-1279, FIX-1280"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1266",
+    "FIX-1279",
+    "FIX-1280"
+  ],
+  "fixes_filed": [
+    "FIX-1280"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261005100000_fix1266_top200_pick_overrides.sql",
+    "supabase/migrations/20261005200000_fix1279_promote_rpc_adopts_elected_names.sql"
+  ],
+  "prod_writes": "Two migrations in ONE gated push. session:wait-for-gate:prod --expected-minutes 2 --census stop, run from the primary checkout's packages/data under the FIX-950 claim. Gate opened 09:17:14Z (census pass), --then db-push-prod applied both, claim released. 20261005100000 upserted 6 rows into financial_entity_industry_overrides (808 → 814) and DELETEd 3 generated_by='ai' industry rows from entity_tags: the lobby rows of C00327189, C00550970 and C00448696. Craig authorised the delete mid-run; the prompt had said no DELETE. 20261005200000 is a CREATE OR REPLACE FUNCTION promote_candidate_to_elected (metadata DDL, no data row). No CALL, no tagger run on prod.",
+  "ci": "green",
+  "stopped_items": [
+    "D1 premise contradicted (read 2, prod 04:13Z). The three NULL-verdict committees hold ONLY an ai lobby row. A NULL override filters what the tagger writes, and primary_industry_tag() never reads the override table, so 'NO DELETE … ai rows still present' and 'the picks read NULL' cannot both hold. Asked Craig. He chose to delete the 3 ai rows in D1, the FIX-916/921/923 shape. Every other NULL override on prod already held 0 industry rows.",
+    "Prompt STOP fired: In Union USA (one of the named 'right' sponsors) has fec_connected_org_nm = 'NONE' and would lose its labor row under D2. Routed to Craig, who added it to D1 as curated labor.",
+    "D2 as written would strip a CORRECT lobby from Club for Growth Action (181.1M IE), NRA Victory Fund (22.0M) and Gun Owners Action Fund (2.0M). The lobby keyword list is sponsor names, not cause words. Asked Craig. The lobby list is exempt and still matched on the display name.",
+    "D2 as written ADDS a wrong defense to UAW Education Fund ('aerospace' in its sponsor name), and it would win the alphabetical tie-break over labor. Asked Craig, who added it to D1 as curated labor. Net D1 cohort 4 → 6 and total 812 → 814. Rule 45: widened by decision, not silently.",
+    "D2's read shape differs from the prompt. The O/U/V/W set is one targeted pre-read (entity_type IN pac/super_pac), not metadata columns in the chunk select. Measured on the clone: the in-chunk form is 63,063 heap blocks against today's 4,361 index-only pages; the pre-read is 6,701 buffers, 0.4 s in the tagger.",
+    "Not addressed: the IE top-50's four 'wrong → lobby' (LCV Victory Fund, UDP, EDF Action Votes, Everytown Victory Fund). The prompt said D2 fixes them, but they carry NO tag, so there is no keyword hit to remove. Not filed (out of scope / rule 45); noted on FIX-1266 and FIX-1280 for Craig.",
+    "No permission prompt fired."
+  ],
+  "lane": "fec",
+  "project": "industry-tags",
+  "owed": [
+    {
+      "fix": "FIX-1266",
+      "what": "the Mon 10-05 nightly tail (tag_rules ~22:27Z): primary_industry_tag reads defense for C00097568 and labor (curated) for C00745745 / C00528448, and still none for C00327189 / C00550970 / C00448696; sync_rollup_industry_labels moved their official_donor_rollup_mv labels (rollup_labels_updated > 0)",
+      "after": "2026-10-05T22:45Z"
+    },
+    {
+      "fix": "FIX-1280",
+      "what": "the same tail: FE rule industry rows on O/U/V/W committees 162 → 24 on 22 committees (6 lobby with matched_on display_name, 18 matched_on connected_org); tag_rules kept_* unchanged in kind; the Tue 10-06 16:00 UTC rule-taggers-weekly run in band → chore(fixes): record prod verification of FIX-1280",
+      "after": "2026-10-06T17:00Z"
+    }
+  ]
+}
