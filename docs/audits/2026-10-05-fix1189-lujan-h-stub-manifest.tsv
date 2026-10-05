@@ -1,0 +1,26 @@
+# FIX-1189 — shared-CAND_ID manifest (shape A), Ben Ray Luján's House stub.
+# THIS FILE IS AN AUTHORISATION. Written and committed by cc-194 (2026-10-05),
+# BEFORE its dry run (rule 42). Decision D6 of
+# claude/design-promotion-miss-fix1189-o1-2026-10-03.md (ratified 2026-10-03):
+# dry-run it; apply only if every gate passes and Craig says go; if a gate
+# refuses, record the line and leave the stub.
+#
+# CONTEXT: cc-194's W1 promoted Luján's Senate stub 93a6040f (S0NM00058) in
+# place of the elected row eadbf1fd (the RPC deletes the elected row), so
+# 93a6040f is the sitting Senator's row. His House-era stub 6dc78f88 still holds
+# H8NM03196 live, which keeps him in O1's double_claim class and stops O1 from
+# appending H8NM03196 to the survivor's prior_fec_candidate_ids (cc-193 §6).
+#
+# PROD STATE READ 2026-10-04 23:38 UTC (cc-194 read 2):
+#   survivor  93a6040f  Ben Lujan (S stub, promoted by W1)  live S0NM00058   5,494 FR  $10,126,311
+#   dup       6dc78f88  Ben Lujan (Cand. for Representative) live H8NM03196    171 FR     $622,052
+#   dup: 0 votes, 0 committee memberships, 0 external_relationships.
+#
+# DATASET READ 2026-10-04 17:48 UTC (cc-193 read 3), legislators-current.json
+# ETag W/"6ab4f9aa-166a83": L000570 id.fec ["H8NM03196","S0NM00058"],
+# last term sen NM -> current S0NM00058; H8NM03196 is his prior (House) id.
+#
+# WHAT A ROW AUTHORISES, in one transaction: merge dup into survivor on fec_id
+# (FR rows move to the survivor, colliding losers deleted, dup retires fec_id).
+survivor	dup	fec_id	name	evidence
+93a6040f-402c-4f85-8d0d-55cf1b0350b2	6dc78f88-fe6f-4ff5-8a75-bd242e07d0ec	H8NM03196	Ben Ray Luján (S, promoted)  <-  Ben Lujan (Cand. for Representative)	congress-legislators id.fec[] for L000570 lists H8NM03196 (prior House id) and S0NM00058 (current); stub 6dc78f88 holds H8NM03196 (cc-193 §1a, §2)
