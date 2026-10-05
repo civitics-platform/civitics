@@ -1587,3 +1587,4 @@
 2026-10-04 | FIX-1251 | 1946af4c | prod-only | chore(fixes): record prod verification of FIX-1251 — the five monthlies fired Thu 10-01 and read no-band in receipts 2026-10-02
 2026-10-04 | FIX-1256 | 872c060e | prod-only | chore(fixes): record prod verification of FIX-1256 — roll 2026-house-295 landed in the 10-01 nightly (433 votes, 0 skipped, no hand-fire)
 2026-10-04 | FIX-1145 | 99156c77 | local-only | feat(db): FIX-1145 — official_homepage_stats_mv reads official_donor_totals + official_vote_stats (the unread financial_relationship_count dropped); donor_rollup_rebuild_bulk refreshes it after a run that moved the watermark
+2026-10-04 | FIX-1020 | c65c1a5b | closes-as-redirected | chore(fixes): record FIX-1189's landing — 11 promoted by dataset key, set 3 applied; FIX-1020 closed as redirected
