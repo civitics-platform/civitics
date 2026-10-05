@@ -16,6 +16,9 @@
  *   - the BEHAVIOURAL half runs the four cases against a reachable database and
  *     rolls back. `supabase/tests/verify_fix1195.sql` is the same four cases in
  *     plain SQL for running by hand.
+ *
+ * FIX-1279 adds the identity-field precedence (elected first) on both halves;
+ * it is CASE 5 in verify_fix1195.sql.
  */
 
 import { test } from "node:test";
@@ -24,9 +27,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { Client } from "pg";
 
+// The NEWEST definition of the function, because a source anchor guards the
+// LIVE body, not a superseded file. FIX-1279 (20261005200000) re-states the
+// FIX-1195 body verbatim apart from the six identity fields, so the FIX-1195
+// anchors below read it unchanged.
 const MIGRATION = path.join(
   __dirname, "..", "..", "..", "..", "..",
-  "supabase", "migrations", "20260919000000_fix1195_promote_rpc_precedence.sql",
+  "supabase", "migrations", "20261005200000_fix1279_promote_rpc_adopts_elected_names.sql",
 );
 
 // ---------------------------------------------------------------------------
@@ -66,6 +73,36 @@ test("FIX-1195: the function takes no SET clause (FIX-1128 / transaction control
   const m = src.match(/CREATE OR REPLACE FUNCTION promote_candidate_to_elected[\s\S]*?AS \$\$/);
   assert.ok(m, "function header not found");
   assert.doesNotMatch(m[0], /\bSET\s+\w+\s*=/, "a proconfig SET cannot bound this and blocks COMMIT");
+});
+
+test("FIX-1279: the six identity fields read the elected row first; full_name is written", () => {
+  const src = fs.readFileSync(MIGRATION, "utf8");
+  for (const col of ["full_name", "first_name", "last_name", "district_name", "photo_url", "website_url"]) {
+    assert.match(
+      src,
+      new RegExp(`^\\s+${col}\\s+= COALESCE\\(e\\.${col},\\s+c\\.${col}\\),$`, "m"),
+      `${col} must be COALESCE(e.${col}, c.${col}) — congress.gov is authoritative for a sitting member`,
+    );
+    assert.doesNotMatch(src, new RegExp(`COALESCE\\(c\\.${col},`), `${col}: the candidate-first form is the FIX-1279 bug`);
+  }
+});
+
+test("FIX-1279: party and the term dates stay candidate-first (out of scope)", () => {
+  const src = fs.readFileSync(MIGRATION, "utf8");
+  for (const col of ["party", "term_start", "term_end"]) {
+    assert.match(src, new RegExp(`^\\s+${col}\\s+= COALESCE\\(c\\.${col},\\s+e\\.${col}\\),$`, "m"), col);
+  }
+});
+
+test("FIX-1279: the migration is the newest definition of the function", () => {
+  // Pinning a superseded file would leave the anchors guarding a body prod no
+  // longer runs. Any later CREATE OR REPLACE must move MIGRATION with it.
+  const dir = path.dirname(MIGRATION);
+  const definers = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => /CREATE OR REPLACE FUNCTION (public\.)?promote_candidate_to_elected\s*\(/.test(fs.readFileSync(path.join(dir, f), "utf8")))
+    .sort();
+  assert.equal(definers[definers.length - 1], path.basename(MIGRATION));
 });
 
 // ---------------------------------------------------------------------------
@@ -155,6 +192,70 @@ test("FIX-1195: promote_candidate_to_elected keeps every id it touches", async (
       const gone = await client.query("SELECT 1 FROM officials WHERE id = $1", [electedId]);
       assert.equal(gone.rowCount, 0, `${c.name}: the elected row is deleted`);
     }
+  } finally {
+    await client.query("ROLLBACK").catch(() => {});
+    await client.end().catch(() => {});
+  }
+});
+
+// FIX-1279 — the cc-194 shape: the survivor is the FEC candidate stub, whose
+// name fields are the FEC legal name ("ASHLEY ARENHOLZ", district "02"). For a
+// sitting member congress.gov is authoritative, so the six identity fields read
+// the elected row first. The FIX-1195 invariant (the stub's own live id) holds.
+test("FIX-1279: the survivor adopts the elected row's name, district, photo and website", async (t) => {
+  const client = new Client({ connectionString: LOCAL_DB, connectionTimeoutMillis: 3000 });
+  try {
+    await client.connect();
+  } catch {
+    t.skip("no database reachable — behavioural half skipped (source anchors above still ran)");
+    return;
+  }
+  try {
+    await client.query("BEGIN");
+    const jur = await client.query<{ id: string }>("SELECT id FROM jurisdictions LIMIT 1");
+    const jurisdictionId = jur.rows[0]?.id;
+    assert.ok(jurisdictionId, "no jurisdictions row to hang the fixtures off");
+
+    const ins = async (row: Record<string, unknown>) =>
+      (await client.query<{ id: string }>(
+        `INSERT INTO officials (jurisdiction_id, full_name, first_name, last_name, district_name,
+                                photo_url, website_url, role_title, tier, source_ids)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING id`,
+        [jurisdictionId, row["full_name"], row["first_name"], row["last_name"], row["district_name"],
+         row["photo_url"], row["website_url"], row["role_title"], row["tier"], JSON.stringify(row["source_ids"])],
+      )).rows[0]!.id;
+
+    const electedId = await ins({
+      full_name: "Ashley Hinson", first_name: "Ashley", last_name: "Hinson", district_name: "District 2",
+      photo_url: "https://e.example/hinson.jpg", website_url: "https://e.example",
+      role_title: "Representative", tier: "elected", source_ids: { congress_gov: "X001279" },
+    });
+    const candId = await ins({
+      full_name: "ASHLEY ARENHOLZ", first_name: "ASHLEY", last_name: "ARENHOLZ", district_name: "02",
+      photo_url: null, website_url: null,
+      role_title: "Candidate for Representative", tier: "candidate", source_ids: { fec_candidate_id: "H2XX02279" },
+    });
+
+    await client.query("SELECT public.promote_candidate_to_elected($1, $2)", [electedId, candId]);
+
+    const after = await client.query<Record<string, unknown>>(
+      `SELECT full_name, first_name, last_name, district_name, photo_url, website_url, tier, source_ids
+         FROM officials WHERE id = $1`,
+      [candId],
+    );
+    const r = after.rows[0]!;
+    assert.equal(r["full_name"], "Ashley Hinson", "full_name");
+    assert.equal(r["first_name"], "Ashley", "first_name");
+    assert.equal(r["last_name"], "Hinson", "last_name");
+    assert.equal(r["district_name"], "District 2", "district_name");
+    assert.equal(r["photo_url"], "https://e.example/hinson.jpg", "photo_url");
+    assert.equal(r["website_url"], "https://e.example", "website_url");
+    assert.equal(r["tier"], "elected");
+    const src = r["source_ids"] as Record<string, unknown>;
+    assert.equal(src["fec_candidate_id"], "H2XX02279", "the survivor keeps its own live id (FIX-1195)");
+    assert.equal(src["congress_gov"], "X001279");
+    const gone = await client.query("SELECT 1 FROM officials WHERE id = $1", [electedId]);
+    assert.equal(gone.rowCount, 0, "the elected row is deleted");
   } finally {
     await client.query("ROLLBACK").catch(() => {});
     await client.end().catch(() => {});

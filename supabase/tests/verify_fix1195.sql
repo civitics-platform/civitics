@@ -1,4 +1,4 @@
--- FIX-1195 clone test for promote_candidate_to_elected().
+-- FIX-1195 clone test for promote_candidate_to_elected(). CASE 5 is FIX-1279.
 -- Runs inside db-query.mjs's single transaction; nothing is committed.
 DO $test$
 DECLARE
@@ -100,7 +100,35 @@ BEGIN
     'CASE4: exactly three priors, got ' || v_src->>'prior_fec_candidate_ids';
   RAISE NOTICE 'CASE4 ok: %', v_src::text;
 
-  RAISE NOTICE 'FIX-1195 clone test: ALL 4 CASES PASS';
+  -- ── CASE 5 (FIX-1279): the survivor adopts the elected row's identity ────
+  -- The cc-194 shape: the stub carries the FEC legal name and a bare district.
+  INSERT INTO officials (jurisdiction_id, full_name, first_name, last_name, district_name,
+                         photo_url, website_url, role_title, tier, source_ids)
+  VALUES (v_jur, 'Ashley Hinson', 'Ashley', 'Hinson', 'District 2',
+          'https://e.example/hinson.jpg', 'https://e.example', 'Representative', 'elected',
+          '{"congress_gov":"X001279"}'::jsonb)
+  RETURNING id INTO v_e;
+
+  INSERT INTO officials (jurisdiction_id, full_name, first_name, last_name, district_name,
+                         photo_url, website_url, role_title, tier, source_ids)
+  VALUES (v_jur, 'ASHLEY ARENHOLZ', 'ASHLEY', 'ARENHOLZ', '02',
+          NULL, NULL, 'Candidate for Representative', 'candidate',
+          '{"fec_candidate_id":"H2XX02279"}'::jsonb)
+  RETURNING id INTO v_c;
+
+  PERFORM promote_candidate_to_elected(v_e, v_c);
+
+  ASSERT (SELECT full_name FROM officials WHERE id = v_c) = 'Ashley Hinson',
+    'CASE5: full_name must be the elected row''s, got ' || (SELECT full_name FROM officials WHERE id = v_c);
+  ASSERT (SELECT (first_name, last_name, district_name, photo_url, website_url) FROM officials WHERE id = v_c)
+       = ('Ashley'::text, 'Hinson'::text, 'District 2'::text, 'https://e.example/hinson.jpg'::text, 'https://e.example'::text),
+    'CASE5: first/last name, district, photo and website must be the elected row''s';
+  SELECT source_ids INTO v_src FROM officials WHERE id = v_c;
+  ASSERT v_src->>'fec_candidate_id' = 'H2XX02279', 'CASE5: the survivor keeps its own live id (FIX-1195)';
+  ASSERT NOT EXISTS (SELECT 1 FROM officials WHERE id = v_e), 'CASE5: elected row must be deleted';
+  RAISE NOTICE 'CASE5 ok: %', v_src::text;
+
+  RAISE NOTICE 'FIX-1195 + FIX-1279 clone test: ALL 5 CASES PASS';
 END
 $test$;
 ROLLBACK;
