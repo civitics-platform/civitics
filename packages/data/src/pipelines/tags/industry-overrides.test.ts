@@ -770,3 +770,111 @@ test("FIX-1204: the lobby override replaces the rule row with a curated one; no 
   assert.equal(industry[0]!.generated_by, "curated");
   assert.equal(out.filter((t) => t.tag_category === "size").length, 1, "size tags untouched");
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1266 (cc-196 D1) — the donation top-200's four wrong/none verdicts plus
+// FIX-1280's two union residuals, on the COMMITTEE arm (real fec_committee_ids,
+// financial_entity_id NULL). The three NULL rows' ai `lobby` rows are deleted in
+// the same migration: a NULL override only filters what the tagger writes, so
+// without the delete primary_industry_tag() would still pick the ai row.
+// ---------------------------------------------------------------------------
+
+const TOP200_TSV_PATH = join(REPO_ROOT, "docs", "audits", "2026-10-05-fix1266-top200-overrides.tsv");
+const TOP200_MIGRATION_PATH = join(
+  REPO_ROOT, "supabase", "migrations", "20261005100000_fix1266_top200_pick_overrides.sql",
+);
+
+type CommitteeRow = { fec: string; display_name: string; cmte_type: string; industry: string | null; sector: string };
+
+function readTop200Tsv(): CommitteeRow[] {
+  const lines = readFileSync(TOP200_TSV_PATH, "utf8").split(/\r?\n/).filter((l) => l.length);
+  assert.equal(
+    lines[0],
+    "fec_committee_id\tdisplay_name\tfec_cmte_type\tconnected_org\ttotal_cents\tcurrent_pick\tindustry\taudited_sector\tnote",
+    "the committee-arm header",
+  );
+  return lines.slice(1).map((l) => {
+    const c = l.split("\t");
+    return { fec: c[0]!, display_name: c[1]!, cmte_type: c[2]!, industry: c[6] === "NULL" ? null : c[6]!, sector: c[7]! };
+  });
+}
+
+test("FIX-1266: the TSV is RTX → defense, three → NULL, two union super PACs → labor", () => {
+  const rows = readTop200Tsv();
+  assert.deepEqual(
+    rows.map((r) => [r.fec, r.industry]),
+    [
+      ["C00097568", "defense"],
+      ["C00327189", null],
+      ["C00550970", null],
+      ["C00448696", null],
+      ["C00745745", "labor"],
+      ["C00528448", "labor"],
+    ],
+  );
+  for (const r of rows) {
+    assert.match(r.fec, /^C\d{8}$/, "committee arm: a real FEC committee id");
+    if (r.industry !== null) assert.ok((VALID_INDUSTRIES as readonly string[]).includes(r.industry), `${r.industry} is in the vocabulary`);
+  }
+  const earlier = new Set([...readTsv(), ...readSweepTsv()].map((r) => r.fec));
+  for (const r of rows) assert.ok(!earlier.has(r.fec), `${r.fec} is not already in the FIX-916/921 cohorts`);
+});
+
+test("FIX-1266: the migration seeds exactly its TSV on the committee arm, behind the three gates", () => {
+  const sql = readFileSync(TOP200_MIGRATION_PATH, "utf8");
+  const seeded = new Map<string, string | null>();
+  for (const m of sql.matchAll(/^ {2}\('(C\d{8})', NULL, (NULL|'[a-z_]+')/gm)) {
+    seeded.set(m[1]!, m[2] === "NULL" ? null : m[2]!.slice(1, -1));
+  }
+  const tsv = readTop200Tsv();
+  assert.equal(seeded.size, tsv.length, "seed row count must match the TSV");
+  for (const r of tsv) {
+    assert.ok(seeded.has(r.fec), `${r.fec} is missing from the migration seed`);
+    assert.equal(seeded.get(r.fec), r.industry, `industry mismatch for ${r.fec}`);
+  }
+  const precheck = sql.match(/v_ids\s+text\[\] := ARRAY\[([\s\S]*?)\];/);
+  assert.ok(precheck, "the pre-check id list must be present");
+  assert.deepEqual([...precheck![1]!.matchAll(/'(C\d{8})'/g)].map((m) => m[1]!), tsv.map((r) => r.fec));
+  assert.match(sql, /COALESCE\(fe\.is_synthetic, false\)/, "the synthetic gate");
+  assert.match(sql, /o\.source <> 'fix1266-top200-2026-10-05'/, "the not-curated-elsewhere gate");
+  for (const r of tsv) {
+    assert.ok(sql.includes(`'${r.sector}', 'fix1266-top200-2026-10-05'`), `${r.fec} carries sector ${r.sector}`);
+  }
+  assert.match(sql, /ON CONFLICT \(fec_committee_id\) DO UPDATE/);
+});
+
+test("FIX-1266: the one entity_tags write deletes ai industry rows of this cohort's NULL rows, nothing else", () => {
+  const sql = readFileSync(TOP200_MIGRATION_PATH, "utf8");
+  const deletes = [...sql.matchAll(/DELETE\s+FROM\s+public\.entity_tags[\s\S]*?RETURNING/gi)].map((m) => m[0]);
+  assert.equal(deletes.length, 1, "exactly one DELETE FROM entity_tags");
+  const d = deletes[0]!;
+  assert.match(d, /et\.generated_by\s+=\s+'ai'/);
+  assert.match(d, /et\.tag_category\s+=\s+'industry'/);
+  assert.match(d, /o\.industry IS NULL/);
+  assert.match(d, /o\.source\s+=\s+'fix1266-top200-2026-10-05'/);
+  assert.match(sql, /IF v_deleted NOT IN \(0, 3\) THEN/, "3 on first apply, 0 on re-apply");
+});
+
+test("FIX-1266: cohort 6 (3 NULL), table 814", () => {
+  const rows = readTop200Tsv();
+  assert.equal(rows.length, 6);
+  assert.equal(rows.filter((r) => r.industry === null).length, 3);
+  const total = readTsv().length + readSweepTsv().length + 1 + readDefenseTsv().length + readCaciTsv().length
+    + readNullCommitteeTsv().length + rows.length;
+  assert.equal(total, 814);
+  const sql = readFileSync(TOP200_MIGRATION_PATH, "utf8");
+  assert.match(sql, /IF v_cohort <> 6 THEN/);
+  assert.match(sql, /IF v_nulls <> 3 THEN/);
+  assert.match(sql, /IF v_total <> 814 THEN/);
+});
+
+test("FIX-1266: a NULL override drops the computed rows and emits none; the RTX override emits one defense row", () => {
+  const VIEW = "88c80a62-e8fc-411b-86e9-f540767c85f6";
+  const RTX = "0d571269-157e-4c4f-821e-4a915f0888d1";
+  const out = applyIndustryOverrides([ruleTag(VIEW, "lobby"), ruleTag(RTX, "small_donation", "size")], [
+    { entity_id: VIEW, fec_committee_id: "C00327189", industry: null, audited_sector: "top200_pick_audit", source: "fix1266-top200-2026-10-05" },
+    { entity_id: RTX, fec_committee_id: "C00097568", industry: "defense", audited_sector: "top200_pick_audit", source: "fix1266-top200-2026-10-05" },
+  ]);
+  const industry = out.filter((t) => t.tag_category === "industry");
+  assert.deepEqual(industry.map((t) => [t.entity_id, t.tag, t.generated_by]), [[RTX, "defense", "curated"]]);
+});

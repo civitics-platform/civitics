@@ -1,0 +1,7 @@
+fec_committee_id	display_name	fec_cmte_type	connected_org	total_cents	current_pick	industry	audited_sector	note
+C00097568	EMPLOYEES OF RTX CORPORATION POLITICAL ACTION COMMITTEE	Q	RTX CORPORATION	529550000		defense	top200_pick_audit	RTX Corporation (Raytheon) carries NO industry tag: the defense keyword list has 'raytheon', nothing matches 'RTX'
+C00327189	VALUE IN ELECTING WOMEN POLITICAL ACTION COMMITTEE	W	MCMORRIS RODGERS WIN THE FUTURE FUND	208000000	lobby	NULL	top200_pick_audit	candidate-support PAC — no industry (Craig 2026-10-04); its ai lobby row is deleted (Craig 2026-10-05), so the pick reads none
+C00550970	EQUALITY PAC	W		180424000	lobby	NULL	top200_pick_audit	caucus PAC — no industry (Craig 2026-10-04); its ai lobby row is deleted (Craig 2026-10-05), so the pick reads none
+C00448696	SENATE CONSERVATIVES FUND	W		179272700	lobby	NULL	top200_pick_audit	ideological PAC — no industry (Craig 2026-10-04); its ai lobby row is deleted (Craig 2026-10-05), so the pick reads none
+C00745745	IN UNION USA	O	NONE	0	labor	labor	labor_union	union super PAC, IE $4,404,815; connected org NONE, so FIX-1280's sponsor rule drops its keyword row (Craig 2026-10-05)
+C00528448	UAW EDUCATION FUND	O	INT'L UNION UNITED AUTOMOBILE AEROSPACE & AGRICULTURAL IMPLEMENT WORKERS OF AMERICA UAW	0		labor	labor_union	UAW's super PAC, IE $472,074; under FIX-1280 its sponsor name adds defense via 'aerospace', which would win the pick (Craig 2026-10-05)
