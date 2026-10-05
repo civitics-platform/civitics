@@ -1,0 +1,76 @@
+{
+  "cc": "194",
+  "prompt": "cc-prompt-194-fix1189-supervised-landing-11-promotions-set3-manifest-o1-dry-run-flags.md",
+  "started_at": "2026-10-04T23:35:31Z",
+  "finished_at": "2026-10-05T00:42:00Z",
+  "head_before": "f05c055f",
+  "head_after": "b7f17878",
+  "commits": [
+    {
+      "sha": "60909a79",
+      "subject": "docs(audits): FIX-1189 — the Luján House-stub shape-A manifest (D6), committed before its dry run"
+    },
+    {
+      "sha": "99cee677",
+      "subject": "docs(ci): FIX-1189 — the nightly promotes by dataset key and O1 writes, from the Mon 10-05 run"
+    },
+    {
+      "sha": "c65c1a5b",
+      "subject": "chore(fixes): record FIX-1189's landing — 11 promoted by dataset key, set 3 applied; FIX-1020 closed as redirected"
+    },
+    {
+      "sha": "3e456d15",
+      "subject": "docs(fixes): file FIX-1279 — the promotion RPC keeps the stub's FEC name fields"
+    },
+    {
+      "sha": "f84cb678",
+      "subject": "docs(fixes): fold cc-194's FIX-1189 append back onto the bullet's one line"
+    },
+    {
+      "sha": "b7f17878",
+      "subject": "chore(fixes): sync status after FIX-1020"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1020"
+  ],
+  "fixes_filed": [
+    "FIX-1279"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "W1 promote_candidate_to_elected x 11 via data:promote:candidates:prod --apply --dataset-key (00:03:22-00:04:20Z; 11 elected rows deleted, 28,776 FK rows moved incl. 18,863 votes); W2 set-3 shape B via data:merge:official-dupes:prod --promote-manifest --defer-tails --apply (00:09:04-00:11:26Z; 2 pairs, 210 FR moved, 88 colliding FR losers deleted, 183 stale money EC edges deleted, 4 manifest-scoped rollups); W4 VACUUM (ANALYZE) votes, entity_tags, external_relationships under a session claim (00:13:38-00:14:34Z). Each ran under its own FIX-950 claim, released. No O1 write; dry runs (W1 plan, W2 rollback, O1 plan-only x2, Luján shape-A rollback) wrote nothing.",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2 drift (prompt: STOP on any drift): two stub dollar totals moved with row counts unchanged. Hinson's stub went -$5,000 and Luján's House stub +$2,500, each one amended 2026 donation row stamped by tonight's fec_bulk at 21:07Z. The prompt assumed no drop night in between, but the Sunday 21:00Z run was one. Craig ruled it not population drift and gave the go.",
+    "ONE claim (prompt) was not possible: the W1 runner and the W2 merge tool each take their own FIX-950 claim inside the script, and a second claim is refused as session-held, never forceable. W1, W2 and W4 ran as three sequential claims, the plan's model; guarded pg_cron firings between them were free to start.",
+    "W4 narrowed by Craig to votes, entity_tags and external_relationships. FR, EC and officials were left to their scheduled owners (officials 01:30Z Mon, FR 03:00Z, EC 04:30Z), because the merge tool states a script-run VACUUM of those tables on prod is a front-door incident (FIX-1144). votes was added: W1 left 18,863 dead and its only owner is Sat 02:37Z.",
+    "D6 Luján House stub: the shape-A dry run REJECTED it with 'survivor does not claim H8NM03196 (neither fec_candidate_id nor prior_fec_candidate_ids)'. Left per D6. It was not the overlap gate (the script has none): verifySharedIdInDb requires the survivor to claim the id, and O1 will not append it while the stub claims it, so no path takes it.",
+    "Name window: the promotion RPC keeps the stub's FEC name fields, so the 11 display FEC names until the Mon 21:00Z congress_officials upsert. Craig chose to leave it to the nightly. Filed FIX-1279.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1189",
+      "what": "Mon 10-05 21:00 UTC nightly (the first unattended run of both switches): promote-candidates by_dataset_key=0; congress_legislator_ids_bind acted {promoted 2, prior_appended 29, bound 0}; the 11 survivors carry congress.gov names again; then receipt §10: prior_office_live 0, prior_incomplete 0, double_claim 47 (all other-office, Luján's H stub among them) → record prod verification of FIX-1189 (Fixes: FIX-1189 / Verified: prod)",
+      "after": "2026-10-06T07:30Z"
+    },
+    {
+      "fix": "FIX-1189",
+      "what": "the first drop night after (Sun 10-11 21:00 UTC): the cn stage mints 0 stubs for sitting members; promote-candidates skipped_bound ≈ 538 (527 + the 11)",
+      "after": "2026-10-12T03:00Z"
+    },
+    {
+      "fix": "FIX-1020",
+      "what": "Austin Scott's survivor 893a581e carries his 10 LittleSis rows + the elected row's attachments; /officials/893a581e… renders with votes + money after official_vote_stats (03:30Z) and official_homepage_stats_mv (06:00Z) rebuild",
+      "after": "2026-10-06T03:00Z"
+    },
+    {
+      "fix": "FIX-1189",
+      "what": "Wed 10-07 votes-arm cycle: Luján's vote_* edges with 0 underlying votes stay 0 (already 0 at 00:05Z: 63 edges, all backed)",
+      "after": "2026-10-08T12:00Z"
+    }
+  ]
+}
