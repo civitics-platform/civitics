@@ -205,6 +205,93 @@ export const INDUSTRY_KEYWORDS: Record<string, string[]> = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// FIX-1280 — which text the keyword pass reads
+//
+// A corporate or trade PAC (N/Q) is named after its sponsor, so its own name is
+// the right thing to match. A super PAC or hybrid (O/U/V/W) is named after its
+// CAUSE: "Common Defense Action Fund" → defense, "Workers Vote" → labor,
+// "Support America's Police PAC" → labor, "Tech for Campaigns" → tech. Prod,
+// 2026-10-05 (cc-196 read 3): 162 keyword rows on 158 of the 3,553 O/U/V/W
+// committees, most of them cause words. For those four types the pass reads the
+// FEC connected organisation instead, which is the sponsor when there is one
+// (NAR Congressional Fund → "National Association of Realtors"). No sponsor
+// (blank, or FEC's literal NONE) means no keyword row at all.
+//
+// One exception, Craig 2026-10-05: the `lobby` list names organisations, not
+// causes (club for growth, nra, gun owners, aipac, chamber of commerce). A
+// super PAC whose own name carries one IS that organisation's committee, so the
+// list is still matched against the display name: Club for Growth Action
+// ($181.1M IE), NRA Victory Fund ($22.0M) and Gun Owners Action Fund ($2.0M)
+// keep `lobby` although their connected org is blank or NONE.
+// ---------------------------------------------------------------------------
+
+/** FEC committee types matched on their connected organisation (FIX-1280). */
+export const SPONSOR_MATCHED_CMTE_TYPES: ReadonlySet<string> = new Set(["O", "U", "V", "W"]);
+
+/** Keyword lists of organisation names, still read off an O/U/V/W committee's own name. */
+export const SPONSOR_NAME_INDUSTRIES: ReadonlySet<string> = new Set(["lobby"]);
+
+/** FEC's placeholders for "no connected organisation". */
+const NO_CONNECTED_ORG = new Set(["", "NONE", "N/A", "NA"]);
+
+export type KeywordMatchSourceName = "display_name" | "connected_org";
+
+export type KeywordEntityInput = {
+  display_name: string | null;
+  /** metadata->>'fec_cmte_type_raw'; null for a non-FEC entity. */
+  cmte_type: string | null;
+  /** metadata->>'fec_connected_org_nm'. */
+  connected_org: string | null;
+};
+
+/**
+ * The text the keyword pass matches for one entity, or null when there is none.
+ * O/U/V/W read the connected organisation (null without one); everything else,
+ * including a non-FEC entity with no committee type, reads its display name.
+ */
+export function keywordMatchSource(
+  entity: KeywordEntityInput,
+): { text: string; source: KeywordMatchSourceName } | null {
+  const type = (entity.cmte_type ?? "").trim().toUpperCase();
+  if (!SPONSOR_MATCHED_CMTE_TYPES.has(type)) {
+    return { text: String(entity.display_name ?? "").toLowerCase(), source: "display_name" };
+  }
+  const org = (entity.connected_org ?? "").trim();
+  if (NO_CONNECTED_ORG.has(org.toUpperCase())) return null;
+  return { text: org.toLowerCase(), source: "connected_org" };
+}
+
+/** ≤ 4-char keywords match on word boundaries ("oil" must not hit "soil"); longer ones as substrings. */
+function matchesKeyword(textLower: string, kw: string): boolean {
+  if (kw.length <= 4) {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(textLower);
+  }
+  return textLower.includes(kw);
+}
+
+/** Every industry whose keyword list matches the entity, with the text it matched. */
+export function matchIndustryKeywords(
+  entity: KeywordEntityInput,
+): Array<{ industry: string; matched_on: KeywordMatchSourceName }> {
+  const primary = keywordMatchSource(entity);
+  const ownName = String(entity.display_name ?? "").toLowerCase();
+  const out: Array<{ industry: string; matched_on: KeywordMatchSourceName }> = [];
+  for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
+    if (primary && keywords.some((kw) => matchesKeyword(primary.text, kw))) {
+      out.push({ industry, matched_on: primary.source });
+    } else if (
+      primary?.source !== "display_name" &&
+      SPONSOR_NAME_INDUSTRIES.has(industry) &&
+      keywords.some((kw) => matchesKeyword(ownName, kw))
+    ) {
+      out.push({ industry, matched_on: "display_name" });
+    }
+  }
+  return out;
+}
+
 // FIX-908: the local INDUSTRY_LABELS copy that lived here is gone — the map is now
 // imported from ./topics, beside VALID_INDUSTRIES, so the vocabulary and its
 // labels can no longer drift apart. Runtime lookups on unvalidated keys (rollup
@@ -1540,6 +1627,8 @@ export async function tagFinancialEntities(_db: unknown): Promise<TagWriteCount>
   const allTags: TagInsert[] = [];
 
   // -- Industry from display_name keyword matching (FEC PACs / orgs) --------
+  // (O/U/V/W committees match their connected org instead — FIX-1280, see
+  // keywordMatchSource above.)
   // Scoped to NON-individual entities (FIX-437). Un-truncating the old select
   // would keyword-match the 4,975,895 individual donors by surname (e.g. anyone
   // named "Koch" -> oil_gas, "Wells" -> finance) -- false positives on people.
@@ -1571,6 +1660,27 @@ export async function tagFinancialEntities(_db: unknown): Promise<TagWriteCount>
     display_name: string | null;
     entity_type: string | null;
   };
+  // FIX-1280: the committee type and connected org of every O/U/V/W committee,
+  // read ONCE before the chunks. NOT added to the chunk select: that would turn
+  // the index-only scan into a heap fetch of every non-individual row (63,063
+  // heap blocks against 4,361 index pages on the clone, 2026-10-05). These
+  // committees are all `pac` or `super_pac` (cmteTypeToEntityType in
+  // fec-bulk/writer.ts writes the type and the entity_type from the same code,
+  // and is the only writer of fec_cmte_type_raw), so financial_entities_type
+  // narrows the read to ~10k rows (6,701 buffers on the clone). An entity
+  // absent from this map is matched on its display name, exactly as before.
+  const sponsorRows = await timed("O/U/V/W committee sponsors (direct-pg)", () =>
+    selectDirect<{ id: string; cmte_type: string; connected_org: string | null }>(
+      `SELECT id,
+              metadata->>'fec_cmte_type_raw'   AS cmte_type,
+              metadata->>'fec_connected_org_nm' AS connected_org
+         FROM public.financial_entities
+        WHERE entity_type IN ('pac', 'super_pac')
+          AND metadata->>'fec_cmte_type_raw' IN ('O', 'U', 'V', 'W')`,
+    ),
+  );
+  const sponsorById = new Map(sponsorRows.map((r) => [r.id, r]));
+
   let feAfterId: string | null = null;
   let feScanned = 0;
   for (;;) {
@@ -1585,24 +1695,17 @@ export async function tagFinancialEntities(_db: unknown): Promise<TagWriteCount>
     feScanned += entities.length;
 
     for (const entity of entities) {
-      const nameLower = String(entity.display_name ?? "").toLowerCase();
-      const matchedIndustries: string[] = [];
+      const sponsor = sponsorById.get(entity.id);
+      const matches = matchIndustryKeywords({
+        display_name: entity.display_name,
+        cmte_type: sponsor?.cmte_type ?? null,
+        connected_org: sponsor?.connected_org ?? null,
+      });
 
-      for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
-        const matched = keywords.some((kw) => {
-          if (kw.length <= 4) {
-            const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            return new RegExp(`\\b${escaped}\\b`, "i").test(nameLower);
-          }
-          return nameLower.includes(kw);
-        });
-        if (matched) matchedIndustries.push(industry);
-      }
-
-      if (matchedIndustries.length > 0) {
-        const baseConfidence = matchedIndustries.length > 1 ? 0.7 : 0.8;
+      if (matches.length > 0) {
+        const baseConfidence = matches.length > 1 ? 0.7 : 0.8;
         const base = { entity_type: "financial_entity", entity_id: entity.id as string, generated_by: "rule" as const, pipeline_version: "v1" };
-        for (const industry of matchedIndustries) {
+        for (const { industry, matched_on } of matches) {
           const info = industryDisplay(industry);
           if (!info) continue;
           allTags.push({
@@ -1613,7 +1716,9 @@ export async function tagFinancialEntities(_db: unknown): Promise<TagWriteCount>
             display_label: info.label,
             display_icon: info.icon,
             visibility: baseConfidence >= 0.8 ? "primary" : "secondary",
-            metadata: { matched_count: matchedIndustries.length },
+            // FIX-1280: `matched_on` says which text the keyword hit, so a
+            // super PAC's row can be told from a sponsor-named PAC's.
+            metadata: { matched_count: matches.length, matched_on },
           });
         }
       }
