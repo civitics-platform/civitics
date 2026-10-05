@@ -19,6 +19,8 @@ steps:
   - {id: s11, kind: cc, ref: "cc-184", title: "CACI NSS joins the defense cohort (806)", done: 2026-10-03}
   - {id: s12, kind: receipt, ref: "FIX-1255", title: "the first tail after the CACI NSS override — one defense/ai row, no tech", after: 2026-10-04T21:40Z}
   - {id: s13, kind: cc, ref: "cc-191", title: "1273 kept counts to data_sync_log + receipts; 1266 audit (reads)"}
+  - {id: s14, kind: cc, ref: "cc-196", title: "1266 cohort (814) + the super-PAC keyword pass reads the sponsor"}
+  - {id: s15, kind: receipt, ref: "FIX-1280", title: "the Mon 10-05 tail — 24 rule rows on O/U/V/W committees; the six 1266 picks", after: 2026-10-05T22:45Z}
 ---
 
 # Industry tag remediation
