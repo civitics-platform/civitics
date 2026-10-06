@@ -139,6 +139,7 @@ Ask the question with **`pnpm fixes:status FIX-NNN`** (or `pnpm fixes:status` fo
 ---
 
 ## AGENCIES
+- 🟡 S — **/institutions/<slug> resolves under loading.tsx and answers 200, not 308** — Filed by cc-200 (rule 106, read 6). /institutions/[id] resolves a governing_bodies.slug to its UUID inside the page (app/institutions/[id]/page.tsx: a withDbTimeout slug read, then permanentRedirect) under its own loading.tsx, so the redirect degrades exactly as FIX-418/433/439 describe. curl -sI https://civitics-civitics.vercel.app/institutions/administrative-services-department at 2026-10-06 04:07:30Z answered HTTP 200 (x-vercel-id pdx1::iad1::ct78p-1791259650417-dfde159f1105); the body carries a meta refresh to /institutions/86d888f1-7453-4fc3-9461-f5528fd7230e and NEXT_REDIRECT;replace;/institutions/86d888f1-7453-4fc3-9461-f5528fd7230e;308. Search engines honour the meta refresh, but the status is 200 rather than 308, and an unknown slug's not-found branch is a 200 as well. Fix shape: either move the slug resolve to middleware the way FIX-1278 did for retired official ids (a per-isolate cached slug-to-id list read from PostgREST with the publishable key, failing open), or take the slug branch out from under the loading.tsx boundary. Cross-ref [[FIX-1278]], [[FIX-418]], [[FIX-439]]. <!--id:FIX-1283--> <!--lane:app-->
 
 
 ---
