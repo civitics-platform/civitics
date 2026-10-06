@@ -19,7 +19,7 @@
     "fixes:sync:dry": "node scripts/fixes-sync.mjs --dry-run",
     "fixes:check": "node scripts/fixes-sync.mjs --check",
     "fixes:check:trunk": "node scripts/fixes-sync.mjs --check-trunk",
-    "fixes:test": "node scripts/test-fixes-sync.mjs && node scripts/test-fix-status.mjs && node scripts/test-cc-verify.mjs && node scripts/test-board.mjs && node scripts/test-trunk-guard.mjs && node scripts/test-session-held.mjs",
+    "fixes:test": "node scripts/test-fixes-sync.mjs && node scripts/test-fix-status.mjs && node scripts/test-cc-verify.mjs && node scripts/test-board.mjs && node scripts/test-trunk-guard.mjs && node scripts/test-session-held.mjs && node scripts/test-session-worktree.mjs",
     "fixes:test:trunk": "node scripts/test-trunk-guard.mjs && node scripts/test-session-held.mjs",
     "fixes:housekeep": "node scripts/fixes-housekeep.mjs",
     "fixes:housekeep:dry": "node scripts/fixes-housekeep.mjs --dry-run",

@@ -119,3 +119,11 @@ jobs:
       # (FIX-1199) had been local-only until now.
       - name: session:held + pre-push hook unit tests
         run: node scripts/test-session-held.mjs && node scripts/test-pre-push-hook.mjs
+
+      # FIX-1276: session:worktree:done's teardown decisions — the FIX-480
+      # containment guard, and the porcelain parse + disposition that send a
+      # registered-but-prunable tree down the FIX-879 orphan path while still
+      # refusing a live tree whose status cannot be read. Existed since FIX-480
+      # and had never been wired into CI. Pure Node, no git calls, <1s.
+      - name: session:worktree unit tests
+        run: node scripts/test-session-worktree.mjs

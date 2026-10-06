@@ -19,6 +19,11 @@
 // A fresh worktree has neither `.env.local` (gitignored), so create seeds both
 // to LOCAL Docker — a fresh worktree must never silently inherit prod.
 //
+// Teardown of a tree whose `.git` file is gone (FIX-1276): git still lists it
+// but marks it `prunable`, and done() then runs `git worktree prune` before
+// anything else. That prune takes no path — it de-registers EVERY prunable
+// entry in the repo, and the log line prints its dry run first.
+//
 // Dependency-free Node, shell-agnostic (PowerShell / Git Bash / CI alike).
 
 import { spawnSync } from "node:child_process";
@@ -42,6 +47,54 @@ export function isContainedWorktreePath(wtDir, root) {
   const base = resolve(root, "..", "civitics-worktrees");
   const rel = relative(base, resolve(wtDir));
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+// FIX-1276: `git worktree list --porcelain` emits one blank-line-separated
+// block per worktree — `worktree <path>`, `HEAD <sha>`, then `branch <ref>` or
+// `detached`, then optional `locked [<reason>]` / `prunable <reason>`. The
+// pre-1276 check read only the `worktree` lines, so a tree git itself reports
+// as `prunable gitdir file points to non-existent location` (its `.git` file
+// gone, still registered) looked like a live tree whose status could not be
+// read — and was refused as dirty. Exported for unit testing.
+export function parseWorktreeList(porcelainText) {
+  const entries = [];
+  for (const block of String(porcelainText ?? "").split(/\r?\n[ \t]*\r?\n/)) {
+    let entry = null;
+    for (const line of block.split(/\r?\n/)) {
+      if (line === "") continue;
+      const sp = line.indexOf(" ");
+      const key = sp === -1 ? line : line.slice(0, sp);
+      const val = sp === -1 ? "" : line.slice(sp + 1);
+      if (key === "worktree") {
+        entry = { path: val.trim(), detached: false, prunable: null };
+        entries.push(entry);
+      } else if (!entry) {
+        continue;
+      } else if (key === "HEAD") {
+        entry.head = val;
+      } else if (key === "branch") {
+        entry.branch = val;
+      } else if (key === "detached") {
+        entry.detached = true;
+      } else if (key === "prunable") {
+        entry.prunable = val;
+      }
+    }
+  }
+  return entries;
+}
+
+// What done() may do with the dir at wtDir. `orphan` means git holds nothing
+// worth preserving for it: either it is not registered at all (FIX-879), or git
+// says its admin entry is prunable (FIX-1276). Exported for unit testing.
+export function worktreeDisposition({ entries, wtDir, statusOk, statusOut }) {
+  const target = resolve(wtDir);
+  const entry = entries.find((e) => resolve(e.path) === target);
+  const registered = Boolean(entry);
+  const prunable = registered && entry.prunable !== null;
+  const orphan = !registered || prunable;
+  const cleanIgnoringArtifacts = (statusOk && statusOut === "") || orphan;
+  return { registered, prunable, orphan, cleanIgnoringArtifacts };
 }
 
 function run(cmd, args, opts = {}) {
@@ -267,14 +320,19 @@ function done(rawId, argv) {
     // FIX-877's own live teardown test. An orphan has no tracked changes to
     // preserve, and the fs.rm below is still containment-guarded, so treat it as
     // clean-and-removable.
-    const isRegistered = git("worktree", "list", "--porcelain")
-      .out.split(/\r?\n/)
-      .some((line) => {
-        const m = line.match(/^worktree (.+)$/);
-        return m && resolve(m[1].trim()) === resolve(wtDir);
-      });
+    // FIX-1276: the same holds for a tree that is still REGISTERED but that git
+    // reports `prunable` — its `.git` file is gone, so `git -C <dir> status`
+    // fails exactly as it does for the FIX-879 orphan, and there is no git state
+    // left in the dir to preserve (cc-190: five such trees, all refused). A
+    // registered tree whose status fails WITHOUT git calling it prunable is
+    // still refused below.
     const porcelain = git("-C", wtDir, "status", "--porcelain");
-    const cleanIgnoringArtifacts = (porcelain.ok && porcelain.out === "") || !isRegistered;
+    const { prunable, orphan, cleanIgnoringArtifacts } = worktreeDisposition({
+      entries: parseWorktreeList(git("worktree", "list", "--porcelain").out),
+      wtDir,
+      statusOk: porcelain.ok,
+      statusOut: porcelain.out,
+    });
     const forceRemove = force || cleanIgnoringArtifacts;
 
     if (!forceRemove) {
@@ -286,13 +344,33 @@ function done(rawId, argv) {
     // --force is always passed to git here: when porcelain is clean it's the
     // gitignored artifacts that would otherwise block removal; when the caller
     // forced, they've accepted the loss.
+    // FIX-1276: de-register a prunable tree FIRST, so it is a plain FIX-879
+    // orphan from here on. `git worktree prune` takes no path — it prunes EVERY
+    // prunable entry in the repo, not just this one — so the dry run is logged
+    // before the real prune, naming everything it will touch. A prunable entry
+    // has already lost its gitdir link; pruning it removes only git's admin
+    // record, never a file in any working tree.
+    if (prunable) {
+      const dry = git("worktree", "prune", "-n");
+      const listing = [dry.out, dry.err].filter(Boolean).join("\n") || "(dry run listed nothing)";
+      console.warn(
+        `[session:worktree] ⚠ prunable per git — pruned, taking the orphan path (FIX-1276). ` +
+        `\`git worktree prune\` prunes EVERY prunable entry in the repo; dry run:\n` +
+        listing.split(/\r?\n/).map((l) => `    ${l}`).join("\n"),
+      );
+      const pruned = git("worktree", "prune");
+      if (!pruned.ok) {
+        console.warn(`[session:worktree] ⚠ git worktree prune reported: ${pruned.err || "unknown"}`);
+      }
+    }
+
     // FIX-879: a de-registered orphan can only ever error "not a working tree"
     // from `git worktree remove` (a permanent failure, not a transient lock), so
     // skip the remove + its backoff entirely and go straight to the contained
     // fs.rm below — avoids ~34s of futile retries on the recovery re-run.
-    let rm = isRegistered
+    let rm = !orphan
       ? git("worktree", "remove", wtDir, "--force")
-      : { ok: false, err: "de-registered orphan — skipping git worktree remove" };
+      : { ok: false, err: "orphan — skipping git worktree remove" };
 
     // FIX-480 / FIX-876: on a freshly-built tree, `git worktree remove` loses to
     // a TRANSIENT lock on a just-written node_modules handle — the AV (Defender
@@ -308,7 +386,7 @@ function done(rawId, argv) {
     // for ../civitics-worktrees (Bitdefender/Defender); this loop covers the
     // residual indexer window.
     for (const delayMs of [2000, 4000, 8000, 10000, 10000]) {
-      if (rm.ok || !isRegistered) break;
+      if (rm.ok || orphan) break;
       console.warn(
         `[session:worktree] ⚠ git worktree remove failed (${rm.err || "unknown"}); retrying in ${delayMs / 1000}s ...`,
       );
@@ -338,7 +416,13 @@ function done(rawId, argv) {
         );
       }
       console.warn(
-        `[session:worktree] ⚠ ${isRegistered ? "git worktree remove still failing after retry" : "de-registered orphan dir"}; ` +
+        `[session:worktree] ⚠ ${
+          !orphan
+            ? "git worktree remove still failing after retry"
+            : prunable
+              ? "pruned prunable worktree dir"
+              : "de-registered orphan dir"
+        }; ` +
         `falling back to contained fs.rm of ${wtDir}`,
       );
       let rmFallbackOk = true;
