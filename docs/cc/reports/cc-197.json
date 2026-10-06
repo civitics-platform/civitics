@@ -1,0 +1,130 @@
+{
+  "cc": "197",
+  "prompt": "cc-prompt-197-monday-records-fix1145-hook-sunday-tail-mon-nightly-first-o1-run.md",
+  "started_at": "2026-10-05T23:31:33Z",
+  "finished_at": "2026-10-06T00:27:52Z",
+  "head_before": "b06f0c14",
+  "head_after": "8520ef11",
+  "commits": [
+    {
+      "sha": "ddeb5673",
+      "subject": "chore(fixes): record prod verification of FIX-1145 — the 06:00 unit 2.0 s (was 43.4); jobid 24 09:00 moved the watermark and refreshed the MV (homepage_mv_refreshed true, refreshed_at 09:14:38.716Z); 39,026/39,026 equal on all three"
+    },
+    {
+      "sha": "bc62ce7d",
+      "subject": "chore(fixes): record prod verification of FIX-1273 — the Sun 10-04 tag_rules row carries kept_proposals 0 / kept_financial_entities 17 / kept_officials 0 / kept_total 17, and receipts 10-05 prints the line"
+    },
+    {
+      "sha": "ba4fc056",
+      "subject": "chore(fixes): record prod verification of FIX-1255 — CACI NSS carries one industry row (defense/ai 0.85, no tech/rule) and picks defense; the Sun tail kept 17 and resolved 808 overrides, 0 orphans"
+    },
+    {
+      "sha": "0f25624f",
+      "subject": "chore(fixes): record prod verification of FIX-1204 — PCMA picks health/curated and NRA PVF lobby/curated; the Sun tail resolved 808 overrides, 0 orphans"
+    },
+    {
+      "sha": "aee7e1a6",
+      "subject": "chore(fixes): record prod verification of FIX-1261 — the Sun 10-04 congress_votes row stamps minted {} (no mint that night), 0 novel federal failed since 10-03 23:25:47Z, advanced 0 / held 173"
+    },
+    {
+      "sha": "2ba8fc6b",
+      "subject": "chore(fixes): record prod verification of FIX-1257 — the Sun 10-04 congress_votes row stamps advanced 0 / held 173 / advance_failed 0; read-back 166/166 passed_chamber (exit 0); four backfilled bills re-synced and held"
+    },
+    {
+      "sha": "63f0e66d",
+      "subject": "chore(fixes): record prod verification of FIX-1262 — the first sync after 4409fa6b rewrote HR 9617 and HR 3903 (\"Received in the Senate…\") and left both at passed_chamber; read-back 350/350 (exit 0)"
+    },
+    {
+      "sha": "31a54ea0",
+      "subject": "chore(fixes): record prod verification of FIX-1124 — Mon 10-05 morning repeated the yields (ec peer_due +3 / peer_running +2, fe +1 / +2), no gate key on the daily, 0 overlaps; receipts 10-05/10-06 section 9 render lifetime then delta"
+    },
+    {
+      "sha": "46f6e3d9",
+      "subject": "chore(fixes): record prod verification of FIX-1269 — over 90 ticks since the 02:41:40Z 10-04 baseline the two enrichment_queue counts read 10.0 / 12.5 blocks per call (were ~58k), and the refreshed_at sort has had no call since 06:01Z 10-04"
+    },
+    {
+      "sha": "c452c94e",
+      "subject": "chore(fixes): record prod verification of FIX-1012 — irs990's first run after the drops completes clean (21:54-21:56Z 10-05, no resolver timeout); FE HOT 17.9 % since cc-175's epoch (was 4.7 %), 15 indexes / 1,689,190,400 bytes"
+    },
+    {
+      "sha": "c680586c",
+      "subject": "chore(fixes): record prod verification of FIX-1266 — the Mon 10-05 tail picks defense for RTX PAC, labor/curated for In Union USA and UAW Education Fund, none for VIEW PAC / Equality PAC / SCF; rollup_labels_updated 1,189 + 48"
+    },
+    {
+      "sha": "03ae8836",
+      "subject": "docs(fixes): file FIX-1281 (a runnerless fec-phase loses the night's FEC phase); append the Monday 10-05 readings to FIX-1189, FIX-1279, FIX-1194, FIX-1125 and FIX-1132 (no records)"
+    },
+    {
+      "sha": "6862cadc",
+      "subject": "chore(fixes): sync status after the cc-197 records (FIX-1145, FIX-1273, FIX-1255, FIX-1204, FIX-1261, FIX-1257, FIX-1262, FIX-1124, FIX-1269, FIX-1012, FIX-1266)"
+    },
+    {
+      "sha": "a705c03e",
+      "subject": "chore(fixes): record prod verification of FIX-1189 — the supervised re-dispatch's O1 acted bound 0 / promoted 2 (Frankel, Foster) / prior_appended 29; by_dataset_key=0, skipped_bound 538; the 11's names back at 00:09:06.880Z; section 10 prior_office_live 0, double_claim 47"
+    },
+    {
+      "sha": "63cef4d5",
+      "subject": "docs(fixes): append FIX-1279 (the names window closed at 00:09:06.880Z) and FIX-1281 (the re-dispatch could not recover Monday's EDGAR 13D/G; edgar_daily scans todayUtc only)"
+    },
+    {
+      "sha": "8520ef11",
+      "subject": "chore(fixes): sync status after FIX-1189"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1145",
+    "FIX-1273",
+    "FIX-1255",
+    "FIX-1204",
+    "FIX-1261",
+    "FIX-1257",
+    "FIX-1262",
+    "FIX-1124",
+    "FIX-1269",
+    "FIX-1012",
+    "FIX-1266",
+    "FIX-1189"
+  ],
+  "fixes_filed": [
+    "FIX-1281"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "ONE, authorised by Craig mid-run (asked and answered at ~00:04Z 10-06): a manual nightly re-dispatch. Command: gh workflow run nightly.yml -f slot_offset_hours=3 -f dispatched_by=manual. Run 37392299107, created 00:07:24Z, success; fec 00:07:28-00:11:51Z, tail to 00:22:07Z, receipts to 00:23:02Z. It was fired after jobid 25's 00:05Z row was terminal (agency_staffing_rollup_refresh complete 00:05:30.514Z) and with session:held false / live_writers 0. It ran the whole weekday nightly against prod: regulations, congress_officials (539 updated), congress_votes (200 proposals upserted, 0 votes inserted), openstates_bulk_people, edgar_daily (skipped, 10-06 index HTTP 403), the FIX-1189 O1 bind (bound 0 / promoted 2 / prior_appended 29), no fec_bulk (no new drop), then enrichment heavy/light/tail (tag_rules 107,476 upserted) and the receipts commit 39c3b480. Everything else was a read: db-query --prod, the two read-backs, gh, session:held.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1189 STOP-FLAG on the Monday run, raised loudly then RESOLVED by the authorised re-dispatch. The Mon 21:00Z fec-phase (run 37373195416, job 111975201000) was never acquired by a hosted runner. GitHub's annotation reads 'The job was not acquired by Runner of type hosted even after multiple attempts'. It was cancelled at 21:15:16Z with zero steps, so neither switch ran: no promote-candidates line, no bind line, no bind row. Filed FIX-1281. The re-dispatch (run 37392299107) then acted exactly {promote 2, prior_append 29, bound 0}, with by_dataset_key=0. Recorded a705c03e.",
+    "The 'schedule' fallback for nominal day 10-06 was not waited on (Craig: decidePreflight is pure, and the unit test rides FIX-1281's fix). None had appeared by 00:24Z. The background poll was stopped at 00:03Z.",
+    "FIX-1132 read windows again, so it was appended, not recorded. The reason is DIFFERENT from 10-04's ('stats pass in flight' vs 'entity_connections changed since the stats arm last banked'). The prompt's 'windows twice with the same reason' design-gap flag therefore does not fire as written. Two mornings, two different invalidators, is reported under 'contradicted'.",
+    "FIX-1020 not attempted. The run's reads were all before 2026-10-06T03:00Z (the last at about 00:25Z 10-06), so it is left for Tuesday after the 03:30Z vote-stats rebuild.",
+    "The FIX-1189 record commit a705c03e carries its author date in UTC (+0000). fixes:sync dates done.log rows by author date (git log --date=short), so a PDT stamp would have dated the row 10-05 and settled none of FIX-1189's 10-06 entries. The instant is true either way; only the zone of the stamp differs. Said here so it is not mistaken for back-dating.",
+    "FIX-1194 is not recordable (after 10-09). The Monday line was appended.",
+    "The prompt's 'cd packages/data && pnpm run' form for the two read-backs does not apply. fix1257-backfill-passed-status.mjs and fix1262-backfill-voice-vote-passages.mjs live in the repo-root scripts/ and have no pnpm entry. Both ran as 'node scripts/<file> --prod --read-back --env-file <primary .env.local.prod>', each read-only by construction. No pnpm --filter was used.",
+    "The worktree's .env.local.prod is a stub (no SUPABASE_DB_PASSWORD). Every db-query --prod ran the PRIMARY checkout's scripts/db-query.mjs (it resolves the env by script path), still --prod, still read-only.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1132",
+      "what": "the first 06:00 daily whose pipeline_state.entity_search_index reads conn_source = stats_table, with unit_seconds.rebuild_entity_search_index well under the 247 s p50 (10-04 windows / crawl 05:00 EC write / 239.6 s; 10-05 windows / stats pass in flight / 260.1 s) → record",
+      "after": "2026-10-04T06:30Z"
+    },
+    {
+      "fix": "FIX-1132",
+      "what": "Tue 10-06 06:00 daily: conn_source + conn_reason + stats_fp + unit seconds. A third windows, from either invalidator already seen, makes the stats-arm timing vs the 06:00 slot the design question",
+      "after": "2026-10-06T06:30Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "the week verdict (receipts §9 by-day 10-02 → 10-09); Mon 10-05 read 09:00 complete 878.6 s with the watermark moved, 12:00 caught up 0.2 s, no gate/backoff/partial, 0 startup timeouts",
+      "after": "2026-10-09T12:00Z"
+    },
+    {
+      "fix": "FIX-1125",
+      "what": "seven forker.memory_day files (3 of 7 banked: p95 548.8 / 684.2 / 723.9 on 10-04 / 10-05 / 10-06) → the memory-threshold design, which must not assume the snapshot drives the :02/:32 bursts",
+      "after": "2026-10-09T23:30Z"
+    }
+  ]
+}
