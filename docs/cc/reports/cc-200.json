@@ -1,0 +1,46 @@
+{
+  "cc": "200",
+  "prompt": "cc-prompt-200-fix1278-official-redirects-308-via-middleware.md",
+  "started_at": "2026-10-06T04:04:12Z",
+  "finished_at": "2026-10-06T04:30:00Z",
+  "head_before": "82abe5b3",
+  "head_after": "02d6bf61",
+  "commits": [
+    {
+      "sha": "c6d7d8e0",
+      "subject": "fix(app): FIX-1278 — official_redirects: the promotion RPC records the retired UUID, middleware answers 308 from a per-isolate cached list; the eleven cc-194 promoted backfilled"
+    },
+    {
+      "sha": "8719e33b",
+      "subject": "chore(fixes): record prod verification of FIX-1278 — eleven old official UUIDs answer 308 on prod; the RPC writes the row"
+    },
+    {
+      "sha": "308bef4a",
+      "subject": "docs(fixes): file FIX-1283 — /institutions/<slug> resolves under loading.tsx and answers 200, not 308"
+    },
+    {
+      "sha": "02d6bf61",
+      "subject": "chore(fixes): sync status after FIX-1278"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1278"
+  ],
+  "fixes_filed": [
+    "FIX-1283"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261006010000_fix1278_official_redirects.sql"
+  ],
+  "prod_writes": "One migration, 20261006010000, in ONE gated push. session:wait-for-gate:prod --expected-minutes 1 --census stop ran from the primary checkout's packages/data with --workdir on the fix-1278 worktree, under the FIX-950 claim. The gate opened 04:17:59Z (census pass), --then db-push-prod applied the one file, and the claim was released with exit 0. Content: CREATE TABLE public.official_redirects (RLS on, one SELECT policy, GRANT SELECT to anon/authenticated/service_role); CREATE OR REPLACE FUNCTION promote_candidate_to_elected (the fix1279 body plus two statements); an INSERT of the 11 cc-194 W1 pairs. No CALL, no script, no VACUUM.",
+  "ci": "green",
+  "stopped_items": [
+    "Permission prompt (denied): `cd …/fix-1278/apps/civitics && rm -rf .next && cd ../.. && pnpm --filter @civitics/app-civitics build`. The cold rebuild would have re-surfaced the first build's 'Compiled with warnings'. I stopped that command and did not work around it. The build had passed, the middleware compiled clean under next dev (no edge-runtime warning), and the post-rebase build printed only the edge-runtime static-generation notice. Where the first warning came from is unconfirmed.",
+    "Deviation, not a stop: the backfill adds AND NOT EXISTS (old id) to the prompt's WHERE EXISTS (survivor). On the clone the promotion never ran, so all eleven old ids are live rows, and the prompt's SQL would have seeded redirects that shadow live pages. Clone count 0, prod 11. The local 308 curl used one hand-seeded row, which was removed afterwards.",
+    "No STOP condition fired. Read 2's body was equal, read 3's eleven were clean, the dry run listed one file, and held was false at every push."
+  ],
+  "lane": "app",
+  "project": "congress-ids",
+  "owed": []
+}
