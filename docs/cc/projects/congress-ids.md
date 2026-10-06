@@ -13,6 +13,7 @@ steps:
   - {id: s5, kind: cc, ref: "cc-193", title: "promotion by dataset key + O1 code"}
   - {id: s6, kind: cc, ref: "cc-194", title: "the supervised landing"}
   - {id: s7, kind: cc, ref: "cc-196", title: "1279 rider — the promotion RPC adopts the elected row's name fields"}
+  - {id: s8, kind: cc, ref: "cc-200", title: "FIX-1278 official_redirects + the RPC writes the row"}
 ---
 
 # Congress-legislators FEC ids (FIX-1189)
