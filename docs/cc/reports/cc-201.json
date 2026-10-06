@@ -1,0 +1,45 @@
+{
+  "cc": "201",
+  "prompt": "cc-prompt-201-fix1276-fix1275-worktree-prunable-and-writers-live-heavy-gate.md",
+  "started_at": "2026-10-06T04:06:00Z",
+  "finished_at": "2026-10-06T04:18:29Z",
+  "head_before": "82abe5b3",
+  "head_after": "c90db2e8",
+  "commits": [
+    {
+      "sha": "076e1418",
+      "subject": "fix(scripts): FIX-1276 — session:worktree:done prunes a registered-but-prunable worktree and takes the orphan path; parseWorktreeList + worktreeDisposition exported and tested; the suite joins fixes:test"
+    },
+    {
+      "sha": "3d1f6d33",
+      "subject": "test(data): FIX-1275 — the writers-live claim case runs only under CIVITICS_DB_HEAVY_TESTS (option a); run-tests.mjs comment updated"
+    },
+    {
+      "sha": "c90db2e8",
+      "subject": "chore(fixes): sync status after FIX-1276, FIX-1275"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1276",
+    "FIX-1275"
+  ],
+  "fixes_filed": [
+    "FIX-1282"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2 tripped over a create-path bug (rule 106). Run from inside the fix-1276 worktree, 'pnpm session:worktree 9999 --no-install' made the throwaway at civitics-worktrees/civitics-worktrees/fix-9999 and seeded no .env.local. repoRoot() is --show-toplevel, which inside a linked worktree is that worktree. Filed as FIX-1282, not fixed here (the create path is out of scope). The reproduction went ahead on the nested tree, and its porcelain is identical in shape.",
+    "That nested create left an EMPTY dir, C:/Users/Craig/Documents/Civitics/civitics-worktrees/civitics-worktrees/, after the rehearsal removed fix-9999 inside it. It is not removed: the only tool would be rmdir, which CLAUDE.md puts behind approval. Craig to delete by hand.",
+    "The throwaway was created with --no-install. The prompt's command had no flag. node_modules has no bearing on the porcelain or the disposition, and skipping it avoided a ~95 s install plus AV-lock risk on the rehearsal's fs.rm.",
+    "D3 touched a file outside the header's list. fixes-integrity.yml lists its suites one by one and never calls fixes:test, so following the D3 'add the one step instead' branch meant adding a step there. The suite was ALSO appended to fixes:test, because the Verification section asks for its line in that output.",
+    "D4's HEAVY run was file-scoped, not the whole suite: CIVITICS_DB_HEAVY_TESTS=1 pnpm exec tsx --test --test-concurrency=1 src/lib/prod-session.test.ts. A full HEAVY run includes FIX-1212's four full rebuilds (minutes) on the shared clone, and cc-200 was live.",
+    "The FIX-1276 and FIX-1275 appends and the FIX-1282 filing rode the code commits (076e1418 and 3d1f6d33), not a separate docs(fixes) commit. Same for the cc-loop s7 step, in 3d1f6d33.",
+    "No permission prompt fired. That includes the single-file rm of the throwaway's .git file."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": []
+}
