@@ -1606,3 +1606,5 @@
 2026-10-06 | FIX-1189 | a705c03e | prod-only | chore(fixes): record prod verification of FIX-1189 — the supervised re-dispatch's O1 acted bound 0 / promoted 2 (Frankel, Foster) / prior_appended 29; by_dataset_key=0, skipped_bound 538; the 11's names back at 00:09:06.880Z; section 10 prior_office_live 0, double_claim 47
 2026-10-05 | FIX-1275 | 3d1f6d33 | local-only | test(data): FIX-1275 — the writers-live claim case runs only under CIVITICS_DB_HEAVY_TESTS (option a); run-tests.mjs comment updated
 2026-10-05 | FIX-1276 | 076e1418 | local-only | fix(scripts): FIX-1276 — session:worktree:done prunes a registered-but-prunable worktree and takes the orphan path; parseWorktreeList + worktreeDisposition exported and tested; the suite joins fixes:test
+2026-10-05 | FIX-1278 | c6d7d8e0 | local-only | fix(app): FIX-1278 — official_redirects: the promotion RPC records the retired UUID, middleware answers 308 from a per-isolate cached list; the eleven cc-194 promoted backfilled
+2026-10-06 | FIX-1278 | 8719e33b | prod-only | chore(fixes): record prod verification of FIX-1278 — eleven old official UUIDs answer 308 on prod; the RPC writes the row
