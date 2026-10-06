@@ -1,10 +1,12 @@
--- FIX-1195 clone test for promote_candidate_to_elected(). CASE 5 is FIX-1279.
+-- FIX-1195 clone test for promote_candidate_to_elected(). CASE 5 is FIX-1279;
+-- CASE 6 is FIX-1278.
 -- Runs inside db-query.mjs's single transaction; nothing is committed.
 DO $test$
 DECLARE
   v_jur   uuid;
   v_e     uuid;
   v_c     uuid;
+  v_x     uuid;
   v_res   jsonb;
   v_src   jsonb;
 BEGIN
@@ -128,7 +130,34 @@ BEGIN
   ASSERT NOT EXISTS (SELECT 1 FROM officials WHERE id = v_e), 'CASE5: elected row must be deleted';
   RAISE NOTICE 'CASE5 ok: %', v_src::text;
 
-  RAISE NOTICE 'FIX-1195 + FIX-1279 clone test: ALL 5 CASES PASS';
+  -- ── CASE 6 (FIX-1278): the retired id gets a forwarding address ──────────
+  -- An earlier redirect that points AT the row being deleted is re-pointed to
+  -- the survivor, so the table stays single-hop.
+  INSERT INTO officials (jurisdiction_id, full_name, role_title, tier, source_ids)
+  VALUES (v_jur, 'FIX1278 Case Six', 'Representative', 'elected',
+          '{"congress_gov":"X001278"}'::jsonb)
+  RETURNING id INTO v_e;
+
+  INSERT INTO officials (jurisdiction_id, full_name, role_title, tier, source_ids)
+  VALUES (v_jur, 'FIX1278 Case Six', 'Candidate for Representative', 'candidate',
+          '{"fec_candidate_id":"H2XX01278"}'::jsonb)
+  RETURNING id INTO v_c;
+
+  v_x := gen_random_uuid();
+  INSERT INTO official_redirects (old_id, new_id, reason) VALUES (v_x, v_e, 'test:earlier');
+
+  PERFORM promote_candidate_to_elected(v_e, v_c);
+
+  ASSERT (SELECT (new_id, reason) FROM official_redirects WHERE old_id = v_e) = (v_c, 'promotion'::text),
+    'CASE6: the deleted id must forward to the survivor with reason ''promotion''';
+  ASSERT (SELECT new_id FROM official_redirects WHERE old_id = v_x) = v_c,
+    'CASE6: the earlier redirect must be re-pointed to the survivor (chain collapsed)';
+  ASSERT NOT EXISTS (SELECT 1 FROM official_redirects WHERE new_id = v_e),
+    'CASE6: no redirect may target the deleted row';
+  ASSERT NOT EXISTS (SELECT 1 FROM officials WHERE id = v_e), 'CASE6: elected row must be deleted';
+  RAISE NOTICE 'CASE6 ok: % -> %, % -> %', v_e, v_c, v_x, v_c;
+
+  RAISE NOTICE 'FIX-1195 + FIX-1279 + FIX-1278 clone test: ALL 6 CASES PASS';
 END
 $test$;
 ROLLBACK;

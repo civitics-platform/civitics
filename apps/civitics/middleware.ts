@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/ratelimit";
+import { createRedirectResolver } from "@/lib/official-redirects";
 
 // ---------------------------------------------------------------------------
 // Bot pattern filtering
@@ -181,6 +182,13 @@ const UUID_RE =
 const AGENCY_UUID_PATH_RE =
   /^\/agencies\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 
+// FIX-1278: one resolver per edge isolate, so its cached list is shared by
+// every request the isolate serves (src/lib/official-redirects.ts).
+const officialRedirects = createRedirectResolver({
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+});
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
@@ -230,6 +238,21 @@ export async function middleware(request: NextRequest) {
     const result = await checkRateLimit(bucket, ip);
     if (!result.allowed) {
       return rateLimitResponse(result.retryAfterSec);
+    }
+  }
+
+  // ── FIX-1278: retired /officials/<uuid> → its survivor (308) ──────────────
+  // After the rate limit, so a crawler walking old ids is still bucketed. The
+  // FIX-433 comment above ("edge middleware can't do DB lookups") is about a
+  // per-request lookup; this is ONE list read per isolate per hour, and it
+  // fails open (the page renders exactly as before). /officials/<id>/opengraph-
+  // image does not match idGuardMatch and is untouched.
+  if (idGuardMatch?.[1] === "officials") {
+    const to = await officialRedirects.resolve(idGuardMatch[2]!);
+    if (to) {
+      const dest = request.nextUrl.clone();
+      dest.pathname = `/officials/${to}`;
+      return NextResponse.redirect(dest, 308);
     }
   }
 

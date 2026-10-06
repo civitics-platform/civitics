@@ -18,7 +18,8 @@
  *     plain SQL for running by hand.
  *
  * FIX-1279 adds the identity-field precedence (elected first) on both halves;
- * it is CASE 5 in verify_fix1195.sql.
+ * it is CASE 5 in verify_fix1195.sql. FIX-1278 adds the official_redirects row
+ * the promotion writes for the id it deletes; it is CASE 6.
  */
 
 import { test } from "node:test";
@@ -29,11 +30,12 @@ import { Client } from "pg";
 
 // The NEWEST definition of the function, because a source anchor guards the
 // LIVE body, not a superseded file. FIX-1279 (20261005200000) re-states the
-// FIX-1195 body verbatim apart from the six identity fields, so the FIX-1195
-// anchors below read it unchanged.
+// FIX-1195 body verbatim apart from the six identity fields, and FIX-1278
+// (20261006010000) re-states the FIX-1279 body verbatim plus the two
+// official_redirects statements, so the earlier anchors below read it unchanged.
 const MIGRATION = path.join(
   __dirname, "..", "..", "..", "..", "..",
-  "supabase", "migrations", "20261005200000_fix1279_promote_rpc_adopts_elected_names.sql",
+  "supabase", "migrations", "20261006010000_fix1278_official_redirects.sql",
 );
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,21 @@ test("FIX-1279: party and the term dates stay candidate-first (out of scope)", (
   for (const col of ["party", "term_start", "term_end"]) {
     assert.match(src, new RegExp(`^\\s+${col}\\s+= COALESCE\\(c\\.${col},\\s+e\\.${col}\\),$`, "m"), col);
   }
+});
+
+test("FIX-1278: the retired id is recorded BEFORE the elected row is deleted", () => {
+  const src = fs.readFileSync(MIGRATION, "utf8");
+  const del = src.indexOf("DELETE FROM officials WHERE id = p_elected_id;");
+  const repoint = src.indexOf(
+    "UPDATE public.official_redirects SET new_id = p_candidate_id, merged_at = now()\n    WHERE new_id = p_elected_id;",
+  );
+  const record = src.indexOf(
+    "INSERT INTO public.official_redirects (old_id, new_id, reason)\n    VALUES (p_elected_id, p_candidate_id, 'promotion')",
+  );
+  assert.ok(del > 0, "the DELETE FROM officials line is gone");
+  assert.ok(repoint > 0, "the chain-collapse UPDATE is missing — a redirect to the deleted row would dangle");
+  assert.ok(record > 0, "the INSERT of the retired id is missing — its page 404s");
+  assert.ok(repoint < record && record < del, "re-point, then record, then delete — in that order");
 });
 
 test("FIX-1279: the migration is the newest definition of the function", () => {
@@ -256,6 +273,57 @@ test("FIX-1279: the survivor adopts the elected row's name, district, photo and 
     assert.equal(src["congress_gov"], "X001279");
     const gone = await client.query("SELECT 1 FROM officials WHERE id = $1", [electedId]);
     assert.equal(gone.rowCount, 0, "the elected row is deleted");
+  } finally {
+    await client.query("ROLLBACK").catch(() => {});
+    await client.end().catch(() => {});
+  }
+});
+
+// FIX-1278 — the deleted id gets a forwarding address, and an older redirect
+// that pointed AT the deleted row is re-pointed to the survivor, so the table
+// stays single-hop and the edge never walks a chain.
+test("FIX-1278: the promotion records the retired id and collapses chains", async (t) => {
+  const client = new Client({ connectionString: LOCAL_DB, connectionTimeoutMillis: 3000 });
+  try {
+    await client.connect();
+  } catch {
+    t.skip("no database reachable — behavioural half skipped (source anchors above still ran)");
+    return;
+  }
+  try {
+    await client.query("BEGIN");
+    const jur = await client.query<{ id: string }>("SELECT id FROM jurisdictions LIMIT 1");
+    const jurisdictionId = jur.rows[0]?.id;
+    assert.ok(jurisdictionId, "no jurisdictions row to hang the fixtures off");
+
+    const ins = async (tier: string, role: string, src: Record<string, unknown>) =>
+      (await client.query<{ id: string }>(
+        `INSERT INTO officials (jurisdiction_id, full_name, role_title, tier, source_ids)
+         VALUES ($1, 'FIX1278 chain', $2, $3, $4::jsonb) RETURNING id`,
+        [jurisdictionId, role, tier, JSON.stringify(src)],
+      )).rows[0]!.id;
+
+    const electedId = await ins("elected", "Representative", { congress_gov: "X001278" });
+    const candId    = await ins("candidate", "Candidate for Representative", { fec_candidate_id: "H2XX01278" });
+
+    // An id retired by some earlier merge, forwarding to the row about to go.
+    const earlier = (await client.query<{ id: string }>("SELECT gen_random_uuid() AS id")).rows[0]!.id;
+    await client.query(
+      "INSERT INTO public.official_redirects (old_id, new_id, reason) VALUES ($1, $2, 'test:earlier')",
+      [earlier, electedId],
+    );
+
+    await client.query("SELECT public.promote_candidate_to_elected($1, $2)", [electedId, candId]);
+
+    const rows = (await client.query<{ old_id: string; new_id: string; reason: string }>(
+      `SELECT old_id, new_id, reason FROM public.official_redirects
+        WHERE old_id = ANY($1::uuid[]) OR new_id = ANY($1::uuid[]) ORDER BY reason`,
+      [[electedId, candId, earlier]],
+    )).rows;
+    assert.deepEqual(rows, [
+      { old_id: electedId, new_id: candId, reason: "promotion" },
+      { old_id: earlier,   new_id: candId, reason: "test:earlier" },
+    ], "exactly the retired id -> survivor, plus the earlier redirect re-pointed (no row targets the deleted id)");
   } finally {
     await client.query("ROLLBACK").catch(() => {});
     await client.end().catch(() => {});
