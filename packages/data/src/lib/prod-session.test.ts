@@ -193,6 +193,29 @@ async function localDbReachable(): Promise<boolean> {
   }
 }
 
+/**
+ * FIX-1275 — the writers-live case runs only under CIVITICS_DB_HEAVY_TESTS=1.
+ * It holds `financial_entity_totals_refresh`, one of prod_session_state()'s
+ * writer keys (`c_writer_locks`), so in the default concurrent run a claim
+ * test in another file on the shared clone could be refused by it — the
+ * FIX-1263 / FIX-1267 class. The heavy run is serial (run-tests.mjs passes
+ * --test-concurrency=1), so there it holds the key alone. The two claim cases
+ * just below hold no writer key and keep their reachability-only gate.
+ */
+const HEAVY = process.env["CIVITICS_DB_HEAVY_TESTS"] === "1";
+
+async function integrationGate(t: { skip: (m: string) => void }): Promise<boolean> {
+  if (!HEAVY) {
+    t.skip("set CIVITICS_DB_HEAVY_TESTS=1 — takes the financial_entity_totals_refresh writer key on the local clone");
+    return false;
+  }
+  if (!(await localDbReachable())) {
+    t.skip("local Docker DB not reachable");
+    return false;
+  }
+  return true;
+}
+
 test("claim: the label lands on acquire and is gone after release", async (t) => {
   if (!(await localDbReachable())) {
     t.skip("local Docker DB not reachable");
@@ -259,10 +282,7 @@ test("claim: a second claim while one is held is REFUSED, and --force cannot tak
 });
 
 test("claim: a live heavy writer refuses the claim; --force takes it and logs the override", async (t) => {
-  if (!(await localDbReachable())) {
-    t.skip("local Docker DB not reachable");
-    return;
-  }
+  if (!(await integrationGate(t))) return;
   const { Client } = await import("pg");
 
   // Stand in for a mid-flight `run_fe_totals_crawl` by holding its key.

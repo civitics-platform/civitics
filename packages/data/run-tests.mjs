@@ -31,11 +31,15 @@ for (const f of files) console.log(`  ${f}`);
 // reads cluster-wide (entity_connections_rebuild, prod_supervised_session, the
 // rollup refresh keys) — so one file's lock made another file's prod-session
 // claim refuse. The default run stays concurrent: the EC test's key-holding
-// cases moved behind the heavy gate, and so did pipeline-lock.test.ts's
-// fec_bulk_pipeline cases (FIX-1267). One holder remains in it:
-// src/lib/prod-session.test.ts's writers-live case takes
-// financial_entity_totals_refresh for a few ms. cc-190's grep found it, and it
-// is filed as FIX-1275 rather than moved here.
+// cases moved behind the heavy gate, as did pipeline-lock.test.ts's
+// fec_bulk_pipeline cases (FIX-1267) and prod-session.test.ts's writers-live
+// case, which takes financial_entity_totals_refresh (FIX-1275). No default-run
+// test holds a c_writer_locks key now. The writers-live proof runs only under
+//   CIVITICS_DB_HEAVY_TESTS=1 pnpm --filter @civitics/data test
+// The default run still has two prod_supervised_session claimers in
+// prod-session.test.ts. They hold no writer key. Their risk is the
+// FIX-1263 class, being refused by another file's writer key, and no
+// default-run file holds one now.
 const heavy = process.env.CIVITICS_DB_HEAVY_TESTS === "1";
 if (heavy) console.log("CIVITICS_DB_HEAVY_TESTS=1 — running files serially (--test-concurrency=1)");
 

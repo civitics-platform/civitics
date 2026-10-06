@@ -12,6 +12,7 @@ steps:
   - {id: s4, kind: cc, ref: "cc-171", title: "lanes, projects, owed, the board"}
   - {id: s5, kind: cc, ref: "cc-172", title: "backlog, goals, windows, cron history, docs archive"}
   - {id: s6, kind: cc, ref: "cc-190", title: "the runner tears its worktree down; fixes:check guards fix:add collisions (FIX-1271)"}
+  - {id: s7, kind: cc, ref: "cc-201", title: "1276 prunable orphan path + 1275 HEAVY gate", done: 2026-10-06}
 ---
 
 # The CC loop
