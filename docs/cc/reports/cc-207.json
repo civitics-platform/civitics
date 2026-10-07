@@ -1,0 +1,35 @@
+{
+  "cc": "207",
+  "prompt": "cc-prompt-207-fix1285-logs-arm-carries-the-restart.md",
+  "started_at": "2026-10-07T03:52:55Z",
+  "finished_at": "2026-10-07T04:03:00Z",
+  "head_before": "df5547ec",
+  "head_after": "2d12abe0",
+  "commits": [
+    {
+      "sha": "310470b6",
+      "subject": "chore(fixes): file FIX-1286 and FIX-1287"
+    },
+    {
+      "sha": "2d12abe0",
+      "subject": "docs(fixes): append FIX-1285 (the probe premise is refuted by the 10-06 subjects) and FIX-1130 (the probe arm pages every tick, the Logs arm hourly)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1286",
+    "FIX-1287"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 (D1-D4, the rule-3 removal and its tests) STOPPED: the tree contradicts the premise D2 was ratified on. With rule 3 removed, 08-29 (the FIX-1125 self-clearing event) restarts at 07:17 under the real probe model — at that tick the newest closed bucket is 07:00-07:15, still RED, so the verdict is DOWN and held exactly 30 min. The prompt asserts ZERO and that the verdict is not DOWN at 07:17. Prod is armed, so nothing was landed on a false basis.",
+    "Item 3 (post-deploy armed-tick record, FIX-1286's close) not run: it verifies item 2. Its FIX-1285 and FIX-1130 appends were made anyway, as 2d12abe0, because they are facts independent of the build.",
+    "D4's forker.md s11 retarget not done (part of item 2)."
+  ],
+  "lane": "ops",
+  "project": "forker",
+  "owed": []
+}
