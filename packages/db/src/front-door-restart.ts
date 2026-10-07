@@ -15,11 +15,27 @@
  *
  * ── THE DECISION IS BUILT ON THE VERDICT, NEVER BESIDE IT ─────────────────────
  *
- * `decideRestart` reads `decideFrontDoorVerdict`'s state and holds it: DOWN has
- * to have been the verdict for 30 minutes of ticks before anything fires. Then,
- * in order: the direct probe must NOT be answering (the Logs half alone never
- * restarts), no restart in the last 60 minutes, fewer than two in 24 hours (a
- * restart loop is worse than an outage). The mode decides last.
+ * `decideRestart` reads `decideFrontDoorVerdict`'s Logs arm and holds it: the
+ * restart fires on the 4th CONSECUTIVE tick whose two newest closed buckets are
+ * both RED. Then, in order: no restart in the last 60 minutes, fewer than two in
+ * 24 hours (a restart loop is worse than an outage). The mode decides last.
+ *
+ * THE LOGS ARM CARRIES IT, THE PROBE DOES NOT (FIX-1286). FIX-1285 shipped a
+ * rule that skipped whenever the direct probe answered. Every 10-06 DOWN page
+ * carried the Logs arm's subject, and every prod row since reads
+ * probe_answered true: the keyless `GET /rest/v1/` is answered in front of the
+ * wedge, so that rule made the armed restart inert for the wedge it exists for.
+ * The probe is now reported in every reason and gates nothing — and a DOWN the
+ * probe declares on its own pages but does not advance the hold, so the
+ * restart cannot depend on what the probe sees.
+ *
+ * TICKS, NOT MINUTES. A 30-minute hold on a 15-minute tick lattice is a coin
+ * flip: the ticks fire at :28.4-:28.6, so at the third DOWN tick "held >= 30
+ * min" is decided by a few hundred ms of cron jitter (cc-207 §3.2). A counter
+ * cannot see the clock. FOUR ticks, not three, because the Logs arm's DOWN
+ * already means two closed RED buckets — so a short self-clearing outage like
+ * 08-29 (RED 06:15-07:00) is DOWN for exactly three ticks (06:47, 07:02,
+ * 07:17) and is not DOWN at 07:32. Onset to restart is about 77 minutes.
  *
  * The project health endpoint is read and REPORTED in the reason, never gated
  * on: what the control plane says about itself during a wedge is unmeasured,
@@ -30,7 +46,7 @@
  *
  * The hold, the spacing and the cap need memory across ticks, and the one store
  * that survives the outage this exists for is the Upstash database the box
- * memory ring already writes (FIX-1125). Four keys, one MGET per tick. When
+ * memory ring already writes (FIX-1125). Five keys, one MGET per tick. When
  * Upstash does not answer, the decision is `none` — fail SAFE (no restart),
  * never fail open.
  *
@@ -43,8 +59,8 @@ import { upstashRequest, type UpstashCreds, type UpstashReply } from "./box-heal
 import type { FrontDoorVerdict } from "./front-door-verdict";
 import { MGMT_BASE, PROJECT_REF } from "./supabase-logs";
 
-/** DOWN must have been the verdict this long before a restart is considered. */
-export const RESTART_HOLD_MS = 30 * 60 * 1000;
+/** The restart fires on this consecutive Logs-arm DOWN tick. */
+export const RESTART_HOLD_TICKS = 4;
 /** No second restart within this long of the last one. */
 export const RESTART_SPACING_MS = 60 * 60 * 1000;
 /** At most this many restarts in any 24 hours. */
@@ -61,6 +77,8 @@ export const FRONT_DOOR_RESTART_KEYS = {
   lastRestartAt: "civitics:front_door:last_restart_at",
   restarts: "civitics:front_door:restarts",
   wouldRestartSent: "civitics:front_door:would_restart_sent",
+  /** FIX-1286: consecutive Logs-arm DOWN ticks. INCR each counted tick, DEL on the first that is not. */
+  downTicks: "civitics:front_door:down_ticks",
 } as const;
 
 /** MGET order — the order parseRestartState reads. */
@@ -69,6 +87,7 @@ export const FRONT_DOOR_RESTART_MGET_KEYS = [
   FRONT_DOOR_RESTART_KEYS.lastRestartAt,
   FRONT_DOOR_RESTART_KEYS.restarts,
   FRONT_DOOR_RESTART_KEYS.wouldRestartSent,
+  FRONT_DOOR_RESTART_KEYS.downTicks,
 ] as const;
 
 export type RestartMode = "off" | "report" | "arm";
@@ -77,8 +96,14 @@ export type RestartAction = "none" | "would_restart" | "restart" | "skip";
 
 export type RestartInput = {
   verdictState: FrontDoorVerdict["state"];
+  /** The Logs arm's DOWN: the two newest closed buckets both RED. Only this advances the hold. */
+  logsDown: boolean;
+  /** This tick's consecutive Logs-arm DOWN count, AFTER counting it (0 when it does not count). */
+  downTicks: number;
+  /** Reported in the reason; gates nothing (FIX-1286). */
   probeAnswered: boolean;
   nowMs: number;
+  /** Reporting only — "since" in the reason and downForMs. The hold is the tick count. */
   downSinceMs: number | null;
   lastRestartMs: number | null;
   restartsLast24h: number;
@@ -92,8 +117,10 @@ export type RestartInput = {
 export type RestartDecision = {
   action: RestartAction;
   reason: string;
-  /** How long DOWN has held, or null when the front door is not DOWN. */
+  /** How long the counted DOWN has lasted, or null when this tick does not count. */
   downForMs: number | null;
+  /** This tick's consecutive Logs-arm DOWN count; 0 when it does not count. */
+  downTicks: number;
 };
 
 /**
@@ -110,63 +137,83 @@ export function parseRestartMode(raw: string | undefined): { mode: RestartMode; 
 
 /** The decision table. See the module header; the order of the rules is the design. */
 export function decideRestart(input: RestartInput): RestartDecision {
-  const { verdictState, nowMs, downSinceMs, lastRestartMs } = input;
-  if (verdictState !== "down") {
-    return { action: "none", reason: `front door not DOWN (${verdictState})`, downForMs: null };
+  const { verdictState, nowMs, lastRestartMs, downTicks: n } = input;
+  const probe = input.probeAnswered ? "probe answered" : "probe dark";
+  if (!input.logsDown) {
+    const reason =
+      verdictState === "down"
+        ? `DOWN on the direct probe alone — the hold counts Logs-arm DOWN ticks only (${probe})`
+        : `front door not DOWN (${verdictState})`;
+    return { action: "none", reason, downForMs: null, downTicks: 0 };
   }
   if (input.stateError) {
     return {
       action: "none",
       reason: `state store unreachable (${input.stateError}) — fail safe, no restart`,
       downForMs: null,
+      downTicks: n,
     };
   }
-  if (downSinceMs === null) {
-    return { action: "none", reason: "first DOWN tick — the hold starts now", downForMs: 0 };
-  }
-  const downForMs = nowMs - downSinceMs;
-  const held = Math.floor(downForMs / 60000);
-  if (downForMs < RESTART_HOLD_MS) {
-    return { action: "none", reason: `held ${held} min, threshold ${RESTART_HOLD_MS / 60000}`, downForMs };
-  }
-  // Past the hold every reason carries the health read — reported, never gated on.
-  const health = `health ${input.health}`;
-  if (input.probeAnswered) {
+  // The first counted tick has no stored down_since yet: it is this tick.
+  const sinceMs = input.downSinceMs ?? nowMs;
+  const downForMs = nowMs - sinceMs;
+  const since = `since ${new Date(sinceMs).toISOString().slice(11, 16)}Z`;
+  if (n < RESTART_HOLD_TICKS) {
     return {
-      action: "skip",
-      reason: `the direct probe answers — the Logs half alone never restarts (DOWN ${held} min; ${health})`,
+      action: "none",
+      reason: `DOWN tick ${n} of ${RESTART_HOLD_TICKS} — the hold is ${RESTART_HOLD_TICKS} consecutive DOWN ticks (${since}; ${probe})`,
       downForMs,
+      downTicks: n,
     };
   }
+  // Past the hold every reason carries the probe and the health read — both
+  // reported, neither gated on.
+  const tail = `DOWN tick ${n}, ${since}; ${probe}; health ${input.health}`;
   if (lastRestartMs !== null && nowMs - lastRestartMs < RESTART_SPACING_MS) {
     const ago = Math.floor((nowMs - lastRestartMs) / 60000);
     return {
       action: "skip",
-      reason: `last restart ${ago} min ago — spacing ${RESTART_SPACING_MS / 60000} min (DOWN ${held} min; ${health})`,
+      reason: `last restart ${ago} min ago — spacing ${RESTART_SPACING_MS / 60000} min (${tail})`,
       downForMs,
+      downTicks: n,
     };
   }
   if (input.restartsLast24h >= RESTART_CAP_24H) {
     return {
       action: "skip",
-      reason: `cap ${RESTART_CAP_24H}/24 h — a loop is worse than an outage (DOWN ${held} min; ${health})`,
+      reason: `cap ${RESTART_CAP_24H}/24 h — a loop is worse than an outage (${tail})`,
       downForMs,
+      downTicks: n,
     };
   }
   if (input.mode === "off") {
-    return { action: "none", reason: `FRONT_DOOR_AUTO_RESTART=off (DOWN ${held} min; ${health})`, downForMs };
+    return { action: "none", reason: `FRONT_DOOR_AUTO_RESTART=off (${tail})`, downForMs, downTicks: n };
   }
   if (input.mode === "report") {
-    return { action: "would_restart", reason: `report mode — DOWN ${held} min, probe dark; ${health}`, downForMs };
+    return { action: "would_restart", reason: `report mode — ${tail}`, downForMs, downTicks: n };
   }
   if (!input.tokenPresent) {
     return {
       action: "would_restart",
-      reason: `FRONT_DOOR_AUTO_RESTART=arm but SUPABASE_MANAGEMENT_RESTART_KEY is not set — reporting only (DOWN ${held} min, probe dark; ${health})`,
+      reason: `FRONT_DOOR_AUTO_RESTART=arm but SUPABASE_MANAGEMENT_RESTART_KEY is not set — reporting only (${tail})`,
       downForMs,
+      downTicks: n,
     };
   }
-  return { action: "restart", reason: `DOWN ${held} min, probe dark — restarting; ${health}`, downForMs };
+  return { action: "restart", reason: `restarting — ${tail}`, downForMs, downTicks: n };
+}
+
+/**
+ * Does this tick advance the hold, and to what? Only a Logs-arm DOWN counts —
+ * the two newest closed buckets both RED — on top of the stored count. A DOWN
+ * the direct probe declares on its own does not count, and resets it.
+ */
+export function countDownTick(
+  verdict: Pick<FrontDoorVerdict, "state" | "red">,
+  state: RestartState | null,
+): { logsDown: boolean; downTicks: number } {
+  const logsDown = verdict.state === "down" && verdict.red[2] === true && verdict.red[3] === true;
+  return { logsDown, downTicks: logsDown ? (state?.downTicks ?? 0) + 1 : 0 };
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -177,6 +224,8 @@ export type RestartState = {
   /** Every stored restart instant (trimmed to 24 h on write, filtered again on read). */
   restartsMs: number[];
   wouldRestartSentMs: number | null;
+  /** Consecutive Logs-arm DOWN ticks so far, or null when none are counted. */
+  downTicks: number | null;
 };
 
 function parseInstant(v: unknown): number | null {
@@ -185,9 +234,15 @@ function parseInstant(v: unknown): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** Upstash answers an INCR'd key's GET as a decimal string. */
+function parseCount(v: unknown): number | null {
+  if (typeof v !== "string" || !/^\d+$/.test(v)) return null;
+  return Number(v);
+}
+
 /** The MGET reply, in FRONT_DOOR_RESTART_MGET_KEYS. A value that does not parse reads as absent. */
 export function parseRestartState(values: unknown[]): RestartState {
-  const [down, last, list, sent] = values;
+  const [down, last, list, sent, ticks] = values;
   let restartsMs: number[] = [];
   if (typeof list === "string") {
     try {
@@ -202,6 +257,7 @@ export function parseRestartState(values: unknown[]): RestartState {
     lastRestartMs: parseInstant(last),
     restartsMs,
     wouldRestartSentMs: parseInstant(sent),
+    downTicks: parseCount(ticks),
   };
 }
 
@@ -219,31 +275,37 @@ export function shouldEmailWouldRestart(decision: RestartDecision, state: Restar
  * The Upstash commands one tick writes after deciding. Pure, so the replay
  * tests drive the same transitions the route does.
  *
- *   - Not DOWN, and something is set → DEL down_since + would_restart_sent (the
- *     outage is over; RECOVERED's edge is one such tick).
- *   - DOWN with no down_since → SET it (NX, so two overlapping ticks agree).
+ *   - Not a counted tick (not a Logs-arm DOWN), and something is set → DEL
+ *     down_ticks + down_since + would_restart_sent. The run of ticks is over;
+ *     RECOVERED's edge is one such tick, and so is a probe-only DOWN.
+ *   - A counted tick → INCR down_ticks; on the first one also EXPIRE it (24 h)
+ *     and SET down_since (NX, so two overlapping ticks agree).
  *   - A restart POST went out (whatever it answered) → last_restart_at, and the
  *     restarts list trimmed to 24 h. Every attempt counts toward the spacing and
  *     the cap: a token that answers 401 must not retry every 15 minutes.
  *   - A WOULD FIRE email is going out → its dedup key, EX 6 h.
  */
 export function planRestartStateCommands(args: {
-  verdictState: FrontDoorVerdict["state"];
+  logsDown: boolean;
   state: RestartState;
   nowMs: number;
   restartIssued: boolean;
   wouldRestartEmailed: boolean;
 }): string[][] {
-  const { verdictState, state, nowMs, restartIssued, wouldRestartEmailed } = args;
+  const { logsDown, state, nowMs, restartIssued, wouldRestartEmailed } = args;
   const iso = new Date(nowMs).toISOString();
   const K = FRONT_DOOR_RESTART_KEYS;
   const cmds: string[][] = [];
 
-  if (verdictState !== "down") {
-    if (state.downSinceMs !== null || state.wouldRestartSentMs !== null) {
-      cmds.push(["DEL", K.downSince, K.wouldRestartSent]);
+  if (!logsDown) {
+    if (state.downTicks !== null || state.downSinceMs !== null || state.wouldRestartSentMs !== null) {
+      cmds.push(["DEL", K.downTicks, K.downSince, K.wouldRestartSent]);
     }
     return cmds;
+  }
+  cmds.push(["INCR", K.downTicks]);
+  if (state.downTicks === null) {
+    cmds.push(["EXPIRE", K.downTicks, String(RESTART_STATE_TTL_S)]);
   }
   if (state.downSinceMs === null) {
     cmds.push(["SET", K.downSince, iso, "EX", String(RESTART_STATE_TTL_S), "NX"]);
@@ -262,7 +324,7 @@ export function planRestartStateCommands(args: {
 
 export type RestartStateRead = { ok: true; state: RestartState } | { ok: false; error: string };
 
-/** One MGET of the four keys. */
+/** One MGET of the five keys. */
 export async function readRestartState(
   creds: UpstashCreds,
   fetchImpl: typeof fetch = fetch,
@@ -391,11 +453,12 @@ export function renderRestartEmail(args: {
 }): { subject: string; html: string } {
   const { kind, decision, mode, nowMs, health, call, stateWrite } = args;
   const downMin = decision.downForMs === null ? "?" : String(Math.round(decision.downForMs / 60000));
+  const held = `DOWN tick ${decision.downTicks}, ${downMin} min`;
   const outcome = call ? (call.ok ? `HTTP ${call.status}` : `FAILED — ${call.status === null ? call.detail : `HTTP ${call.status}`}`) : "";
   const subject =
     kind === "issued"
-      ? `[Civitics][FRONT DOOR RESTART ISSUED] ${outcome} — Supabase project restart after ${downMin} min DOWN`
-      : `[Civitics][FRONT DOOR RESTART WOULD FIRE] report mode — the watchdog would restart the project now (${downMin} min DOWN)`;
+      ? `[Civitics][FRONT DOOR RESTART ISSUED] ${outcome} — Supabase project restart at ${held}`
+      : `[Civitics][FRONT DOOR RESTART WOULD FIRE] report mode — the watchdog would restart the project now (${held})`;
 
   const lines = [
     `${kind === "issued" ? "FRONT DOOR RESTART ISSUED" : "FRONT DOOR RESTART WOULD FIRE"} — ${new Date(nowMs).toISOString()}`,

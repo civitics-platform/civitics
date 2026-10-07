@@ -85,6 +85,7 @@ import {
   renderFrontDoorEmail,
   corroboratorLabel,
   queryEdgeBuckets,
+  countDownTick,
   decideRestart,
   issueProjectRestart,
   parseRestartMode,
@@ -99,7 +100,7 @@ import {
   writeRestartState,
   BUCKET_MS,
   BUCKET_COUNT,
-  RESTART_HOLD_MS,
+  RESTART_HOLD_TICKS,
   type FrontDoorBucket,
   type FrontDoorCorroborator,
   type FrontDoorProbe,
@@ -189,19 +190,18 @@ async function fetchBuckets(
  * FIX-1285 — what the restart decision needs besides the verdict: its Upstash
  * state, and the project health once it could matter. Runs beside the probe and
  * the Logs read. The health GET (read token, `project_admin_read`) is made only
- * when DOWN has already held 30 minutes, so a healthy tick costs one MGET.
+ * when this tick could be the 4th counted DOWN tick or later (FIX-1286), so a
+ * healthy tick costs one MGET.
  */
 async function readRestartInputs(
-  nowMs: number,
   mgmtToken: string | undefined,
 ): Promise<{ state: RestartStateRead; health: { health: ProjectHealth; detail: string } }> {
   const creds = upstashCredsFromEnv(process.env);
   const state: RestartStateRead = creds
     ? await readRestartState(creds)
     : { ok: false, error: "UPSTASH_REDIS_REST_URL / _TOKEN not configured" };
-  const held =
-    state.ok && state.state.downSinceMs !== null && nowMs - state.state.downSinceMs >= RESTART_HOLD_MS;
-  if (!held) return { state, health: { health: "unknown", detail: "not read (DOWN has not held 30 min)" } };
+  const held = state.ok && (state.state.downTicks ?? 0) + 1 >= RESTART_HOLD_TICKS;
+  if (!held) return { state, health: { health: "unknown", detail: `not read (fewer than ${RESTART_HOLD_TICKS - 1} DOWN ticks counted)` } };
   if (!mgmtToken) return { state, health: { health: "unknown", detail: "SUPABASE_MANAGEMENT_API_KEY not configured" } };
   return { state, health: await readProjectHealth(mgmtToken) };
 }
@@ -236,7 +236,7 @@ export async function GET(request: NextRequest) {
           rows: null,
           corroborator: { kind: "dark", detail: "SUPABASE_MANAGEMENT_API_KEY not configured" } as FrontDoorCorroborator,
         }),
-    readRestartInputs(nowMs, mgmtToken),
+    readRestartInputs(mgmtToken),
   ]);
 
   const buckets = alignBuckets(logs.rows ?? [], endBoundary);
@@ -248,8 +248,12 @@ export async function GET(request: NextRequest) {
   const { mode, warning: modeWarning } = parseRestartMode(process.env["FRONT_DOOR_AUTO_RESTART"]);
   const restartKey = process.env["SUPABASE_MANAGEMENT_RESTART_KEY"];
   const stored = restartInputs.state.ok ? restartInputs.state.state : null;
+  // FIX-1286: only a Logs-arm DOWN advances the hold; the probe is reason-only.
+  const { logsDown, downTicks } = countDownTick(verdict, stored);
   const decision = decideRestart({
     verdictState: verdict.state,
+    logsDown,
+    downTicks,
     probeAnswered: probe.answered,
     nowMs,
     downSinceMs: stored?.downSinceMs ?? null,
@@ -272,7 +276,7 @@ export async function GET(request: NextRequest) {
   let stateWrite: string | null = null;
   if (stored && upstash) {
     const commands = planRestartStateCommands({
-      verdictState: verdict.state,
+      logsDown,
       state: stored,
       nowMs,
       restartIssued: call !== null,
@@ -348,6 +352,7 @@ export async function GET(request: NextRequest) {
       reason: decision.reason,
       mode,
       downForMs: decision.downForMs,
+      down_ticks: decision.downTicks,
       ...(modeWarning ? { mode_warning: modeWarning } : {}),
       state_store: restartInputs.state.ok ? "ok" : `unreachable: ${restartInputs.state.error}`,
       health: restartInputs.health.health,

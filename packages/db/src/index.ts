@@ -555,6 +555,7 @@ export type {
 // Pure decision + the Upstash state it holds across ticks + the two Management
 // API calls; the route only sequences them.
 export {
+  countDownTick,
   decideRestart,
   parseRestartMode,
   parseRestartState,
@@ -569,7 +570,7 @@ export {
   renderRestartEmail,
   FRONT_DOOR_RESTART_KEYS,
   FRONT_DOOR_RESTART_MGET_KEYS,
-  RESTART_HOLD_MS,
+  RESTART_HOLD_TICKS,
   RESTART_SPACING_MS,
   RESTART_CAP_24H,
 } from "./front-door-restart";

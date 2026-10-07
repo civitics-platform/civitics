@@ -652,11 +652,11 @@ not the website's edge. The sync canary rides Postgres and was blind. The
 request-path probe did go red three times (11:49, 18:11, 22:52 UTC) but its
 first red was five hours after onset, and a red GHA run is not a page.
 
-**RUNBOOK — the watchdog restarts the project itself after 30 min of DOWN
-(FIX-1285, `FRONT_DOOR_AUTO_RESTART`); the hand restart is the fallback**
-(dashboard → Project Settings → General → Restart project). It ships in
-`report` mode, so until Craig arms it the hand restart is still the remediation
-— see "Auto-restart" below. **Postgres is usually healthy during this failure;
+**RUNBOOK — the watchdog restarts the project itself on the 4th consecutive
+Logs-arm DOWN tick, about 77 min after the front door went total (FIX-1285 /
+FIX-1286, `FRONT_DOOR_AUTO_RESTART`); the hand restart is the fallback**
+(dashboard → Project Settings → General → Restart project). Prod is armed
+(`mode: "arm"` on every tick since 2026-10-07 04:00Z) — see "Auto-restart" below. **Postgres is usually healthy during this failure;
 do not go hunting for a slow query first.** Confirm the restart landed with
 `pg_postmaster_start_time()` afterwards.
 
@@ -693,43 +693,73 @@ keeps its state there; the verdict still does not need any.)
 The logic is pure and unit-tested against both real series in
 `packages/db/src/front-door-verdict.test.ts`; the route only does the I/O.
 
-**Auto-restart (FIX-1285).** The detector was right three times — 08-31
-(~17 h), 09-22 (~8 h), 10-06 (8 h 40 m) — and each wedge waited for a person.
-`POST /v1/projects/{ref}/restart` is the same restart the dashboard button
-issues, so the watchdog now decides it itself, in
-`packages/db/src/front-door-restart.ts`, built on the verdict. In order:
+**Auto-restart (FIX-1285, FIX-1286).** The detector was right three times —
+08-31 (~17 h), 09-22 (~8 h), 10-06 (8 h 40 m) — and each wedge waited for a
+person. `POST /v1/projects/{ref}/restart` is the same restart the dashboard
+button issues, so the watchdog decides it itself, in
+`packages/db/src/front-door-restart.ts`, built on the verdict's **Logs arm**. In
+order:
 
-1. The verdict must be DOWN. Any other tick clears the hold.
-2. DOWN must have held **30 minutes** of ticks (the first DOWN tick starts it).
-3. The direct probe must **not** be answering. The Logs half alone never
-   restarts.
-4. No restart in the last **60 minutes**, and fewer than **2 in 24 h** — a
+1. The tick must be a **Logs-arm DOWN**: the two newest closed buckets both RED.
+   Any other tick, including a DOWN the direct probe declares on its own, clears
+   the count.
+2. It must be the **4th consecutive** such tick. Ticks 1–3 are `none`, and the
+   reason counts them: `DOWN tick N of 4`.
+3. No restart in the last **60 minutes**, and fewer than **2 in 24 h** — a
    restart loop is worse than an outage. Every attempt counts, whatever it
    answered, so a dead token is not retried every 15 minutes.
-5. Then the mode: `off` → nothing; `report` → `would_restart`; `arm` with the
+4. Then the mode: `off` → nothing; `report` → `would_restart`; `arm` with the
    token → `restart`; `arm` without it → `would_restart` and a warning.
 
+**Why the Logs arm carries it and the probe does not.** FIX-1285 shipped a rule
+that skipped whenever the direct probe answered. Every 10-06 `[FRONT DOOR
+DOWN]` subject was the Logs arm's ("the two newest closed buckets are both >=
+50% …"), none the probe's, and every prod row since reads `probe_answered`
+true. The keyless `GET /rest/v1/` is answered in front of the wedge, so that
+rule made the armed restart inert for the wedge it exists for (FIX-1286). The
+probe is now reported in every reason (`probe answered|dark`) and gates
+nothing. It is otherwise **unchanged**: a keyed probe would put Postgres on the
+detector's hot path, which FIX-1130 rules out. That is a future design option,
+not a fix. The Logs arm can carry the restart alone because of FIX-1130's
+calibration: healthy buckets run `n_52x` p99 = 0, wedged ones ≥ 95.8 %.
+
+**Why ticks, not minutes.** A 30-minute hold sits exactly on the 15-minute tick
+lattice. The ticks fire at :28.4–:28.6, so at the third DOWN tick "held ≥ 30
+min" is decided by a few hundred ms of cron jitter (cc-207 §3.2). A counter
+cannot see the clock: `front-door-restart.test.ts` replays the same series with
+ticks at :28.400, :28.600 and one tick 2 s late, and gets the same restart
+ticks.
+
+**Why 4, not 3.** A Logs-arm DOWN already means two closed RED buckets — at
+least 30 min of total 52x before the first counted tick. A short outage that
+clears by itself is then DOWN for exactly three ticks. The 08-29 FIX-1125 event
+(RED buckets starting 06:15, 06:30, 06:45, 07:00) counts 06:47, 07:02 and 07:17,
+and is not DOWN at 07:32, so a 3-tick hold would restart a front door that had
+just recovered. With 4, onset → restart is about 77 min: 45 min after the
+Logs-arm DOWN edge.
+
 The project health endpoint (`GET /v1/projects/{ref}/health?services=db,pooler,rest`,
-read token) is read once DOWN has held 30 min and is **reported in the reason,
-never gated on**. What the control plane says about itself during a wedge has
-never been measured. On a healthy box it answers 200 with all three
+read token) is read once three DOWN ticks are counted and is **reported in the
+reason, never gated on**. What the control plane says about itself during a
+wedge has never been measured. On a healthy box it answers 200 with all three
 `ACTIVE_HEALTHY` (read 2026-10-07 02:33Z).
 
 | env var (Vercel, Production) | meaning |
 |---|---|
 | `FRONT_DOOR_AUTO_RESTART` | `off` · `report` (default when unset; any unknown value also reads as `report`) · `arm` |
-| `SUPABASE_MANAGEMENT_RESTART_KEY` | A **separate** fine-grained token with `project_admin_write` only. The restart endpoint requires it ("OAuth scope `projects:write`, fine-grained `project_admin_write`"; 200 `{}`, 401/403/429). `SUPABASE_MANAGEMENT_API_KEY` stays the read token for the Logs and health reads. |
+| `SUPABASE_MANAGEMENT_RESTART_KEY` | A **separate** fine-grained token. The restart endpoint needs `project_admin_write` (OAuth scope `projects:write`; 200 `{}`, 401/403/429), which the token dialog calls **Project Settings → Read and write**. That level also allows pausing, restoring, updating and **deleting** the project — there is no restart-only scope — so keep the token in Vercel Production only. `SUPABASE_MANAGEMENT_API_KEY` stays the read token for the Logs and health reads. |
 
 **State, in Upstash** (`UPSTASH_REDIS_REST_URL` / `_TOKEN`, the ring's
-credentials). One `MGET` per tick (~2,900 commands a month) and nothing written
-on a healthy tick:
+credentials). One `MGET` of five keys per tick (~2,900 commands a month) and
+nothing written on a healthy tick:
 
 | key | written | expiry |
 |---|---|---|
-| `civitics:front_door:down_since` | the first DOWN tick (`SET … NX`); deleted on the first non-DOWN tick | 24 h |
+| `civitics:front_door:down_ticks` | `INCR` on every counted tick (`EXPIRE` on the first); deleted on the first tick that does not count | 24 h |
+| `civitics:front_door:down_since` | the first counted tick (`SET … NX`), for the reason's "since"; deleted with `down_ticks` | 24 h |
 | `civitics:front_door:last_restart_at` | each restart attempt | 24 h |
 | `civitics:front_door:restarts` | each attempt; a JSON list of ISO instants, trimmed to 24 h on write | 24 h |
-| `civitics:front_door:would_restart_sent` | a WOULD FIRE email; deleted with `down_since` | 6 h |
+| `civitics:front_door:would_restart_sent` | a WOULD FIRE email; deleted with `down_ticks` | 6 h |
 
 If Upstash does not answer, the decision is `none` ("state store unreachable")
 and the DOWN email says so: it fails **safe**, never open.
@@ -737,11 +767,11 @@ and the DOWN email says so: it fails **safe**, never open.
 **The three emails.** Each one rides the DOWN/RECOVERED rails above, which are
 unchanged:
 
-- `[Civitics][FRONT DOOR RESTART ISSUED] HTTP 200 — …` is sent when the restart
-  was requested. It carries the reason, the health read and the status code.
-  `… FAILED — HTTP 401` means the token was refused, and the attempt still
-  counts toward the cap. After a restart, expect RECOVERED once two clean
-  15-minute buckets have closed.
+- `[Civitics][FRONT DOOR RESTART ISSUED] HTTP 200 — Supabase project restart at
+  DOWN tick 4, … min` is sent when the restart was requested. It carries the
+  reason, the health read and the status code. `… FAILED — HTTP 401` means the
+  token was refused, and the attempt still counts toward the cap. After a
+  restart, expect RECOVERED once two clean 15-minute buckets have closed.
 - `[Civitics][FRONT DOOR RESTART WOULD FIRE] report mode — …` means the armed
   watchdog would have restarted at this tick. It is sent once per outage, and
   sent again after 6 h inside a longer one.
@@ -749,33 +779,23 @@ unchanged:
   <reason>`. A `skip` shows up only there.
 
 The route's JSON and its `data_sync_log` row carry
-`restart: {action, reason, mode, downForMs, state_store, health, issued,
-state_write, emailed}`. The row lands on DB-reachable ticks only.
+`restart: {action, reason, mode, downForMs, down_ticks, state_store, health,
+issued, state_write, emailed}`. The row lands on DB-reachable ticks only.
 
 **Known risks, stated and accepted:**
 
 - A restart cannot read the FIX-950 interlock (`prod_session_state()`), because
   the database is unreachable by definition. A supervised landing that is under
-  a 30-minute total wedge is already dead.
-- **The probe may answer through a wedge.** 10-06's `edge_logs` show about 2
-  non-5xx requests per half hour through the whole outage, which matches the
-  watchdog's two ticks. The DOWN pages also came hourly, which is the Logs
-  arm's cadence; a dead probe pages every tick. If the probe's keyless
-  `GET /rest/v1/` is answered by a layer in front of the wedge, rule 3 makes
-  every held tick a `skip`, and arming changes nothing for that wedge class.
-  Report mode settles it: the next wedge's DOWN emails show `skip — the direct
-  probe answers` or a WOULD FIRE. So does reading the reason line of a 10-06
-  DOWN email.
-- The 30-minute hold does not filter a short outage that clears by itself. The
-  FIX-1125 event on 08-29 (RED 06:15–07:00) would have restarted at 06:47 if
-  the probe was dark, and it cleared on its own by 07:15.
+  a 77-minute total wedge is already dead.
+- A wedge that the Logs API cannot see (the API itself dark or unavailable for
+  the duration) never counts a tick, so it never restarts. The probe still pages
+  DOWN every tick; the hand restart is the fallback.
 
-Replays (`front-door-restart.test.ts`, with the probe dark in RED buckets):
-08-31 restarts at 06:47 and 07:47, 32 min after the wedge went total, then the
-cap holds for 15 h. 10-06 restarts at 17:02 and 18:02; the hand restart came at
-00:46. 08-29 restarts once, at 06:47. The five other healthy days and the 09-01
-statement-timeout window restart nothing. With the probe answering, every
-series restarts nothing.
+Replays (`front-door-restart.test.ts`; both probe models agree): 08-31 restarts
+at 07:32 and 08:32, 77 min after the wedge went total, then the cap holds. 10-06
+restarts at 17:47 and 18:47; the hand restart came at 00:46. 08-29 restarts
+nothing. The five other healthy days and the 09-01 statement-timeout window
+count no tick at all.
 
 ### Cost detection: what watches money, and what acts on its own (FIX-1044/1045/1046)
 
