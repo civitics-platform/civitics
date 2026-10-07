@@ -1608,3 +1608,12 @@
 2026-10-05 | FIX-1276 | 076e1418 | local-only | fix(scripts): FIX-1276 — session:worktree:done prunes a registered-but-prunable worktree and takes the orphan path; parseWorktreeList + worktreeDisposition exported and tested; the suite joins fixes:test
 2026-10-05 | FIX-1278 | c6d7d8e0 | local-only | fix(app): FIX-1278 — official_redirects: the promotion RPC records the retired UUID, middleware answers 308 from a per-isolate cached list; the eleven cc-194 promoted backfilled
 2026-10-06 | FIX-1278 | 8719e33b | prod-only | chore(fixes): record prod verification of FIX-1278 — eleven old official UUIDs answer 308 on prod; the RPC writes the row
+2026-10-06 | FIX-1020 | fb8f5372 | prod-only | chore(fixes): record prod verification of FIX-1020 — Austin Scott's survivor 893a581e carries all 16 LittleSis rows, 2,507 votes and $4.0M, and its page renders both
+2026-10-06 | FIX-1132 | e90dbd08 | prod-only | chore(fixes): record prod verification of FIX-1132 — Tue 10-06 06:00 daily read conn_source stats_table; rebuild_entity_search_index 155.8 s against the 247 s p50
+2026-10-06 | FIX-1240 | f8aa1f49 | prod-only | chore(fixes): record prod verification of FIX-1240 — read 2's drift is 0 rows in both donor rollups after jobid 24's 09:00/12:00 and jobid 17's 15:00 firings
+2026-10-06 | FIX-1245 | bb06e443 | prod-only | chore(fixes): record prod verification of FIX-1245 — jobid 10's Tue 00:47Z rebuild is on the provenance-first rank; both MVs equal their ledgers to the cent
+2026-10-06 | FIX-1249 | 7b0b1222 | prod-only | chore(fixes): record prod verification of FIX-1249 — jobid 17's Tue 10-06 15:00 row reads full_rebuild_lag 30 days, mode crawl, complete in 78.7 s of its 1,800 s budget
+2026-10-06 | FIX-1261 | 87ac3648 | prod-only | chore(fixes): record prod verification of FIX-1261 — the mint-artifact manifest re-derives classes {i: 0, ii: 0}
+2026-10-06 | FIX-1270 | 06cbe904 | prod-only | chore(fixes): record prod verification of FIX-1270 — no generic EC arm has two canceled units; ec_arm_parked absent; receipts 10-06 section 9 reads none parked
+2026-10-06 | FIX-1280 | 9a662d56 | prod-only | chore(fixes): record prod verification of FIX-1280 — FE rule industry rows on O/U/V/W committees 162 → 24 on 22 committees (6 lobby on display_name, 18 on connected_org)
+2026-10-06 | FIX-1281 | 6ce54c79 | local-only | fix(ops): FIX-1281 — the nightly preflight judges each PHASE on its own nightly_cron row; a runnerless fec-phase is retried by the schedule fallback while the enrichment phases stand down on theirs
