@@ -156,8 +156,14 @@ Readings:
 - **Swap-in rate alone does not mark the outage; the pair does.** By raw ring
   samples (Upstash, 01:10:51Z), swap free went to ≤ 60 MB at 9 instants on
   10-06: 01:00–01:08Z (31, 2, 3 and 43 MB), 04:32Z (53), 11:32–11:34Z (50, 59),
-  16:02Z (19) and 16:04Z (**0**). The box survived every one before 16:02. Only
-  16:04:22Z combines **0 MB of swap free with MemAvailable under 200 MB**.
+  16:02Z (19) and 16:04Z (**0**). The box survived every one before 16:02.
+  Within this ring, only 16:04:22Z combines **0 MB of swap free with
+  MemAvailable under 200 MB**. That still does not separate a wedge from a
+  survivable trough. `docs/receipts/2026-10-06.json` (cc-197, in FIX-1125)
+  records MemAvailable 149 MB at 21:48Z on 10-05 with 1,023 MB of swap in use,
+  and the box survived it. What separated 10-06 is **duration**: one 512 MB
+  hash node held for five hours. A single sample cannot show that, so a
+  one-sample threshold would not have caught it.
 - `oom_kill` (node_vmstat) was 0 on every sample up to 16:04:22Z. Whether the
   kernel OOM killer fired after that is not knowable: the counter reset with the
   VM.
