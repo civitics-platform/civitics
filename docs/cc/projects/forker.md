@@ -13,6 +13,9 @@ steps:
   - {id: s5, kind: receipt, ref: "FIX-1194", title: "a week with zero non-landing fork bursts (receipts §9 10-02 → 10-09) → Verified: prod", after: 2026-10-09T12:00Z}
   - {id: s6, kind: design, ref: "FIX-1125", title: "memory threshold — after ≥ 7 receipts days carrying forker.memory_day", after: 2026-10-09T12:00Z}
   - {id: s7, kind: design, ref: "", title: "contract-flow chunking (D-contract) — the one heavy rollup still a single statement"}
+  - {id: s8, kind: cc, ref: "cc-202", title: "burst census part 1: snapshot cron → 7,37 (R6); ring banked; memory_day slot window filed as FIX-1289 (build stopped)", done: 2026-10-08}
+  - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: post-move verdict + R2–R5 reads + revert"}
+  - {id: s10, kind: decision, ref: "FIX-1289", title: "memory_day tiling: a 30 h ring (recommended) or chained windows; a 24 h ring cannot hold the slot window at a post-slot write"}
   - {id: s11, kind: cc, ref: "cc-208", title: "FIX-1286 auto-restart on the 4th consecutive Logs-arm DOWN tick (FIX-1285 shipped it in cc-206; armed 10-07); receipt = the next wedge", done: 2026-10-07}
 ---
 
@@ -61,3 +64,18 @@ consecutive Logs-arm DOWN tick, about 77 min after the front door went total
 10-06 pages proved inert; cc-208 (FIX-1286) removed the gate and replaced the
 30-minute hold with the tick counter. Prod has been armed since 2026-10-07
 04:00Z, and the receipt is the next wedge. See `docs/OPERATIONS.md` §"Front-door watchdog".
+
+**Burst census (s8–s10, FIX-1125).** The off-box ring reads a swap-in burst on
+the samples stamped :02 and :32, about 300 pages/s at the median against under
+50 at every other minute. Each sample is a backward rate over the previous two
+minutes and lands at :x2:22, so the ":02" reading covers :00:22 → :02:22: the
+owner fires at **:00 / :30**, not :02 / :32. FIX-1269 removed the snapshot
+route's two heavy reads and the burst did not move. On the half hour are: the
+Vercel `platform-snapshot` route itself (two writers, status + usage),
+`fe-crawl` `*/30` and `ec-crawl` `*/15` (whose :16/:46 bump is about a fifth
+the size), and anything Supabase-side on a half-hour cadence (a backup's
+checkpoint; `pg_stat_checkpointer` / `pg_stat_io` have never been read on
+prod). cc-202 moved the route to `7,37` for 24 h (R6). If the burst follows it
+to :08 / :38, the route owns it; if it stays, cc-203's reads decide among the
+rest. cc-203 reverts the cron either way. s10 is the receipts-window decision
+the seven-day memory count (s6) waits on.

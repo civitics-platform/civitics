@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/platform-snapshot",
-      "schedule": "*/30 * * * *"
+      "schedule": "7,37 * * * *"
     },
     {
       "path": "/api/cron/front-door-watch",
