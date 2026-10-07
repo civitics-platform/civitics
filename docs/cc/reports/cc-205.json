@@ -1,0 +1,50 @@
+{
+  "cc": "205",
+  "prompt": "cc-prompt-205-fix1284-weekly-merge-work-mem-box-gate.md",
+  "started_at": "2026-10-07T02:32:01Z",
+  "finished_at": "2026-10-07T03:02:00Z",
+  "head_before": "e110e0e2",
+  "head_after": "3b33661a",
+  "commits": [
+    {
+      "sha": "af9c215a",
+      "subject": "fix(ops): FIX-1284 — run_rule_taggers weekly branch runs at work_mem 64MB behind box_backoff_gate; the 3 h budget comment corrected"
+    },
+    {
+      "sha": "3b33661a",
+      "subject": "chore(fixes): sync status after FIX-1284 and the cc-205 appends to FIX-1284, FIX-1248 and FIX-1185"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1284"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261007010000_fix1284_weekly_merge_work_mem_box_gate.sql"
+  ],
+  "prod_writes": "One migration, 20261007010000, in ONE gated push. session:wait-for-gate:prod --expected-minutes 1 --census stop ran from the primary checkout's packages/data with --workdir on the fix-1284 worktree, under the FIX-950 claim. The dry run at 02:57:03Z listed only this file. The gate opened at 02:57:13Z (census pass), --then db-push-prod applied the one file, and the claim was released with exit 0. Content: CREATE OR REPLACE PROCEDURE run_rule_taggers (prod's body plus D1 SET work_mem 64MB in the weekly branch, the D2 box_backoff_gate before the lock, and the D3 comment), grants restated, and the D4 DO block, which printed 'absent or already active — no change' (jobid 12 was already active, so nothing was re-activated). No CALL, no VACUUM, no other cron change.",
+  "ci": "green",
+  "stopped_items": [
+    "D2 is NOT where the prompt put it. The prompt said after the FIX-950 stand-down; I placed it where P1-A (20261003030000) and its test require: after the cadence check, BEFORE the advisory lock (gate -> lock -> defer -> work). After the stand-down, a 600 s wait would hold the lock the daily shares, and a supervised claim taken during the wait would never be read. Reasoning is in the migration header and §4.",
+    "D5 case (5) does not assert `active` locally, as the prompt asked. The clone's rule-taggers-weekly exists (jobid 24) and is parked by local convention. D4 switched it on during migration up --local, and I parked it again (memory: cron activation via migration hits local). The case asserts the slot and the command; the prod read-back checks active = true.",
+    "The paced-ops plan step is s14 (plus an s15 receipt), not the s12 the prompt named: cc-198 had already taken s12/s13.",
+    "Rebase conflict on docs/FIXES.md: cc-206's e6b1ea28 appended to the same FIX-1284 bullet line. I resolved it by keeping cc-206's append and splicing cc-205's after it. Both are present.",
+    "No STOP condition fired. Read 2's body was equal, the 64MB projection is ~155-365 s (well under 3,600), D6's first CALL was complete, and held was false at both pushes.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1284",
+      "what": "jobid 12's Tue 10-13 16:00Z merge: data_sync_log row complete, phase_seconds, wall vs 7,200 and vs the projection, box_is_saturated clear through the run, the ring quiet at 16:02-16:10Z",
+      "after": "2026-10-13T18:30Z"
+    },
+    {
+      "fix": "FIX-1248",
+      "what": "the first in-band weekly (10-13), second 10-20",
+      "after": "2026-10-13T18:30Z"
+    }
+  ]
+}
