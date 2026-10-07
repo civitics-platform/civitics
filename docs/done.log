@@ -1617,3 +1617,5 @@
 2026-10-06 | FIX-1270 | 06cbe904 | prod-only | chore(fixes): record prod verification of FIX-1270 — no generic EC arm has two canceled units; ec_arm_parked absent; receipts 10-06 section 9 reads none parked
 2026-10-06 | FIX-1280 | 9a662d56 | prod-only | chore(fixes): record prod verification of FIX-1280 — FE rule industry rows on O/U/V/W committees 162 → 24 on 22 committees (6 lobby on display_name, 18 on connected_org)
 2026-10-06 | FIX-1281 | 6ce54c79 | local-only | fix(ops): FIX-1281 — the nightly preflight judges each PHASE on its own nightly_cron row; a runnerless fec-phase is retried by the schedule fallback while the enrichment phases stand down on theirs
+2026-10-06 | FIX-1284 | af9c215a | local-only | fix(ops): FIX-1284 — run_rule_taggers weekly branch runs at work_mem 64MB behind box_backoff_gate; the 3 h budget comment corrected
+2026-10-06 | FIX-1285 | a22eddee | local-only | feat(ops): FIX-1285 — front-door-watch decides and (when armed) issues a project restart after 30 min of total 52x; report mode by default; Upstash-held state
