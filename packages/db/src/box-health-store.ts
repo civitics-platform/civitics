@@ -208,9 +208,14 @@ export async function scrapeBoxHealth(opts: {
 
 export type UpstashCreds = { url: string; token: string };
 
-type UpstashReply = { result?: unknown; error?: string };
+export type UpstashReply = { result?: unknown; error?: string };
 
-async function upstash(
+/**
+ * One Upstash REST request: a single command at "" or a list at "/pipeline".
+ * Exported for FIX-1285, whose restart state (front-door-restart.ts) is the
+ * second Postgres-free store on the same credentials.
+ */
+export async function upstashRequest(
   creds: UpstashCreds,
   path: "" | "/pipeline",
   body: unknown,
@@ -259,7 +264,7 @@ export async function writeBoxHealthOffBox(
   fetchImpl: typeof fetch,
   timeoutMs = 5_000,
 ): Promise<OffBoxResult> {
-  const r = await upstash(creds, "/pipeline", offBoxCommands(sample), fetchImpl, timeoutMs);
+  const r = await upstashRequest(creds, "/pipeline", offBoxCommands(sample), fetchImpl, timeoutMs);
   if (!r.ok) return r;
   const replies = Array.isArray(r.reply) ? (r.reply as UpstashReply[]) : null;
   if (replies === null || replies.length !== BOX_HEALTH_COMMANDS_PER_SAMPLE) {
@@ -286,7 +291,7 @@ export async function readBoxHealthRing(
   count = BOX_HEALTH_RING_LEN,
   timeoutMs = 10_000,
 ): Promise<RingRead> {
-  const r = await upstash(creds, "", ["LRANGE", BOX_HEALTH_RING_KEY, "0", String(count - 1)], fetchImpl, timeoutMs);
+  const r = await upstashRequest(creds, "", ["LRANGE", BOX_HEALTH_RING_KEY, "0", String(count - 1)], fetchImpl, timeoutMs);
   if (!r.ok) return r;
   const raw = (r.reply as UpstashReply | null)?.result;
   if (!Array.isArray(raw)) return { ok: false, error: `upstash LRANGE: unexpected ${JSON.stringify(raw).slice(0, 120)}` };

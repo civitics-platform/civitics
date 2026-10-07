@@ -41,10 +41,13 @@
  *
  *   * Both instruments are HTTP. The direct probe hits `/rest/v1/` and the
  *     corroborator hits the Supabase Logs API. Neither opens a DB connection.
- *   * The verdict is stateless. There is no Postgres-independent state store
- *     in this codebase — `platform_alert_state` and `pipeline_state` are both
- *     Postgres tables — so dedup is derived from the bucket shape plus the wall
- *     clock rather than from stored state. See front-door-verdict.ts.
+ *   * The verdict is stateless — `platform_alert_state` and `pipeline_state`
+ *     are both Postgres tables — so dedup is derived from the bucket shape plus
+ *     the wall clock rather than from stored state. See front-door-verdict.ts.
+ *   * The restart decision (FIX-1285) is NOT stateless: it holds DOWN for 30
+ *     minutes and spaces and caps restarts, so it keeps four keys in Upstash —
+ *     the Postgres-free store the FIX-1125 memory ring already uses. Upstash
+ *     not answering means no restart. See front-door-restart.ts.
  *   * The `data_sync_log` breadcrumb at the very end is best-effort, wrapped so
  *     it cannot throw, and runs strictly AFTER the alert has been sent. It
  *     exists so the rollup registry can see this job; it is never load-bearing.
@@ -63,10 +66,15 @@
 
 export const dynamic = "force-dynamic";
 
-// Bounded well under Vercel's limit: three 5 s probe attempts plus one Logs API
-// call with its own 10 s cap. A watchdog that can hang is a watchdog that stops
-// reporting exactly when it matters.
-export const maxDuration = 30;
+// Every call is bounded. Phase one runs in parallel: three 5 s probe attempts
+// (15 s worst), the Logs read (10 s cap) and the restart state read (3 s) with
+// its health GET (5 s, only once DOWN has held 30 min). On a restart tick the
+// POST adds 10 s and its state write 3 s: 28 s before the first email, and
+// sendEmail has no timeout of its own — during a wedge its usage counter writes
+// through the dead front door. 30 s would leave 2, so FIX-1285 raised it to 60.
+// A watchdog that can hang is a watchdog that stops reporting exactly when it
+// matters.
+export const maxDuration = 60;
 
 import { NextResponse, type NextRequest } from "next/server";
 import {
@@ -77,11 +85,26 @@ import {
   renderFrontDoorEmail,
   corroboratorLabel,
   queryEdgeBuckets,
+  decideRestart,
+  issueProjectRestart,
+  parseRestartMode,
+  planRestartStateCommands,
+  readProjectHealth,
+  readRestartState,
+  renderRestartEmail,
+  restartLine,
+  restartsWithin24h,
+  shouldEmailWouldRestart,
+  upstashCredsFromEnv,
+  writeRestartState,
   BUCKET_MS,
   BUCKET_COUNT,
+  RESTART_HOLD_MS,
   type FrontDoorBucket,
   type FrontDoorCorroborator,
   type FrontDoorProbe,
+  type ProjectHealth,
+  type RestartStateRead,
 } from "@civitics/db";
 import { sendEmail } from "@/lib/email";
 
@@ -162,6 +185,27 @@ async function fetchBuckets(
   return { rows: a.rows, corroborator: { kind: "ok", buckets: a.rows.length } };
 }
 
+/**
+ * FIX-1285 — what the restart decision needs besides the verdict: its Upstash
+ * state, and the project health once it could matter. Runs beside the probe and
+ * the Logs read. The health GET (read token, `project_admin_read`) is made only
+ * when DOWN has already held 30 minutes, so a healthy tick costs one MGET.
+ */
+async function readRestartInputs(
+  nowMs: number,
+  mgmtToken: string | undefined,
+): Promise<{ state: RestartStateRead; health: { health: ProjectHealth; detail: string } }> {
+  const creds = upstashCredsFromEnv(process.env);
+  const state: RestartStateRead = creds
+    ? await readRestartState(creds)
+    : { ok: false, error: "UPSTASH_REDIS_REST_URL / _TOKEN not configured" };
+  const held =
+    state.ok && state.state.downSinceMs !== null && nowMs - state.state.downSinceMs >= RESTART_HOLD_MS;
+  if (!held) return { state, health: { health: "unknown", detail: "not read (DOWN has not held 30 min)" } };
+  if (!mgmtToken) return { state, health: { health: "unknown", detail: "SUPABASE_MANAGEMENT_API_KEY not configured" } };
+  return { state, health: await readProjectHealth(mgmtToken) };
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${process.env["CRON_SECRET"] ?? ""}`;
@@ -182,8 +226,9 @@ export async function GET(request: NextRequest) {
   const mgmtToken = process.env["SUPABASE_MANAGEMENT_API_KEY"];
 
   // Both instruments in parallel — they are independent, and the probe's worst
-  // case (~15 s) should not serialise behind the Logs API's (~10 s).
-  const [probe, logs] = await Promise.all([
+  // case (~15 s) should not serialise behind the Logs API's (~10 s). The
+  // restart state read (FIX-1285) rides beside them for the same reason.
+  const [probe, logs, restartInputs] = await Promise.all([
     probeFrontDoor(supabaseUrl),
     mgmtToken
       ? fetchBuckets(endBoundary, mgmtToken)
@@ -191,6 +236,7 @@ export async function GET(request: NextRequest) {
           rows: null,
           corroborator: { kind: "dark", detail: "SUPABASE_MANAGEMENT_API_KEY not configured" } as FrontDoorCorroborator,
         }),
+    readRestartInputs(nowMs, mgmtToken),
   ]);
 
   const buckets = alignBuckets(logs.rows ?? [], endBoundary);
@@ -198,12 +244,66 @@ export async function GET(request: NextRequest) {
   const logsApi = corroboratorLabel(logs.corroborator);
   const send = shouldSend(verdict, nowMs);
 
+  // ── FIX-1285: the restart decision, built on the verdict ─────────────────────
+  const { mode, warning: modeWarning } = parseRestartMode(process.env["FRONT_DOOR_AUTO_RESTART"]);
+  const restartKey = process.env["SUPABASE_MANAGEMENT_RESTART_KEY"];
+  const stored = restartInputs.state.ok ? restartInputs.state.state : null;
+  const decision = decideRestart({
+    verdictState: verdict.state,
+    probeAnswered: probe.answered,
+    nowMs,
+    downSinceMs: stored?.downSinceMs ?? null,
+    lastRestartMs: stored?.lastRestartMs ?? null,
+    restartsLast24h: stored ? restartsWithin24h(stored, nowMs) : 0,
+    mode,
+    tokenPresent: Boolean(restartKey),
+    health: restartInputs.health.health,
+    stateError: restartInputs.state.ok ? null : restartInputs.state.error,
+  });
+
+  // The POST and its state write go BEFORE any email: sendEmail's usage counter
+  // writes through the same front door, so during a wedge an email can hang
+  // until Cloudflare gives up, and the restart must not queue behind that.
+  const adminEmail = process.env["ADMIN_EMAIL"];
+  const call =
+    decision.action === "restart" && restartKey ? await issueProjectRestart(restartKey) : null;
+  const wouldEmail = Boolean(adminEmail) && shouldEmailWouldRestart(decision, stored);
+  const upstash = upstashCredsFromEnv(process.env);
+  let stateWrite: string | null = null;
+  if (stored && upstash) {
+    const commands = planRestartStateCommands({
+      verdictState: verdict.state,
+      state: stored,
+      nowMs,
+      restartIssued: call !== null,
+      wouldRestartEmailed: wouldEmail,
+    });
+    if (commands.length > 0) {
+      const w = await writeRestartState(upstash, commands);
+      stateWrite = w.ok ? `${w.commands} command(s) written` : `FAILED: ${w.error}`;
+    }
+  }
+
+  let restartEmailed: string | null = null;
+  if (adminEmail && (call || wouldEmail)) {
+    const { subject, html } = renderRestartEmail({
+      kind: call ? "issued" : "would_fire",
+      decision,
+      mode,
+      nowMs,
+      health: restartInputs.health,
+      call,
+      stateWrite,
+    });
+    const result = await sendEmail({ to: adminEmail, subject, html });
+    restartEmailed = result.sent ? "sent" : `failed: ${result.reason}`;
+  }
+
   // ── Alert ─────────────────────────────────────────────────────────────────
   // Gated on ADMIN_EMAIL alone, deliberately NOT on EMAIL_ALERTS_ENABLED. That
   // flag governs the "data is stale" tier FIX-1036 split out; this is the "the
   // site is down" tier, and it should not share a kill switch with a staleness
   // digest.
-  const adminEmail = process.env["ADMIN_EMAIL"];
   let emailed: string | null = null;
   if (send && adminEmail) {
     const { subject, html } = renderFrontDoorEmail({
@@ -212,6 +312,10 @@ export async function GET(request: NextRequest) {
       probe,
       probeUrl: `${supabaseUrl}/rest/v1/`,
       nowMs,
+      restartLine:
+        verdict.state === "down"
+          ? restartLine(decision, mode) + (modeWarning ? ` (${modeWarning})` : "")
+          : null,
     });
     const result = await sendEmail({ to: adminEmail, subject, html });
     emailed = result.sent ? "sent" : `failed: ${result.reason}`;
@@ -238,6 +342,19 @@ export async function GET(request: NextRequest) {
       n_52x: b.n52x,
       red: verdict.red[i] ?? false,
     })),
+    // FIX-1285. `none` on a healthy tick; see front-door-restart.ts for the rest.
+    restart: {
+      action: decision.action,
+      reason: decision.reason,
+      mode,
+      downForMs: decision.downForMs,
+      ...(modeWarning ? { mode_warning: modeWarning } : {}),
+      state_store: restartInputs.state.ok ? "ok" : `unreachable: ${restartInputs.state.error}`,
+      health: restartInputs.health.health,
+      issued: call ? { status: call.status, ms: call.ms } : null,
+      state_write: stateWrite,
+      emailed: restartEmailed,
+    },
   };
 
   // ── Breadcrumb, strictly after the alert, and structurally unable to break it.
@@ -266,6 +383,7 @@ export async function GET(request: NextRequest) {
           probe_answered: probe.answered,
           emailed,
           buckets: body.buckets,
+          restart: body.restart,
         },
       });
   } catch {

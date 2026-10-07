@@ -89,6 +89,9 @@
  * would be dead in exactly the outage it exists for (the FIX-1125 lesson: a
  * guard starved by the condition it exists to end is not a guard). So dedup is
  * derived from the bucket shape plus the wall clock, and nothing is persisted.
+ * (Since FIX-1125 there IS an off-box store — the Upstash memory ring's — and
+ * FIX-1285's restart decision keeps its hold there. This verdict still needs
+ * none.)
  */
 
 import { isLogsEndpointGone } from "./supabase-logs";
@@ -343,8 +346,10 @@ export function renderFrontDoorEmail(args: {
   probe: FrontDoorProbe;
   probeUrl: string;
   nowMs: number;
+  /** FIX-1285: the restart decision's one line (front-door-restart.ts `restartLine`). */
+  restartLine?: string | null;
 }): { subject: string; html: string } {
-  const { verdict, buckets, probe, probeUrl, nowMs } = args;
+  const { verdict, buckets, probe, probeUrl, nowMs, restartLine } = args;
   const down = verdict.state === "down";
   const subject = down
     ? `[Civitics][FRONT DOOR DOWN] Supabase REST is not answering — ${verdict.reason}`
@@ -371,6 +376,7 @@ ${probeLines}
   verdict: ${probe.answered ? "front door ANSWERED (any status &lt; 500 counts; 401 is healthy here)" : "front door did NOT answer"}
 
 ${down ? FRONT_DOOR_RUNBOOK : "No action needed. This is the all-clear for the alert above it."}
+${restartLine ? `\n${restartLine.replace(/</g, "&lt;")}\n` : ""}
 
 A bucket is RED at >= ${RED_MIN_52X} Cloudflare-class 52x responses AND >= ${Math.round(
     RED_MIN_52X_RATIO * 100,

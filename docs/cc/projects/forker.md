@@ -13,6 +13,7 @@ steps:
   - {id: s5, kind: receipt, ref: "FIX-1194", title: "a week with zero non-landing fork bursts (receipts §9 10-02 → 10-09) → Verified: prod", after: 2026-10-09T12:00Z}
   - {id: s6, kind: design, ref: "FIX-1125", title: "memory threshold — after ≥ 7 receipts days carrying forker.memory_day", after: 2026-10-09T12:00Z}
   - {id: s7, kind: design, ref: "", title: "contract-flow chunking (D-contract) — the one heavy rollup still a single statement"}
+  - {id: s11, kind: cc, ref: "cc-206", title: "FIX-1285 auto-restart — shipped report mode 2026-10-07; arm = Craig; receipt = the next wedge", done: 2026-10-07}
 ---
 
 # pg_cron forker starvation
@@ -50,3 +51,11 @@ the threshold is designed after seven banked days.
 **Contract-flow chunking (s7)** is its own design. P1-A gave that procedure a
 `running` row and a cancel handler, but its two rebuilds are still one statement
 each, so a cancel still costs the whole run.
+
+**Auto-restart (s11, FIX-1285)** bounds the wedge rather than preventing it.
+Three starved boxes (08-31, 09-22, 10-06) left the front door at 95–100 % 52x
+after Postgres had recovered, and each ended only by a hand restart. The
+front-door watchdog now decides a project restart itself after 30 minutes of
+DOWN (cap 2 / 24 h, state in Upstash). It shipped in `report` mode; arming is
+Craig's (`FRONT_DOOR_AUTO_RESTART=arm` plus a `project_admin_write` token), and
+the receipt is the next wedge. See `docs/OPERATIONS.md` §"Front-door watchdog".

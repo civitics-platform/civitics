@@ -551,6 +551,39 @@ export type {
   FrontDoorVerdict,
 } from "./front-door-verdict";
 
+// FIX-1285 — the watchdog's own restart decision, built on the verdict above.
+// Pure decision + the Upstash state it holds across ticks + the two Management
+// API calls; the route only sequences them.
+export {
+  decideRestart,
+  parseRestartMode,
+  parseRestartState,
+  planRestartStateCommands,
+  restartsWithin24h,
+  shouldEmailWouldRestart,
+  readRestartState,
+  writeRestartState,
+  readProjectHealth,
+  issueProjectRestart,
+  restartLine,
+  renderRestartEmail,
+  FRONT_DOOR_RESTART_KEYS,
+  FRONT_DOOR_RESTART_MGET_KEYS,
+  RESTART_HOLD_MS,
+  RESTART_SPACING_MS,
+  RESTART_CAP_24H,
+} from "./front-door-restart";
+export type {
+  RestartAction,
+  RestartCall,
+  RestartDecision,
+  RestartInput,
+  RestartMode,
+  RestartState,
+  RestartStateRead,
+  ProjectHealth,
+} from "./front-door-restart";
+
 // FIX-1219 — the ONE client for the Management API `logs` endpoint (ClickHouse).
 // The census and the front-door watch both read through it; the schema map it
 // was built from is in its header.
