@@ -25,6 +25,17 @@
  * means the phase did NOT run — a FIX-950 interlock hold — so a fallback that
  * arrives after the hold is released is allowed to do the night's work.
  *
+ * THE VERDICT IS PER PHASE (FIX-1281). A row counts only toward the phase it
+ * stamped (`metadata.phase`), so each of nightly.yml's four phase jobs gates on
+ * its OWN phase's verdict. Before this, any row stood the whole run down: on
+ * Mon 2026-10-05 the dispatched run's fec-phase was never acquired by a hosted
+ * runner, heavy/light/tail ran on `!cancelled()` and wrote their rows, and the
+ * late fallback stood down on THOSE — so the night's FEC phase was lost with no
+ * retry. Per phase, that fallback runs FEC and the enrichment jobs stand down.
+ * Whole-run stamps cover what they ran: a null phase (the pre-FIX-462 shape)
+ * and the orchestrator's `all` count for every phase, and its `enrichment`
+ * counts for the three enrichment sub-phases (index.ts, runNightlySync).
+ *
  * WHO IT GUARDS. Only the two AUTOMATED triggers, `schedule` and `vercel-cron`.
  * A human `gh workflow run nightly.yml` (dispatched_by defaults to `manual`)
  * always runs: its offset defaults to 0, so it names the current UTC day, which
@@ -41,7 +52,36 @@
  * `$GITHUB_OUTPUT` write live in scripts/nightly-preflight.ts.
  */
 
+import type { NightlyPhase } from "./index";
 import { nominalSlotInstant } from "./weekly-gate";
+
+/**
+ * The phases nightly.yml runs as separate jobs, each through
+ * `data:nightly:<phase>:ci` → `--phase=<phase>`, which runNightlySync stamps
+ * verbatim into `metadata.phase`. Typed against the orchestrator's own
+ * NightlyPhase, and the test reads package.json and nightly.yml to hold the
+ * list to the tree.
+ */
+export const PREFLIGHT_PHASES = [
+  "fec",
+  "enrichment-heavy",
+  "enrichment-light",
+  "enrichment-tail",
+] as const satisfies readonly NightlyPhase[];
+
+export type PreflightPhase = (typeof PREFLIGHT_PHASES)[number];
+
+/**
+ * The `$GITHUB_OUTPUT` name each phase's verdict is written under. `already_ran`
+ * stays the FEC phase's, so its existing readers (the `Run FEC phase` step,
+ * mark-killed, and the receipts job's role read off that step) are unchanged.
+ */
+export const PREFLIGHT_OUTPUT: Readonly<Record<PreflightPhase, string>> = {
+  fec: "already_ran",
+  "enrichment-heavy": "already_ran_enrichment_heavy",
+  "enrichment-light": "already_ran_enrichment_light",
+  "enrichment-tail": "already_ran_enrichment_tail",
+};
 
 /** Env var the workflow sets from `inputs.dispatched_by` / the event name. */
 export const DISPATCHED_BY_ENV = "NIGHTLY_DISPATCHED_BY";
@@ -109,32 +149,47 @@ export interface PreflightVerdict {
   matched: PriorNightlyRow[];
 }
 
+/**
+ * Does a row stamped `rowPhase` count toward `phase`? Its own phase, or a
+ * whole-run stamp that ran it (see the header).
+ */
+export function rowCoversPhase(rowPhase: string | null, phase: PreflightPhase): boolean {
+  if (rowPhase === null || rowPhase === "all") return true;
+  if (rowPhase === "enrichment") return phase !== "fec";
+  return rowPhase === phase;
+}
+
 export function decidePreflight(args: {
   nominalDay: string;
   dispatchedBy: string | null;
   runId: string | null;
   rows: PriorNightlyRow[];
+  /** The phase this verdict is for (FIX-1281). */
+  phase: PreflightPhase;
 }): PreflightVerdict {
-  const { nominalDay: day, dispatchedBy, runId, rows } = args;
+  const { nominalDay: day, dispatchedBy, runId, rows, phase } = args;
   if (dispatchedBy === null || !GUARDED_TRIGGERS.includes(dispatchedBy)) {
     return {
       alreadyRan: false,
       reason:
-        `trigger ${dispatchedBy ?? "(unset)"} is not an automated firing path — ` +
+        `${phase}: trigger ${dispatchedBy ?? "(unset)"} is not an automated firing path — ` +
         "a human dispatch always runs (FIX-1218 guards schedule and vercel-cron only)",
       matched: [],
     };
   }
   const matched = rows.filter(
-    (r) => r.status !== NOT_RAN_STATUS && (runId === null || r.github_run_id !== runId),
+    (r) =>
+      rowCoversPhase(r.phase, phase) &&
+      r.status !== NOT_RAN_STATUS &&
+      (runId === null || r.github_run_id !== runId),
   );
   if (matched.length === 0) {
     return {
       alreadyRan: false,
       reason:
-        `no other run has a nightly_cron row that ran for nominal day ${day}` +
-        (rows.length > 0 ? ` (${rows.length} row(s) ignored: this run's own, or skipped)` : "") +
-        " — this run does the night's work",
+        `${phase}: no other run has a nightly_cron row that ran this phase for nominal day ${day}` +
+        (rows.length > 0 ? ` (${rows.length} row(s) ignored: another phase, this run's own, or skipped)` : "") +
+        ` — this run does the ${phase} phase`,
       matched: [],
     };
   }
@@ -145,8 +200,42 @@ export function decidePreflight(args: {
   return {
     alreadyRan: true,
     reason:
-      `nominal day ${day} already ran (run ${runs.join(", ")}: ${phases}) — ` +
-      `this ${dispatchedBy} run exits without running the nightly (FIX-1218)`,
+      `${phase}: nominal day ${day} already ran (run ${runs.join(", ")}: ${phases}) — ` +
+      `this ${dispatchedBy} run skips the ${phase} phase (FIX-1218, FIX-1281)`,
     matched,
   };
+}
+
+/** {@link decidePreflight} for every phase nightly.yml runs, in job order. */
+export function decideAllPhases(args: {
+  nominalDay: string;
+  dispatchedBy: string | null;
+  runId: string | null;
+  rows: PriorNightlyRow[];
+}): Record<PreflightPhase, PreflightVerdict> {
+  const out = {} as Record<PreflightPhase, PreflightVerdict>;
+  for (const phase of PREFLIGHT_PHASES) out[phase] = decidePreflight({ ...args, phase });
+  return out;
+}
+
+/** The `$GITHUB_OUTPUT` lines for a set of verdicts — one per phase, plus the day. */
+export function preflightOutputs(
+  verdicts: Record<PreflightPhase, PreflightVerdict>,
+  day: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const phase of PREFLIGHT_PHASES) out[PREFLIGHT_OUTPUT[phase]] = verdicts[phase].alreadyRan ? "true" : "false";
+  out["nominal_day"] = day;
+  return out;
+}
+
+/**
+ * FAIL OPEN: a preflight that could not read answers `false` for EVERY phase,
+ * so a crash never costs any phase of the night.
+ */
+export function failOpenOutputs(day: string | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const phase of PREFLIGHT_PHASES) out[PREFLIGHT_OUTPUT[phase]] = "false";
+  if (day !== null) out["nominal_day"] = day;
+  return out;
 }

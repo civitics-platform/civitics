@@ -79,11 +79,14 @@ on:
       # (cc-150 read 2: 14 scheduled starts 09-10..09-23, median 2.11 h).
       #
       # The `schedule:` above STAYS, as a free fallback: the fec-phase preflight
-      # makes the nightly idempotent by NOMINAL DAY, so the late scheduled run
-      # finds the dispatched run's nightly_cron rows and every phase is skipped
-      # — about one runner-minute — while on a night the dispatcher died it
-      # finds nothing and does the work. Do not delete the cron; it is the
-      # backstop the dispatcher's liveness stamp is measured against.
+      # makes the nightly idempotent by NOMINAL DAY, PER PHASE (FIX-1281). The
+      # late scheduled run finds the dispatched run's nightly_cron rows and each
+      # phase whose own row exists is skipped — on a healthy night all four,
+      # about one runner-minute — while on a night the dispatcher died it finds
+      # nothing and does the work, and on a night ONE phase never ran (a
+      # fec-phase no hosted runner acquired, 2026-10-05) it does that phase
+      # alone. Do not delete the cron; it is the backstop the dispatcher's
+      # liveness stamp is measured against.
       #
       # This is workflow_dispatch through the REST API, not repository_dispatch:
       # the latter is a webhook event for external systems with a free-form
@@ -171,12 +174,19 @@ jobs:
     # It is decoupled from the OUTCOME (FIX-462/FIX-740) but not from the wait.
     timeout-minutes: 300
 
-    # FIX-1218: every downstream phase job gates on this. `true` only when an
-    # automated trigger (schedule / vercel-cron) found another run's
-    # nightly_cron rows for its nominal day; unset (a preflight crash) reads as
-    # not-already-ran, so the gate FAILS OPEN.
+    # FIX-1218 / FIX-1281: one verdict PER PHASE, and each phase gates on its
+    # own. `already_ran` is the FEC phase's (this job's FEC step and mark-killed
+    # read it); each enrichment job reads its `already_ran_enrichment_*`. A
+    # verdict is `true` only when an automated trigger (schedule / vercel-cron)
+    # found another run's nightly_cron row for THAT phase on its nominal day —
+    # so a fallback after a runnerless fec-phase runs FEC while the enrichment
+    # jobs stand down on their own rows. Unset (a preflight crash) reads as
+    # not-already-ran, so every gate FAILS OPEN.
     outputs:
       already_ran: ${{ steps.preflight.outputs.already_ran }}
+      already_ran_enrichment_heavy: ${{ steps.preflight.outputs.already_ran_enrichment_heavy }}
+      already_ran_enrichment_light: ${{ steps.preflight.outputs.already_ran_enrichment_light }}
+      already_ran_enrichment_tail: ${{ steps.preflight.outputs.already_ran_enrichment_tail }}
 
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
@@ -287,10 +297,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # FIX-1218 — "Already ran for this nominal day?" The first thing the job
-      # decides, before any prod write. See
+      # decides, before any prod write, and decided PER PHASE (FIX-1281): it
+      # writes the four outputs declared above. See
       # packages/data/src/pipelines/nightly-preflight.ts for what counts and
       # whom it guards. continue-on-error: a crashed preflight must never cost
-      # the night; the script itself also answers false on every failure.
+      # the night; the script itself also answers false for every phase on
+      # every failure.
       - name: Already ran for this nominal day? (FIX-1218)
         id: preflight
         continue-on-error: true
@@ -314,10 +326,12 @@ jobs:
       # `nightly_cron` row stuck at status='running'. Observability, never
       # gates the job (always exits 0).
       #
-      # FIX-1218: not in a duplicate run. That run wrote no row of its own, so
-      # the only `running` row mark-killed could find is the OTHER run's — a
-      # dispatched fec-phase that was itself killed, which that run's own
-      # post-step has already marked.
+      # FIX-1218: not when this run's FEC phase stood down (`already_ran` is the
+      # FEC phase's own verdict, FIX-1281). That run wrote no fec row of its
+      # own, so the only `running` row mark-killed could find is the OTHER
+      # run's — a dispatched fec-phase that was itself killed, which that run's
+      # own post-step has already marked. (A fec-phase no runner acquired has no
+      # post-step either, so it leaves no nightly_killed row at all.)
       - name: Mark nightly-killed if no completion row
         if: always() && steps.preflight.outputs.already_ran != 'true'
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=fec
@@ -347,9 +361,16 @@ jobs:
     # portion — acceptable, next week reconciles.
     #
     # FIX-1218: and not when fec-phase's preflight found another run already
-    # did this nominal day. Kept as one expression with !cancelled() so the
-    # FIX-462/740 decoupling is unchanged for every run that is not a duplicate.
-    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran != 'true' }}
+    # did THIS PHASE for this nominal day — its own verdict, never the FEC one
+    # (FIX-1281: a fallback after a runnerless fec-phase must run FEC while this
+    # job stands down on the enrichment-heavy row the first run wrote). Kept as
+    # one expression with !cancelled() so the FIX-462/740 decoupling is
+    # unchanged for every run that is not a duplicate. A fec-phase that was
+    # cancelled with zero steps leaves this output empty, which reads as not
+    # already ran: by decision (FIX-1281 D1-c) a runnerless fec-phase does NOT
+    # hold the enrichment jobs — they read a day stale anyway, and the fallback
+    # does the missing FEC work.
+    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran_enrichment_heavy != 'true' }}
     runs-on: ubuntu-latest
     # LittleSis is the ~35-min stage (17-min match-index build + stream 1.9M
     # rels + direct-pg upsert 601k external_relationships, FIX-741). 90 min is
@@ -420,15 +441,17 @@ jobs:
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment-heavy
 
   enrichment-light-phase:
-    # FIX-1218: fec-phase is listed so this job can read its already_ran output
-    # (a job reads outputs only from jobs in its own `needs:`). Ordering is
-    # unchanged — heavy already needs fec-phase.
+    # FIX-1218: fec-phase is listed so this job can read the preflight's output
+    # for THIS phase, already_ran_enrichment_light (a job reads outputs only
+    # from jobs in its own `needs:`). Ordering is unchanged — heavy already
+    # needs fec-phase.
     needs: [fec-phase, enrichment-heavy-phase]
     # Chained after heavy (serialize the two DB writers on the Micro) but
     # decoupled from its outcome: `!cancelled()` runs the light stages even when
-    # heavy times out, so EDGAR / MV refreshes / AI taggers never go dark just
-    # because LittleSis overran. FIX-1218: skipped in a duplicate run.
-    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran != 'true' }}
+    # heavy times out — or stood down on its own verdict — so EDGAR / MV
+    # refreshes / AI taggers never go dark just because LittleSis overran.
+    # FIX-1218 / FIX-1281: skipped when another run already did this phase.
+    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran_enrichment_light != 'true' }}
     runs-on: ubuntu-latest
     # FIX-746: the weekly INGESTS only now — EDGAR (~6 min) + CourtListener +
     # OpenStates + agencies/OPM/PLUM/elections/committees/agency-* + tag-industry.
@@ -511,9 +534,10 @@ jobs:
   # (donor_party_rollup_mv + entity_connection_stats_mv) are now incremental
   # TABLEs on their own pg_cron jobs and no longer run here.
   enrichment-tail-phase:
-    # FIX-1218: fec-phase listed for its already_ran output, as in light above.
+    # FIX-1218: fec-phase listed for its already_ran_enrichment_tail output (this
+    # phase's own verdict, FIX-1281), as in light above.
     needs: [fec-phase, enrichment-light-phase]
-    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran != 'true' }}
+    if: ${{ !cancelled() && needs.fec-phase.outputs.already_ran_enrichment_tail != 'true' }}
     runs-on: ubuntu-latest
     # The ~30-min AI/MV work that was getting squeezed — rule + AI taggers, AI
     # summaries, and the two capped-admin.rpc() MV refreshes. 90 min is ample
@@ -621,6 +645,12 @@ jobs:
   # `already_ran` (its fec-phase "Run FEC phase" step concluded skipped). The
   # dispatched run's own receipt, written ~15 min after 21:00, cannot: the
   # fallback does not exist yet.
+  #
+  # FIX-1281 — that role is read off the FEC step ALONE, and the verdict is now
+  # per phase. A fallback that re-ran only FEC (after a runnerless fec-phase)
+  # reads `did the work`, which is right. The one shape it mislabels is the
+  # converse — FEC stood down but an enrichment phase ran — which still reads
+  # `already_ran (stood down)`; the §1 Jobs table shows which jobs ran.
   receipts:
     needs: enrichment-tail-phase
     if: always()

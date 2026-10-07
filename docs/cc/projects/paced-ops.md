@@ -17,6 +17,8 @@ steps:
   - {id: s9, kind: receipt, ref: "FIX-1124", title: "a week of peer_due/peer_running skips with zero crawl↔daily overlaps → part 2 retires the blackout", after: 2026-10-11T12:00Z}
   - {id: s10, kind: cc, ref: "cc-195", title: "FIX-1145 — the home-page MV reads the two rollups; jobid 24 refreshes it after a run that moved the watermark"}
   - {id: s11, kind: receipt, ref: "FIX-1145", title: "Mon 06:00 unit 4 ≤ 5 s; the first jobid 24 run that moves the watermark stamps homepage_mv_refreshed true", after: 2026-10-05T09:30Z}
+  - {id: s12, kind: cc, ref: "cc-198", title: "FIX-1281 — per-phase preflight; the Tuesday records"}
+  - {id: s13, kind: receipt, ref: "FIX-1281", title: "the first schedule fallback after landing reads already_ran=true on all four phases and exits in a runner-minute; a runnerless fec-phase (when one next happens) is retried", after: 2026-10-08T06:00Z}
 ---
 
 # Paced ops
@@ -64,3 +66,12 @@ only moves at 09:00 or 12:00. So `donor_rollup_rebuild_bulk` (jobid 24) now
 refreshes the MV right after a run that moved its watermark. The receipt (s11)
 is Monday's 06:00 unit seconds and the first jobid 24 row that carries
 `homepage_mv_refreshed: true`.
+
+**Per-phase preflight (s12, s13):** cc-198 makes the nightly's nominal-day
+preflight judge each phase on its own `nightly_cron` row (FIX-1281). On Mon
+10-05 the dispatched run's fec-phase never got a hosted runner, the three
+enrichment jobs ran anyway, and the late `schedule:` fallback stood down on
+their rows, so the night's FEC phase was lost with no retry. Now the fallback
+runs FEC and the enrichment jobs stand down on their own verdicts. The receipt
+(s13) is the first scheduled fallback after landing: all four verdicts `true`
+on a healthy night.

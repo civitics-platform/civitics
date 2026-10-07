@@ -11,12 +11,20 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   DISPATCHED_BY_ENV,
+  PREFLIGHT_OUTPUT,
+  PREFLIGHT_PHASES,
+  decideAllPhases,
   decidePreflight,
+  failOpenOutputs,
   nightlyRunStamp,
   nominalDay,
+  preflightOutputs,
   readDispatchedBy,
+  type PreflightPhase,
   type PriorNightlyRow,
 } from "./nightly-preflight";
 
@@ -66,15 +74,14 @@ test("nightlyRunStamp: nominal_day always, dispatched_by only when the env names
 });
 
 test("the fallback stands down when the dispatched run's rows exist", () => {
-  const v = decidePreflight({
-    nominalDay: "2026-09-25",
-    dispatchedBy: "schedule",
-    runId: "222",
-    rows: [row(), row({ id: "r2", phase: "enrichment-heavy" })],
-  });
-  assert.equal(v.alreadyRan, true);
-  assert.equal(v.matched.length, 2);
-  assert.match(v.reason, /nominal day 2026-09-25 already ran \(run 111/);
+  const rows = [row(), row({ id: "r2", phase: "enrichment-heavy" })];
+  for (const phase of ["fec", "enrichment-heavy"] as const) {
+    const v = decidePreflight({ nominalDay: "2026-09-25", dispatchedBy: "schedule", runId: "222", rows, phase });
+    assert.equal(v.alreadyRan, true, phase);
+    // FIX-1281: each verdict matches its OWN phase's row, not every row of the day.
+    assert.deepEqual(v.matched.map((r) => r.phase), [phase]);
+    assert.match(v.reason, new RegExp(`^${phase}: nominal day 2026-09-25 already ran \\(run 111`));
+  }
 });
 
 test("either automated trigger stands down — whichever arrives second", () => {
@@ -84,34 +91,41 @@ test("either automated trigger stands down — whichever arrives second", () => 
     dispatchedBy: "vercel-cron",
     runId: "333",
     rows: [row({ github_run_id: "222", dispatched_by: "schedule" })],
+    phase: "fec",
   });
   assert.equal(v.alreadyRan, true);
 });
 
 test("an empty day runs — the fallback covers a dead dispatcher", () => {
-  const v = decidePreflight({ nominalDay: "2026-09-25", dispatchedBy: "schedule", runId: "222", rows: [] });
-  assert.equal(v.alreadyRan, false);
-  assert.deepEqual(v.matched, []);
+  for (const phase of PREFLIGHT_PHASES) {
+    const v = decidePreflight({ nominalDay: "2026-09-25", dispatchedBy: "schedule", runId: "222", rows: [], phase });
+    assert.equal(v.alreadyRan, false, phase);
+    assert.deepEqual(v.matched, []);
+  }
 });
 
-test("every status but skipped counts as ran", () => {
-  for (const status of ["running", "complete", "partial", "failed", "reaped"]) {
-    const v = decidePreflight({
+test("every status but skipped counts as ran — per phase", () => {
+  for (const phase of PREFLIGHT_PHASES) {
+    for (const status of ["running", "complete", "partial", "failed", "reaped"]) {
+      const v = decidePreflight({
+        nominalDay: "2026-09-25",
+        dispatchedBy: "schedule",
+        runId: "222",
+        rows: [row({ phase, status })],
+        phase,
+      });
+      assert.equal(v.alreadyRan, true, `${phase} ${status} must count as ran`);
+    }
+    // A FIX-950-held night did not run: the fallback may do it once the hold is off.
+    const held = decidePreflight({
       nominalDay: "2026-09-25",
       dispatchedBy: "schedule",
       runId: "222",
-      rows: [row({ status })],
+      rows: [row({ status: "skipped" }), row({ id: "r2", phase: "enrichment-heavy", status: "skipped" })],
+      phase,
     });
-    assert.equal(v.alreadyRan, true, `${status} must count as ran`);
+    assert.equal(held.alreadyRan, false, phase);
   }
-  // A FIX-950-held night did not run: the fallback may do it once the hold is off.
-  const held = decidePreflight({
-    nominalDay: "2026-09-25",
-    dispatchedBy: "schedule",
-    runId: "222",
-    rows: [row({ status: "skipped" }), row({ id: "r2", phase: "enrichment-heavy", status: "skipped" })],
-  });
-  assert.equal(held.alreadyRan, false);
 });
 
 test("a re-run of the SAME run (same GITHUB_RUN_ID, next attempt) is not a duplicate", () => {
@@ -120,20 +134,24 @@ test("a re-run of the SAME run (same GITHUB_RUN_ID, next attempt) is not a dupli
     dispatchedBy: "vercel-cron",
     runId: "111",
     rows: [row({ github_run_id: "111" })],
+    phase: "fec",
   });
   assert.equal(v.alreadyRan, false);
 });
 
 test("a human dispatch is never guarded, even on a claimed day", () => {
   for (const by of ["manual", null, "someone-else"]) {
-    const v = decidePreflight({
-      nominalDay: "2026-09-25",
-      dispatchedBy: by,
-      runId: "444",
-      rows: [row()],
-    });
-    assert.equal(v.alreadyRan, false, `dispatched_by=${String(by)} must run`);
-    assert.match(v.reason, /not an automated firing path/);
+    for (const phase of PREFLIGHT_PHASES) {
+      const v = decidePreflight({
+        nominalDay: "2026-09-25",
+        dispatchedBy: by,
+        runId: "444",
+        rows: [row({ phase })],
+        phase,
+      });
+      assert.equal(v.alreadyRan, false, `dispatched_by=${String(by)} must run ${phase}`);
+      assert.match(v.reason, /not an automated firing path/);
+    }
   }
 });
 
@@ -143,7 +161,127 @@ test("a row with no run id (pre-FIX-971a shape) still counts", () => {
     dispatchedBy: "schedule",
     runId: "222",
     rows: [row({ github_run_id: null })],
+    phase: "fec",
   });
   assert.equal(v.alreadyRan, true);
   assert.match(v.reason, /\(no run id\)/);
+});
+
+// ── FIX-1281 — the verdict is PER PHASE ─────────────────────────────────────
+
+/**
+ * Exactly the three rows run 37373195416 wrote for nominal day 2026-10-06
+ * (receipts 2026-10-06 §1, Phases): its fec-phase was never acquired by a
+ * hosted runner and was cancelled with zero steps, so there is NO fec row, while
+ * heavy / light / tail ran on `!cancelled()` and closed `complete`.
+ */
+const MONDAY_ROWS: PriorNightlyRow[] = [
+  row({ id: "h", phase: "enrichment-heavy", started_at: "2026-10-05T21:25:47.979Z", github_run_id: "37373195416" }),
+  row({ id: "l", phase: "enrichment-light", started_at: "2026-10-05T21:29:55.757Z", github_run_id: "37373195416" }),
+  row({ id: "t", phase: "enrichment-tail", started_at: "2026-10-05T21:30:51.743Z", github_run_id: "37373195416" }),
+];
+
+const fallback = (phase: PreflightPhase, rows: PriorNightlyRow[]) =>
+  decidePreflight({ nominalDay: "2026-10-06", dispatchedBy: "schedule", runId: "37400026114", rows, phase });
+
+test("a runnerless fec-phase: the Monday rows — the fallback does FEC, the enrichment phases stand down", () => {
+  const fec = fallback("fec", MONDAY_ROWS);
+  assert.equal(fec.alreadyRan, false, fec.reason);
+  assert.deepEqual(fec.matched, []);
+  for (const phase of ["enrichment-heavy", "enrichment-light", "enrichment-tail"] as const) {
+    const v = fallback(phase, MONDAY_ROWS);
+    assert.equal(v.alreadyRan, true, `${phase}: ${v.reason}`);
+    assert.deepEqual(v.matched.map((r) => r.phase), [phase]);
+    assert.match(v.reason, new RegExp(`^${phase}: nominal day 2026-10-06 already ran \\(run 37373195416: ${phase}=complete\\)`));
+  }
+  // And through the output names the workflow reads.
+  const outputs = preflightOutputs(decideAllPhases({ nominalDay: "2026-10-06", dispatchedBy: "schedule", runId: "37400026114", rows: MONDAY_ROWS }), "2026-10-06");
+  assert.deepEqual(outputs, {
+    already_ran: "false",
+    already_ran_enrichment_heavy: "true",
+    already_ran_enrichment_light: "true",
+    already_ran_enrichment_tail: "true",
+    nominal_day: "2026-10-06",
+  });
+});
+
+test("a healthy night: all four phases read already_ran and the fallback exits", () => {
+  const rows = [row({ id: "f", phase: "fec", github_run_id: "37373195416" }), ...MONDAY_ROWS];
+  const all = decideAllPhases({ nominalDay: "2026-10-06", dispatchedBy: "schedule", runId: "37400026114", rows });
+  for (const phase of PREFLIGHT_PHASES) assert.equal(all[phase].alreadyRan, true, phase);
+});
+
+test("a null-phase (pre-FIX-462 whole-run) row counts for every phase", () => {
+  for (const phase of PREFLIGHT_PHASES) {
+    const v = fallback(phase, [row({ phase: null })]);
+    assert.equal(v.alreadyRan, true, phase);
+    assert.match(v.reason, /all=complete/);
+  }
+});
+
+test("the orchestrator's own whole-run stamps cover the phases they ran", () => {
+  // `all` runs every phase; `enrichment` runs the three enrichment sub-phases (index.ts runNightlySync).
+  for (const phase of PREFLIGHT_PHASES) assert.equal(fallback(phase, [row({ phase: "all" })]).alreadyRan, true, phase);
+  assert.equal(fallback("fec", [row({ phase: "enrichment" })]).alreadyRan, false);
+  for (const phase of ["enrichment-heavy", "enrichment-light", "enrichment-tail"] as const) {
+    assert.equal(fallback(phase, [row({ phase: "enrichment" })]).alreadyRan, true, phase);
+  }
+});
+
+test("a skipped fec row (the FIX-950 hold) with complete enrichment rows: fec runs, enrichment stands down", () => {
+  const rows = [row({ id: "f", phase: "fec", status: "skipped", github_run_id: "37373195416" }), ...MONDAY_ROWS];
+  assert.equal(fallback("fec", rows).alreadyRan, false);
+  for (const phase of ["enrichment-heavy", "enrichment-light", "enrichment-tail"] as const) {
+    assert.equal(fallback(phase, rows).alreadyRan, true, phase);
+  }
+});
+
+test("one phase's row never stands down another phase", () => {
+  for (const ran of PREFLIGHT_PHASES) {
+    for (const asked of PREFLIGHT_PHASES) {
+      const v = fallback(asked, [row({ phase: ran })]);
+      assert.equal(v.alreadyRan, ran === asked, `row ${ran}, verdict for ${asked}`);
+    }
+  }
+});
+
+test("FAIL OPEN writes every phase's output false", () => {
+  assert.deepEqual(failOpenOutputs("2026-10-07"), {
+    already_ran: "false",
+    already_ran_enrichment_heavy: "false",
+    already_ran_enrichment_light: "false",
+    already_ran_enrichment_tail: "false",
+    nominal_day: "2026-10-07",
+  });
+  assert.deepEqual(failOpenOutputs(null), {
+    already_ran: "false",
+    already_ran_enrichment_heavy: "false",
+    already_ran_enrichment_light: "false",
+    already_ran_enrichment_tail: "false",
+  });
+});
+
+test("the phase list is the tree's: each phase has a :ci entrypoint, a job, and an output the workflow reads", () => {
+  // Rule 122 — derive the list from the tree. The orchestrator stamps
+  // metadata.phase from --phase=<p>; nightly.yml runs each phase through
+  // data:nightly:<p>:ci and gates the job on the output named here.
+  const pkg = JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  const yml = readFileSync(join(__dirname, "..", "..", "..", "..", ".github", "workflows", "nightly.yml"), "utf8");
+  for (const phase of PREFLIGHT_PHASES) {
+    const script = `data:nightly:${phase}:ci`;
+    assert.match(pkg.scripts[script] ?? "", new RegExp(`--phase=${phase}( |$)`), script);
+    assert.ok(yml.includes(`pnpm --filter @civitics/data ${script}`), `nightly.yml runs ${script}`);
+    const out = PREFLIGHT_OUTPUT[phase];
+    assert.ok(yml.includes(`${out}: \${{ steps.preflight.outputs.${out} }}`), `fec-phase declares output ${out}`);
+  }
+  // Each enrichment job gates on its OWN phase's output, never on the FEC one.
+  for (const phase of ["enrichment-heavy", "enrichment-light", "enrichment-tail"] as const) {
+    assert.ok(
+      yml.includes(`if: \${{ !cancelled() && needs.fec-phase.outputs.${PREFLIGHT_OUTPUT[phase]} != 'true' }}`),
+      `${phase}-phase gates on ${PREFLIGHT_OUTPUT[phase]}`,
+    );
+  }
+  assert.ok(!/needs\.fec-phase\.outputs\.already_ran != 'true'/.test(yml), "no job gates on the FEC verdict alone");
 });

@@ -2,18 +2,19 @@
  * FIX-1218 — `data:nightly:preflight`: "already ran for this nominal day?"
  *
  * nightly.yml's fec-phase runs this before the FEC phase. It reads
- * `data_sync_log` for a `nightly_cron` row stamped with this run's nominal day
- * and writes `already_ran=true|false` to `$GITHUB_OUTPUT`; the FEC step and
- * every downstream phase job gate on it. The decision itself is
- * pipelines/nightly-preflight.ts — see its header for what counts and whom it
- * guards.
+ * `data_sync_log` for the `nightly_cron` rows stamped with this run's nominal
+ * day and writes ONE verdict PER PHASE to `$GITHUB_OUTPUT` (FIX-1281):
+ * `already_ran` (the FEC phase — the FEC step and mark-killed gate on it) and
+ * `already_ran_enrichment_heavy` / `_light` / `_tail`, each read by its own
+ * enrichment job. The decision itself is pipelines/nightly-preflight.ts — see
+ * its header for what counts, per phase, and whom it guards.
  *
  * NEVER FAILS THE JOB. It exits 0 on every path, and on any failure to read it
- * answers `already_ran=false` — FAIL OPEN, the FIX-950 reader's rule: a
+ * answers `false` for EVERY phase — FAIL OPEN, the FIX-950 reader's rule: a
  * preflight that crashed must not cost the night. A duplicate nightly is
  * idempotent upserts and a second pass of load; a missing one is a lost day.
  * The workflow step also carries `continue-on-error: true`, so even an
- * uncatchable crash here leaves the output unset, which the gates read as
+ * uncatchable crash here leaves the outputs unset, which the gates read as
  * "not already ran".
  *
  *   pnpm data:nightly:preflight                           # local (.env.local)
@@ -30,8 +31,11 @@ import { readSlotOffsetHours, SLOT_OFFSET_ENV } from "../pipelines/weekly-gate";
 import {
   DISPATCHED_BY_ENV,
   GUARDED_TRIGGERS,
-  decidePreflight,
+  PREFLIGHT_PHASES,
+  decideAllPhases,
+  failOpenOutputs,
   nominalDay,
+  preflightOutputs,
   readDispatchedBy,
   type PriorNightlyRow,
 } from "../pipelines/nightly-preflight";
@@ -104,27 +108,30 @@ async function main(): Promise<void> {
     } catch (err) {
       console.warn(
         `[preflight] could not read data_sync_log (${err instanceof Error ? err.message : String(err)}) — ` +
-          "FAIL OPEN: already_ran=false, this run does the night's work",
+          "FAIL OPEN: already_ran=false for every phase, this run does the night's work",
       );
-      writeOutputs({ already_ran: "false", nominal_day: day });
+      writeOutputs(failOpenOutputs(day));
       return;
     }
   }
 
-  const verdict = decidePreflight({ nominalDay: day, dispatchedBy, runId, rows });
-  for (const r of verdict.matched) {
+  for (const r of rows) {
     console.info(
       `[preflight]   row ${r.id} phase=${r.phase ?? "all"} status=${r.status} started=${r.started_at} ` +
         `run=${r.github_run_id ?? "—"} dispatched_by=${r.dispatched_by ?? "—"}`,
     );
   }
-  // `::notice::` renders as an annotation on the run page, so a fallback that
-  // stood down says why without anyone opening the log.
-  console.info(`${verdict.alreadyRan ? "::notice::" : ""}[preflight] ${verdict.reason}`);
-  writeOutputs({ already_ran: verdict.alreadyRan ? "true" : "false", nominal_day: day });
+  const verdicts = decideAllPhases({ nominalDay: day, dispatchedBy, runId, rows });
+  // One line per phase. `::notice::` renders as an annotation on the run page,
+  // so a fallback that stood a phase down says why without anyone opening the log.
+  for (const phase of PREFLIGHT_PHASES) {
+    const v = verdicts[phase];
+    console.info(`${v.alreadyRan ? "::notice::" : ""}[preflight] ${v.reason}`);
+  }
+  writeOutputs(preflightOutputs(verdicts, day));
 }
 
 main().catch((err: unknown) => {
   console.warn(`[preflight] unexpected failure (${err instanceof Error ? err.message : String(err)}) — FAIL OPEN`);
-  writeOutputs({ already_ran: "false" });
+  writeOutputs(failOpenOutputs(null));
 });
