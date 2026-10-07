@@ -25,6 +25,7 @@ const SCRIPT = fs.readFileSync(
 const AUDITS = path.join(__dirname, "..", "..", "..", "..", "docs", "audits");
 const SHARED_MANIFEST = path.join(AUDITS, "2026-09-16-fix1187-shared-id-manifest.tsv");
 const PROMOTE_MANIFEST = path.join(AUDITS, "2026-09-16-fix1187-office-promotion-manifest.tsv");
+const LUJAN_MANIFEST = path.join(AUDITS, "2026-10-05-fix1189-lujan-h-stub-manifest.tsv");
 
 /** The body of verifySharedIdInDb, up to the next top-level function. */
 function sharedIdGateBody(): string {
@@ -303,4 +304,194 @@ test("FIX-1165 the ANALYZE that feeds the planner survives the FIX-1192 reorder"
     "ANALYZE _manifest must precede the _collision CTAS",
   );
   assert.ok(SCRIPT.includes("ANALYZE _trio;"), "ANALYZE _trio must still run too");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1288 (cc-199) — shape C: --adopt-prior
+// ---------------------------------------------------------------------------
+
+/** The SQL template passed to run() under `label`, up to its closing backtick. */
+function statementAfter(label: string): string {
+  const at = SCRIPT.indexOf(`"${label}"`);
+  assert.notEqual(at, -1, `the "${label}" statement must exist`);
+  const open = SCRIPT.indexOf("`", at);
+  const close = SCRIPT.indexOf("`", open + 1);
+  return SCRIPT.slice(open + 1, close);
+}
+
+/** A `const <name> = \`…\`` SQL template's body. */
+function sqlConst(name: string): string {
+  const at = SCRIPT.indexOf(`const ${name} = \``);
+  assert.notEqual(at, -1, `const ${name} must exist`);
+  const open = SCRIPT.indexOf("`", at);
+  return SCRIPT.slice(open + 1, SCRIPT.indexOf("`;", open));
+}
+
+/** The SET clause of a retire statement: from `SET` through `updated_at = now()`. */
+function setClause(sql: string): string {
+  const start = sql.indexOf("SET source_ids");
+  const end = sql.indexOf("updated_at = now()", start);
+  assert.ok(start !== -1 && end !== -1, "a retire statement has a source_ids SET and an updated_at stamp");
+  return sql.slice(start, end).replace(/\s+/g, " ").trim();
+}
+
+test("FIX-1288 (a) --adopt-prior is refused outside --manifest", () => {
+  const msg = SCRIPT.indexOf("✗ --adopt-prior is a --manifest option");
+  assert.notEqual(msg, -1, "the refusal text must exist");
+  const guard = SCRIPT.slice(SCRIPT.lastIndexOf("if (adoptPrior &&", msg), msg);
+  assert.ok(guard.startsWith("if (adoptPrior &&"), "the refusal must be guarded on the flag");
+  for (const tok of ["!sharedIdManifestPath", "promoteManifestPath", "pairArg", "ownSeat", "repairResplit"]) {
+    assert.ok(guard.includes(tok), `--adopt-prior must be refused with/without ${tok}`);
+  }
+  // Refused means exit, not a warning that carries on.
+  assert.ok(SCRIPT.slice(msg, msg + 200).includes("process.exit(1)"));
+});
+
+test("FIX-1288 (b) the gate's adopt branch needs an other-chamber live id AND evidence", () => {
+  const body = sharedIdGateBody();
+  assert.ok(
+    body.includes("s.source_ids->>'fec_candidate_id' AS survivor_fec"),
+    "the gate must read the survivor's live id",
+  );
+  const at = body.indexOf("const adoptable =");
+  assert.notEqual(at, -1, "the adopt branch is one named conjunction");
+  const expr = body.slice(at, body.indexOf(";", at));
+  for (const [term, why] of [
+    ["opts.adoptPrior", "only under --adopt-prior"],
+    ["r.survivor_fec !== null", "the survivor holds a live id"],
+    [".charAt(0).toUpperCase() !== p.fecId.charAt(0).toUpperCase()", "rule 157: the live id is the OTHER chamber's"],
+    ["r.survivor_fec !== p.fecId", "the live id is not the pair's id"],
+    ['(p.evidence ?? "").trim() !== ""', "rule 42: the evidence cell is the authorisation"],
+  ] as const) {
+    assert.ok(expr.includes(term), `adopt branch lost ${term} (${why})`);
+  }
+  // Wrong-but-green guard: an `||` anywhere in the conjunction would let one
+  // term stand in for the others.
+  assert.equal(/\|\|/.test(expr), false, "the adopt branch is a pure conjunction");
+  // It lives INSIDE the not-claimed branch, ahead of today's rejection, which
+  // keeps its text for every other unclaimed pair.
+  const notClaimed = body.indexOf("if (r.survivor_claims_it !== true)");
+  const rejection = body.indexOf(
+    "survivor does not claim ${p.fecId} (neither fec_candidate_id nor prior_fec_candidate_ids)",
+  );
+  assert.ok(notClaimed !== -1 && rejection !== -1);
+  assert.ok(notClaimed < at && at < rejection, "adopt is decided inside the unclaimed branch, before the rejection");
+  // Every later check still applies to an adopted pair: the branch must not
+  // push to `ok` past them.
+  assert.equal(body.slice(at, rejection).includes("ok.push"), false, "an adopted pair still runs the later gates");
+});
+
+test("FIX-1288 (c) step 1's prior branch appends-if-absent and never writes the live id", () => {
+  // The defect first: every statement that writes the manifest id as the
+  // survivor's LIVE id must be guarded by the complement of the predicate.
+  // Unguarded, a sitting Senator merged with his House stub becomes a House
+  // member and S0NM00058 is held by no row.
+  const liveWrite = "jsonb_build_object('fec_candidate_id', m.fec_id)";
+  for (let at = SCRIPT.indexOf(liveWrite); at !== -1; at = SCRIPT.indexOf(liveWrite, at + 1)) {
+    const stmt = SCRIPT.slice(SCRIPT.lastIndexOf("`", at), SCRIPT.indexOf("`", at));
+    assert.ok(
+      stmt.includes('AND NOT ${survivorKeepsLiveIdSql("o")}'),
+      "step 1 writes m.fec_id as the survivor's LIVE id unconditionally — " +
+        "an other-chamber survivor would lose its own live id",
+    );
+  }
+
+  const prior = statementAfter("officials.prior_fec_candidate_ids += fec_id (live kept)");
+  assert.ok(prior.includes("'prior_fec_candidate_ids'"));
+  assert.ok(
+    /COALESCE\(o\.source_ids->'prior_fec_candidate_ids', '\[\]'::jsonb\)\s+\|\| CASE WHEN COALESCE\(o\.source_ids->'prior_fec_candidate_ids','\[\]'::jsonb\)\s+\? m\.fec_id\s+THEN '\[\]'::jsonb\s+ELSE jsonb_build_array\(m\.fec_id\) END/.test(
+      prior,
+    ),
+    "the append-if-absent shape of shape B's prior write",
+  );
+  assert.equal(prior.includes("'fec_candidate_id'"), false, "the prior branch must not touch fec_candidate_id");
+  assert.ok(prior.includes('${survivorKeepsLiveIdSql("o")}'), "the prior branch is keyed on the stated predicate");
+
+  const live = statementAfter("officials.source_ids += fec_candidate_id");
+  assert.ok(
+    live.includes(
+      "SET source_ids = COALESCE(o.source_ids, '{}'::jsonb)\n" +
+        "                        || jsonb_build_object('fec_candidate_id', m.fec_id),",
+    ),
+    "the live branch's write is today's, byte-for-byte",
+  );
+  // Wrong-but-green guard: both branches on the SAME predicate, one negated.
+  // Drop the NOT and an adopt-prior survivor gets both writes.
+  assert.ok(live.includes('AND NOT ${survivorKeepsLiveIdSql("o")}'), "the live branch is the complement");
+
+  const pred = SCRIPT.slice(SCRIPT.indexOf("function survivorKeepsLiveIdSql("));
+  const predBody = pred.slice(0, pred.indexOf("\n}\n"));
+  assert.ok(predBody.includes("->>'fec_candidate_id' IS NOT NULL"));
+  assert.ok(predBody.includes("->>'fec_candidate_id' <> m.fec_id"));
+  // Stated once: no second hand-written copy of the predicate.
+  assert.equal(SCRIPT.split("->>'fec_candidate_id' <> m.fec_id").length - 1, 1);
+});
+
+test("FIX-1288 (d) the merge's retire is manifest-scoped + claims-aware; step 0 is unchanged", () => {
+  // The defect first: the merge-time retire (after the leftover check, before
+  // the ambiguous check) must not be step 0's live-equality statement on a
+  // --manifest run. With the survivor's live id kept, live = live never
+  // matches, the stub keeps its claim, and the ambiguous check rolls back.
+  const leftover = SCRIPT.indexOf("duplicate side still holds");
+  // Anchored AFTER the leftover check: step 0's own message also says
+  // "duplicate(s) still claim their CAND_ID", and it comes first.
+  const ambiguous = SCRIPT.indexOf("the merge would be undone by the next FEC run", leftover);
+  assert.ok(leftover !== -1 && ambiguous > leftover, "the leftover check precedes the ambiguous check");
+  const retire = SCRIPT.slice(leftover, ambiguous);
+  assert.ok(
+    retire.includes("reconcileManifestSql"),
+    "the merge-time retire is step 0's live-only reconcileSql — an adopt-prior stub keeps its claim",
+  );
+  assert.ok(retire.includes("sharedIdManifestPath"), "the --manifest run is the branch");
+
+  const manifestRetire = sqlConst("reconcileManifestSql");
+  for (const [tok, why] of [
+    ["FROM _manifest m", "scoped to this run's pairs"],
+    ["JOIN officials s ON s.id = m.survivor", "the survivor is the manifest's, not any elected row"],
+    ["d.id = m.dup", "the duplicate is the manifest's"],
+    ["d.tier = 'candidate'", "only a candidate stub is retired"],
+    ["s.tier = 'elected'", "against an elected survivor"],
+    ["d.source_ids->>'fec_candidate_id' = m.fec_id", "the stub still holds the pair's id"],
+    ['${authoritativeClaimsJsonb("s")} ? m.fec_id', "the survivor claims it, live OR prior"],
+    ["NOT EXISTS (SELECT 1 FROM financial_relationships fr", "the stub holds no money"],
+  ] as const) {
+    assert.ok(manifestRetire.includes(tok), `reconcileManifestSql lost ${tok} (${why})`);
+  }
+  // Rule 62: the platform-wide step 0 is NOT widened to prior arrays — that
+  // would retire every $0 other-office stub on prod in one pass.
+  const step0 = sqlConst("reconcileSql");
+  assert.equal(
+    step0.replace(/\s+/g, " ").trim(),
+    "UPDATE officials d SET source_ids = (d.source_ids - 'fec_candidate_id') || " +
+      "jsonb_build_object('merged_fec_candidate_ids', (SELECT jsonb_agg(DISTINCT v) FROM " +
+      "jsonb_array_elements_text( COALESCE(d.source_ids->'merged_fec_candidate_ids', '[]'::jsonb) || " +
+      "to_jsonb(ARRAY[d.source_ids->>'fec_candidate_id']) ) AS v)), updated_at = now() " +
+      "FROM officials s WHERE d.tier = 'candidate' AND s.tier = 'elected' AND s.id <> d.id " +
+      "AND d.source_ids->>'fec_candidate_id' IS NOT NULL " +
+      "AND s.source_ids->>'fec_candidate_id' = d.source_ids->>'fec_candidate_id' " +
+      "AND NOT EXISTS (SELECT 1 FROM financial_relationships fr WHERE fr.to_type = 'official' AND fr.to_id = d.id)",
+    "step 0 (reconcileSql) is untouched",
+  );
+  assert.equal(setClause(manifestRetire), setClause(step0), "the two retires write the same marker");
+});
+
+test("FIX-1288 (e) the Luján manifest: four required columns, ONE other-chamber row", () => {
+  const m = readManifest(LUJAN_MANIFEST);
+  for (const col of ["survivor", "dup", "fec_id", "evidence"]) {
+    assert.ok(m.header.includes(col), `the Luján manifest lacks ${col}`);
+  }
+  assert.equal(m.rows.length, 1);
+  const r = m.rows[0]!;
+  assert.ok((r["evidence"] ?? "").trim().length > 0, "--adopt-prior refuses an empty evidence cell");
+  // The survivor's recorded live id, from the manifest's own comment block —
+  // the prod read cc-194 made, not a DB read here.
+  const line = m.comments.find((c) => /#\s+survivor\s+/.test(c));
+  assert.ok(line, "the comment block records the survivor's live id");
+  const live = /\blive\s+([A-Z0-9]{9})\b/.exec(line)?.[1];
+  assert.ok(live, "a 9-char CAND_ID after 'live'");
+  const short = /#\s+survivor\s+([0-9a-f]{8})/.exec(line)?.[1];
+  assert.ok(short && r["survivor"]!.startsWith(short), "the comment names this row's survivor");
+  assert.equal(r["fec_id"]![0], "H", "the stub's id is the House id");
+  assert.equal(live[0], "S", "the survivor's live id is the Senate id");
+  assert.notEqual(live[0], r["fec_id"]![0], "the shape C case: other-chamber live id");
 });

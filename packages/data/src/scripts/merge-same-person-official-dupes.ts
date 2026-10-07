@@ -70,6 +70,8 @@
  * Usage:
  *   pnpm --filter @civitics/data data:merge:official-dupes             # dry-run
  *   pnpm --filter @civitics/data data:merge:official-dupes -- --apply  # commit
+ *   … -- --manifest <tsv> --adopt-prior   # FIX-1288 shape C: an other-chamber
+ *                                        # stub's id goes to the survivor's prior
  */
 
 import { Client } from "pg";
@@ -244,6 +246,14 @@ interface Pair {
   name: string;
   /** Repair mode only — which REPAIR_MANIFEST_SQL class matched (a/b). */
   cls?: string;
+  /**
+   * FIX-1288 — the manifest row's `evidence` cell. Required non-empty under
+   * --adopt-prior: the committed manifest is the authorisation, and this cell
+   * is what authorises adopting an id the survivor does not yet claim.
+   */
+  evidence?: string;
+  /** FIX-1288 — the survivor's live id, set by the gate on an ADOPT-PRIOR pair. */
+  survivorLiveId?: string;
 }
 
 /**
@@ -317,6 +327,25 @@ function authoritativeClaimsJsonb(alias: string): string {
                 THEN jsonb_build_array(${alias}.source_ids->>'fec_candidate_id')
                 ELSE '[]'::jsonb END
            || COALESCE(${alias}.source_ids->'prior_fec_candidate_ids', '[]'::jsonb))`;
+}
+
+/**
+ * FIX-1288 (shape C) — merge step 1's branch predicate, stated ONCE. True when
+ * the survivor already holds a live CAND_ID and it is not the pair's: a sitting
+ * Senator (live S0NM00058) merging his House stub (H8NM03196). That survivor
+ * ADOPTS the pair's id into `prior_fec_candidate_ids` and keeps its live id,
+ * which names the seat held — the fec.gov link and the treemap chamber read it
+ * (fec-bulk/claims.ts). Otherwise (live null, or live = the pair's id) step 1
+ * writes the live id as it always has.
+ *
+ * `alias` is the survivor's `officials` alias; the manifest is always `m`. The
+ * retire step reuses it after step 1, when it still tells the branches apart:
+ * the live branch leaves live = m.fec_id (false here) and the prior branch
+ * leaves the live id alone (still true).
+ */
+function survivorKeepsLiveIdSql(alias: string): string {
+  return `(${alias}.source_ids->>'fec_candidate_id' IS NOT NULL
+            AND ${alias}.source_ids->>'fec_candidate_id' <> m.fec_id)`;
 }
 
 const REPAIR_MANIFEST_SQL = `
@@ -699,10 +728,18 @@ SELECT s.id        AS "survivor",
  *
  * A refused pair is REPORTED and the run continues — one bad row in a 151-row
  * manifest must not cost the other 150.
+ *
+ * FIX-1288 (shape C, --adopt-prior) — the one exception to "the survivor claims
+ * the id": a survivor that does NOT claim it is accepted iff its live id is the
+ * OTHER chamber's (H vs S — rule 157, live/prior split by chamber), is not the
+ * pair's id, and the manifest row carries evidence. Step 1 then appends the id
+ * to `prior_fec_candidate_ids` instead of writing it live. Every other check
+ * still applies — the stub must still be an empty shell.
  */
 async function verifySharedIdInDb(
   client: Client,
   pairs: Pair[],
+  opts: { adoptPrior: boolean },
 ): Promise<{ ok: Pair[]; rejected: DroppedPair[] }> {
   if (pairs.length === 0) return { ok: [], rejected: [] };
   const rows = await q<{
@@ -712,6 +749,7 @@ async function verifySharedIdInDb(
     survivor_active: boolean | null;
     dup_tier: string | null;
     dup_fec: string | null;
+    survivor_fec: string | null;
     survivor_claims_it: boolean | null;
     survivor_fkey: string | null;
     dup_fkey: string | null;
@@ -723,6 +761,8 @@ async function verifySharedIdInDb(
             s.tier AS survivor_tier, s.is_active AS survivor_active,
             d.tier AS dup_tier,
             d.source_ids->>'fec_candidate_id' AS dup_fec,
+            -- FIX-1288 — the survivor's live id, which --adopt-prior's gate decodes.
+            s.source_ids->>'fec_candidate_id' AS survivor_fec,
             -- FIX-1187 identity test: current-office id OR a prior-office one.
             (${authoritativeClaimsJsonb("s")} ? m.fec_id) AS survivor_claims_it,
             -- FIX-929's 3-letter first-name key. '' means "cannot compare",
@@ -791,12 +831,25 @@ async function verifySharedIdInDb(
       });
       continue;
     }
+    let pair = p;
     if (r.survivor_claims_it !== true) {
-      rejected.push({
-        name: p.name,
-        reason: `survivor does not claim ${p.fecId} (neither fec_candidate_id nor prior_fec_candidate_ids)`,
-      });
-      continue;
+      // FIX-1288 — shape C. Not a claim, an ADOPTION: decided here, and the
+      // pair still runs every check below.
+      const adoptable =
+        opts.adoptPrior &&
+        r.survivor_fec !== null &&
+        r.survivor_fec.charAt(0).toUpperCase() !== p.fecId.charAt(0).toUpperCase() &&
+        r.survivor_fec !== p.fecId &&
+        (p.evidence ?? "").trim() !== "";
+      if (adoptable) {
+        pair = { ...p, cls: "adopt-prior", survivorLiveId: r.survivor_fec! };
+      } else {
+        rejected.push({
+          name: p.name,
+          reason: `survivor does not claim ${p.fecId} (neither fec_candidate_id nor prior_fec_candidate_ids)`,
+        });
+        continue;
+      }
     }
     // FIX-929 — undecidable is not agreement. A row with fewer than three
     // comparable first-name letters is refused, not waved through.
@@ -825,7 +878,7 @@ async function verifySharedIdInDb(
       });
       continue;
     }
-    ok.push(p);
+    ok.push(pair);
   }
   return { ok, rejected };
 }
@@ -1674,6 +1727,16 @@ async function main(): Promise<void> {
     console.error("✗ --manifest and --promote-manifest are separate SETS — run them one at a time.");
     process.exit(1);
   }
+  /**
+   * FIX-1288 — shape C, a --manifest option. A sitting member whose
+   * OTHER-chamber stub holds the pair's id (Luján: live S0NM00058, House stub
+   * live H8NM03196) fits neither shape A, which writes the pair's id as the
+   * survivor's live id, nor shape B, which needs the survivor's live id to BE the
+   * id it promotes away from. Under this flag the survivor ADOPTS the id into
+   * `prior_fec_candidate_ids` and keeps its live id; the manifest must carry a
+   * non-empty `evidence` column. See verifySharedIdInDb and merge step 1.
+   */
+  const adoptPrior = argv.includes("--adopt-prior");
   const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
   const allowProd = argv.includes("--allow-prod");
   const defer = deferTails(argv);
@@ -1699,6 +1762,10 @@ async function main(): Promise<void> {
     }
     return { dup: parts[0]!, survivor: parts[1]! };
   })();
+  if (adoptPrior && (!sharedIdManifestPath || promoteManifestPath || pairArg || ownSeat || repairResplit)) {
+    console.error("✗ --adopt-prior is a --manifest option");
+    process.exit(1);
+  }
 
   // FIX-1187 — --manifest / --promote-manifest are manifests in exactly the
   // sense Rule 1 means: a reviewed TSV under docs/audits/, derived on the clone,
@@ -1895,6 +1962,37 @@ async function main(): Promise<void> {
     }
   }
 
+  // FIX-1288 — the MERGE-TIME retire for a --manifest run: step 0's SET clause,
+  // but scoped to this run's pairs and claims-aware. Step 0's `live = live`
+  // never matches a shape C pair, whose survivor keeps a different live id and
+  // claims the pair's id through prior_fec_candidate_ids; the stub would keep
+  // its claim and the ambiguous check would roll the merge back. Step 0 itself
+  // is NOT widened: it is platform-wide by design, and matching prior arrays
+  // there would retire every $0 other-office stub on the instance in one pass
+  // (rule 62). For a shape A pair this is a strict subset of step 0 — the live
+  // equality step 1 wrote implies the claim. RETURNING reuses step 1's branch
+  // predicate, so the run reports how many retired against a kept live id.
+  const reconcileManifestSql = `
+    UPDATE officials d
+       SET source_ids = (d.source_ids - 'fec_candidate_id')
+                      || jsonb_build_object('merged_fec_candidate_ids',
+                           (SELECT jsonb_agg(DISTINCT v)
+                              FROM jsonb_array_elements_text(
+                                     COALESCE(d.source_ids->'merged_fec_candidate_ids', '[]'::jsonb)
+                                     || to_jsonb(ARRAY[d.source_ids->>'fec_candidate_id'])
+                                   ) AS v)),
+           updated_at = now()
+      FROM _manifest m
+      JOIN officials s ON s.id = m.survivor
+     WHERE d.id = m.dup
+       AND d.tier = 'candidate'
+       AND s.tier = 'elected'
+       AND d.source_ids->>'fec_candidate_id' = m.fec_id
+       AND (${authoritativeClaimsJsonb("s")} ? m.fec_id)
+       AND NOT EXISTS (SELECT 1 FROM financial_relationships fr
+                        WHERE fr.to_type = 'official' AND fr.to_id = d.id)
+    RETURNING ${survivorKeepsLiveIdSql("s")} AS live_kept`;
+
   // ── Derive the manifest (read-only, outside the merge txn) ────────────────
   let candidates: Pair[];
   let trioCandidates: TrioCandidate[] = [];
@@ -2063,21 +2161,34 @@ async function main(): Promise<void> {
       }
       for (const d of unique.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
     } else {
-      const REQUIRED = ["survivor", "dup", "fec_id"];
+      // FIX-1288 — under --adopt-prior the evidence column is the authorisation
+      // (rule 42: the run READS the committed manifest), so it is required.
+      const REQUIRED = adoptPrior ? ["survivor", "dup", "fec_id", "evidence"] : ["survivor", "dup", "fec_id"];
       const missing = REQUIRED.filter((c) => !m.header.includes(c));
       if (missing.length > 0) {
         console.error(`✗ --manifest is missing column(s): ${missing.join(", ")}`);
         await client.end();
         process.exit(1);
       }
-      console.info(`\nSHARED-CAND_ID manifest → ${m.rows.length} row(s) from ${m.path}`);
-      const pairs: Pair[] = m.rows.map((r) => ({
-        survivor: r["survivor"]!,
-        dup: r["dup"]!,
-        fecId: r["fec_id"]!,
-        name: r["name"] ?? `${r["survivor"]} ← ${r["dup"]}`,
-        cls: "shared-id",
-      }));
+      console.info(
+        `\nSHARED-CAND_ID manifest${adoptPrior ? " (--adopt-prior)" : ""} → ${m.rows.length} row(s) from ${m.path}`,
+      );
+      const pairs: Pair[] = [];
+      for (const r of m.rows) {
+        const name = r["name"] ?? `${r["survivor"]} ← ${r["dup"]}`;
+        if (adoptPrior && !(r["evidence"] ?? "").trim()) {
+          console.info(`  REFUSED  ${name.padEnd(50)} empty evidence column — --adopt-prior requires it`);
+          continue;
+        }
+        pairs.push({
+          survivor: r["survivor"]!,
+          dup: r["dup"]!,
+          fecId: r["fec_id"]!,
+          name,
+          cls: "shared-id",
+          evidence: r["evidence"],
+        });
+      }
       const unique = enforceOneToOne(pairs);
       candidates = unique.kept;
       console.info(`  ${candidates.length} pair(s) selected; gates re-applied server-side below.`);
@@ -2231,11 +2342,22 @@ async function main(): Promise<void> {
     const { ok: pairs, rejected } = repairResplit
       ? await verifyRepairInDb(client, candidates)
       : sharedIdManifestPath || promoteManifestPath
-        ? await verifySharedIdInDb(client, candidates)
+        ? await verifySharedIdInDb(client, candidates, { adoptPrior })
         : ownSeat
           ? await verifyOwnSeatInDb(client, candidates)
           : await verifyManifestInDb(client, candidates);
     for (const r of rejected) console.info(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
+    // FIX-1288 — under --adopt-prior, one line per confirmed pair, so the dry
+    // run shows which step-1 branch each row will take.
+    if (adoptPrior) {
+      for (const p of pairs) {
+        console.info(
+          p.cls === "adopt-prior"
+            ? `  ADOPT-PRIOR ${p.name.padEnd(49)} ${p.fecId} → prior_fec_candidate_ids (live ${p.survivorLiveId} kept)`
+            : `  MERGE    ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`,
+        );
+      }
+    }
     if (rejected.length > 0) {
       await client.query(
         `DELETE FROM _manifest WHERE survivor <> ALL($1::uuid[])`,
@@ -2417,13 +2539,34 @@ async function main(): Promise<void> {
     //    re-mints the candidate row and re-splits the money. Same server-side
     //    jsonb-merge shape as persistNewFecIds (writer.ts:953), so a concurrent
     //    writer's source_ids keys are not clobbered.
+    //
+    //    FIX-1288 — two branches on survivorKeepsLiveIdSql. A survivor that
+    //    already holds a DIFFERENT live id (every --adopt-prior pair, and a pair
+    //    whose survivor held the id only in prior) keeps it, and the pair's id is
+    //    appended to prior_fec_candidate_ids — shape B's append-if-absent write.
+    //    Every other survivor gets the live write, unchanged. The prior branch
+    //    runs first, against live ids nothing has touched yet.
+    await run(client, "officials.prior_fec_candidate_ids += fec_id (live kept)", `
+      UPDATE officials o
+         SET source_ids = COALESCE(o.source_ids, '{}'::jsonb)
+                        || jsonb_build_object('prior_fec_candidate_ids',
+                             COALESCE(o.source_ids->'prior_fec_candidate_ids', '[]'::jsonb)
+                             || CASE WHEN COALESCE(o.source_ids->'prior_fec_candidate_ids','[]'::jsonb)
+                                          ? m.fec_id
+                                     THEN '[]'::jsonb
+                                     ELSE jsonb_build_array(m.fec_id) END),
+             updated_at = now()
+        FROM _manifest m
+       WHERE o.id = m.survivor
+         AND ${survivorKeepsLiveIdSql("o")}`);
     await run(client, "officials.source_ids += fec_candidate_id", `
       UPDATE officials o
          SET source_ids = COALESCE(o.source_ids, '{}'::jsonb)
                         || jsonb_build_object('fec_candidate_id', m.fec_id),
              updated_at = now()
         FROM _manifest m
-       WHERE o.id = m.survivor`);
+       WHERE o.id = m.survivor
+         AND NOT ${survivorKeepsLiveIdSql("o")}`);
 
     // Any role-prefix-matching `fec_id` the duplicate happens to carry moves
     // too (0 rows on the FIX-930 clone — the duplicates carry only
@@ -2498,7 +2641,20 @@ async function main(): Promise<void> {
     // pass. Without it `loadOfficialsByFecIds` would resolve the CAND_ID back to
     // the duplicate on ~half of pairs (last-write-wins by ascending uuid) and
     // the next FEC run would re-split the money. See step 0's comment.
-    await run(client, "retire duplicate claim on CAND_ID", reconcileSql);
+    // FIX-1288 — a --manifest run retires through reconcileManifestSql (see
+    // its comment); every other mode keeps step 0's statement.
+    if (sharedIdManifestPath) {
+      const t0 = Date.now();
+      const retired = await q<{ live_kept: boolean }>(client, reconcileManifestSql);
+      console.info(
+        `  ${"retire duplicate claim on CAND_ID (manifest)".padEnd(50)} ${String(retired.length).padStart(9)}  ` +
+          `${((Date.now() - t0) / 1000).toFixed(1)}s`,
+      );
+      const kept = retired.filter((r) => r.live_kept).length;
+      if (kept > 0) console.info(`    ↳ ${kept} against a survivor that kept its own live id (claims via prior)`);
+    } else {
+      await run(client, "retire duplicate claim on CAND_ID", reconcileSql);
+    }
     const [ambiguous] = await q<{ n: string }>(
       client,
       `SELECT count(*)::text AS n
