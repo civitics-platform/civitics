@@ -1,0 +1,100 @@
+{
+  "cc": "198",
+  "prompt": "cc-prompt-198-tuesday-records-fix1281-preflight-per-phase.md",
+  "started_at": "2026-10-07T01:49:05Z",
+  "finished_at": "2026-10-07T02:27:00Z",
+  "head_before": "02c4d824",
+  "head_after": "33e40e15",
+  "commits": [
+    {
+      "sha": "6ce54c79",
+      "subject": "fix(ops): FIX-1281 — the nightly preflight judges each PHASE on its own nightly_cron row; a runnerless fec-phase is retried by the schedule fallback while the enrichment phases stand down on theirs"
+    },
+    {
+      "sha": "0580df04",
+      "subject": "docs(fixes): append FIX-1281, FIX-1194 — cc-198 readings"
+    },
+    {
+      "sha": "bb06e443",
+      "subject": "chore(fixes): record prod verification of FIX-1245 — jobid 10's Tue 00:47Z rebuild is on the provenance-first rank; both MVs equal their ledgers to the cent"
+    },
+    {
+      "sha": "fb8f5372",
+      "subject": "chore(fixes): record prod verification of FIX-1020 — Austin Scott's survivor 893a581e carries all 16 LittleSis rows, 2,507 votes and $4.0M, and its page renders both"
+    },
+    {
+      "sha": "e90dbd08",
+      "subject": "chore(fixes): record prod verification of FIX-1132 — Tue 10-06 06:00 daily read conn_source stats_table; rebuild_entity_search_index 155.8 s against the 247 s p50"
+    },
+    {
+      "sha": "06cbe904",
+      "subject": "chore(fixes): record prod verification of FIX-1270 — no generic EC arm has two canceled units; ec_arm_parked absent; receipts 10-06 section 9 reads none parked"
+    },
+    {
+      "sha": "87ac3648",
+      "subject": "chore(fixes): record prod verification of FIX-1261 — the mint-artifact manifest re-derives classes {i: 0, ii: 0}"
+    },
+    {
+      "sha": "7b0b1222",
+      "subject": "chore(fixes): record prod verification of FIX-1249 — jobid 17's Tue 10-06 15:00 row reads full_rebuild_lag 30 days, mode crawl, complete in 78.7 s of its 1,800 s budget"
+    },
+    {
+      "sha": "f8aa1f49",
+      "subject": "chore(fixes): record prod verification of FIX-1240 — read 2's drift is 0 rows in both donor rollups after jobid 24's 09:00/12:00 and jobid 17's 15:00 firings"
+    },
+    {
+      "sha": "9a662d56",
+      "subject": "chore(fixes): record prod verification of FIX-1280 — FE rule industry rows on O/U/V/W committees 162 → 24 on 22 committees (6 lobby on display_name, 18 on connected_org)"
+    },
+    {
+      "sha": "33e40e15",
+      "subject": "chore(fixes): sync status after FIX-1281 and the cc-198 records"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1281",
+    "FIX-1245",
+    "FIX-1020",
+    "FIX-1132",
+    "FIX-1270",
+    "FIX-1261",
+    "FIX-1249",
+    "FIX-1240",
+    "FIX-1280"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "D1's receipt night: 6ce54c79 reached main at 02:00:59Z Wed 10-07, before the 20:30Z cut-off, so Wednesday's 21:00Z dispatch (nominal day 10-08) carries it and its schedule fallback is the receipt. Owed after 2026-10-08T06:00Z. Not dispatched by hand (rule 71).",
+    "FIX-1194: not recordable (the Thursday half is after 10-08T14:45Z, the week verdict after 10-09T12:00Z). The Tue 00:05Z agency-staffing line was APPENDED; a FIX-1194 record now would also settle the week entries.",
+    "FIX-1240: the owed text asks for a 50-donor sample of cc-182's 77 touched donors. The 77 are not listed anywhere in the tree, so the sample could not be drawn. The full-table drift read (0 of 656,662 odr rows, 0 of 2,973,265 dpr rows) covers every one of them, so I judged the evidence complete and recorded it. Flagged here in case Cowork reads the sample as a separate criterion.",
+    "FIX-1245: the prompt's 'FIX-1245 TSV' and 'the bullet's equality query' do not exist in the tree. Both were derived from the MV definitions instead (details under 'contradicted'), and the evidence is complete, so it was recorded.",
+    "One prod read was heavier than it should have been: the chord_industry_flows_mv ledger sum ran 509,969 ms (8m30s, 02:03-02:11Z 10-07), on a box 75 min out of the FIX-1284 wedge. I EXPLAINed only the official_sector_dollars_mv ledger (an index-only plan that ran 10.3 s) and assumed the chord sum would be similar. It was read-only and finished, but no census was read around it.",
+    "FIX-1248 left untouched (cc-204 already appended; Pattern B re-dated to 10-13 + 10-20, blocked on FIX-1284).",
+    "Left, one line each: FIX-1284 (cc-205's; must land before Tue 10-13 16:00Z). FIX-1189 x2 (Wed edges after 10-08T12:00Z; drop night after 10-12T03:00Z; the cc-194 landing entry no longer shows outstanding). FIX-1172 (no supervised claim over 45 min yet). FIX-1271 (cc-198 and cc-199 are a concurrent pair and NEITHER called fix:add, so there was no allocation to test). FIX-501 (Wed 03:10Z, after 03:30Z). FIX-1211 / FIX-1205 (opportunistic, after 10-08). FIX-1255 x2 / FIX-1274 / FIX-1268 / FIX-1194-Thu (Thursday). FIX-1125 x3 and FIX-1194-week (Fri; FIX-1125's 10-03 entry rides the 7-file verdict). FIX-1012 (10-08T12:00Z). FIX-1260 (Sat). FIX-1124 (Sun). FIX-1248 / FIX-1258 (10-13). FIX-1251 (10-15). FIX-1236 (opportunistic). FIX-1194's two old confirmation entries (10-03, 10-04) ride the 10-09 week record.",
+    "The worktree's .env.local.prod is a stub, so every db-query --prod ran the PRIMARY checkout's scripts/db-query.mjs. The FIX-1261 script and the preflight proof took --env-file pointing at the primary's .env.local.prod. All of it was read-only.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1281",
+      "what": "the first schedule fallback after landing (Wed 10-07 21:00Z slot, nominal 10-08) reads already_ran=true on all four phases and exits in a runner-minute; a runnerless fec-phase, whenever one next happens, is retried by the fallback while the enrichment jobs stand down",
+      "after": "2026-10-08T06:00Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "contract-flow-rollups-refresh Thu 10-08 14:00 UTC: a running row at 14:00, then complete ~14:32 with recipients 500 / agency_sectors as on 10-01, sum unchanged (the agency-staffing half was read by cc-198 and appended)",
+      "after": "2026-10-08T14:45Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "the week verdict (receipts section 9 by-day 10-02 → 10-09); 10-06's wedge day carries zero cron_job_budget_action rows and zero box-saturated skips (cc-204)",
+      "after": "2026-10-09T12:00Z"
+    }
+  ]
+}
