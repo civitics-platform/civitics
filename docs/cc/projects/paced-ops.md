@@ -19,6 +19,8 @@ steps:
   - {id: s11, kind: receipt, ref: "FIX-1145", title: "Mon 06:00 unit 4 ≤ 5 s; the first jobid 24 run that moves the watermark stamps homepage_mv_refreshed true", after: 2026-10-05T09:30Z}
   - {id: s12, kind: cc, ref: "cc-198", title: "FIX-1281 — per-phase preflight; the Tuesday records"}
   - {id: s13, kind: receipt, ref: "FIX-1281", title: "the first schedule fallback after landing reads already_ran=true on all four phases and exits in a runner-minute; a runnerless fec-phase (when one next happens) is retried", after: 2026-10-08T06:00Z}
+  - {id: s14, kind: cc, ref: "cc-205", title: "FIX-1284 — the merge at work_mem 64MB behind the P1-A box gate; keyed units if 10-13 reads > 50 % of budget"}
+  - {id: s15, kind: receipt, ref: "FIX-1284", title: "jobid 12's 10-13 16:00Z merge complete, phase_seconds in the projection, box clear and the ring quiet 16:02-16:10Z", after: 2026-10-13T18:30Z}
 ---
 
 # Paced ops
@@ -75,3 +77,16 @@ their rows, so the night's FEC phase was lost with no retry. Now the fallback
 runs FEC and the enrichment jobs stand down on their own verdicts. The receipt
 (s13) is the first scheduled fallback after landing: all four verdicts `true`
 on a healthy night.
+
+**The 10-06 wedge (s14, s15):** the first merge firing (Tue 10-06 16:00Z) did
+not complete. Its INSERT's anti-join hash (~560 MB under `work_mem 256MB` ×
+`hash_mem_multiplier 2`) wedged the 904 MB box four minutes in (FIX-1284,
+cc-204's triage), and the merge rolled back. cc-205 runs the weekly merge at
+`work_mem 64MB`. Every hash then spills to temp past 128 MB: on the clone that
+was Batches 2 / 2 / 4, no slower, with peak backend memory 380 → 126 MB. The
+P1-A start gate (`box_backoff_gate`) now runs before the weekly's lock. The
+gate cannot see memory (the sensor's memory half is report-only), so the
+work_mem change is what matters. Still not paced: keyed units with a COMMIT per
+unit are the complete answer, and they get built only if the 10-13 firing (s15)
+reads more than half its 7,200 s budget. FIX-1248's two-Tuesday close moves to
+10-13 + 10-20.
