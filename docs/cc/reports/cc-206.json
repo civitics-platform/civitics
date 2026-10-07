@@ -1,0 +1,50 @@
+{
+  "cc": "206",
+  "prompt": "cc-prompt-206-front-door-auto-restart-wedged-box.md",
+  "started_at": "2026-10-07T02:39:34Z",
+  "finished_at": "2026-10-07T03:06:00Z",
+  "head_before": "e110e0e2",
+  "head_after": "dd7726d6",
+  "commits": [
+    {
+      "sha": "845bc5ec",
+      "subject": "chore(fixes): file FIX-1285"
+    },
+    {
+      "sha": "a22eddee",
+      "subject": "feat(ops): FIX-1285 — front-door-watch decides and (when armed) issues a project restart after 30 min of total 52x; report mode by default; Upstash-held state"
+    },
+    {
+      "sha": "e6b1ea28",
+      "subject": "docs(fixes): append FIX-1130 (its remediation is automated by FIX-1285) and FIX-1284 (the wedge's duration is bounded by FIX-1285 once armed)"
+    },
+    {
+      "sha": "49901cce",
+      "subject": "chore(fixes): record prod verification of FIX-1285 — report-mode tick on prod at 03:00:28Z: restart.action none, Upstash state keys absent"
+    },
+    {
+      "sha": "dd7726d6",
+      "subject": "chore(fixes): sync status after FIX-1285's prod record"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1285"
+  ],
+  "fixes_filed": [
+    "FIX-1285"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "project": "forker",
+  "owed": [
+    {
+      "fix": "FIX-1285",
+      "what": "the first armed wedge: RESTART ISSUED email, Upstash last_restart_at, pg_postmaster_start_time() moved, RECOVERED within ~10 min",
+      "after": "2026-10-08T00:00Z"
+    }
+  ]
+}
