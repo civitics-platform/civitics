@@ -1,0 +1,4588 @@
+{
+  "read_at": "2026-10-07T01:06:55.626Z",
+  "hours": 24,
+  "ring_len": 720,
+  "unparseable": 0,
+  "stats": {
+    "n": 457,
+    "first_at": "2026-10-06T01:08:22.279Z",
+    "last_at": "2026-10-07T01:06:22.310Z",
+    "min_mb": 141,
+    "min_at": "2026-10-06T16:04:22.338Z",
+    "median_mb": 461,
+    "max_mb": 589,
+    "mem_total_mb": 904
+  },
+  "rows": [
+    {
+      "at": "2026-10-06T01:08:22.279Z",
+      "mem_avail_mb": 290,
+      "avail_pct": 32,
+      "swap_used_mb": 981,
+      "load1": 1.3,
+      "swapin_per_s": null,
+      "swapout_per_s": null,
+      "scrape_ms": 942
+    },
+    {
+      "at": "2026-10-06T01:10:22.340Z",
+      "mem_avail_mb": 278,
+      "avail_pct": 30.7,
+      "swap_used_mb": 933,
+      "load1": 1.08,
+      "swapin_per_s": 154.3,
+      "swapout_per_s": 156.3,
+      "scrape_ms": 1401
+    },
+    {
+      "at": "2026-10-06T01:12:24.300Z",
+      "mem_avail_mb": 337,
+      "avail_pct": 37.3,
+      "swap_used_mb": 687,
+      "load1": 0.16,
+      "swapin_per_s": 64.5,
+      "swapout_per_s": 139.5,
+      "scrape_ms": 479
+    },
+    {
+      "at": "2026-10-06T01:14:22.353Z",
+      "mem_avail_mb": 534,
+      "avail_pct": 59.1,
+      "swap_used_mb": 882,
+      "load1": 0.12,
+      "swapin_per_s": 81,
+      "swapout_per_s": 510.5,
+      "scrape_ms": 371
+    },
+    {
+      "at": "2026-10-06T01:16:22.243Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 814,
+      "load1": 0.08,
+      "swapin_per_s": 110.6,
+      "swapout_per_s": 1,
+      "scrape_ms": 448
+    },
+    {
+      "at": "2026-10-06T01:18:22.287Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.7,
+      "swap_used_mb": 813,
+      "load1": 0.07,
+      "swapin_per_s": 2.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 974
+    },
+    {
+      "at": "2026-10-06T01:20:22.220Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.3,
+      "swap_used_mb": 786,
+      "load1": 0.17,
+      "swapin_per_s": 60.9,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 256
+    },
+    {
+      "at": "2026-10-06T01:22:22.251Z",
+      "mem_avail_mb": 491,
+      "avail_pct": 54.3,
+      "swap_used_mb": 835,
+      "load1": 0.1,
+      "swapin_per_s": 39.7,
+      "swapout_per_s": 147,
+      "scrape_ms": 261
+    },
+    {
+      "at": "2026-10-06T01:24:22.272Z",
+      "mem_avail_mb": 477,
+      "avail_pct": 52.8,
+      "swap_used_mb": 835,
+      "load1": 0.01,
+      "swapin_per_s": 2.4,
+      "swapout_per_s": 3.2,
+      "scrape_ms": 965
+    },
+    {
+      "at": "2026-10-06T01:26:22.299Z",
+      "mem_avail_mb": 489,
+      "avail_pct": 54,
+      "swap_used_mb": 833,
+      "load1": 0,
+      "swapin_per_s": 5.3,
+      "swapout_per_s": 0.4,
+      "scrape_ms": 526
+    },
+    {
+      "at": "2026-10-06T01:28:22.322Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.7,
+      "swap_used_mb": 829,
+      "load1": 0.07,
+      "swapin_per_s": 12.1,
+      "swapout_per_s": 1.4,
+      "scrape_ms": 246
+    },
+    {
+      "at": "2026-10-06T01:30:22.159Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.6,
+      "swap_used_mb": 823,
+      "load1": 0.01,
+      "swapin_per_s": 17.2,
+      "swapout_per_s": 0.6,
+      "scrape_ms": 174
+    },
+    {
+      "at": "2026-10-06T01:32:22.292Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.3,
+      "swap_used_mb": 861,
+      "load1": 0.3,
+      "swapin_per_s": 362.6,
+      "swapout_per_s": 427.9,
+      "scrape_ms": 362
+    },
+    {
+      "at": "2026-10-06T01:34:22.222Z",
+      "mem_avail_mb": 432,
+      "avail_pct": 47.8,
+      "swap_used_mb": 817,
+      "load1": 0.04,
+      "swapin_per_s": 25.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 820
+    },
+    {
+      "at": "2026-10-06T01:36:22.670Z",
+      "mem_avail_mb": 423,
+      "avail_pct": 46.8,
+      "swap_used_mb": 798,
+      "load1": 0.07,
+      "swapin_per_s": 17.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 387
+    },
+    {
+      "at": "2026-10-06T01:38:22.172Z",
+      "mem_avail_mb": 414,
+      "avail_pct": 45.8,
+      "swap_used_mb": 790,
+      "load1": 0.04,
+      "swapin_per_s": 22.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 755
+    },
+    {
+      "at": "2026-10-06T01:40:22.305Z",
+      "mem_avail_mb": 378,
+      "avail_pct": 41.8,
+      "swap_used_mb": 766,
+      "load1": 0.15,
+      "swapin_per_s": 83.5,
+      "swapout_per_s": 24.6,
+      "scrape_ms": 504
+    },
+    {
+      "at": "2026-10-06T01:42:22.316Z",
+      "mem_avail_mb": 498,
+      "avail_pct": 55.1,
+      "swap_used_mb": 862,
+      "load1": 0.07,
+      "swapin_per_s": 50.9,
+      "swapout_per_s": 258,
+      "scrape_ms": 520
+    },
+    {
+      "at": "2026-10-06T01:44:22.295Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.5,
+      "swap_used_mb": 853,
+      "load1": 0.01,
+      "swapin_per_s": 16.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 317
+    },
+    {
+      "at": "2026-10-06T01:46:22.493Z",
+      "mem_avail_mb": 463,
+      "avail_pct": 51.2,
+      "swap_used_mb": 837,
+      "load1": 0.06,
+      "swapin_per_s": 32.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 904
+    },
+    {
+      "at": "2026-10-06T01:48:22.363Z",
+      "mem_avail_mb": 461,
+      "avail_pct": 51,
+      "swap_used_mb": 834,
+      "load1": 0.01,
+      "swapin_per_s": 3.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 259
+    },
+    {
+      "at": "2026-10-06T01:50:22.276Z",
+      "mem_avail_mb": 315,
+      "avail_pct": 34.9,
+      "swap_used_mb": 770,
+      "load1": 0.33,
+      "swapin_per_s": 465.8,
+      "swapout_per_s": 308.4,
+      "scrape_ms": 3079
+    },
+    {
+      "at": "2026-10-06T01:52:22.215Z",
+      "mem_avail_mb": 343,
+      "avail_pct": 37.9,
+      "swap_used_mb": 766,
+      "load1": 0.25,
+      "swapin_per_s": 363.7,
+      "swapout_per_s": 309.7,
+      "scrape_ms": 824
+    },
+    {
+      "at": "2026-10-06T01:54:22.184Z",
+      "mem_avail_mb": 330,
+      "avail_pct": 36.5,
+      "swap_used_mb": 758,
+      "load1": 0.13,
+      "swapin_per_s": 27.6,
+      "swapout_per_s": 8,
+      "scrape_ms": 226
+    },
+    {
+      "at": "2026-10-06T01:56:22.199Z",
+      "mem_avail_mb": 328,
+      "avail_pct": 36.3,
+      "swap_used_mb": 754,
+      "load1": 0.12,
+      "swapin_per_s": 3.4,
+      "swapout_per_s": 0.7,
+      "scrape_ms": 770
+    },
+    {
+      "at": "2026-10-06T01:58:22.404Z",
+      "mem_avail_mb": 338,
+      "avail_pct": 37.4,
+      "swap_used_mb": 751,
+      "load1": 0.07,
+      "swapin_per_s": 2.6,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 234
+    },
+    {
+      "at": "2026-10-06T02:00:22.249Z",
+      "mem_avail_mb": 363,
+      "avail_pct": 40.1,
+      "swap_used_mb": 733,
+      "load1": 0.03,
+      "swapin_per_s": 33,
+      "swapout_per_s": 10.4,
+      "scrape_ms": 201
+    },
+    {
+      "at": "2026-10-06T02:02:22.292Z",
+      "mem_avail_mb": 303,
+      "avail_pct": 33.5,
+      "swap_used_mb": 746,
+      "load1": 0.29,
+      "swapin_per_s": 467.3,
+      "swapout_per_s": 431.2,
+      "scrape_ms": 912
+    },
+    {
+      "at": "2026-10-06T02:04:22.252Z",
+      "mem_avail_mb": 362,
+      "avail_pct": 40.1,
+      "swap_used_mb": 790,
+      "load1": 0.11,
+      "swapin_per_s": 7.5,
+      "swapout_per_s": 110.5,
+      "scrape_ms": 278
+    },
+    {
+      "at": "2026-10-06T02:06:22.184Z",
+      "mem_avail_mb": 487,
+      "avail_pct": 53.9,
+      "swap_used_mb": 904,
+      "load1": 0.09,
+      "swapin_per_s": 40.3,
+      "swapout_per_s": 295.7,
+      "scrape_ms": 1024
+    },
+    {
+      "at": "2026-10-06T02:08:22.211Z",
+      "mem_avail_mb": 491,
+      "avail_pct": 54.3,
+      "swap_used_mb": 892,
+      "load1": 0.02,
+      "swapin_per_s": 8.8,
+      "swapout_per_s": 2.3,
+      "scrape_ms": 273
+    },
+    {
+      "at": "2026-10-06T02:10:22.255Z",
+      "mem_avail_mb": 445,
+      "avail_pct": 49.2,
+      "swap_used_mb": 807,
+      "load1": 0,
+      "swapin_per_s": 73,
+      "swapout_per_s": 0,
+      "scrape_ms": 253
+    },
+    {
+      "at": "2026-10-06T02:12:22.384Z",
+      "mem_avail_mb": 453,
+      "avail_pct": 50.1,
+      "swap_used_mb": 808,
+      "load1": 0.08,
+      "swapin_per_s": 6.3,
+      "swapout_per_s": 6.4,
+      "scrape_ms": 313
+    },
+    {
+      "at": "2026-10-06T02:14:22.235Z",
+      "mem_avail_mb": 529,
+      "avail_pct": 58.5,
+      "swap_used_mb": 880,
+      "load1": 0.19,
+      "swapin_per_s": 53.8,
+      "swapout_per_s": 213.1,
+      "scrape_ms": 412
+    },
+    {
+      "at": "2026-10-06T02:16:22.407Z",
+      "mem_avail_mb": 504,
+      "avail_pct": 55.7,
+      "swap_used_mb": 849,
+      "load1": 0.06,
+      "swapin_per_s": 39.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 367
+    },
+    {
+      "at": "2026-10-06T02:18:22.183Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.5,
+      "swap_used_mb": 847,
+      "load1": 0.01,
+      "swapin_per_s": 3.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 834
+    },
+    {
+      "at": "2026-10-06T02:20:22.158Z",
+      "mem_avail_mb": 491,
+      "avail_pct": 54.3,
+      "swap_used_mb": 834,
+      "load1": 0.09,
+      "swapin_per_s": 29.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 280
+    },
+    {
+      "at": "2026-10-06T02:22:22.447Z",
+      "mem_avail_mb": 477,
+      "avail_pct": 52.8,
+      "swap_used_mb": 833,
+      "load1": 0.04,
+      "swapin_per_s": 3.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 921
+    },
+    {
+      "at": "2026-10-06T02:24:22.145Z",
+      "mem_avail_mb": 516,
+      "avail_pct": 57,
+      "swap_used_mb": 856,
+      "load1": 0.08,
+      "swapin_per_s": 54.9,
+      "swapout_per_s": 112.4,
+      "scrape_ms": 450
+    },
+    {
+      "at": "2026-10-06T02:26:22.380Z",
+      "mem_avail_mb": 507,
+      "avail_pct": 56.1,
+      "swap_used_mb": 854,
+      "load1": 0.01,
+      "swapin_per_s": 4.8,
+      "swapout_per_s": 0.4,
+      "scrape_ms": 443
+    },
+    {
+      "at": "2026-10-06T02:28:22.326Z",
+      "mem_avail_mb": 498,
+      "avail_pct": 55.1,
+      "swap_used_mb": 852,
+      "load1": 0,
+      "swapin_per_s": 4,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 311
+    },
+    {
+      "at": "2026-10-06T02:30:22.139Z",
+      "mem_avail_mb": 505,
+      "avail_pct": 55.8,
+      "swap_used_mb": 849,
+      "load1": 0.04,
+      "swapin_per_s": 7.7,
+      "swapout_per_s": 0.7,
+      "scrape_ms": 321
+    },
+    {
+      "at": "2026-10-06T02:32:22.428Z",
+      "mem_avail_mb": 441,
+      "avail_pct": 48.7,
+      "swap_used_mb": 839,
+      "load1": 0.15,
+      "swapin_per_s": 434.2,
+      "swapout_per_s": 360.5,
+      "scrape_ms": 456
+    },
+    {
+      "at": "2026-10-06T02:34:22.352Z",
+      "mem_avail_mb": 453,
+      "avail_pct": 50.1,
+      "swap_used_mb": 795,
+      "load1": 0.08,
+      "swapin_per_s": 33.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 423
+    },
+    {
+      "at": "2026-10-06T02:36:22.276Z",
+      "mem_avail_mb": 433,
+      "avail_pct": 47.9,
+      "swap_used_mb": 789,
+      "load1": 0.01,
+      "swapin_per_s": 13.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 777
+    },
+    {
+      "at": "2026-10-06T02:38:22.306Z",
+      "mem_avail_mb": 448,
+      "avail_pct": 49.5,
+      "swap_used_mb": 787,
+      "load1": 0.01,
+      "swapin_per_s": 5.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 364
+    },
+    {
+      "at": "2026-10-06T02:40:22.272Z",
+      "mem_avail_mb": 425,
+      "avail_pct": 47,
+      "swap_used_mb": 781,
+      "load1": 0,
+      "swapin_per_s": 14.6,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 237
+    },
+    {
+      "at": "2026-10-06T02:42:22.325Z",
+      "mem_avail_mb": 434,
+      "avail_pct": 48,
+      "swap_used_mb": 780,
+      "load1": 0,
+      "swapin_per_s": 2.4,
+      "swapout_per_s": 1.2,
+      "scrape_ms": 470
+    },
+    {
+      "at": "2026-10-06T02:44:22.298Z",
+      "mem_avail_mb": 502,
+      "avail_pct": 55.5,
+      "swap_used_mb": 846,
+      "load1": 0.04,
+      "swapin_per_s": 24.5,
+      "swapout_per_s": 163.6,
+      "scrape_ms": 768
+    },
+    {
+      "at": "2026-10-06T02:46:22.306Z",
+      "mem_avail_mb": 487,
+      "avail_pct": 53.8,
+      "swap_used_mb": 833,
+      "load1": 0.03,
+      "swapin_per_s": 23.3,
+      "swapout_per_s": 2.4,
+      "scrape_ms": 450
+    },
+    {
+      "at": "2026-10-06T02:48:22.262Z",
+      "mem_avail_mb": 467,
+      "avail_pct": 51.7,
+      "swap_used_mb": 821,
+      "load1": 0.07,
+      "swapin_per_s": 16.4,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 451
+    },
+    {
+      "at": "2026-10-06T02:50:22.141Z",
+      "mem_avail_mb": 454,
+      "avail_pct": 50.2,
+      "swap_used_mb": 816,
+      "load1": 0.26,
+      "swapin_per_s": 12.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 847
+    },
+    {
+      "at": "2026-10-06T02:52:22.343Z",
+      "mem_avail_mb": 482,
+      "avail_pct": 53.3,
+      "swap_used_mb": 833,
+      "load1": 0.2,
+      "swapin_per_s": 42.9,
+      "swapout_per_s": 85.8,
+      "scrape_ms": 386
+    },
+    {
+      "at": "2026-10-06T02:54:22.173Z",
+      "mem_avail_mb": 483,
+      "avail_pct": 53.4,
+      "swap_used_mb": 833,
+      "load1": 0.05,
+      "swapin_per_s": 1.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 248
+    },
+    {
+      "at": "2026-10-06T02:56:22.376Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 821,
+      "load1": 0.04,
+      "swapin_per_s": 31.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 417
+    },
+    {
+      "at": "2026-10-06T02:58:22.396Z",
+      "mem_avail_mb": 463,
+      "avail_pct": 51.2,
+      "swap_used_mb": 821,
+      "load1": 0,
+      "swapin_per_s": 0.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 397
+    },
+    {
+      "at": "2026-10-06T03:00:22.312Z",
+      "mem_avail_mb": 456,
+      "avail_pct": 50.4,
+      "swap_used_mb": 806,
+      "load1": 0.23,
+      "swapin_per_s": 43.9,
+      "swapout_per_s": 9.3,
+      "scrape_ms": 308
+    },
+    {
+      "at": "2026-10-06T03:02:22.368Z",
+      "mem_avail_mb": 479,
+      "avail_pct": 53,
+      "swap_used_mb": 887,
+      "load1": 0.26,
+      "swapin_per_s": 380,
+      "swapout_per_s": 496.4,
+      "scrape_ms": 1011
+    },
+    {
+      "at": "2026-10-06T03:04:22.204Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.7,
+      "swap_used_mb": 865,
+      "load1": 0.08,
+      "swapin_per_s": 28.1,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 299
+    },
+    {
+      "at": "2026-10-06T03:06:22.331Z",
+      "mem_avail_mb": 452,
+      "avail_pct": 50,
+      "swap_used_mb": 805,
+      "load1": 0.11,
+      "swapin_per_s": 29.3,
+      "swapout_per_s": 0.7,
+      "scrape_ms": 908
+    },
+    {
+      "at": "2026-10-06T03:08:22.205Z",
+      "mem_avail_mb": 456,
+      "avail_pct": 50.4,
+      "swap_used_mb": 805,
+      "load1": 0.14,
+      "swapin_per_s": 1.4,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 241
+    },
+    {
+      "at": "2026-10-06T03:10:22.295Z",
+      "mem_avail_mb": 425,
+      "avail_pct": 47,
+      "swap_used_mb": 786,
+      "load1": 0.15,
+      "swapin_per_s": 44.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 291
+    },
+    {
+      "at": "2026-10-06T03:12:22.202Z",
+      "mem_avail_mb": 426,
+      "avail_pct": 47.1,
+      "swap_used_mb": 785,
+      "load1": 0.02,
+      "swapin_per_s": 1.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 890
+    },
+    {
+      "at": "2026-10-06T03:14:22.200Z",
+      "mem_avail_mb": 463,
+      "avail_pct": 51.2,
+      "swap_used_mb": 824,
+      "load1": 0.15,
+      "swapin_per_s": 53,
+      "swapout_per_s": 143.4,
+      "scrape_ms": 333
+    },
+    {
+      "at": "2026-10-06T03:16:22.382Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 816,
+      "load1": 0.08,
+      "swapin_per_s": 18.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 392
+    },
+    {
+      "at": "2026-10-06T03:18:22.283Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.7,
+      "swap_used_mb": 814,
+      "load1": 0.01,
+      "swapin_per_s": 3,
+      "swapout_per_s": 0,
+      "scrape_ms": 271
+    },
+    {
+      "at": "2026-10-06T03:20:22.200Z",
+      "mem_avail_mb": 458,
+      "avail_pct": 50.6,
+      "swap_used_mb": 811,
+      "load1": 0.08,
+      "swapin_per_s": 7.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 434
+    },
+    {
+      "at": "2026-10-06T03:22:22.389Z",
+      "mem_avail_mb": 461,
+      "avail_pct": 51,
+      "swap_used_mb": 816,
+      "load1": 0.09,
+      "swapin_per_s": 46.1,
+      "swapout_per_s": 64.2,
+      "scrape_ms": 778
+    },
+    {
+      "at": "2026-10-06T03:24:22.228Z",
+      "mem_avail_mb": 464,
+      "avail_pct": 51.3,
+      "swap_used_mb": 815,
+      "load1": 0.03,
+      "swapin_per_s": 1.9,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 269
+    },
+    {
+      "at": "2026-10-06T03:26:22.378Z",
+      "mem_avail_mb": 461,
+      "avail_pct": 51,
+      "swap_used_mb": 814,
+      "load1": 0.03,
+      "swapin_per_s": 1.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 838
+    },
+    {
+      "at": "2026-10-06T03:28:22.411Z",
+      "mem_avail_mb": 457,
+      "avail_pct": 50.5,
+      "swap_used_mb": 813,
+      "load1": 0,
+      "swapin_per_s": 2,
+      "swapout_per_s": 0.4,
+      "scrape_ms": 244
+    },
+    {
+      "at": "2026-10-06T03:30:22.340Z",
+      "mem_avail_mb": 412,
+      "avail_pct": 45.5,
+      "swap_used_mb": 783,
+      "load1": 0.15,
+      "swapin_per_s": 228,
+      "swapout_per_s": 162.6,
+      "scrape_ms": 177
+    },
+    {
+      "at": "2026-10-06T03:32:22.150Z",
+      "mem_avail_mb": 469,
+      "avail_pct": 51.9,
+      "swap_used_mb": 832,
+      "load1": 0.37,
+      "swapin_per_s": 509,
+      "swapout_per_s": 586.8,
+      "scrape_ms": 532
+    },
+    {
+      "at": "2026-10-06T03:34:22.280Z",
+      "mem_avail_mb": 473,
+      "avail_pct": 52.3,
+      "swap_used_mb": 838,
+      "load1": 0.13,
+      "swapin_per_s": 13.4,
+      "swapout_per_s": 31.3,
+      "scrape_ms": 527
+    },
+    {
+      "at": "2026-10-06T03:36:22.317Z",
+      "mem_avail_mb": 455,
+      "avail_pct": 50.4,
+      "swap_used_mb": 831,
+      "load1": 0.01,
+      "swapin_per_s": 10.8,
+      "swapout_per_s": 2.5,
+      "scrape_ms": 916
+    },
+    {
+      "at": "2026-10-06T03:38:22.309Z",
+      "mem_avail_mb": 457,
+      "avail_pct": 50.5,
+      "swap_used_mb": 831,
+      "load1": 0.05,
+      "swapin_per_s": 26.7,
+      "swapout_per_s": 38.1,
+      "scrape_ms": 428
+    },
+    {
+      "at": "2026-10-06T03:40:22.271Z",
+      "mem_avail_mb": 461,
+      "avail_pct": 50.9,
+      "swap_used_mb": 836,
+      "load1": 0.08,
+      "swapin_per_s": 15.3,
+      "swapout_per_s": 21.6,
+      "scrape_ms": 244
+    },
+    {
+      "at": "2026-10-06T03:42:22.238Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.8,
+      "swap_used_mb": 836,
+      "load1": 0.09,
+      "swapin_per_s": 1.5,
+      "swapout_per_s": 0.5,
+      "scrape_ms": 244
+    },
+    {
+      "at": "2026-10-06T03:44:22.264Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 835,
+      "load1": 0.03,
+      "swapin_per_s": 1.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 398
+    },
+    {
+      "at": "2026-10-06T03:46:22.508Z",
+      "mem_avail_mb": 491,
+      "avail_pct": 54.3,
+      "swap_used_mb": 866,
+      "load1": 0.06,
+      "swapin_per_s": 73.4,
+      "swapout_per_s": 143.7,
+      "scrape_ms": 783
+    },
+    {
+      "at": "2026-10-06T03:48:22.195Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.6,
+      "swap_used_mb": 866,
+      "load1": 0.01,
+      "swapin_per_s": 1.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 424
+    },
+    {
+      "at": "2026-10-06T03:50:22.209Z",
+      "mem_avail_mb": 457,
+      "avail_pct": 50.5,
+      "swap_used_mb": 812,
+      "load1": 0,
+      "swapin_per_s": 75.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 260
+    },
+    {
+      "at": "2026-10-06T03:52:22.152Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.5,
+      "swap_used_mb": 838,
+      "load1": 0.04,
+      "swapin_per_s": 61.5,
+      "swapout_per_s": 124,
+      "scrape_ms": 750
+    },
+    {
+      "at": "2026-10-06T03:54:22.218Z",
+      "mem_avail_mb": 265,
+      "avail_pct": 29.3,
+      "swap_used_mb": 651,
+      "load1": 0.76,
+      "swapin_per_s": 600.6,
+      "swapout_per_s": 90.2,
+      "scrape_ms": 478
+    },
+    {
+      "at": "2026-10-06T03:56:22.219Z",
+      "mem_avail_mb": 283,
+      "avail_pct": 31.3,
+      "swap_used_mb": 649,
+      "load1": 0.17,
+      "swapin_per_s": 48.9,
+      "swapout_per_s": 77.3,
+      "scrape_ms": 428
+    },
+    {
+      "at": "2026-10-06T03:58:22.211Z",
+      "mem_avail_mb": 274,
+      "avail_pct": 30.3,
+      "swap_used_mb": 682,
+      "load1": 0.28,
+      "swapin_per_s": 225.8,
+      "swapout_per_s": 247.7,
+      "scrape_ms": 784
+    },
+    {
+      "at": "2026-10-06T04:00:22.451Z",
+      "mem_avail_mb": 247,
+      "avail_pct": 27.3,
+      "swap_used_mb": 673,
+      "load1": 0.16,
+      "swapin_per_s": 126.6,
+      "swapout_per_s": 82.9,
+      "scrape_ms": 235
+    },
+    {
+      "at": "2026-10-06T04:02:22.234Z",
+      "mem_avail_mb": 340,
+      "avail_pct": 37.6,
+      "swap_used_mb": 774,
+      "load1": 0.07,
+      "swapin_per_s": 172.7,
+      "swapout_per_s": 379.2,
+      "scrape_ms": 888
+    },
+    {
+      "at": "2026-10-06T04:04:22.331Z",
+      "mem_avail_mb": 508,
+      "avail_pct": 56.2,
+      "swap_used_mb": 939,
+      "load1": 0.08,
+      "swapin_per_s": 40.2,
+      "swapout_per_s": 414.1,
+      "scrape_ms": 306
+    },
+    {
+      "at": "2026-10-06T04:06:22.184Z",
+      "mem_avail_mb": 480,
+      "avail_pct": 53.1,
+      "swap_used_mb": 846,
+      "load1": 0.05,
+      "swapin_per_s": 52.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 231
+    },
+    {
+      "at": "2026-10-06T04:08:22.304Z",
+      "mem_avail_mb": 477,
+      "avail_pct": 52.8,
+      "swap_used_mb": 827,
+      "load1": 0.05,
+      "swapin_per_s": 12.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 239
+    },
+    {
+      "at": "2026-10-06T04:10:22.214Z",
+      "mem_avail_mb": 440,
+      "avail_pct": 48.7,
+      "swap_used_mb": 804,
+      "load1": 0,
+      "swapin_per_s": 55.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 407
+    },
+    {
+      "at": "2026-10-06T04:12:22.323Z",
+      "mem_avail_mb": 442,
+      "avail_pct": 48.9,
+      "swap_used_mb": 803,
+      "load1": 0,
+      "swapin_per_s": 2.5,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 261
+    },
+    {
+      "at": "2026-10-06T04:14:22.250Z",
+      "mem_avail_mb": 470,
+      "avail_pct": 52,
+      "swap_used_mb": 821,
+      "load1": 0.08,
+      "swapin_per_s": 44.9,
+      "swapout_per_s": 79.9,
+      "scrape_ms": 370
+    },
+    {
+      "at": "2026-10-06T04:16:22.387Z",
+      "mem_avail_mb": 448,
+      "avail_pct": 49.5,
+      "swap_used_mb": 809,
+      "load1": 0.11,
+      "swapin_per_s": 31,
+      "swapout_per_s": 0.6,
+      "scrape_ms": 961
+    },
+    {
+      "at": "2026-10-06T04:18:22.313Z",
+      "mem_avail_mb": 409,
+      "avail_pct": 45.3,
+      "swap_used_mb": 775,
+      "load1": 0.26,
+      "swapin_per_s": 91,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 395
+    },
+    {
+      "at": "2026-10-06T04:20:22.282Z",
+      "mem_avail_mb": 397,
+      "avail_pct": 43.9,
+      "swap_used_mb": 757,
+      "load1": 0.07,
+      "swapin_per_s": 32.5,
+      "swapout_per_s": 3.9,
+      "scrape_ms": 241
+    },
+    {
+      "at": "2026-10-06T04:22:22.224Z",
+      "mem_avail_mb": 395,
+      "avail_pct": 43.6,
+      "swap_used_mb": 757,
+      "load1": 0.01,
+      "swapin_per_s": 0.5,
+      "swapout_per_s": 0.6,
+      "scrape_ms": 245
+    },
+    {
+      "at": "2026-10-06T04:24:22.344Z",
+      "mem_avail_mb": 473,
+      "avail_pct": 52.4,
+      "swap_used_mb": 818,
+      "load1": 0.05,
+      "swapin_per_s": 74,
+      "swapout_per_s": 214,
+      "scrape_ms": 314
+    },
+    {
+      "at": "2026-10-06T04:26:22.311Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 803,
+      "load1": 0,
+      "swapin_per_s": 23.4,
+      "swapout_per_s": 1,
+      "scrape_ms": 804
+    },
+    {
+      "at": "2026-10-06T04:28:22.203Z",
+      "mem_avail_mb": 447,
+      "avail_pct": 49.5,
+      "swap_used_mb": 798,
+      "load1": 0.04,
+      "swapin_per_s": 10.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 306
+    },
+    {
+      "at": "2026-10-06T04:30:22.320Z",
+      "mem_avail_mb": 529,
+      "avail_pct": 58.5,
+      "swap_used_mb": 853,
+      "load1": 0.6,
+      "swapin_per_s": 45.2,
+      "swapout_per_s": 147.8,
+      "scrape_ms": 418
+    },
+    {
+      "at": "2026-10-06T04:32:22.285Z",
+      "mem_avail_mb": 557,
+      "avail_pct": 61.6,
+      "swap_used_mb": 971,
+      "load1": 1.76,
+      "swapin_per_s": 718,
+      "swapout_per_s": 888.4,
+      "scrape_ms": 1097
+    },
+    {
+      "at": "2026-10-06T04:34:22.411Z",
+      "mem_avail_mb": 503,
+      "avail_pct": 55.7,
+      "swap_used_mb": 867,
+      "load1": 0.33,
+      "swapin_per_s": 138.6,
+      "swapout_per_s": 54.5,
+      "scrape_ms": 271
+    },
+    {
+      "at": "2026-10-06T04:36:22.261Z",
+      "mem_avail_mb": 503,
+      "avail_pct": 55.6,
+      "swap_used_mb": 864,
+      "load1": 0.06,
+      "swapin_per_s": 5.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 299
+    },
+    {
+      "at": "2026-10-06T04:38:22.296Z",
+      "mem_avail_mb": 482,
+      "avail_pct": 53.3,
+      "swap_used_mb": 849,
+      "load1": 0.03,
+      "swapin_per_s": 39,
+      "swapout_per_s": 0,
+      "scrape_ms": 277
+    },
+    {
+      "at": "2026-10-06T04:40:22.147Z",
+      "mem_avail_mb": 431,
+      "avail_pct": 47.7,
+      "swap_used_mb": 814,
+      "load1": 0,
+      "swapin_per_s": 81.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 245
+    },
+    {
+      "at": "2026-10-06T04:42:22.249Z",
+      "mem_avail_mb": 438,
+      "avail_pct": 48.4,
+      "swap_used_mb": 820,
+      "load1": 0,
+      "swapin_per_s": 16.9,
+      "swapout_per_s": 23.3,
+      "scrape_ms": 443
+    },
+    {
+      "at": "2026-10-06T04:44:22.379Z",
+      "mem_avail_mb": 492,
+      "avail_pct": 54.4,
+      "swap_used_mb": 865,
+      "load1": 0.04,
+      "swapin_per_s": 56.5,
+      "swapout_per_s": 156,
+      "scrape_ms": 1007
+    },
+    {
+      "at": "2026-10-06T04:46:22.210Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.6,
+      "swap_used_mb": 838,
+      "load1": 0.07,
+      "swapin_per_s": 45.6,
+      "swapout_per_s": 3.3,
+      "scrape_ms": 386
+    },
+    {
+      "at": "2026-10-06T04:48:22.155Z",
+      "mem_avail_mb": 469,
+      "avail_pct": 51.9,
+      "swap_used_mb": 837,
+      "load1": 0.08,
+      "swapin_per_s": 1.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 458
+    },
+    {
+      "at": "2026-10-06T04:50:22.127Z",
+      "mem_avail_mb": 473,
+      "avail_pct": 52.3,
+      "swap_used_mb": 838,
+      "load1": 0.25,
+      "swapin_per_s": 50.4,
+      "swapout_per_s": 45,
+      "scrape_ms": 278
+    },
+    {
+      "at": "2026-10-06T04:52:22.151Z",
+      "mem_avail_mb": 466,
+      "avail_pct": 51.5,
+      "swap_used_mb": 830,
+      "load1": 0.03,
+      "swapin_per_s": 17.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 396
+    },
+    {
+      "at": "2026-10-06T04:54:22.186Z",
+      "mem_avail_mb": 486,
+      "avail_pct": 53.8,
+      "swap_used_mb": 849,
+      "load1": 0.1,
+      "swapin_per_s": 18.2,
+      "swapout_per_s": 68.4,
+      "scrape_ms": 258
+    },
+    {
+      "at": "2026-10-06T04:56:22.274Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.6,
+      "swap_used_mb": 846,
+      "load1": 0.01,
+      "swapin_per_s": 6.9,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 940
+    },
+    {
+      "at": "2026-10-06T04:58:22.323Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.5,
+      "swap_used_mb": 846,
+      "load1": 0,
+      "swapin_per_s": 0.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 261
+    },
+    {
+      "at": "2026-10-06T05:00:22.158Z",
+      "mem_avail_mb": 486,
+      "avail_pct": 53.7,
+      "swap_used_mb": 840,
+      "load1": 0,
+      "swapin_per_s": 14.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 322
+    },
+    {
+      "at": "2026-10-06T05:02:22.167Z",
+      "mem_avail_mb": 371,
+      "avail_pct": 41,
+      "swap_used_mb": 750,
+      "load1": 0.06,
+      "swapin_per_s": 435.5,
+      "swapout_per_s": 306.5,
+      "scrape_ms": 794
+    },
+    {
+      "at": "2026-10-06T05:04:22.223Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.7,
+      "swap_used_mb": 899,
+      "load1": 0.31,
+      "swapin_per_s": 11.3,
+      "swapout_per_s": 325.1,
+      "scrape_ms": 564
+    },
+    {
+      "at": "2026-10-06T05:06:22.408Z",
+      "mem_avail_mb": 536,
+      "avail_pct": 59.3,
+      "swap_used_mb": 895,
+      "load1": 0.16,
+      "swapin_per_s": 27.1,
+      "swapout_per_s": 31.1,
+      "scrape_ms": 312
+    },
+    {
+      "at": "2026-10-06T05:08:22.392Z",
+      "mem_avail_mb": 531,
+      "avail_pct": 58.7,
+      "swap_used_mb": 888,
+      "load1": 0.07,
+      "swapin_per_s": 8.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 276
+    },
+    {
+      "at": "2026-10-06T05:10:22.192Z",
+      "mem_avail_mb": 514,
+      "avail_pct": 56.8,
+      "swap_used_mb": 864,
+      "load1": 0.01,
+      "swapin_per_s": 34.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 995
+    },
+    {
+      "at": "2026-10-06T05:12:22.260Z",
+      "mem_avail_mb": 499,
+      "avail_pct": 55.2,
+      "swap_used_mb": 862,
+      "load1": 0,
+      "swapin_per_s": 5.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 243
+    },
+    {
+      "at": "2026-10-06T05:14:22.332Z",
+      "mem_avail_mb": 503,
+      "avail_pct": 55.6,
+      "swap_used_mb": 862,
+      "load1": 0,
+      "swapin_per_s": 1.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 247
+    },
+    {
+      "at": "2026-10-06T05:16:22.332Z",
+      "mem_avail_mb": 490,
+      "avail_pct": 54.1,
+      "swap_used_mb": 852,
+      "load1": 0.03,
+      "swapin_per_s": 78.5,
+      "swapout_per_s": 64.3,
+      "scrape_ms": 926
+    },
+    {
+      "at": "2026-10-06T05:18:22.205Z",
+      "mem_avail_mb": 495,
+      "avail_pct": 54.7,
+      "swap_used_mb": 852,
+      "load1": 0,
+      "swapin_per_s": 1.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 473
+    },
+    {
+      "at": "2026-10-06T05:20:22.262Z",
+      "mem_avail_mb": 422,
+      "avail_pct": 46.7,
+      "swap_used_mb": 818,
+      "load1": 0.08,
+      "swapin_per_s": 89.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 299
+    },
+    {
+      "at": "2026-10-06T05:22:22.195Z",
+      "mem_avail_mb": 452,
+      "avail_pct": 50,
+      "swap_used_mb": 826,
+      "load1": 0.07,
+      "swapin_per_s": 51.6,
+      "swapout_per_s": 78,
+      "scrape_ms": 425
+    },
+    {
+      "at": "2026-10-06T05:24:22.288Z",
+      "mem_avail_mb": 454,
+      "avail_pct": 50.2,
+      "swap_used_mb": 825,
+      "load1": 0.08,
+      "swapin_per_s": 1.6,
+      "swapout_per_s": 1.2,
+      "scrape_ms": 444
+    },
+    {
+      "at": "2026-10-06T05:26:22.344Z",
+      "mem_avail_mb": 453,
+      "avail_pct": 50.1,
+      "swap_used_mb": 823,
+      "load1": 0.12,
+      "swapin_per_s": 5.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 787
+    },
+    {
+      "at": "2026-10-06T05:28:22.332Z",
+      "mem_avail_mb": 446,
+      "avail_pct": 49.3,
+      "swap_used_mb": 822,
+      "load1": 0.04,
+      "swapin_per_s": 3.2,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 257
+    },
+    {
+      "at": "2026-10-06T05:30:22.219Z",
+      "mem_avail_mb": 457,
+      "avail_pct": 50.6,
+      "swap_used_mb": 821,
+      "load1": 0,
+      "swapin_per_s": 3.7,
+      "swapout_per_s": 0.8,
+      "scrape_ms": 200
+    },
+    {
+      "at": "2026-10-06T05:32:22.193Z",
+      "mem_avail_mb": 299,
+      "avail_pct": 33,
+      "swap_used_mb": 713,
+      "load1": 0.01,
+      "swapin_per_s": 284.3,
+      "swapout_per_s": 46.7,
+      "scrape_ms": 800
+    },
+    {
+      "at": "2026-10-06T05:34:22.260Z",
+      "mem_avail_mb": 385,
+      "avail_pct": 42.5,
+      "swap_used_mb": 777,
+      "load1": 0.08,
+      "swapin_per_s": 8.8,
+      "swapout_per_s": 141.2,
+      "scrape_ms": 270
+    },
+    {
+      "at": "2026-10-06T05:36:22.445Z",
+      "mem_avail_mb": 482,
+      "avail_pct": 53.3,
+      "swap_used_mb": 838,
+      "load1": 0.03,
+      "swapin_per_s": 22.6,
+      "swapout_per_s": 161,
+      "scrape_ms": 773
+    },
+    {
+      "at": "2026-10-06T05:38:22.191Z",
+      "mem_avail_mb": 447,
+      "avail_pct": 49.4,
+      "swap_used_mb": 823,
+      "load1": 0.03,
+      "swapin_per_s": 43.8,
+      "swapout_per_s": 6.1,
+      "scrape_ms": 296
+    },
+    {
+      "at": "2026-10-06T05:40:22.128Z",
+      "mem_avail_mb": 426,
+      "avail_pct": 47.1,
+      "swap_used_mb": 798,
+      "load1": 0.21,
+      "swapin_per_s": 63.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 232
+    },
+    {
+      "at": "2026-10-06T05:42:22.277Z",
+      "mem_avail_mb": 501,
+      "avail_pct": 55.4,
+      "swap_used_mb": 868,
+      "load1": 0.4,
+      "swapin_per_s": 27.8,
+      "swapout_per_s": 176.3,
+      "scrape_ms": 796
+    },
+    {
+      "at": "2026-10-06T05:44:22.360Z",
+      "mem_avail_mb": 503,
+      "avail_pct": 55.6,
+      "swap_used_mb": 859,
+      "load1": 0.31,
+      "swapin_per_s": 10.5,
+      "swapout_per_s": 3.1,
+      "scrape_ms": 218
+    },
+    {
+      "at": "2026-10-06T05:46:22.195Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.7,
+      "swap_used_mb": 829,
+      "load1": 0.31,
+      "swapin_per_s": 50.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 816
+    },
+    {
+      "at": "2026-10-06T05:48:22.452Z",
+      "mem_avail_mb": 282,
+      "avail_pct": 31.2,
+      "swap_used_mb": 701,
+      "load1": 0.34,
+      "swapin_per_s": 330.8,
+      "swapout_per_s": 11.4,
+      "scrape_ms": 281
+    },
+    {
+      "at": "2026-10-06T05:50:22.231Z",
+      "mem_avail_mb": 313,
+      "avail_pct": 34.6,
+      "swap_used_mb": 687,
+      "load1": 0.16,
+      "swapin_per_s": 57.8,
+      "swapout_per_s": 22.8,
+      "scrape_ms": 806
+    },
+    {
+      "at": "2026-10-06T05:52:22.317Z",
+      "mem_avail_mb": 325,
+      "avail_pct": 36,
+      "swap_used_mb": 693,
+      "load1": 0.08,
+      "swapin_per_s": 2.2,
+      "swapout_per_s": 15.6,
+      "scrape_ms": 263
+    },
+    {
+      "at": "2026-10-06T05:54:22.298Z",
+      "mem_avail_mb": 463,
+      "avail_pct": 51.2,
+      "swap_used_mb": 811,
+      "load1": 0.37,
+      "swapin_per_s": 53.3,
+      "swapout_per_s": 314.6,
+      "scrape_ms": 266
+    },
+    {
+      "at": "2026-10-06T05:56:22.277Z",
+      "mem_avail_mb": 445,
+      "avail_pct": 49.2,
+      "swap_used_mb": 786,
+      "load1": 0.12,
+      "swapin_per_s": 19.4,
+      "swapout_per_s": 1.3,
+      "scrape_ms": 268
+    },
+    {
+      "at": "2026-10-06T05:58:22.317Z",
+      "mem_avail_mb": 440,
+      "avail_pct": 48.7,
+      "swap_used_mb": 784,
+      "load1": 0.08,
+      "swapin_per_s": 6.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 246
+    },
+    {
+      "at": "2026-10-06T06:00:22.259Z",
+      "mem_avail_mb": 250,
+      "avail_pct": 27.6,
+      "swap_used_mb": 656,
+      "load1": 0.61,
+      "swapin_per_s": 378.6,
+      "swapout_per_s": 31.7,
+      "scrape_ms": 195
+    },
+    {
+      "at": "2026-10-06T06:02:22.295Z",
+      "mem_avail_mb": 283,
+      "avail_pct": 31.3,
+      "swap_used_mb": 797,
+      "load1": 1.67,
+      "swapin_per_s": 1811.8,
+      "swapout_per_s": 1795.6,
+      "scrape_ms": 1947
+    },
+    {
+      "at": "2026-10-06T06:04:22.193Z",
+      "mem_avail_mb": 375,
+      "avail_pct": 41.5,
+      "swap_used_mb": 736,
+      "load1": 0.69,
+      "swapin_per_s": 405.1,
+      "swapout_per_s": 415.8,
+      "scrape_ms": 430
+    },
+    {
+      "at": "2026-10-06T06:06:22.258Z",
+      "mem_avail_mb": 396,
+      "avail_pct": 43.8,
+      "swap_used_mb": 756,
+      "load1": 0.25,
+      "swapin_per_s": 44.2,
+      "swapout_per_s": 90.1,
+      "scrape_ms": 310
+    },
+    {
+      "at": "2026-10-06T06:08:22.334Z",
+      "mem_avail_mb": 406,
+      "avail_pct": 44.9,
+      "swap_used_mb": 772,
+      "load1": 0.08,
+      "swapin_per_s": 11.9,
+      "swapout_per_s": 44.4,
+      "scrape_ms": 254
+    },
+    {
+      "at": "2026-10-06T06:10:22.204Z",
+      "mem_avail_mb": 384,
+      "avail_pct": 42.4,
+      "swap_used_mb": 746,
+      "load1": 0.1,
+      "swapin_per_s": 82.6,
+      "swapout_per_s": 22.6,
+      "scrape_ms": 882
+    },
+    {
+      "at": "2026-10-06T06:12:22.269Z",
+      "mem_avail_mb": 367,
+      "avail_pct": 40.5,
+      "swap_used_mb": 742,
+      "load1": 0.01,
+      "swapin_per_s": 10,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 415
+    },
+    {
+      "at": "2026-10-06T06:14:22.384Z",
+      "mem_avail_mb": 390,
+      "avail_pct": 43.1,
+      "swap_used_mb": 756,
+      "load1": 0,
+      "swapin_per_s": 8.7,
+      "swapout_per_s": 37.2,
+      "scrape_ms": 937
+    },
+    {
+      "at": "2026-10-06T06:16:22.258Z",
+      "mem_avail_mb": 516,
+      "avail_pct": 57,
+      "swap_used_mb": 863,
+      "load1": 0.07,
+      "swapin_per_s": 52.9,
+      "swapout_per_s": 308.4,
+      "scrape_ms": 490
+    },
+    {
+      "at": "2026-10-06T06:18:22.186Z",
+      "mem_avail_mb": 510,
+      "avail_pct": 56.4,
+      "swap_used_mb": 861,
+      "load1": 0.01,
+      "swapin_per_s": 4.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 267
+    },
+    {
+      "at": "2026-10-06T06:20:22.166Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.5,
+      "swap_used_mb": 853,
+      "load1": 0.07,
+      "swapin_per_s": 20.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 756
+    },
+    {
+      "at": "2026-10-06T06:22:22.253Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.6,
+      "swap_used_mb": 848,
+      "load1": 0.01,
+      "swapin_per_s": 11.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 289
+    },
+    {
+      "at": "2026-10-06T06:24:22.328Z",
+      "mem_avail_mb": 495,
+      "avail_pct": 54.7,
+      "swap_used_mb": 852,
+      "load1": 0.09,
+      "swapin_per_s": 64,
+      "swapout_per_s": 83.9,
+      "scrape_ms": 281
+    },
+    {
+      "at": "2026-10-06T06:26:22.171Z",
+      "mem_avail_mb": 477,
+      "avail_pct": 52.7,
+      "swap_used_mb": 850,
+      "load1": 0.1,
+      "swapin_per_s": 3.9,
+      "swapout_per_s": 0.3,
+      "scrape_ms": 925
+    },
+    {
+      "at": "2026-10-06T06:28:22.398Z",
+      "mem_avail_mb": 480,
+      "avail_pct": 53.1,
+      "swap_used_mb": 848,
+      "load1": 0.01,
+      "swapin_per_s": 4,
+      "swapout_per_s": 0,
+      "scrape_ms": 406
+    },
+    {
+      "at": "2026-10-06T06:30:22.204Z",
+      "mem_avail_mb": 328,
+      "avail_pct": 36.3,
+      "swap_used_mb": 786,
+      "load1": 0.22,
+      "swapin_per_s": 155.7,
+      "swapout_per_s": 5.5,
+      "scrape_ms": 178
+    },
+    {
+      "at": "2026-10-06T06:32:22.338Z",
+      "mem_avail_mb": 333,
+      "avail_pct": 36.8,
+      "swap_used_mb": 923,
+      "load1": 2.67,
+      "swapin_per_s": 775.9,
+      "swapout_per_s": 1040.7,
+      "scrape_ms": 1318
+    },
+    {
+      "at": "2026-10-06T06:34:22.361Z",
+      "mem_avail_mb": 332,
+      "avail_pct": 36.7,
+      "swap_used_mb": 701,
+      "load1": 0.59,
+      "swapin_per_s": 354.5,
+      "swapout_per_s": 107.8,
+      "scrape_ms": 461
+    },
+    {
+      "at": "2026-10-06T06:36:22.398Z",
+      "mem_avail_mb": 323,
+      "avail_pct": 35.8,
+      "swap_used_mb": 706,
+      "load1": 0.11,
+      "swapin_per_s": 29,
+      "swapout_per_s": 41.6,
+      "scrape_ms": 262
+    },
+    {
+      "at": "2026-10-06T06:38:22.329Z",
+      "mem_avail_mb": 400,
+      "avail_pct": 44.3,
+      "swap_used_mb": 777,
+      "load1": 0.01,
+      "swapin_per_s": 8.8,
+      "swapout_per_s": 157.1,
+      "scrape_ms": 600
+    },
+    {
+      "at": "2026-10-06T06:40:22.247Z",
+      "mem_avail_mb": 400,
+      "avail_pct": 44.2,
+      "swap_used_mb": 770,
+      "load1": 0.03,
+      "swapin_per_s": 19.3,
+      "swapout_per_s": 2.2,
+      "scrape_ms": 251
+    },
+    {
+      "at": "2026-10-06T06:42:22.169Z",
+      "mem_avail_mb": 405,
+      "avail_pct": 44.8,
+      "swap_used_mb": 789,
+      "load1": 0,
+      "swapin_per_s": 2.7,
+      "swapout_per_s": 42,
+      "scrape_ms": 254
+    },
+    {
+      "at": "2026-10-06T06:44:22.323Z",
+      "mem_avail_mb": 528,
+      "avail_pct": 58.4,
+      "swap_used_mb": 904,
+      "load1": 0.1,
+      "swapin_per_s": 34.9,
+      "swapout_per_s": 287.1,
+      "scrape_ms": 455
+    },
+    {
+      "at": "2026-10-06T06:46:22.367Z",
+      "mem_avail_mb": 510,
+      "avail_pct": 56.4,
+      "swap_used_mb": 848,
+      "load1": 0.02,
+      "swapin_per_s": 45,
+      "swapout_per_s": 3.6,
+      "scrape_ms": 253
+    },
+    {
+      "at": "2026-10-06T06:48:22.253Z",
+      "mem_avail_mb": 497,
+      "avail_pct": 54.9,
+      "swap_used_mb": 848,
+      "load1": 0,
+      "swapin_per_s": 1.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 1030
+    },
+    {
+      "at": "2026-10-06T06:50:22.196Z",
+      "mem_avail_mb": 455,
+      "avail_pct": 50.3,
+      "swap_used_mb": 822,
+      "load1": 0.15,
+      "swapin_per_s": 66.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 361
+    },
+    {
+      "at": "2026-10-06T06:52:22.187Z",
+      "mem_avail_mb": 504,
+      "avail_pct": 55.8,
+      "swap_used_mb": 862,
+      "load1": 0.38,
+      "swapin_per_s": 35.5,
+      "swapout_per_s": 123.5,
+      "scrape_ms": 273
+    },
+    {
+      "at": "2026-10-06T06:54:22.186Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.5,
+      "swap_used_mb": 838,
+      "load1": 0.21,
+      "swapin_per_s": 26.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 978
+    },
+    {
+      "at": "2026-10-06T06:56:22.176Z",
+      "mem_avail_mb": 461,
+      "avail_pct": 51,
+      "swap_used_mb": 826,
+      "load1": 0.17,
+      "swapin_per_s": 30.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 510
+    },
+    {
+      "at": "2026-10-06T06:58:22.651Z",
+      "mem_avail_mb": 400,
+      "avail_pct": 44.2,
+      "swap_used_mb": 789,
+      "load1": 0.21,
+      "swapin_per_s": 103.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 271
+    },
+    {
+      "at": "2026-10-06T07:00:22.518Z",
+      "mem_avail_mb": 422,
+      "avail_pct": 46.6,
+      "swap_used_mb": 787,
+      "load1": 0.28,
+      "swapin_per_s": 5,
+      "swapout_per_s": 0,
+      "scrape_ms": 341
+    },
+    {
+      "at": "2026-10-06T07:02:22.201Z",
+      "mem_avail_mb": 341,
+      "avail_pct": 37.7,
+      "swap_used_mb": 750,
+      "load1": 0.25,
+      "swapin_per_s": 487.5,
+      "swapout_per_s": 351.6,
+      "scrape_ms": 813
+    },
+    {
+      "at": "2026-10-06T07:04:22.263Z",
+      "mem_avail_mb": 316,
+      "avail_pct": 34.9,
+      "swap_used_mb": 746,
+      "load1": 0.15,
+      "swapin_per_s": 33,
+      "swapout_per_s": 20.2,
+      "scrape_ms": 247
+    },
+    {
+      "at": "2026-10-06T07:06:22.187Z",
+      "mem_avail_mb": 353,
+      "avail_pct": 39.1,
+      "swap_used_mb": 747,
+      "load1": 0.04,
+      "swapin_per_s": 3.9,
+      "swapout_per_s": 7,
+      "scrape_ms": 845
+    },
+    {
+      "at": "2026-10-06T07:08:22.320Z",
+      "mem_avail_mb": 348,
+      "avail_pct": 38.5,
+      "swap_used_mb": 744,
+      "load1": 0.08,
+      "swapin_per_s": 13.8,
+      "swapout_per_s": 7.8,
+      "scrape_ms": 232
+    },
+    {
+      "at": "2026-10-06T07:10:22.295Z",
+      "mem_avail_mb": 367,
+      "avail_pct": 40.6,
+      "swap_used_mb": 762,
+      "load1": 0.29,
+      "swapin_per_s": 76,
+      "swapout_per_s": 125.1,
+      "scrape_ms": 249
+    },
+    {
+      "at": "2026-10-06T07:12:22.284Z",
+      "mem_avail_mb": 369,
+      "avail_pct": 40.9,
+      "swap_used_mb": 776,
+      "load1": 0.19,
+      "swapin_per_s": 60.7,
+      "swapout_per_s": 79,
+      "scrape_ms": 798
+    },
+    {
+      "at": "2026-10-06T07:14:22.380Z",
+      "mem_avail_mb": 448,
+      "avail_pct": 49.5,
+      "swap_used_mb": 808,
+      "load1": 0.17,
+      "swapin_per_s": 39.8,
+      "swapout_per_s": 147.7,
+      "scrape_ms": 258
+    },
+    {
+      "at": "2026-10-06T07:16:22.364Z",
+      "mem_avail_mb": 461,
+      "avail_pct": 51,
+      "swap_used_mb": 806,
+      "load1": 0.12,
+      "swapin_per_s": 4,
+      "swapout_per_s": 0,
+      "scrape_ms": 759
+    },
+    {
+      "at": "2026-10-06T07:18:22.334Z",
+      "mem_avail_mb": 447,
+      "avail_pct": 49.4,
+      "swap_used_mb": 806,
+      "load1": 0.15,
+      "swapin_per_s": 1.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 264
+    },
+    {
+      "at": "2026-10-06T07:20:22.424Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.3,
+      "swap_used_mb": 801,
+      "load1": 0.15,
+      "swapin_per_s": 11.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 446
+    },
+    {
+      "at": "2026-10-06T07:22:22.266Z",
+      "mem_avail_mb": 542,
+      "avail_pct": 59.9,
+      "swap_used_mb": 881,
+      "load1": 0.2,
+      "swapin_per_s": 53.9,
+      "swapout_per_s": 235.9,
+      "scrape_ms": 393
+    },
+    {
+      "at": "2026-10-06T07:24:22.235Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.6,
+      "swap_used_mb": 843,
+      "load1": 0.1,
+      "swapin_per_s": 51.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 403
+    },
+    {
+      "at": "2026-10-06T07:26:22.161Z",
+      "mem_avail_mb": 478,
+      "avail_pct": 52.9,
+      "swap_used_mb": 838,
+      "load1": 0.03,
+      "swapin_per_s": 12.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 986
+    },
+    {
+      "at": "2026-10-06T07:28:22.179Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.5,
+      "swap_used_mb": 837,
+      "load1": 0.06,
+      "swapin_per_s": 1.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 288
+    },
+    {
+      "at": "2026-10-06T07:30:22.141Z",
+      "mem_avail_mb": 483,
+      "avail_pct": 53.4,
+      "swap_used_mb": 835,
+      "load1": 0.11,
+      "swapin_per_s": 5.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 327
+    },
+    {
+      "at": "2026-10-06T07:32:22.180Z",
+      "mem_avail_mb": 324,
+      "avail_pct": 35.8,
+      "swap_used_mb": 718,
+      "load1": 0.23,
+      "swapin_per_s": 346.8,
+      "swapout_per_s": 48.4,
+      "scrape_ms": 1040
+    },
+    {
+      "at": "2026-10-06T07:34:22.249Z",
+      "mem_avail_mb": 341,
+      "avail_pct": 37.7,
+      "swap_used_mb": 725,
+      "load1": 0.1,
+      "swapin_per_s": 3.2,
+      "swapout_per_s": 18.7,
+      "scrape_ms": 354
+    },
+    {
+      "at": "2026-10-06T07:36:22.179Z",
+      "mem_avail_mb": 487,
+      "avail_pct": 53.8,
+      "swap_used_mb": 857,
+      "load1": 0.06,
+      "swapin_per_s": 50.2,
+      "swapout_per_s": 343.5,
+      "scrape_ms": 1030
+    },
+    {
+      "at": "2026-10-06T07:38:22.189Z",
+      "mem_avail_mb": 460,
+      "avail_pct": 50.9,
+      "swap_used_mb": 851,
+      "load1": 0.06,
+      "swapin_per_s": 8.7,
+      "swapout_per_s": 2.1,
+      "scrape_ms": 271
+    },
+    {
+      "at": "2026-10-06T07:40:22.592Z",
+      "mem_avail_mb": 464,
+      "avail_pct": 51.3,
+      "swap_used_mb": 834,
+      "load1": 0.09,
+      "swapin_per_s": 21.6,
+      "swapout_per_s": 1.1,
+      "scrape_ms": 468
+    },
+    {
+      "at": "2026-10-06T07:42:22.213Z",
+      "mem_avail_mb": 448,
+      "avail_pct": 49.5,
+      "swap_used_mb": 830,
+      "load1": 0.01,
+      "swapin_per_s": 15.7,
+      "swapout_per_s": 5.8,
+      "scrape_ms": 422
+    },
+    {
+      "at": "2026-10-06T07:44:22.433Z",
+      "mem_avail_mb": 513,
+      "avail_pct": 56.8,
+      "swap_used_mb": 877,
+      "load1": 0.2,
+      "swapin_per_s": 11,
+      "swapout_per_s": 118.5,
+      "scrape_ms": 243
+    },
+    {
+      "at": "2026-10-06T07:46:22.216Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.6,
+      "swap_used_mb": 875,
+      "load1": 0.17,
+      "swapin_per_s": 9.7,
+      "swapout_per_s": 3.1,
+      "scrape_ms": 790
+    },
+    {
+      "at": "2026-10-06T07:48:22.157Z",
+      "mem_avail_mb": 494,
+      "avail_pct": 54.7,
+      "swap_used_mb": 874,
+      "load1": 0.09,
+      "swapin_per_s": 3.3,
+      "swapout_per_s": 1.3,
+      "scrape_ms": 438
+    },
+    {
+      "at": "2026-10-06T07:50:22.354Z",
+      "mem_avail_mb": 451,
+      "avail_pct": 49.8,
+      "swap_used_mb": 822,
+      "load1": 0.14,
+      "swapin_per_s": 75.2,
+      "swapout_per_s": 1,
+      "scrape_ms": 439
+    },
+    {
+      "at": "2026-10-06T07:52:22.641Z",
+      "mem_avail_mb": 382,
+      "avail_pct": 42.2,
+      "swap_used_mb": 781,
+      "load1": 0.19,
+      "swapin_per_s": 129.3,
+      "swapout_per_s": 17.2,
+      "scrape_ms": 285
+    },
+    {
+      "at": "2026-10-06T07:54:22.246Z",
+      "mem_avail_mb": 289,
+      "avail_pct": 31.9,
+      "swap_used_mb": 720,
+      "load1": 0.06,
+      "swapin_per_s": 164,
+      "swapout_per_s": 3.4,
+      "scrape_ms": 249
+    },
+    {
+      "at": "2026-10-06T07:56:22.369Z",
+      "mem_avail_mb": 457,
+      "avail_pct": 50.5,
+      "swap_used_mb": 860,
+      "load1": 0.06,
+      "swapin_per_s": 119.8,
+      "swapout_per_s": 417.3,
+      "scrape_ms": 786
+    },
+    {
+      "at": "2026-10-06T07:58:22.449Z",
+      "mem_avail_mb": 455,
+      "avail_pct": 50.3,
+      "swap_used_mb": 845,
+      "load1": 0.01,
+      "swapin_per_s": 10.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 240
+    },
+    {
+      "at": "2026-10-06T08:00:22.233Z",
+      "mem_avail_mb": 456,
+      "avail_pct": 50.4,
+      "swap_used_mb": 810,
+      "load1": 0.11,
+      "swapin_per_s": 20.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 184
+    },
+    {
+      "at": "2026-10-06T08:02:22.160Z",
+      "mem_avail_mb": 328,
+      "avail_pct": 36.3,
+      "swap_used_mb": 701,
+      "load1": 0.19,
+      "swapin_per_s": 337.6,
+      "swapout_per_s": 66,
+      "scrape_ms": 973
+    },
+    {
+      "at": "2026-10-06T08:04:22.317Z",
+      "mem_avail_mb": 323,
+      "avail_pct": 35.7,
+      "swap_used_mb": 705,
+      "load1": 0.04,
+      "swapin_per_s": 17.9,
+      "swapout_per_s": 24.9,
+      "scrape_ms": 322
+    },
+    {
+      "at": "2026-10-06T08:06:22.274Z",
+      "mem_avail_mb": 517,
+      "avail_pct": 57.2,
+      "swap_used_mb": 877,
+      "load1": 0.06,
+      "swapin_per_s": 22.6,
+      "swapout_per_s": 390.4,
+      "scrape_ms": 965
+    },
+    {
+      "at": "2026-10-06T08:08:22.281Z",
+      "mem_avail_mb": 474,
+      "avail_pct": 52.5,
+      "swap_used_mb": 848,
+      "load1": 0.03,
+      "swapin_per_s": 37.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 233
+    },
+    {
+      "at": "2026-10-06T08:10:22.138Z",
+      "mem_avail_mb": 449,
+      "avail_pct": 49.7,
+      "swap_used_mb": 822,
+      "load1": 0.02,
+      "swapin_per_s": 72.4,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 239
+    },
+    {
+      "at": "2026-10-06T08:12:22.305Z",
+      "mem_avail_mb": 460,
+      "avail_pct": 50.9,
+      "swap_used_mb": 822,
+      "load1": 0,
+      "swapin_per_s": 2.2,
+      "swapout_per_s": 2.7,
+      "scrape_ms": 905
+    },
+    {
+      "at": "2026-10-06T08:14:22.317Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.7,
+      "swap_used_mb": 824,
+      "load1": 0,
+      "swapin_per_s": 0.9,
+      "swapout_per_s": 6,
+      "scrape_ms": 279
+    },
+    {
+      "at": "2026-10-06T08:16:22.309Z",
+      "mem_avail_mb": 466,
+      "avail_pct": 51.5,
+      "swap_used_mb": 843,
+      "load1": 0.02,
+      "swapin_per_s": 15.7,
+      "swapout_per_s": 62.2,
+      "scrape_ms": 779
+    },
+    {
+      "at": "2026-10-06T08:18:22.175Z",
+      "mem_avail_mb": 481,
+      "avail_pct": 53.2,
+      "swap_used_mb": 841,
+      "load1": 0.12,
+      "swapin_per_s": 4.5,
+      "swapout_per_s": 1.4,
+      "scrape_ms": 416
+    },
+    {
+      "at": "2026-10-06T08:20:22.343Z",
+      "mem_avail_mb": 458,
+      "avail_pct": 50.7,
+      "swap_used_mb": 839,
+      "load1": 0.03,
+      "swapin_per_s": 6.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 413
+    },
+    {
+      "at": "2026-10-06T08:22:22.203Z",
+      "mem_avail_mb": 469,
+      "avail_pct": 51.9,
+      "swap_used_mb": 837,
+      "load1": 0.03,
+      "swapin_per_s": 4.1,
+      "swapout_per_s": 0.6,
+      "scrape_ms": 249
+    },
+    {
+      "at": "2026-10-06T08:24:22.311Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.5,
+      "swap_used_mb": 849,
+      "load1": 0.2,
+      "swapin_per_s": 52.5,
+      "swapout_per_s": 85.3,
+      "scrape_ms": 459
+    },
+    {
+      "at": "2026-10-06T08:26:22.250Z",
+      "mem_avail_mb": 485,
+      "avail_pct": 53.7,
+      "swap_used_mb": 846,
+      "load1": 0.02,
+      "swapin_per_s": 7.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 417
+    },
+    {
+      "at": "2026-10-06T08:28:22.267Z",
+      "mem_avail_mb": 485,
+      "avail_pct": 53.7,
+      "swap_used_mb": 845,
+      "load1": 0,
+      "swapin_per_s": 1.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 796
+    },
+    {
+      "at": "2026-10-06T08:30:22.557Z",
+      "mem_avail_mb": 488,
+      "avail_pct": 53.9,
+      "swap_used_mb": 843,
+      "load1": 0,
+      "swapin_per_s": 4.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 336
+    },
+    {
+      "at": "2026-10-06T08:32:22.255Z",
+      "mem_avail_mb": 317,
+      "avail_pct": 35.1,
+      "swap_used_mb": 732,
+      "load1": 0.06,
+      "swapin_per_s": 304.8,
+      "swapout_per_s": 39.1,
+      "scrape_ms": 465
+    },
+    {
+      "at": "2026-10-06T08:34:22.206Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.5,
+      "swap_used_mb": 864,
+      "load1": 0.21,
+      "swapin_per_s": 18.5,
+      "swapout_per_s": 309.8,
+      "scrape_ms": 229
+    },
+    {
+      "at": "2026-10-06T08:36:22.335Z",
+      "mem_avail_mb": 470,
+      "avail_pct": 52,
+      "swap_used_mb": 837,
+      "load1": 0.09,
+      "swapin_per_s": 5.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 915
+    },
+    {
+      "at": "2026-10-06T08:38:22.303Z",
+      "mem_avail_mb": 469,
+      "avail_pct": 51.9,
+      "swap_used_mb": 830,
+      "load1": 0.08,
+      "swapin_per_s": 9.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 272
+    },
+    {
+      "at": "2026-10-06T08:40:22.233Z",
+      "mem_avail_mb": 432,
+      "avail_pct": 47.7,
+      "swap_used_mb": 804,
+      "load1": 0.14,
+      "swapin_per_s": 68.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 214
+    },
+    {
+      "at": "2026-10-06T08:42:22.200Z",
+      "mem_avail_mb": 428,
+      "avail_pct": 47.3,
+      "swap_used_mb": 804,
+      "load1": 0.02,
+      "swapin_per_s": 1.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 414
+    },
+    {
+      "at": "2026-10-06T08:44:22.287Z",
+      "mem_avail_mb": 494,
+      "avail_pct": 54.7,
+      "swap_used_mb": 851,
+      "load1": 0.14,
+      "swapin_per_s": 43.3,
+      "swapout_per_s": 152.4,
+      "scrape_ms": 339
+    },
+    {
+      "at": "2026-10-06T08:46:22.257Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 841,
+      "load1": 0.02,
+      "swapin_per_s": 23.1,
+      "swapout_per_s": 0.7,
+      "scrape_ms": 759
+    },
+    {
+      "at": "2026-10-06T08:48:22.151Z",
+      "mem_avail_mb": 472,
+      "avail_pct": 52.2,
+      "swap_used_mb": 839,
+      "load1": 0,
+      "swapin_per_s": 4.5,
+      "swapout_per_s": 0.6,
+      "scrape_ms": 394
+    },
+    {
+      "at": "2026-10-06T08:50:22.221Z",
+      "mem_avail_mb": 449,
+      "avail_pct": 49.7,
+      "swap_used_mb": 834,
+      "load1": 0.02,
+      "swapin_per_s": 13,
+      "swapout_per_s": 1.5,
+      "scrape_ms": 241
+    },
+    {
+      "at": "2026-10-06T08:52:22.245Z",
+      "mem_avail_mb": 504,
+      "avail_pct": 55.8,
+      "swap_used_mb": 863,
+      "load1": 0.12,
+      "swapin_per_s": 28.1,
+      "swapout_per_s": 93.9,
+      "scrape_ms": 275
+    },
+    {
+      "at": "2026-10-06T08:54:22.179Z",
+      "mem_avail_mb": 502,
+      "avail_pct": 55.5,
+      "swap_used_mb": 859,
+      "load1": 0.08,
+      "swapin_per_s": 8.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 243
+    },
+    {
+      "at": "2026-10-06T08:56:22.207Z",
+      "mem_avail_mb": 502,
+      "avail_pct": 55.5,
+      "swap_used_mb": 859,
+      "load1": 0.05,
+      "swapin_per_s": 2.9,
+      "swapout_per_s": 0.8,
+      "scrape_ms": 898
+    },
+    {
+      "at": "2026-10-06T08:58:22.180Z",
+      "mem_avail_mb": 505,
+      "avail_pct": 55.9,
+      "swap_used_mb": 856,
+      "load1": 0,
+      "swapin_per_s": 7,
+      "swapout_per_s": 1.1,
+      "scrape_ms": 443
+    },
+    {
+      "at": "2026-10-06T09:00:22.285Z",
+      "mem_avail_mb": 399,
+      "avail_pct": 44.1,
+      "swap_used_mb": 778,
+      "load1": 0.29,
+      "swapin_per_s": 250.5,
+      "swapout_per_s": 28.1,
+      "scrape_ms": 391
+    },
+    {
+      "at": "2026-10-06T09:02:22.294Z",
+      "mem_avail_mb": 313,
+      "avail_pct": 34.6,
+      "swap_used_mb": 677,
+      "load1": 0.05,
+      "swapin_per_s": 487.3,
+      "swapout_per_s": 223.1,
+      "scrape_ms": 503
+    },
+    {
+      "at": "2026-10-06T09:04:22.275Z",
+      "mem_avail_mb": 533,
+      "avail_pct": 58.9,
+      "swap_used_mb": 890,
+      "load1": 0.18,
+      "swapin_per_s": 67.5,
+      "swapout_per_s": 518.8,
+      "scrape_ms": 271
+    },
+    {
+      "at": "2026-10-06T09:06:22.425Z",
+      "mem_avail_mb": 487,
+      "avail_pct": 53.8,
+      "swap_used_mb": 853,
+      "load1": 0.02,
+      "swapin_per_s": 65.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 540
+    },
+    {
+      "at": "2026-10-06T09:08:22.300Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.6,
+      "swap_used_mb": 846,
+      "load1": 0,
+      "swapin_per_s": 21.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 254
+    },
+    {
+      "at": "2026-10-06T09:10:22.298Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52,
+      "swap_used_mb": 835,
+      "load1": 0.08,
+      "swapin_per_s": 25.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 431
+    },
+    {
+      "at": "2026-10-06T09:12:22.278Z",
+      "mem_avail_mb": 470,
+      "avail_pct": 52,
+      "swap_used_mb": 834,
+      "load1": 0.14,
+      "swapin_per_s": 2,
+      "swapout_per_s": 0,
+      "scrape_ms": 751
+    },
+    {
+      "at": "2026-10-06T09:14:22.172Z",
+      "mem_avail_mb": 464,
+      "avail_pct": 51.3,
+      "swap_used_mb": 834,
+      "load1": 0.12,
+      "swapin_per_s": 61.6,
+      "swapout_per_s": 71.6,
+      "scrape_ms": 446
+    },
+    {
+      "at": "2026-10-06T09:16:22.302Z",
+      "mem_avail_mb": 454,
+      "avail_pct": 50.2,
+      "swap_used_mb": 827,
+      "load1": 0.09,
+      "swapin_per_s": 17.5,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 919
+    },
+    {
+      "at": "2026-10-06T09:18:22.213Z",
+      "mem_avail_mb": 455,
+      "avail_pct": 50.3,
+      "swap_used_mb": 824,
+      "load1": 0.08,
+      "swapin_per_s": 7.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 252
+    },
+    {
+      "at": "2026-10-06T09:20:22.334Z",
+      "mem_avail_mb": 419,
+      "avail_pct": 46.3,
+      "swap_used_mb": 804,
+      "load1": 0.01,
+      "swapin_per_s": 54.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 251
+    },
+    {
+      "at": "2026-10-06T09:22:22.171Z",
+      "mem_avail_mb": 419,
+      "avail_pct": 46.3,
+      "swap_used_mb": 802,
+      "load1": 0.01,
+      "swapin_per_s": 4.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 930
+    },
+    {
+      "at": "2026-10-06T09:24:22.177Z",
+      "mem_avail_mb": 481,
+      "avail_pct": 53.1,
+      "swap_used_mb": 839,
+      "load1": 0.11,
+      "swapin_per_s": 44.2,
+      "swapout_per_s": 131.2,
+      "scrape_ms": 414
+    },
+    {
+      "at": "2026-10-06T09:26:22.243Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 836,
+      "load1": 0.02,
+      "swapin_per_s": 6.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 777
+    },
+    {
+      "at": "2026-10-06T09:28:22.159Z",
+      "mem_avail_mb": 454,
+      "avail_pct": 50.2,
+      "swap_used_mb": 823,
+      "load1": 0.01,
+      "swapin_per_s": 39.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 422
+    },
+    {
+      "at": "2026-10-06T09:30:22.199Z",
+      "mem_avail_mb": 446,
+      "avail_pct": 49.3,
+      "swap_used_mb": 818,
+      "load1": 0.06,
+      "swapin_per_s": 13.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 347
+    },
+    {
+      "at": "2026-10-06T09:32:22.333Z",
+      "mem_avail_mb": 445,
+      "avail_pct": 49.2,
+      "swap_used_mb": 862,
+      "load1": 0.1,
+      "swapin_per_s": 385.9,
+      "swapout_per_s": 471.1,
+      "scrape_ms": 450
+    },
+    {
+      "at": "2026-10-06T09:34:22.250Z",
+      "mem_avail_mb": 439,
+      "avail_pct": 48.5,
+      "swap_used_mb": 817,
+      "load1": 0.01,
+      "swapin_per_s": 41.6,
+      "swapout_per_s": 1.4,
+      "scrape_ms": 262
+    },
+    {
+      "at": "2026-10-06T09:36:22.140Z",
+      "mem_avail_mb": 436,
+      "avail_pct": 48.2,
+      "swap_used_mb": 814,
+      "load1": 0,
+      "swapin_per_s": 11.3,
+      "swapout_per_s": 3.9,
+      "scrape_ms": 927
+    },
+    {
+      "at": "2026-10-06T09:38:22.214Z",
+      "mem_avail_mb": 434,
+      "avail_pct": 48,
+      "swap_used_mb": 816,
+      "load1": 0.01,
+      "swapin_per_s": 3.4,
+      "swapout_per_s": 8.4,
+      "scrape_ms": 303
+    },
+    {
+      "at": "2026-10-06T09:40:22.338Z",
+      "mem_avail_mb": 359,
+      "avail_pct": 39.7,
+      "swap_used_mb": 757,
+      "load1": 0.26,
+      "swapin_per_s": 148.3,
+      "swapout_per_s": 20.8,
+      "scrape_ms": 279
+    },
+    {
+      "at": "2026-10-06T09:42:22.260Z",
+      "mem_avail_mb": 297,
+      "avail_pct": 32.8,
+      "swap_used_mb": 719,
+      "load1": 0.12,
+      "swapin_per_s": 283.8,
+      "swapout_per_s": 143,
+      "scrape_ms": 821
+    },
+    {
+      "at": "2026-10-06T09:44:22.321Z",
+      "mem_avail_mb": 419,
+      "avail_pct": 46.4,
+      "swap_used_mb": 813,
+      "load1": 0.21,
+      "swapin_per_s": 164.4,
+      "swapout_per_s": 353,
+      "scrape_ms": 250
+    },
+    {
+      "at": "2026-10-06T09:46:22.301Z",
+      "mem_avail_mb": 416,
+      "avail_pct": 46,
+      "swap_used_mb": 789,
+      "load1": 0.08,
+      "swapin_per_s": 27.3,
+      "swapout_per_s": 4.7,
+      "scrape_ms": 250
+    },
+    {
+      "at": "2026-10-06T09:48:22.275Z",
+      "mem_avail_mb": 416,
+      "avail_pct": 46,
+      "swap_used_mb": 784,
+      "load1": 0.08,
+      "swapin_per_s": 4.3,
+      "swapout_per_s": 0.3,
+      "scrape_ms": 240
+    },
+    {
+      "at": "2026-10-06T09:50:22.193Z",
+      "mem_avail_mb": 396,
+      "avail_pct": 43.8,
+      "swap_used_mb": 759,
+      "load1": 0.38,
+      "swapin_per_s": 61.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 244
+    },
+    {
+      "at": "2026-10-06T09:52:22.165Z",
+      "mem_avail_mb": 399,
+      "avail_pct": 44.1,
+      "swap_used_mb": 759,
+      "load1": 0.05,
+      "swapin_per_s": 2.7,
+      "swapout_per_s": 2.8,
+      "scrape_ms": 256
+    },
+    {
+      "at": "2026-10-06T09:54:22.279Z",
+      "mem_avail_mb": 494,
+      "avail_pct": 54.6,
+      "swap_used_mb": 841,
+      "load1": 0.08,
+      "swapin_per_s": 38.5,
+      "swapout_per_s": 221,
+      "scrape_ms": 816
+    },
+    {
+      "at": "2026-10-06T09:56:22.229Z",
+      "mem_avail_mb": 486,
+      "avail_pct": 53.7,
+      "swap_used_mb": 841,
+      "load1": 0.01,
+      "swapin_per_s": 4.2,
+      "swapout_per_s": 3.6,
+      "scrape_ms": 286
+    },
+    {
+      "at": "2026-10-06T09:58:22.369Z",
+      "mem_avail_mb": 485,
+      "avail_pct": 53.6,
+      "swap_used_mb": 841,
+      "load1": 0,
+      "swapin_per_s": 3.3,
+      "swapout_per_s": 4,
+      "scrape_ms": 926
+    },
+    {
+      "at": "2026-10-06T10:00:22.875Z",
+      "mem_avail_mb": 486,
+      "avail_pct": 53.8,
+      "swap_used_mb": 837,
+      "load1": 0.01,
+      "swapin_per_s": 22,
+      "swapout_per_s": 9.7,
+      "scrape_ms": 374
+    },
+    {
+      "at": "2026-10-06T10:02:22.181Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.4,
+      "swap_used_mb": 842,
+      "load1": 0.17,
+      "swapin_per_s": 420.4,
+      "swapout_per_s": 374.7,
+      "scrape_ms": 456
+    },
+    {
+      "at": "2026-10-06T10:04:22.298Z",
+      "mem_avail_mb": 452,
+      "avail_pct": 50,
+      "swap_used_mb": 803,
+      "load1": 0.02,
+      "swapin_per_s": 19.1,
+      "swapout_per_s": 4.8,
+      "scrape_ms": 459
+    },
+    {
+      "at": "2026-10-06T10:06:22.326Z",
+      "mem_avail_mb": 448,
+      "avail_pct": 49.5,
+      "swap_used_mb": 801,
+      "load1": 0.12,
+      "swapin_per_s": 13.8,
+      "swapout_per_s": 7.5,
+      "scrape_ms": 997
+    },
+    {
+      "at": "2026-10-06T10:08:22.505Z",
+      "mem_avail_mb": 441,
+      "avail_pct": 48.7,
+      "swap_used_mb": 797,
+      "load1": 0.09,
+      "swapin_per_s": 8.3,
+      "swapout_per_s": 0.8,
+      "scrape_ms": 277
+    },
+    {
+      "at": "2026-10-06T10:10:22.163Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.4,
+      "swap_used_mb": 795,
+      "load1": 0.01,
+      "swapin_per_s": 8.6,
+      "swapout_per_s": 1.9,
+      "scrape_ms": 257
+    },
+    {
+      "at": "2026-10-06T10:12:22.315Z",
+      "mem_avail_mb": 419,
+      "avail_pct": 46.3,
+      "swap_used_mb": 790,
+      "load1": 0.07,
+      "swapin_per_s": 78.7,
+      "swapout_per_s": 53.9,
+      "scrape_ms": 496
+    },
+    {
+      "at": "2026-10-06T10:14:22.218Z",
+      "mem_avail_mb": 407,
+      "avail_pct": 45,
+      "swap_used_mb": 830,
+      "load1": 0.17,
+      "swapin_per_s": 12,
+      "swapout_per_s": 108.2,
+      "scrape_ms": 281
+    },
+    {
+      "at": "2026-10-06T10:16:22.405Z",
+      "mem_avail_mb": 458,
+      "avail_pct": 50.7,
+      "swap_used_mb": 810,
+      "load1": 0.1,
+      "swapin_per_s": 51.6,
+      "swapout_per_s": 22.9,
+      "scrape_ms": 964
+    },
+    {
+      "at": "2026-10-06T10:18:22.451Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 809,
+      "load1": 0.1,
+      "swapin_per_s": 1.6,
+      "swapout_per_s": 0.8,
+      "scrape_ms": 265
+    },
+    {
+      "at": "2026-10-06T10:20:22.240Z",
+      "mem_avail_mb": 436,
+      "avail_pct": 48.2,
+      "swap_used_mb": 796,
+      "load1": 0.05,
+      "swapin_per_s": 31.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 461
+    },
+    {
+      "at": "2026-10-06T10:22:22.405Z",
+      "mem_avail_mb": 443,
+      "avail_pct": 49,
+      "swap_used_mb": 796,
+      "load1": 0.04,
+      "swapin_per_s": 0.9,
+      "swapout_per_s": 0.3,
+      "scrape_ms": 443
+    },
+    {
+      "at": "2026-10-06T10:24:22.195Z",
+      "mem_avail_mb": 467,
+      "avail_pct": 51.6,
+      "swap_used_mb": 826,
+      "load1": 0.19,
+      "swapin_per_s": 59.6,
+      "swapout_per_s": 124.2,
+      "scrape_ms": 471
+    },
+    {
+      "at": "2026-10-06T10:26:22.307Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 828,
+      "load1": 0.1,
+      "swapin_per_s": 5.8,
+      "swapout_per_s": 9.2,
+      "scrape_ms": 502
+    },
+    {
+      "at": "2026-10-06T10:28:22.186Z",
+      "mem_avail_mb": 464,
+      "avail_pct": 51.3,
+      "swap_used_mb": 828,
+      "load1": 0.01,
+      "swapin_per_s": 4.7,
+      "swapout_per_s": 4.5,
+      "scrape_ms": 779
+    },
+    {
+      "at": "2026-10-06T10:30:22.299Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.5,
+      "swap_used_mb": 828,
+      "load1": 0.07,
+      "swapin_per_s": 15.1,
+      "swapout_per_s": 15.3,
+      "scrape_ms": 232
+    },
+    {
+      "at": "2026-10-06T10:32:22.173Z",
+      "mem_avail_mb": 339,
+      "avail_pct": 37.5,
+      "swap_used_mb": 709,
+      "load1": 0.15,
+      "swapin_per_s": 304.4,
+      "swapout_per_s": 6.8,
+      "scrape_ms": 990
+    },
+    {
+      "at": "2026-10-06T10:34:22.227Z",
+      "mem_avail_mb": 497,
+      "avail_pct": 54.9,
+      "swap_used_mb": 844,
+      "load1": 0.41,
+      "swapin_per_s": 35.5,
+      "swapout_per_s": 327.3,
+      "scrape_ms": 532
+    },
+    {
+      "at": "2026-10-06T10:36:22.234Z",
+      "mem_avail_mb": 491,
+      "avail_pct": 54.3,
+      "swap_used_mb": 838,
+      "load1": 0.13,
+      "swapin_per_s": 12.8,
+      "swapout_per_s": 4.9,
+      "scrape_ms": 768
+    },
+    {
+      "at": "2026-10-06T10:38:22.375Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.5,
+      "swap_used_mb": 824,
+      "load1": 0.01,
+      "swapin_per_s": 14.8,
+      "swapout_per_s": 4.2,
+      "scrape_ms": 283
+    },
+    {
+      "at": "2026-10-06T10:40:22.707Z",
+      "mem_avail_mb": 463,
+      "avail_pct": 51.2,
+      "swap_used_mb": 823,
+      "load1": 0.04,
+      "swapin_per_s": 2.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 1050
+    },
+    {
+      "at": "2026-10-06T10:42:22.180Z",
+      "mem_avail_mb": 489,
+      "avail_pct": 54.1,
+      "swap_used_mb": 855,
+      "load1": 0.18,
+      "swapin_per_s": 128.7,
+      "swapout_per_s": 190.1,
+      "scrape_ms": 295
+    },
+    {
+      "at": "2026-10-06T10:44:22.363Z",
+      "mem_avail_mb": 497,
+      "avail_pct": 55,
+      "swap_used_mb": 854,
+      "load1": 0.02,
+      "swapin_per_s": 2.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 274
+    },
+    {
+      "at": "2026-10-06T10:46:22.319Z",
+      "mem_avail_mb": 483,
+      "avail_pct": 53.4,
+      "swap_used_mb": 847,
+      "load1": 0.02,
+      "swapin_per_s": 17.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 838
+    },
+    {
+      "at": "2026-10-06T10:48:22.332Z",
+      "mem_avail_mb": 474,
+      "avail_pct": 52.4,
+      "swap_used_mb": 848,
+      "load1": 0,
+      "swapin_per_s": 2.7,
+      "swapout_per_s": 2.2,
+      "scrape_ms": 299
+    },
+    {
+      "at": "2026-10-06T10:50:22.217Z",
+      "mem_avail_mb": 487,
+      "avail_pct": 53.8,
+      "swap_used_mb": 845,
+      "load1": 0.03,
+      "swapin_per_s": 8.1,
+      "swapout_per_s": 3.8,
+      "scrape_ms": 402
+    },
+    {
+      "at": "2026-10-06T10:52:22.425Z",
+      "mem_avail_mb": 514,
+      "avail_pct": 56.8,
+      "swap_used_mb": 861,
+      "load1": 0.06,
+      "swapin_per_s": 65.2,
+      "swapout_per_s": 134,
+      "scrape_ms": 476
+    },
+    {
+      "at": "2026-10-06T10:54:22.366Z",
+      "mem_avail_mb": 505,
+      "avail_pct": 55.9,
+      "swap_used_mb": 860,
+      "load1": 0.01,
+      "swapin_per_s": 3.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 216
+    },
+    {
+      "at": "2026-10-06T10:56:22.257Z",
+      "mem_avail_mb": 503,
+      "avail_pct": 55.7,
+      "swap_used_mb": 858,
+      "load1": 0,
+      "swapin_per_s": 4.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 381
+    },
+    {
+      "at": "2026-10-06T10:58:22.267Z",
+      "mem_avail_mb": 510,
+      "avail_pct": 56.4,
+      "swap_used_mb": 856,
+      "load1": 0.09,
+      "swapin_per_s": 6.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 238
+    },
+    {
+      "at": "2026-10-06T11:00:22.483Z",
+      "mem_avail_mb": 496,
+      "avail_pct": 54.8,
+      "swap_used_mb": 850,
+      "load1": 0.01,
+      "swapin_per_s": 16.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 449
+    },
+    {
+      "at": "2026-10-06T11:02:22.547Z",
+      "mem_avail_mb": 232,
+      "avail_pct": 25.7,
+      "swap_used_mb": 763,
+      "load1": 0.24,
+      "swapin_per_s": 337.7,
+      "swapout_per_s": 98.5,
+      "scrape_ms": 1185
+    },
+    {
+      "at": "2026-10-06T11:04:22.326Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.6,
+      "swap_used_mb": 883,
+      "load1": 0.15,
+      "swapin_per_s": 38.5,
+      "swapout_per_s": 328.5,
+      "scrape_ms": 449
+    },
+    {
+      "at": "2026-10-06T11:06:22.314Z",
+      "mem_avail_mb": 516,
+      "avail_pct": 57.1,
+      "swap_used_mb": 899,
+      "load1": 0.02,
+      "swapin_per_s": 48,
+      "swapout_per_s": 120.1,
+      "scrape_ms": 796
+    },
+    {
+      "at": "2026-10-06T11:08:22.317Z",
+      "mem_avail_mb": 501,
+      "avail_pct": 55.4,
+      "swap_used_mb": 874,
+      "load1": 0.14,
+      "swapin_per_s": 23.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 445
+    },
+    {
+      "at": "2026-10-06T11:10:22.274Z",
+      "mem_avail_mb": 446,
+      "avail_pct": 49.3,
+      "swap_used_mb": 842,
+      "load1": 0.35,
+      "swapin_per_s": 83.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 249
+    },
+    {
+      "at": "2026-10-06T11:12:22.435Z",
+      "mem_avail_mb": 395,
+      "avail_pct": 43.7,
+      "swap_used_mb": 794,
+      "load1": 0.08,
+      "swapin_per_s": 51.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 323
+    },
+    {
+      "at": "2026-10-06T11:14:22.256Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 817,
+      "load1": 0.13,
+      "swapin_per_s": 42.6,
+      "swapout_per_s": 100,
+      "scrape_ms": 419
+    },
+    {
+      "at": "2026-10-06T11:16:22.424Z",
+      "mem_avail_mb": 447,
+      "avail_pct": 49.5,
+      "swap_used_mb": 808,
+      "load1": 0.08,
+      "swapin_per_s": 22.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 767
+    },
+    {
+      "at": "2026-10-06T11:18:22.325Z",
+      "mem_avail_mb": 454,
+      "avail_pct": 50.2,
+      "swap_used_mb": 805,
+      "load1": 0.01,
+      "swapin_per_s": 7.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 267
+    },
+    {
+      "at": "2026-10-06T11:20:22.308Z",
+      "mem_avail_mb": 430,
+      "avail_pct": 47.5,
+      "swap_used_mb": 799,
+      "load1": 0.26,
+      "swapin_per_s": 69.4,
+      "swapout_per_s": 39.9,
+      "scrape_ms": 306
+    },
+    {
+      "at": "2026-10-06T11:22:22.305Z",
+      "mem_avail_mb": 423,
+      "avail_pct": 46.8,
+      "swap_used_mb": 798,
+      "load1": 0.03,
+      "swapin_per_s": 2.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 290
+    },
+    {
+      "at": "2026-10-06T11:24:22.189Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.7,
+      "swap_used_mb": 827,
+      "load1": 0.05,
+      "swapin_per_s": 10.8,
+      "swapout_per_s": 83,
+      "scrape_ms": 250
+    },
+    {
+      "at": "2026-10-06T11:26:22.243Z",
+      "mem_avail_mb": 462,
+      "avail_pct": 51.1,
+      "swap_used_mb": 822,
+      "load1": 0.11,
+      "swapin_per_s": 12.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 777
+    },
+    {
+      "at": "2026-10-06T11:28:22.270Z",
+      "mem_avail_mb": 465,
+      "avail_pct": 51.5,
+      "swap_used_mb": 820,
+      "load1": 0.09,
+      "swapin_per_s": 6.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 378
+    },
+    {
+      "at": "2026-10-06T11:30:22.579Z",
+      "mem_avail_mb": 440,
+      "avail_pct": 48.7,
+      "swap_used_mb": 812,
+      "load1": 0.08,
+      "swapin_per_s": 19,
+      "swapout_per_s": 0,
+      "scrape_ms": 360
+    },
+    {
+      "at": "2026-10-06T11:32:22.277Z",
+      "mem_avail_mb": 369,
+      "avail_pct": 40.8,
+      "swap_used_mb": 974,
+      "load1": 0.98,
+      "swapin_per_s": 383.7,
+      "swapout_per_s": 688.8,
+      "scrape_ms": 1847
+    },
+    {
+      "at": "2026-10-06T11:34:22.313Z",
+      "mem_avail_mb": 371,
+      "avail_pct": 41,
+      "swap_used_mb": 965,
+      "load1": 1.15,
+      "swapin_per_s": 124.4,
+      "swapout_per_s": 164.6,
+      "scrape_ms": 479
+    },
+    {
+      "at": "2026-10-06T11:36:22.183Z",
+      "mem_avail_mb": 479,
+      "avail_pct": 53,
+      "swap_used_mb": 855,
+      "load1": 0.34,
+      "swapin_per_s": 117.3,
+      "swapout_per_s": 22.2,
+      "scrape_ms": 438
+    },
+    {
+      "at": "2026-10-06T11:38:22.273Z",
+      "mem_avail_mb": 496,
+      "avail_pct": 54.8,
+      "swap_used_mb": 850,
+      "load1": 0.08,
+      "swapin_per_s": 11.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 249
+    },
+    {
+      "at": "2026-10-06T11:40:22.306Z",
+      "mem_avail_mb": 445,
+      "avail_pct": 49.3,
+      "swap_used_mb": 820,
+      "load1": 0.01,
+      "swapin_per_s": 99.2,
+      "swapout_per_s": 24.5,
+      "scrape_ms": 280
+    },
+    {
+      "at": "2026-10-06T11:42:22.294Z",
+      "mem_avail_mb": 443,
+      "avail_pct": 48.9,
+      "swap_used_mb": 899,
+      "load1": 0.22,
+      "swapin_per_s": 16.6,
+      "swapout_per_s": 180.7,
+      "scrape_ms": 781
+    },
+    {
+      "at": "2026-10-06T11:44:22.201Z",
+      "mem_avail_mb": 515,
+      "avail_pct": 56.9,
+      "swap_used_mb": 865,
+      "load1": 0.07,
+      "swapin_per_s": 53.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 792
+    },
+    {
+      "at": "2026-10-06T11:46:22.218Z",
+      "mem_avail_mb": 501,
+      "avail_pct": 55.4,
+      "swap_used_mb": 855,
+      "load1": 0.02,
+      "swapin_per_s": 25,
+      "swapout_per_s": 0,
+      "scrape_ms": 485
+    },
+    {
+      "at": "2026-10-06T11:48:22.368Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.5,
+      "swap_used_mb": 851,
+      "load1": 0,
+      "swapin_per_s": 6.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 415
+    },
+    {
+      "at": "2026-10-06T11:50:22.276Z",
+      "mem_avail_mb": 333,
+      "avail_pct": 36.8,
+      "swap_used_mb": 752,
+      "load1": 0.14,
+      "swapin_per_s": 292,
+      "swapout_per_s": 25.7,
+      "scrape_ms": 299
+    },
+    {
+      "at": "2026-10-06T11:52:22.299Z",
+      "mem_avail_mb": 287,
+      "avail_pct": 31.8,
+      "swap_used_mb": 721,
+      "load1": 0.29,
+      "swapin_per_s": 169.7,
+      "swapout_per_s": 77.3,
+      "scrape_ms": 797
+    },
+    {
+      "at": "2026-10-06T11:54:22.170Z",
+      "mem_avail_mb": 495,
+      "avail_pct": 54.7,
+      "swap_used_mb": 888,
+      "load1": 0.08,
+      "swapin_per_s": 130.5,
+      "swapout_per_s": 475.3,
+      "scrape_ms": 399
+    },
+    {
+      "at": "2026-10-06T11:56:22.296Z",
+      "mem_avail_mb": 478,
+      "avail_pct": 52.8,
+      "swap_used_mb": 872,
+      "load1": 0.01,
+      "swapin_per_s": 22.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 851
+    },
+    {
+      "at": "2026-10-06T11:58:22.234Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 836,
+      "load1": 0,
+      "swapin_per_s": 31.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 263
+    },
+    {
+      "at": "2026-10-06T12:00:22.369Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.7,
+      "swap_used_mb": 825,
+      "load1": 0.08,
+      "swapin_per_s": 26.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 262
+    },
+    {
+      "at": "2026-10-06T12:02:22.220Z",
+      "mem_avail_mb": 359,
+      "avail_pct": 39.7,
+      "swap_used_mb": 797,
+      "load1": 0.07,
+      "swapin_per_s": 418.7,
+      "swapout_per_s": 299.2,
+      "scrape_ms": 946
+    },
+    {
+      "at": "2026-10-06T12:04:22.217Z",
+      "mem_avail_mb": 505,
+      "avail_pct": 55.9,
+      "swap_used_mb": 857,
+      "load1": 0.04,
+      "swapin_per_s": 111.1,
+      "swapout_per_s": 364,
+      "scrape_ms": 301
+    },
+    {
+      "at": "2026-10-06T12:06:22.402Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.6,
+      "swap_used_mb": 845,
+      "load1": 0.16,
+      "swapin_per_s": 28.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 295
+    },
+    {
+      "at": "2026-10-06T12:08:22.210Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.6,
+      "swap_used_mb": 841,
+      "load1": 0.02,
+      "swapin_per_s": 8,
+      "swapout_per_s": 0,
+      "scrape_ms": 434
+    },
+    {
+      "at": "2026-10-06T12:10:22.259Z",
+      "mem_avail_mb": 484,
+      "avail_pct": 53.5,
+      "swap_used_mb": 843,
+      "load1": 0.2,
+      "swapin_per_s": 37.2,
+      "swapout_per_s": 41.5,
+      "scrape_ms": 259
+    },
+    {
+      "at": "2026-10-06T12:12:22.167Z",
+      "mem_avail_mb": 485,
+      "avail_pct": 53.6,
+      "swap_used_mb": 842,
+      "load1": 0.1,
+      "swapin_per_s": 1.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 237
+    },
+    {
+      "at": "2026-10-06T12:14:22.340Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 841,
+      "load1": 0.01,
+      "swapin_per_s": 3.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 961
+    },
+    {
+      "at": "2026-10-06T12:16:22.374Z",
+      "mem_avail_mb": 470,
+      "avail_pct": 51.9,
+      "swap_used_mb": 835,
+      "load1": 0.04,
+      "swapin_per_s": 14.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 421
+    },
+    {
+      "at": "2026-10-06T12:18:22.508Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.7,
+      "swap_used_mb": 833,
+      "load1": 0,
+      "swapin_per_s": 4,
+      "swapout_per_s": 0,
+      "scrape_ms": 411
+    },
+    {
+      "at": "2026-10-06T12:20:22.250Z",
+      "mem_avail_mb": 418,
+      "avail_pct": 46.2,
+      "swap_used_mb": 792,
+      "load1": 0,
+      "swapin_per_s": 92.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 771
+    },
+    {
+      "at": "2026-10-06T12:22:22.189Z",
+      "mem_avail_mb": 424,
+      "avail_pct": 46.9,
+      "swap_used_mb": 792,
+      "load1": 0,
+      "swapin_per_s": 0.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 405
+    },
+    {
+      "at": "2026-10-06T12:24:22.200Z",
+      "mem_avail_mb": 424,
+      "avail_pct": 46.9,
+      "swap_used_mb": 792,
+      "load1": 0,
+      "swapin_per_s": 0.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 231
+    },
+    {
+      "at": "2026-10-06T12:26:22.544Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.8,
+      "swap_used_mb": 829,
+      "load1": 0.08,
+      "swapin_per_s": 80.4,
+      "swapout_per_s": 161.8,
+      "scrape_ms": 823
+    },
+    {
+      "at": "2026-10-06T12:28:22.247Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.8,
+      "swap_used_mb": 828,
+      "load1": 0.06,
+      "swapin_per_s": 1.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 243
+    },
+    {
+      "at": "2026-10-06T12:30:22.404Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52,
+      "swap_used_mb": 819,
+      "load1": 0.02,
+      "swapin_per_s": 23.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 248
+    },
+    {
+      "at": "2026-10-06T12:32:22.179Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.4,
+      "swap_used_mb": 848,
+      "load1": 0.08,
+      "swapin_per_s": 312.4,
+      "swapout_per_s": 334,
+      "scrape_ms": 1347
+    },
+    {
+      "at": "2026-10-06T12:34:22.371Z",
+      "mem_avail_mb": 451,
+      "avail_pct": 49.8,
+      "swap_used_mb": 810,
+      "load1": 0.01,
+      "swapin_per_s": 19.6,
+      "swapout_per_s": 6.1,
+      "scrape_ms": 293
+    },
+    {
+      "at": "2026-10-06T12:36:22.237Z",
+      "mem_avail_mb": 437,
+      "avail_pct": 48.3,
+      "swap_used_mb": 803,
+      "load1": 0.1,
+      "swapin_per_s": 20.7,
+      "swapout_per_s": 4.6,
+      "scrape_ms": 786
+    },
+    {
+      "at": "2026-10-06T12:38:22.435Z",
+      "mem_avail_mb": 450,
+      "avail_pct": 49.7,
+      "swap_used_mb": 807,
+      "load1": 0.24,
+      "swapin_per_s": 5.6,
+      "swapout_per_s": 13.3,
+      "scrape_ms": 446
+    },
+    {
+      "at": "2026-10-06T12:40:22.289Z",
+      "mem_avail_mb": 427,
+      "avail_pct": 47.3,
+      "swap_used_mb": 798,
+      "load1": 0.14,
+      "swapin_per_s": 39.6,
+      "swapout_per_s": 14,
+      "scrape_ms": 771
+    },
+    {
+      "at": "2026-10-06T12:42:22.265Z",
+      "mem_avail_mb": 432,
+      "avail_pct": 47.7,
+      "swap_used_mb": 804,
+      "load1": 0.35,
+      "swapin_per_s": 2.8,
+      "swapout_per_s": 15.2,
+      "scrape_ms": 412
+    },
+    {
+      "at": "2026-10-06T12:44:22.168Z",
+      "mem_avail_mb": 481,
+      "avail_pct": 53.2,
+      "swap_used_mb": 839,
+      "load1": 0.45,
+      "swapin_per_s": 57.8,
+      "swapout_per_s": 141.4,
+      "scrape_ms": 313
+    },
+    {
+      "at": "2026-10-06T12:46:22.205Z",
+      "mem_avail_mb": 473,
+      "avail_pct": 52.3,
+      "swap_used_mb": 832,
+      "load1": 0.39,
+      "swapin_per_s": 14.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 451
+    },
+    {
+      "at": "2026-10-06T12:48:22.420Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.7,
+      "swap_used_mb": 835,
+      "load1": 0.09,
+      "swapin_per_s": 5.5,
+      "swapout_per_s": 9.7,
+      "scrape_ms": 292
+    },
+    {
+      "at": "2026-10-06T12:50:22.118Z",
+      "mem_avail_mb": 474,
+      "avail_pct": 52.4,
+      "swap_used_mb": 833,
+      "load1": 0.05,
+      "swapin_per_s": 10.2,
+      "swapout_per_s": 4.4,
+      "scrape_ms": 767
+    },
+    {
+      "at": "2026-10-06T12:52:22.191Z",
+      "mem_avail_mb": 495,
+      "avail_pct": 54.7,
+      "swap_used_mb": 865,
+      "load1": 0.04,
+      "swapin_per_s": 41,
+      "swapout_per_s": 120,
+      "scrape_ms": 451
+    },
+    {
+      "at": "2026-10-06T12:56:22.382Z",
+      "mem_avail_mb": 496,
+      "avail_pct": 54.9,
+      "swap_used_mb": 861,
+      "load1": 0,
+      "swapin_per_s": 4.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 446
+    },
+    {
+      "at": "2026-10-06T12:58:22.163Z",
+      "mem_avail_mb": 494,
+      "avail_pct": 54.6,
+      "swap_used_mb": 860,
+      "load1": 0,
+      "swapin_per_s": 4,
+      "swapout_per_s": 0,
+      "scrape_ms": 967
+    },
+    {
+      "at": "2026-10-06T13:00:22.239Z",
+      "mem_avail_mb": 488,
+      "avail_pct": 54,
+      "swap_used_mb": 854,
+      "load1": 0.33,
+      "swapin_per_s": 14.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 391
+    },
+    {
+      "at": "2026-10-06T13:02:22.401Z",
+      "mem_avail_mb": 494,
+      "avail_pct": 54.6,
+      "swap_used_mb": 865,
+      "load1": 0.39,
+      "swapin_per_s": 418.6,
+      "swapout_per_s": 443.7,
+      "scrape_ms": 278
+    },
+    {
+      "at": "2026-10-06T13:04:22.157Z",
+      "mem_avail_mb": 479,
+      "avail_pct": 53,
+      "swap_used_mb": 853,
+      "load1": 0.11,
+      "swapin_per_s": 26.5,
+      "swapout_per_s": 11,
+      "scrape_ms": 270
+    },
+    {
+      "at": "2026-10-06T13:06:22.187Z",
+      "mem_avail_mb": 464,
+      "avail_pct": 51.3,
+      "swap_used_mb": 845,
+      "load1": 0.04,
+      "swapin_per_s": 13,
+      "swapout_per_s": 4.7,
+      "scrape_ms": 471
+    },
+    {
+      "at": "2026-10-06T13:08:22.229Z",
+      "mem_avail_mb": 449,
+      "avail_pct": 49.6,
+      "swap_used_mb": 813,
+      "load1": 0.12,
+      "swapin_per_s": 50.3,
+      "swapout_per_s": 2.7,
+      "scrape_ms": 274
+    },
+    {
+      "at": "2026-10-06T13:10:22.316Z",
+      "mem_avail_mb": 441,
+      "avail_pct": 48.8,
+      "swap_used_mb": 804,
+      "load1": 0.01,
+      "swapin_per_s": 22.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 299
+    },
+    {
+      "at": "2026-10-06T13:12:22.254Z",
+      "mem_avail_mb": 443,
+      "avail_pct": 49,
+      "swap_used_mb": 803,
+      "load1": 0,
+      "swapin_per_s": 2.7,
+      "swapout_per_s": 0.2,
+      "scrape_ms": 750
+    },
+    {
+      "at": "2026-10-06T13:14:22.226Z",
+      "mem_avail_mb": 460,
+      "avail_pct": 50.9,
+      "swap_used_mb": 813,
+      "load1": 0.09,
+      "swapin_per_s": 41.6,
+      "swapout_per_s": 75.7,
+      "scrape_ms": 297
+    },
+    {
+      "at": "2026-10-06T13:16:22.259Z",
+      "mem_avail_mb": 447,
+      "avail_pct": 49.4,
+      "swap_used_mb": 809,
+      "load1": 0.01,
+      "swapin_per_s": 10.7,
+      "swapout_per_s": 0.8,
+      "scrape_ms": 385
+    },
+    {
+      "at": "2026-10-06T13:18:22.325Z",
+      "mem_avail_mb": 446,
+      "avail_pct": 49.3,
+      "swap_used_mb": 808,
+      "load1": 0.01,
+      "swapin_per_s": 2.9,
+      "swapout_per_s": 1.4,
+      "scrape_ms": 956
+    },
+    {
+      "at": "2026-10-06T13:20:22.130Z",
+      "mem_avail_mb": 428,
+      "avail_pct": 47.3,
+      "swap_used_mb": 804,
+      "load1": 0,
+      "swapin_per_s": 8.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 284
+    },
+    {
+      "at": "2026-10-06T13:22:22.363Z",
+      "mem_avail_mb": 434,
+      "avail_pct": 48,
+      "swap_used_mb": 805,
+      "load1": 0.01,
+      "swapin_per_s": 0.7,
+      "swapout_per_s": 1.2,
+      "scrape_ms": 1000
+    },
+    {
+      "at": "2026-10-06T13:24:22.328Z",
+      "mem_avail_mb": 443,
+      "avail_pct": 49,
+      "swap_used_mb": 848,
+      "load1": 0.1,
+      "swapin_per_s": 6.8,
+      "swapout_per_s": 93.5,
+      "scrape_ms": 486
+    },
+    {
+      "at": "2026-10-06T13:26:22.283Z",
+      "mem_avail_mb": 467,
+      "avail_pct": 51.7,
+      "swap_used_mb": 825,
+      "load1": 0.02,
+      "swapin_per_s": 48.2,
+      "swapout_per_s": 6.7,
+      "scrape_ms": 946
+    },
+    {
+      "at": "2026-10-06T13:28:22.425Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.7,
+      "swap_used_mb": 830,
+      "load1": 0,
+      "swapin_per_s": 2.7,
+      "swapout_per_s": 11.7,
+      "scrape_ms": 441
+    },
+    {
+      "at": "2026-10-06T13:30:22.204Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.6,
+      "swap_used_mb": 825,
+      "load1": 0,
+      "swapin_per_s": 16.5,
+      "swapout_per_s": 10.8,
+      "scrape_ms": 423
+    },
+    {
+      "at": "2026-10-06T13:32:22.191Z",
+      "mem_avail_mb": 444,
+      "avail_pct": 49.1,
+      "swap_used_mb": 818,
+      "load1": 0.26,
+      "swapin_per_s": 432.2,
+      "swapout_per_s": 378.6,
+      "scrape_ms": 302
+    },
+    {
+      "at": "2026-10-06T13:34:22.294Z",
+      "mem_avail_mb": 442,
+      "avail_pct": 48.8,
+      "swap_used_mb": 815,
+      "load1": 0.08,
+      "swapin_per_s": 7.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 277
+    },
+    {
+      "at": "2026-10-06T13:36:22.192Z",
+      "mem_avail_mb": 427,
+      "avail_pct": 47.2,
+      "swap_used_mb": 812,
+      "load1": 0.1,
+      "swapin_per_s": 5.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 241
+    },
+    {
+      "at": "2026-10-06T13:38:22.196Z",
+      "mem_avail_mb": 302,
+      "avail_pct": 33.5,
+      "swap_used_mb": 720,
+      "load1": 0.18,
+      "swapin_per_s": 307.7,
+      "swapout_per_s": 78.7,
+      "scrape_ms": 281
+    },
+    {
+      "at": "2026-10-06T13:40:22.132Z",
+      "mem_avail_mb": 250,
+      "avail_pct": 27.7,
+      "swap_used_mb": 687,
+      "load1": 0.2,
+      "swapin_per_s": 137.8,
+      "swapout_per_s": 49.1,
+      "scrape_ms": 337
+    },
+    {
+      "at": "2026-10-06T13:42:22.423Z",
+      "mem_avail_mb": 304,
+      "avail_pct": 33.6,
+      "swap_used_mb": 700,
+      "load1": 0.06,
+      "swapin_per_s": 19,
+      "swapout_per_s": 50.9,
+      "scrape_ms": 338
+    },
+    {
+      "at": "2026-10-06T13:44:22.256Z",
+      "mem_avail_mb": 478,
+      "avail_pct": 52.9,
+      "swap_used_mb": 838,
+      "load1": 0.06,
+      "swapin_per_s": 89.7,
+      "swapout_per_s": 380.1,
+      "scrape_ms": 263
+    },
+    {
+      "at": "2026-10-06T13:46:22.300Z",
+      "mem_avail_mb": 463,
+      "avail_pct": 51.3,
+      "swap_used_mb": 821,
+      "load1": 0.06,
+      "swapin_per_s": 31.5,
+      "swapout_per_s": 1.5,
+      "scrape_ms": 225
+    },
+    {
+      "at": "2026-10-06T13:48:22.214Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.7,
+      "swap_used_mb": 817,
+      "load1": 0.18,
+      "swapin_per_s": 9.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 277
+    },
+    {
+      "at": "2026-10-06T13:50:22.227Z",
+      "mem_avail_mb": 453,
+      "avail_pct": 50.1,
+      "swap_used_mb": 810,
+      "load1": 0.44,
+      "swapin_per_s": 19.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 969
+    },
+    {
+      "at": "2026-10-06T13:52:22.198Z",
+      "mem_avail_mb": 497,
+      "avail_pct": 55,
+      "swap_used_mb": 848,
+      "load1": 0.36,
+      "swapin_per_s": 23.7,
+      "swapout_per_s": 116.1,
+      "scrape_ms": 305
+    },
+    {
+      "at": "2026-10-06T13:54:22.300Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.6,
+      "swap_used_mb": 845,
+      "load1": 0.17,
+      "swapin_per_s": 6,
+      "swapout_per_s": 0,
+      "scrape_ms": 258
+    },
+    {
+      "at": "2026-10-06T13:56:22.281Z",
+      "mem_avail_mb": 489,
+      "avail_pct": 54.1,
+      "swap_used_mb": 843,
+      "load1": 0.09,
+      "swapin_per_s": 5,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 945
+    },
+    {
+      "at": "2026-10-06T13:58:22.326Z",
+      "mem_avail_mb": 488,
+      "avail_pct": 54,
+      "swap_used_mb": 841,
+      "load1": 0.18,
+      "swapin_per_s": 3.8,
+      "swapout_per_s": 0,
+      "scrape_ms": 274
+    },
+    {
+      "at": "2026-10-06T14:00:22.521Z",
+      "mem_avail_mb": 325,
+      "avail_pct": 35.9,
+      "swap_used_mb": 711,
+      "load1": 0.55,
+      "swapin_per_s": 373.6,
+      "swapout_per_s": 14.6,
+      "scrape_ms": 422
+    },
+    {
+      "at": "2026-10-06T14:02:22.436Z",
+      "mem_avail_mb": 346,
+      "avail_pct": 38.2,
+      "swap_used_mb": 789,
+      "load1": 1.32,
+      "swapin_per_s": 775.7,
+      "swapout_per_s": 862,
+      "scrape_ms": 870
+    },
+    {
+      "at": "2026-10-06T14:04:22.207Z",
+      "mem_avail_mb": 347,
+      "avail_pct": 38.4,
+      "swap_used_mb": 782,
+      "load1": 1.12,
+      "swapin_per_s": 131.7,
+      "swapout_per_s": 125,
+      "scrape_ms": 553
+    },
+    {
+      "at": "2026-10-06T14:06:22.281Z",
+      "mem_avail_mb": 339,
+      "avail_pct": 37.5,
+      "swap_used_mb": 768,
+      "load1": 1.25,
+      "swapin_per_s": 152,
+      "swapout_per_s": 126.6,
+      "scrape_ms": 609
+    },
+    {
+      "at": "2026-10-06T14:08:22.323Z",
+      "mem_avail_mb": 344,
+      "avail_pct": 38.1,
+      "swap_used_mb": 730,
+      "load1": 1.15,
+      "swapin_per_s": 67.4,
+      "swapout_per_s": 77.1,
+      "scrape_ms": 530
+    },
+    {
+      "at": "2026-10-06T14:10:22.249Z",
+      "mem_avail_mb": 307,
+      "avail_pct": 33.9,
+      "swap_used_mb": 667,
+      "load1": 1.24,
+      "swapin_per_s": 192,
+      "swapout_per_s": 137.6,
+      "scrape_ms": 606
+    },
+    {
+      "at": "2026-10-06T14:12:22.324Z",
+      "mem_avail_mb": 348,
+      "avail_pct": 38.5,
+      "swap_used_mb": 708,
+      "load1": 1.17,
+      "swapin_per_s": 63.9,
+      "swapout_per_s": 141.3,
+      "scrape_ms": 590
+    },
+    {
+      "at": "2026-10-06T14:14:22.399Z",
+      "mem_avail_mb": 337,
+      "avail_pct": 37.3,
+      "swap_used_mb": 723,
+      "load1": 1.53,
+      "swapin_per_s": 121.2,
+      "swapout_per_s": 172.4,
+      "scrape_ms": 725
+    },
+    {
+      "at": "2026-10-06T14:16:22.209Z",
+      "mem_avail_mb": 469,
+      "avail_pct": 51.8,
+      "swap_used_mb": 798,
+      "load1": 0.7,
+      "swapin_per_s": 266.4,
+      "swapout_per_s": 452.4,
+      "scrape_ms": 503
+    },
+    {
+      "at": "2026-10-06T14:18:22.180Z",
+      "mem_avail_mb": 471,
+      "avail_pct": 52.1,
+      "swap_used_mb": 805,
+      "load1": 0.23,
+      "swapin_per_s": 12.2,
+      "swapout_per_s": 28.8,
+      "scrape_ms": 303
+    },
+    {
+      "at": "2026-10-06T14:20:22.475Z",
+      "mem_avail_mb": 451,
+      "avail_pct": 49.9,
+      "swap_used_mb": 794,
+      "load1": 0.1,
+      "swapin_per_s": 56.4,
+      "swapout_per_s": 30.8,
+      "scrape_ms": 472
+    },
+    {
+      "at": "2026-10-06T14:22:22.187Z",
+      "mem_avail_mb": 481,
+      "avail_pct": 53.2,
+      "swap_used_mb": 814,
+      "load1": 0.07,
+      "swapin_per_s": 13.6,
+      "swapout_per_s": 52.8,
+      "scrape_ms": 425
+    },
+    {
+      "at": "2026-10-06T14:24:22.184Z",
+      "mem_avail_mb": 507,
+      "avail_pct": 56,
+      "swap_used_mb": 837,
+      "load1": 0.13,
+      "swapin_per_s": 44,
+      "swapout_per_s": 106.2,
+      "scrape_ms": 310
+    },
+    {
+      "at": "2026-10-06T14:26:22.253Z",
+      "mem_avail_mb": 501,
+      "avail_pct": 55.4,
+      "swap_used_mb": 842,
+      "load1": 0.07,
+      "swapin_per_s": 13.3,
+      "swapout_per_s": 22.5,
+      "scrape_ms": 263
+    },
+    {
+      "at": "2026-10-06T14:28:22.450Z",
+      "mem_avail_mb": 496,
+      "avail_pct": 54.8,
+      "swap_used_mb": 835,
+      "load1": 0.03,
+      "swapin_per_s": 17.7,
+      "swapout_per_s": 3.5,
+      "scrape_ms": 994
+    },
+    {
+      "at": "2026-10-06T14:30:22.590Z",
+      "mem_avail_mb": 502,
+      "avail_pct": 55.5,
+      "swap_used_mb": 830,
+      "load1": 0.06,
+      "swapin_per_s": 17.5,
+      "swapout_per_s": 4.8,
+      "scrape_ms": 445
+    },
+    {
+      "at": "2026-10-06T14:32:22.310Z",
+      "mem_avail_mb": 480,
+      "avail_pct": 53.1,
+      "swap_used_mb": 817,
+      "load1": 0.38,
+      "swapin_per_s": 392.8,
+      "swapout_per_s": 442.6,
+      "scrape_ms": 350
+    },
+    {
+      "at": "2026-10-06T14:34:22.350Z",
+      "mem_avail_mb": 451,
+      "avail_pct": 49.9,
+      "swap_used_mb": 801,
+      "load1": 0.22,
+      "swapin_per_s": 36.8,
+      "swapout_per_s": 4.1,
+      "scrape_ms": 270
+    },
+    {
+      "at": "2026-10-06T14:36:22.232Z",
+      "mem_avail_mb": 443,
+      "avail_pct": 49,
+      "swap_used_mb": 797,
+      "load1": 0.12,
+      "swapin_per_s": 12.4,
+      "swapout_per_s": 3.2,
+      "scrape_ms": 981
+    },
+    {
+      "at": "2026-10-06T14:38:22.470Z",
+      "mem_avail_mb": 455,
+      "avail_pct": 50.3,
+      "swap_used_mb": 800,
+      "load1": 0.01,
+      "swapin_per_s": 2.4,
+      "swapout_per_s": 9.1,
+      "scrape_ms": 478
+    },
+    {
+      "at": "2026-10-06T14:40:22.335Z",
+      "mem_avail_mb": 435,
+      "avail_pct": 48.1,
+      "swap_used_mb": 790,
+      "load1": 0,
+      "swapin_per_s": 23.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 452
+    },
+    {
+      "at": "2026-10-06T14:42:22.344Z",
+      "mem_avail_mb": 504,
+      "avail_pct": 55.7,
+      "swap_used_mb": 857,
+      "load1": 0.19,
+      "swapin_per_s": 60.2,
+      "swapout_per_s": 207.6,
+      "scrape_ms": 286
+    },
+    {
+      "at": "2026-10-06T14:44:22.319Z",
+      "mem_avail_mb": 501,
+      "avail_pct": 55.4,
+      "swap_used_mb": 854,
+      "load1": 0.09,
+      "swapin_per_s": 6,
+      "swapout_per_s": 0,
+      "scrape_ms": 428
+    },
+    {
+      "at": "2026-10-06T14:46:22.263Z",
+      "mem_avail_mb": 491,
+      "avail_pct": 54.3,
+      "swap_used_mb": 844,
+      "load1": 0.01,
+      "swapin_per_s": 24,
+      "swapout_per_s": 0,
+      "scrape_ms": 980
+    },
+    {
+      "at": "2026-10-06T14:48:22.350Z",
+      "mem_avail_mb": 490,
+      "avail_pct": 54.1,
+      "swap_used_mb": 840,
+      "load1": 0,
+      "swapin_per_s": 5.1,
+      "swapout_per_s": 0,
+      "scrape_ms": 474
+    },
+    {
+      "at": "2026-10-06T14:50:22.128Z",
+      "mem_avail_mb": 480,
+      "avail_pct": 53,
+      "swap_used_mb": 827,
+      "load1": 0,
+      "swapin_per_s": 28.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 446
+    },
+    {
+      "at": "2026-10-06T14:52:22.372Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.5,
+      "swap_used_mb": 851,
+      "load1": 0.06,
+      "swapin_per_s": 29.8,
+      "swapout_per_s": 93.1,
+      "scrape_ms": 270
+    },
+    {
+      "at": "2026-10-06T14:54:22.211Z",
+      "mem_avail_mb": 511,
+      "avail_pct": 56.5,
+      "swap_used_mb": 850,
+      "load1": 0.01,
+      "swapin_per_s": 1.7,
+      "swapout_per_s": 0,
+      "scrape_ms": 385
+    },
+    {
+      "at": "2026-10-06T14:56:22.237Z",
+      "mem_avail_mb": 493,
+      "avail_pct": 54.5,
+      "swap_used_mb": 850,
+      "load1": 0,
+      "swapin_per_s": 1.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 916
+    },
+    {
+      "at": "2026-10-06T14:58:23.114Z",
+      "mem_avail_mb": 499,
+      "avail_pct": 55.2,
+      "swap_used_mb": 849,
+      "load1": 0,
+      "swapin_per_s": 0.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 541
+    },
+    {
+      "at": "2026-10-06T15:00:22.374Z",
+      "mem_avail_mb": 413,
+      "avail_pct": 45.7,
+      "swap_used_mb": 767,
+      "load1": 0.7,
+      "swapin_per_s": 192.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 233
+    },
+    {
+      "at": "2026-10-06T15:02:22.415Z",
+      "mem_avail_mb": 304,
+      "avail_pct": 33.6,
+      "swap_used_mb": 687,
+      "load1": 0.61,
+      "swapin_per_s": 1177.9,
+      "swapout_per_s": 863.8,
+      "scrape_ms": 933
+    },
+    {
+      "at": "2026-10-06T15:04:22.264Z",
+      "mem_avail_mb": 342,
+      "avail_pct": 37.8,
+      "swap_used_mb": 701,
+      "load1": 0.08,
+      "swapin_per_s": 42,
+      "swapout_per_s": 107.2,
+      "scrape_ms": 468
+    },
+    {
+      "at": "2026-10-06T15:06:22.245Z",
+      "mem_avail_mb": 346,
+      "avail_pct": 38.2,
+      "swap_used_mb": 711,
+      "load1": 0.09,
+      "swapin_per_s": 17.5,
+      "swapout_per_s": 36.9,
+      "scrape_ms": 503
+    },
+    {
+      "at": "2026-10-06T15:08:22.205Z",
+      "mem_avail_mb": 367,
+      "avail_pct": 40.6,
+      "swap_used_mb": 726,
+      "load1": 0.01,
+      "swapin_per_s": 20.3,
+      "swapout_per_s": 49.4,
+      "scrape_ms": 305
+    },
+    {
+      "at": "2026-10-06T15:10:22.235Z",
+      "mem_avail_mb": 393,
+      "avail_pct": 43.5,
+      "swap_used_mb": 755,
+      "load1": 0,
+      "swapin_per_s": 54.4,
+      "swapout_per_s": 106.2,
+      "scrape_ms": 478
+    },
+    {
+      "at": "2026-10-06T15:12:22.341Z",
+      "mem_avail_mb": 425,
+      "avail_pct": 47,
+      "swap_used_mb": 777,
+      "load1": 0,
+      "swapin_per_s": 3.8,
+      "swapout_per_s": 49.3,
+      "scrape_ms": 288
+    },
+    {
+      "at": "2026-10-06T15:14:22.327Z",
+      "mem_avail_mb": 528,
+      "avail_pct": 58.4,
+      "swap_used_mb": 901,
+      "load1": 0.14,
+      "swapin_per_s": 72.1,
+      "swapout_per_s": 320.9,
+      "scrape_ms": 466
+    },
+    {
+      "at": "2026-10-06T15:16:22.299Z",
+      "mem_avail_mb": 339,
+      "avail_pct": 37.5,
+      "swap_used_mb": 722,
+      "load1": 0.16,
+      "swapin_per_s": 524.3,
+      "swapout_per_s": 51.6,
+      "scrape_ms": 456
+    },
+    {
+      "at": "2026-10-06T15:18:22.193Z",
+      "mem_avail_mb": 338,
+      "avail_pct": 37.3,
+      "swap_used_mb": 706,
+      "load1": 0.06,
+      "swapin_per_s": 27.2,
+      "swapout_per_s": 5.3,
+      "scrape_ms": 466
+    },
+    {
+      "at": "2026-10-06T15:20:22.146Z",
+      "mem_avail_mb": 298,
+      "avail_pct": 32.9,
+      "swap_used_mb": 685,
+      "load1": 0.03,
+      "swapin_per_s": 49.2,
+      "swapout_per_s": 0.4,
+      "scrape_ms": 427
+    },
+    {
+      "at": "2026-10-06T15:22:22.213Z",
+      "mem_avail_mb": 468,
+      "avail_pct": 51.8,
+      "swap_used_mb": 821,
+      "load1": 0.09,
+      "swapin_per_s": 11.4,
+      "swapout_per_s": 308.2,
+      "scrape_ms": 399
+    },
+    {
+      "at": "2026-10-06T15:24:22.288Z",
+      "mem_avail_mb": 452,
+      "avail_pct": 50,
+      "swap_used_mb": 811,
+      "load1": 0.01,
+      "swapin_per_s": 21.6,
+      "swapout_per_s": 0,
+      "scrape_ms": 414
+    },
+    {
+      "at": "2026-10-06T15:26:22.220Z",
+      "mem_avail_mb": 443,
+      "avail_pct": 49,
+      "swap_used_mb": 810,
+      "load1": 0,
+      "swapin_per_s": 2.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 945
+    },
+    {
+      "at": "2026-10-06T15:28:22.340Z",
+      "mem_avail_mb": 439,
+      "avail_pct": 48.6,
+      "swap_used_mb": 809,
+      "load1": 0.02,
+      "swapin_per_s": 1.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 262
+    },
+    {
+      "at": "2026-10-06T15:30:22.310Z",
+      "mem_avail_mb": 449,
+      "avail_pct": 49.6,
+      "swap_used_mb": 803,
+      "load1": 0.09,
+      "swapin_per_s": 17.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 215
+    },
+    {
+      "at": "2026-10-06T15:32:22.226Z",
+      "mem_avail_mb": 432,
+      "avail_pct": 47.7,
+      "swap_used_mb": 939,
+      "load1": 0.34,
+      "swapin_per_s": 280.9,
+      "swapout_per_s": 519.5,
+      "scrape_ms": 994
+    },
+    {
+      "at": "2026-10-06T15:34:22.323Z",
+      "mem_avail_mb": 497,
+      "avail_pct": 54.9,
+      "swap_used_mb": 859,
+      "load1": 0.14,
+      "swapin_per_s": 66,
+      "swapout_per_s": 11.1,
+      "scrape_ms": 429
+    },
+    {
+      "at": "2026-10-06T15:36:22.286Z",
+      "mem_avail_mb": 492,
+      "avail_pct": 54.4,
+      "swap_used_mb": 848,
+      "load1": 0.02,
+      "swapin_per_s": 23,
+      "swapout_per_s": 0,
+      "scrape_ms": 483
+    },
+    {
+      "at": "2026-10-06T15:38:22.292Z",
+      "mem_avail_mb": 481,
+      "avail_pct": 53.2,
+      "swap_used_mb": 847,
+      "load1": 0,
+      "swapin_per_s": 1.9,
+      "swapout_per_s": 0,
+      "scrape_ms": 238
+    },
+    {
+      "at": "2026-10-06T15:40:22.266Z",
+      "mem_avail_mb": 452,
+      "avail_pct": 50,
+      "swap_used_mb": 827,
+      "load1": 0,
+      "swapin_per_s": 57.1,
+      "swapout_per_s": 1.9,
+      "scrape_ms": 536
+    },
+    {
+      "at": "2026-10-06T15:42:22.302Z",
+      "mem_avail_mb": 477,
+      "avail_pct": 52.8,
+      "swap_used_mb": 842,
+      "load1": 0.06,
+      "swapin_per_s": 36.9,
+      "swapout_per_s": 77.3,
+      "scrape_ms": 816
+    },
+    {
+      "at": "2026-10-06T15:44:22.357Z",
+      "mem_avail_mb": 481,
+      "avail_pct": 53.2,
+      "swap_used_mb": 841,
+      "load1": 0.05,
+      "swapin_per_s": 3.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 465
+    },
+    {
+      "at": "2026-10-06T15:46:22.171Z",
+      "mem_avail_mb": 430,
+      "avail_pct": 47.6,
+      "swap_used_mb": 813,
+      "load1": 0.13,
+      "swapin_per_s": 74.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 787
+    },
+    {
+      "at": "2026-10-06T15:48:22.206Z",
+      "mem_avail_mb": 306,
+      "avail_pct": 33.8,
+      "swap_used_mb": 715,
+      "load1": 0.1,
+      "swapin_per_s": 249.4,
+      "swapout_per_s": 12.8,
+      "scrape_ms": 260
+    },
+    {
+      "at": "2026-10-06T15:50:22.409Z",
+      "mem_avail_mb": 282,
+      "avail_pct": 31.2,
+      "swap_used_mb": 695,
+      "load1": 0.08,
+      "swapin_per_s": 93.2,
+      "swapout_per_s": 29.9,
+      "scrape_ms": 251
+    },
+    {
+      "at": "2026-10-06T15:52:22.181Z",
+      "mem_avail_mb": 480,
+      "avail_pct": 53.1,
+      "swap_used_mb": 830,
+      "load1": 0.07,
+      "swapin_per_s": 95.8,
+      "swapout_per_s": 473.8,
+      "scrape_ms": 796
+    },
+    {
+      "at": "2026-10-06T15:54:22.171Z",
+      "mem_avail_mb": 475,
+      "avail_pct": 52.5,
+      "swap_used_mb": 830,
+      "load1": 0.16,
+      "swapin_per_s": 1.7,
+      "swapout_per_s": 1.1,
+      "scrape_ms": 239
+    },
+    {
+      "at": "2026-10-06T15:56:22.189Z",
+      "mem_avail_mb": 474,
+      "avail_pct": 52.5,
+      "swap_used_mb": 827,
+      "load1": 0.08,
+      "swapin_per_s": 6.3,
+      "swapout_per_s": 0,
+      "scrape_ms": 736
+    },
+    {
+      "at": "2026-10-06T15:58:22.223Z",
+      "mem_avail_mb": 477,
+      "avail_pct": 52.7,
+      "swap_used_mb": 825,
+      "load1": 0.08,
+      "swapin_per_s": 5.5,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 276
+    },
+    {
+      "at": "2026-10-06T16:00:22.367Z",
+      "mem_avail_mb": 434,
+      "avail_pct": 48,
+      "swap_used_mb": 793,
+      "load1": 0.47,
+      "swapin_per_s": 104.2,
+      "swapout_per_s": 16.7,
+      "scrape_ms": 231
+    },
+    {
+      "at": "2026-10-06T16:02:22.382Z",
+      "mem_avail_mb": 234,
+      "avail_pct": 25.8,
+      "swap_used_mb": 1005,
+      "load1": 1.74,
+      "swapin_per_s": 901.9,
+      "swapout_per_s": 1283.9,
+      "scrape_ms": 2062
+    },
+    {
+      "at": "2026-10-06T16:04:22.338Z",
+      "mem_avail_mb": 141,
+      "avail_pct": 15.6,
+      "swap_used_mb": 1024,
+      "load1": 2.95,
+      "swapin_per_s": 1379.2,
+      "swapout_per_s": 1401.4,
+      "scrape_ms": 7719
+    },
+    {
+      "at": "2026-10-07T00:50:22.205Z",
+      "mem_avail_mb": 589,
+      "avail_pct": 65.2,
+      "swap_used_mb": 257,
+      "load1": 2.86,
+      "swapin_per_s": null,
+      "swapout_per_s": null,
+      "scrape_ms": 773
+    },
+    {
+      "at": "2026-10-07T00:52:22.285Z",
+      "mem_avail_mb": 535,
+      "avail_pct": 59.1,
+      "swap_used_mb": 248,
+      "load1": 0.42,
+      "swapin_per_s": 44.8,
+      "swapout_per_s": 8.5,
+      "scrape_ms": 379
+    },
+    {
+      "at": "2026-10-07T00:54:22.503Z",
+      "mem_avail_mb": 500,
+      "avail_pct": 55.3,
+      "swap_used_mb": 226,
+      "load1": 0.05,
+      "swapin_per_s": 44.7,
+      "swapout_per_s": 0.1,
+      "scrape_ms": 286
+    },
+    {
+      "at": "2026-10-07T00:56:22.265Z",
+      "mem_avail_mb": 495,
+      "avail_pct": 54.8,
+      "swap_used_mb": 226,
+      "load1": 0.01,
+      "swapin_per_s": 1.4,
+      "swapout_per_s": 0,
+      "scrape_ms": 274
+    },
+    {
+      "at": "2026-10-07T00:58:22.219Z",
+      "mem_avail_mb": 497,
+      "avail_pct": 54.9,
+      "swap_used_mb": 224,
+      "load1": 0,
+      "swapin_per_s": 4.2,
+      "swapout_per_s": 0,
+      "scrape_ms": 253
+    },
+    {
+      "at": "2026-10-07T01:00:22.998Z",
+      "mem_avail_mb": 476,
+      "avail_pct": 52.7,
+      "swap_used_mb": 224,
+      "load1": 0,
+      "swapin_per_s": 28.1,
+      "swapout_per_s": 0.4,
+      "scrape_ms": 352
+    },
+    {
+      "at": "2026-10-07T01:02:22.250Z",
+      "mem_avail_mb": 373,
+      "avail_pct": 41.3,
+      "swap_used_mb": 226,
+      "load1": 0.06,
+      "swapin_per_s": 34.2,
+      "swapout_per_s": 34.4,
+      "scrape_ms": 943
+    },
+    {
+      "at": "2026-10-07T01:04:22.267Z",
+      "mem_avail_mb": 459,
+      "avail_pct": 50.8,
+      "swap_used_mb": 296,
+      "load1": 0.16,
+      "swapin_per_s": 158.1,
+      "swapout_per_s": 343.5,
+      "scrape_ms": 337
+    },
+    {
+      "at": "2026-10-07T01:06:22.310Z",
+      "mem_avail_mb": 440,
+      "avail_pct": 48.7,
+      "swap_used_mb": 294,
+      "load1": 0.02,
+      "swapin_per_s": 19.5,
+      "swapout_per_s": 0,
+      "scrape_ms": 474
+    }
+  ]
+}
