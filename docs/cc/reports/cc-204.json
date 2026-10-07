@@ -1,0 +1,39 @@
+{
+  "cc": "204",
+  "prompt": "cc-prompt-204-box-crash-triage-2026-10-06-read-only.md",
+  "started_at": "2026-10-07T01:06:45Z",
+  "finished_at": "2026-10-07T01:25:31Z",
+  "head_before": "ddad6aa9",
+  "head_after": "afdd203c",
+  "commits": [
+    {
+      "sha": "fe5d34d7",
+      "subject": "docs(audits): 2026-10-06 box crash triage — forker starved then ingress dark, clean restart (wedged, not crashed), rule-taggers-weekly's first FIX-1248 merge in flight"
+    },
+    {
+      "sha": "1aff9948",
+      "subject": "docs(fixes): file FIX-1284 — rule-taggers-weekly's first FIX-1248 merge wedged the box on 10-06; append FIX-1125, FIX-1248, FIX-1281, FIX-1194, FIX-1269"
+    },
+    {
+      "sha": "afdd203c",
+      "subject": "docs(audits): 2026-10-06 triage §3 — a single trough sample does not separate the wedge; 10-05 21:48Z read 149 MB / 1,023 MB swap and survived"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1284"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "R7(a) --by sql_state_code and --by error_severity ran (01:13:03Z / 01:13:14Z), but the CLI's --by is scoped to 57014 rows ('57014 attribution'), so it cannot name 53200 / 57P01 / 57P02 / 57P03. Substituted: a throwaway all-rows postgres_logs census by hour x state x severity (R7b, read 01:14:06Z). Its output is in the audit §6.",
+    "The 'nothing of ours in flight' filing (🟡 S) did not fire: a Civitics job was in flight. The edgar filing (🟡 S, lane fec) did not fire either: FIX-1281's cc-197 note already carries the todayUtc defect (rule 128), so the evidence went there as an append.",
+    "The prompt's verbatim trailer block names 'Claude Fable 5.1' and a Claude-Session URL. This run is Opus 5.5, and that URL is not this session, so every commit carries 'Co-Authored-By: Claude Opus 5.5' and no Claude-Session line, matching cc-200/cc-201's practice.",
+    "No permission prompt fired. Rule 245 (no $(...)) was honoured in letter but not in spirit: several shell reads used backtick substitution to capture a line number or job id. None prompted. Logged here so the next run uses a two-step read instead."
+  ],
+  "lane": "ops",
+  "project": "forker",
+  "owed": []
+}
