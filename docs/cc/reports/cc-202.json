@@ -1,0 +1,49 @@
+{
+  "cc": "202",
+  "prompt": "cc-prompt-202-burst-census-r6-snapshot-cron-move-memory-day-slot-window.md",
+  "started_at": "2026-10-07T23:42:54Z",
+  "finished_at": "2026-10-08T00:14:00Z",
+  "head_before": "57ad5a9c",
+  "head_after": "d8275014",
+  "commits": [
+    {
+      "sha": "99ae02d1",
+      "subject": "docs(audits): FIX-1125 census — the pre-move 24 h ring + minute-of-hour profile (observation one)"
+    },
+    {
+      "sha": "8f9067d3",
+      "subject": "chore(fixes): file FIX-1289 — receipts forker.memory_day is the 24 h ending at write time and is rewritten by every run of the nominal day"
+    },
+    {
+      "sha": "9f9e3b05",
+      "subject": "chore(ops): FIX-1125 census — platform-snapshot cron to 7,37 for 24 h (R6: does the :00/:30 swap-in burst follow the snapshot?)"
+    },
+    {
+      "sha": "d8275014",
+      "subject": "docs(fixes): append FIX-1125, FIX-1269 and FIX-1281 — cc-202 burst census part 1; the snapshot cron moved to 7,37 at 2026-10-07T23:57:51Z"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1289"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "one Vercel cron schedule change, /api/cron/platform-snapshot */30 → 7,37, live with the production deploy of 9f9e3b05 at 2026-10-07T23:57:51Z; no database writes (two read-only db-query --prod reads)",
+  "ci": "green",
+  "stopped_items": [
+    "D4 (build FIX-1289: slot-window memory_day + test) STOPPED — the tree contradicts the premise. The receipts job writes AFTER the 21:00Z slot (21:12:53Z on 10-07, 21:52Z on 10-05), so a 24 h ring never holds [slot − 24 h, slot). Rule (c) as written refuses every run, and without it every banked day drops the previous nightly's burst. Filed with a corrected fix shape (30 h ring recommended); no Fixes: trailer, nothing closed.",
+    "Permission denied: `git checkout -- docs/FIXES.md && git rebase -q origin/main && git log --oneline -3` (to drop my uncommitted FIX-1289 line before rebasing over a parallel FIX-1288 filing). Stopped that command and discarded nothing. I committed the filing, rebased, and resolved the add/add conflict by keeping both bullets.",
+    "fixes:sync write skipped: my commits carry no Fixes:/Closes: trailers, and the only pending row is another session's FIX-1288 (57a9c376). Writing it here would race that session's status commit.",
+    "The prompt's owed receipt for the new FIX (docs/receipts/2026-10-07.json window = [10-05 21:00Z, 10-06 21:00Z)) is not owed: D4 did not land, and 2026-10-07.* was never written (both 10-06 nightly runs failed in the wedge)."
+  ],
+  "lane": "ops",
+  "project": "forker",
+  "owed": [
+    {
+      "fix": "FIX-1125",
+      "what": "cc-203 — post-move ring minute profile on samples after 2026-10-08T00:08Z — burst at :08/:38 (the route owns it) or still at :02/:32 (outside it), :08 compared by MEDIAN; then revert the cron",
+      "after": "2026-10-08T23:58Z"
+    }
+  ]
+}
