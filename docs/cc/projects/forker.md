@@ -14,7 +14,7 @@ steps:
   - {id: s6, kind: design, ref: "FIX-1125", title: "memory threshold — after ≥ 7 receipts days carrying forker.memory_day", after: 2026-10-09T12:00Z}
   - {id: s7, kind: design, ref: "", title: "contract-flow chunking (D-contract) — the one heavy rollup still a single statement"}
   - {id: s8, kind: cc, ref: "cc-202", title: "burst census part 1: snapshot cron → 7,37 (R6); ring banked; memory_day slot window filed as FIX-1289 (build stopped)", done: 2026-10-08}
-  - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: post-move verdict + R2–R5 reads + revert"}
+  - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: post-move verdict + R2–R5 reads + revert", after: 2026-10-08T23:58Z}
   - {id: s10, kind: decision, ref: "FIX-1289", title: "memory_day tiling: a 30 h ring (recommended) or chained windows; a 24 h ring cannot hold the slot window at a post-slot write"}
   - {id: s11, kind: cc, ref: "cc-208", title: "FIX-1286 auto-restart on the 4th consecutive Logs-arm DOWN tick (FIX-1285 shipped it in cc-206; armed 10-07); receipt = the next wedge", done: 2026-10-07}
 ---
