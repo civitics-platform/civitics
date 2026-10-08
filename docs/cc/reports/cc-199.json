@@ -1,0 +1,63 @@
+{
+  "cc": "199",
+  "prompt": "cc-prompt-199-lujan-h-stub-adopt-prior-shape-c.md",
+  "started_at": "2026-10-07T23:43:30Z",
+  "finished_at": "2026-10-08T00:40:00Z",
+  "head_before": "57ad5a9c",
+  "head_after": "c8ef31d1",
+  "commits": [
+    {
+      "sha": "34dad147",
+      "subject": "chore(fixes): file FIX-1288"
+    },
+    {
+      "sha": "57a9c376",
+      "subject": "fix(data): FIX-1288 — merge tool shape C (--adopt-prior): a sitting member adopts an other-chamber stub's CAND_ID into prior_fec_candidate_ids; the merge retire step matches on authoritative claims, manifest-scoped"
+    },
+    {
+      "sha": "8a645ae7",
+      "subject": "chore(fixes): record prod verification of FIX-1288 — the Luján H stub merged on prod under shape C at 00:28:13Z: live S0NM00058 kept, H8NM03196 to prior, 149 FR moved, sums conserved; double_claim 47 to 46"
+    },
+    {
+      "sha": "2f1b445e",
+      "subject": "docs(fixes): append FIX-1189 — the Luján H stub merged by shape C (cc-199), double_claim 47 to 46; congress-ids plan gains s9 (cc-199) and s10 (the Thu receipts)"
+    },
+    {
+      "sha": "5bf7beca",
+      "subject": "chore(fixes): sync status after FIX-1288"
+    },
+    {
+      "sha": "c8ef31d1",
+      "subject": "chore(fixes): file FIX-1290"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1288"
+  ],
+  "fixes_filed": [
+    "FIX-1288",
+    "FIX-1290"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "ONE, the supervised Luján merge. Command: data:merge:official-dupes:prod --manifest docs/audits/2026-10-05-fix1189-lujan-h-stub-manifest.tsv --adopt-prior --defer-tails --apply. Run from the primary checkout under the script's own FIX-950 claim (acquired, then released) at 00:25:15-00:28:13Z on 2026-10-08, with Craig's go at 00:25:08Z. One transaction: Senator 93a6040f prior_fec_candidate_ids += H8NM03196 (live S0NM00058 untouched); 24 colliding FR losers deleted (2 survivor-side, 22 stub-side; $79,802.00); 149 FR rows moved to the Senator; 1 official_donor_totals row deleted (the stub); the stub's H8NM03196 retired to merged_fec_candidate_ids; 144 stale money EC edges on the stub deleted. Step 0's platform-wide reconcile ran first in its own transaction and retired 0 rows. Phase 2 manifest-scoped rollups after commit: donor_rollup_rebuild_recipients 6.0 s, financial_entity_donation_totals_rebuild 6.8 s, donor_party_rollup_rebuild_donors 127.7 s. Fourteen platform-scoped tails were deferred to their owners. No VACUUM, no migration, no hand SQL. Prod reads: db-query --prod (read-only) and legislator-ids-report --dry-run --allow-prod (plan-only, no stamp) twice.",
+  "ci": "green",
+  "stopped_items": [
+    "D2's window stop fired. The prompt's window (2026-10-06T23:30Z..2026-10-07T02:45Z) had lapsed unrun when this run started at 2026-10-07T23:43Z, and its stop says land D1 only. I put that to Craig at the D2 gate with the gate reading (prod_op_gate(600) ok at 23:54:29Z). He authorised D2 in tonight's equivalent window, and the apply ran 00:25:15-00:28:13Z on 10-08. I asked rather than worked around it.",
+    "D1.7 clone rehearsal not run. On the clone, 93a6040f reads tier candidate (cc-194's W1 promotion is prod-only), so the gate refuses the pair: live tiers are candidate/candidate. No pair was synthesised, and the prod dry run was the rehearsal. In its place: the unmodified clone dry run exercised the flag, the loader and the gate SQL; the new step-1 and retire SQL was EXPLAINed; and the step-1 branches were executed against the clone's rows inside a rolled-back transaction."
+  ],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1189",
+      "what": "the Thu 10-08 21:00Z nightly's receipts §10 reads double_claim 46 with no Luján line",
+      "after": "2026-10-09T06:00Z"
+    },
+    {
+      "fix": "FIX-1189",
+      "what": "jobid 24 donor-rollup-refresh's next watermark-moving firing (Thu 10-08 09:00Z) leaves the $622k under the Senator's donor rollup",
+      "after": "2026-10-08T10:00Z"
+    }
+  ]
+}
