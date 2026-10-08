@@ -14,6 +14,8 @@ steps:
   - {id: s6, kind: cc, ref: "cc-194", title: "the supervised landing"}
   - {id: s7, kind: cc, ref: "cc-196", title: "1279 rider — the promotion RPC adopts the elected row's name fields"}
   - {id: s8, kind: cc, ref: "cc-200", title: "FIX-1278 official_redirects + the RPC writes the row"}
+  - {id: s9, kind: cc, ref: "cc-199", title: "shape C (--adopt-prior) + the Luján H-stub merge"}
+  - {id: s10, kind: receipt, ref: "FIX-1189", title: "Thu 21:00Z §10 double_claim 46; the $622k under the Senator after jobid 24 Thu 09:00Z", after: 2026-10-09T06:00Z}
 ---
 
 # Congress-legislators FEC ids (FIX-1189)
