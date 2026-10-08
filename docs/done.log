@@ -1622,3 +1622,5 @@
 2026-10-06 | FIX-1285 | 49901cce | prod-only | chore(fixes): record prod verification of FIX-1285 — report-mode tick on prod at 03:00:28Z: restart.action none, Upstash state keys absent
 2026-10-06 | FIX-1286 | ef346dc6 | prod-only | chore(fixes): record prod verification of FIX-1286 — armed tick on prod at 05:15:28Z: action none, down_ticks absent, probe answered; Upstash keys absent
 2026-10-06 | FIX-1286 | a7e3cf55 | local-only | fix(ops): FIX-1286 — front-door auto-restart counts consecutive DOWN ticks and fires on the 4th; the direct probe is reason-only; the Logs arm carries the restart
+2026-10-07 | FIX-1288 | 8a645ae7 | prod-only | chore(fixes): record prod verification of FIX-1288 — the Luján H stub merged on prod under shape C at 00:28:13Z: live S0NM00058 kept, H8NM03196 to prior, 149 FR moved, sums conserved; double_claim 47 to 46
+2026-10-07 | FIX-1288 | 57a9c376 | local-only | fix(data): FIX-1288 — merge tool shape C (--adopt-prior): a sitting member adopts an other-chamber stub's CAND_ID into prior_fec_candidate_ids; the merge retire step matches on authoritative claims, manifest-scoped
