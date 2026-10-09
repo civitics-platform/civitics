@@ -14,7 +14,7 @@ steps:
   - {id: s6, kind: design, ref: "FIX-1125", title: "memory threshold — after ≥ 7 receipts days carrying forker.memory_day", after: 2026-10-09T12:00Z}
   - {id: s7, kind: design, ref: "", title: "contract-flow chunking (D-contract) — the one heavy rollup still a single statement"}
   - {id: s8, kind: cc, ref: "cc-202", title: "burst census part 1: snapshot cron → 7,37 (R6); ring banked; memory_day slot window filed as FIX-1289 (build stopped)", done: 2026-10-08}
-  - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: post-move verdict + R2–R5 reads + revert", after: 2026-10-08T23:58Z}
+  - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: verdict A (the burst moved to :10/:40 with the route; no statement owns it — FIX-1292); cron reverted to */30", done: 2026-10-09}
   - {id: s10, kind: decision, ref: "FIX-1289", title: "memory_day tiling: a 30 h ring (recommended) or chained windows; a 24 h ring cannot hold the slot window at a post-slot write"}
   - {id: s11, kind: cc, ref: "cc-208", title: "FIX-1286 auto-restart on the 4th consecutive Logs-arm DOWN tick (FIX-1285 shipped it in cc-206; armed 10-07); receipt = the next wedge", done: 2026-10-07}
 ---
@@ -79,3 +79,12 @@ prod). cc-202 moved the route to `7,37` for 24 h (R6). If the burst follows it
 to :08 / :38, the route owns it; if it stays, cc-203's reads decide among the
 rest. cc-203 reverts the cron either way. s10 is the receipts-window decision
 the seven-day memory count (s6) waits on.
+
+**cc-203's answer (s9):** the burst followed the route, landing one sample
+later than predicted (:10/:40, the :08:22 → :10:22 window). The committed
+tick sampler (`scripts/pgss-tick-sampler.mjs`) found no Postgres statement,
+checkpoint, archive or connection churn in the route's bracket that accounts
+for it. The owner is the route's firing ([[FIX-1292]]); R7, splitting its two
+halves onto separate minutes, is the next read. For s6: the threshold must
+expect one burst sample per firing, and 10-08's ring carries a second rule-81
+window (17:10Z → 23:50Z). See `docs/audits/2026-10-07-burst-census.md`.

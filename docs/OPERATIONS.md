@@ -487,7 +487,7 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 |---|---|---|---|
 | `/api/cron/nightly-sync` | `0 2 * * *` | Canary marker + grant-expiry sweep; the real nightly is GHA | yes |
 | `/api/cron/notify-followers` | `0 3 * * *` | Follower notification fan-out | yes |
-| `/api/cron/platform-snapshot` | `*/30 * * * *` | Platform counts snapshot (FIX-1127, off GHA) — **temporarily `7,37` from 2026-10-07T23:57:51Z for ≥ 24 h, the FIX-1125 burst census (cc-202/203); revert in cc-203** | no |
+| `/api/cron/platform-snapshot` | `*/30 * * * *` | Platform counts snapshot (FIX-1127, off GHA) | no |
 | `/api/cron/front-door-watch` | `*/15 * * * *` | Front-door wedge detector (FIX-1130) | no |
 | `/api/cron/cron-watchdog` | `*/2 * * * *` | Fires **both** budget watchdogs (FIX-1194) | yes |
 
@@ -803,8 +803,7 @@ Added 2026-08-16 after the 2026-08-15 crawl burned ~$21/day for 16 hours without
 anything paging. The alert system was healthy; it was watching the wrong things.
 All of the below rides the existing `platform-snapshot` cron — no new workflow,
 no new substrate. That cron is a **Vercel cron at `*/30`** since FIX-1127
-(`apps/civitics/vercel.json`; temporarily `7,37` from 2026-10-07T23:57:51Z for
-≥ 24 h for the FIX-1125 burst census, reverted by cc-203); it was a GHA `*/10` that actually fired about
+(`apps/civitics/vercel.json`); it was a GHA `*/10` that actually fired about
 every 6 hours before that, which is the number every "detects in" figure below
 was really operating under.
 
