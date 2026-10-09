@@ -1,0 +1,95 @@
+{
+  "cc": "209",
+  "prompt": "cc-prompt-209-thursday-records-fix1281-fallback-fix1189-lujan-fix501-fix1255-fix1268.md",
+  "started_at": "2026-10-09T00:04:30Z",
+  "finished_at": "2026-10-09T00:27:00Z",
+  "head_before": "70346de9",
+  "head_after": "cdf71070",
+  "commits": [
+    {
+      "sha": "6b35e172",
+      "subject": "chore(fixes): record prod verification of FIX-501 — jobid 49's Wed 10-07 refresh complete in 101.5 s, 47,208 stored rows, max 200 per cohort"
+    },
+    {
+      "sha": "2c674756",
+      "subject": "chore(fixes): record prod verification of FIX-1281 — the Wed 10-07 slot's schedule fallback (run 37708716751, 00:37Z) read already_ran on all four phases and stood every job down; fec-phase 29 s, run 79 s"
+    },
+    {
+      "sha": "d48f6cac",
+      "subject": "chore(fixes): record prod verification of FIX-1255 — jobid 28's first gated Thursday put the twelve + CACI NSS under Defense & Aerospace and Humana GB under Health Care; totals unchanged"
+    },
+    {
+      "sha": "4e988fe3",
+      "subject": "chore(fixes): file FIX-1291 — usaspending-bulk's first delta catch-up ran 5 h 52 m to the cap and saturated Pro Small; neither category completed"
+    },
+    {
+      "sha": "ffbb976e",
+      "subject": "docs(fixes): append cc-209 readings — FIX-1189 (c) held on a stale §10, FIX-1268 and FIX-1274 the 10-08 run that completed neither category, FIX-1194's Thursday half, FIX-1281's 10-08 nightly triage"
+    },
+    {
+      "sha": "3abfe014",
+      "subject": "chore(ci): FIX-1291 — usaspending-bulk off its Thursday schedule (workflow_dispatch only) until the catch-up lands as a supervised op"
+    },
+    {
+      "sha": "fb1d7d6b",
+      "subject": "chore(fixes): sync status after FIX-501, FIX-1281, FIX-1255"
+    },
+    {
+      "sha": "cdf71070",
+      "subject": "docs(cc): paced-ops s16 — cc-209's Thursday records; s13 (FIX-1281's fallback receipt) done 2026-10-08"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-501",
+    "FIX-1281",
+    "FIX-1255"
+  ],
+  "fixes_filed": [
+    "FIX-1291"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1189 record HELD, as the prompt expected. (a) and (b) are met, but (c) is not: receipts 2026-10-09 §10 is the 10-07 table, because O1 and O2 timed out inside the saturation. Appended; (c) is re-owed after 2026-10-10T06:00Z.",
+    "FIX-1268 record HELD. Neither category completed: contracts stalled in part 3 of 5 and assistance never started. The prompt expected one completed category, so the tree contradicted its premise. Appended on 1268 and 1274.",
+    "Timing deviation: the FIX-501 GROUP BY ran at 00:09:07Z, NOT inside the prompt's :12-:26 window, because I misjudged the clock. It was EXPLAINed first (Index Only Scan, 47,208 rows) and ran in 617 ms, close to cc-203's possible :07 bracket.",
+    "Over-a-second read: an entity_tags read for SAAB / CACI NSS's industry rows hit my own 5 s statement_timeout at 00:14:11Z on the post-restart box and was cancelled. I did not retry it; SAAB's defense/ai row stands on cc-184's 10-03 read.",
+    "The Fri 00:37Z-class nightly fallback had not fired by 00:26Z, so its preflight lines are not in this report."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1189",
+      "what": "(c) re-owed: the Fri 10-09 21:00Z nightly's receipts 2026-10-10.md §10 reads double_claim 46 with no Luján line, noop 488 (or Saturday's if Friday's O1 also fails); then ONE record carrying (a) and (b) as read here",
+      "after": "2026-10-10T06:00Z"
+    },
+    {
+      "fix": "FIX-1189",
+      "what": "the first drop night (Sun 10-11 21:00Z): the cn stage mints 0 stubs for sitting members; promote-candidates skipped_bound about 538",
+      "after": "2026-10-12T03:00Z"
+    },
+    {
+      "fix": "FIX-1194",
+      "what": "the week verdict (receipts §9 by-day 10-02 to 10-09); 10-08 is a rule-81 day (131 startup timeouts caused by the usaspending-bulk GHA writer, FIX-1291)",
+      "after": "2026-10-09T12:00Z"
+    },
+    {
+      "fix": "FIX-1268",
+      "what": "the next usaspending-bulk run that completes BOTH categories. Dispatch-only since 3abfe014, so there is no scheduled instant; the floor is the first weekend-night slot. fiscal_year_used stamped, both baselines advance past 20260806",
+      "after": "2026-10-10T00:00Z"
+    },
+    {
+      "fix": "FIX-1274",
+      "what": "the same completed run: each category's coverage against the 10-04 audit §3",
+      "after": "2026-10-10T00:00Z"
+    },
+    {
+      "fix": "FIX-1291",
+      "what": "Thu 10-15: no usaspending-bulk run with event schedule fires (gh run list --workflow usaspending-bulk.yml)",
+      "after": "2026-10-15T18:00Z"
+    }
+  ]
+}
