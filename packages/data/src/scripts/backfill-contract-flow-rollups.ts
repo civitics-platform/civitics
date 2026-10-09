@@ -7,8 +7,8 @@
  * public.contract_agency_sector_rollup (full agency x sector chord) are what
  * /api/graph/spending's treemap_recipients_by_contracts() / chord_contract_flows()
  * now read instead of a >45s scan over ~3.24M contract financial_relationships.
- * The weekly FULL rebuild (pg_cron contract-flow-rollups-refresh, Thu 14:00 UTC,
- * after the Thu 10:00 USASpending ingest) keeps them fresh; this script is the
+ * The weekly FULL rebuild (pg_cron contract-flow-rollups-refresh, Thu 14:00 UTC;
+ * the USASpending ingest is dispatch-only since FIX-1291) keeps them fresh; this script is the
  * initial per-env population (and an idempotent break-glass full rebuild). The
  * rebuild is a SINGLE transaction (atomic DELETE + INSERT per table + bootstrap
  * flag), so a reader never sees an empty/partial set.

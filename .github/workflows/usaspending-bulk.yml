@@ -12,23 +12,26 @@ name: usaspending-bulk
 # baseline is live: a scheduled run is a cheap delta (~32s when no new archive
 # has landed; a real delta is minutes, not the 2 GB first-run).
 #
-# Scheduled weekly + manual (`workflow_dispatch`). Cadence Thu 10:00 UTC —
-# off-peak, clear of the 02:00Z nightly window, the Mon/Wed 08:00 EC-rebuild +
-# Tue rollup pg_cron jobs, and the Sunday FEC block. Deliberately NOT rejoining
-# the nightly: its 120-min budget is exactly what FIX-740 pulled this out of.
+# Manual (`workflow_dispatch`) only since 2026-10-08, under FIX-1291. The weekly
+# Thu 10:00 UTC schedule (FIX-790) came off after its 10-08 firing ran 5 h 52 m
+# to the 350-min cap as a prod writer outside every P1-A gate (no FIX-950 claim,
+# no box gate, no budget, no vacuum tail), saturated the box and completed
+# neither category. The remaining catch-up runs as a supervised, claimed op. The
+# schedule returns with the FIX-1274 code shapes (the Full listing inside the
+# !baseline arm, a per-part checkpoint for delta mode, the gha-dispatch route).
+# Deliberately NOT rejoining the nightly: its 120-min budget is exactly what
+# FIX-740 pulled this out of.
 # Runs both categories (contracts then assistance) sequentially against PROD
 # via `data:usaspending-bulk:ci` (index.ts `usaspending` command →
 # runUsaSpendingBulk). `--allow-prod` on the :ci script satisfies
 # createAdminClient's prod-write guard; the prod URL + secret come from the
 # same env block nightly.yml's fec-phase uses (GHA has no YAML anchors, so the
 # duplication is explicit). Each category self-logs to data_sync_log via its
-# own startSync/completeSync. The concurrency group serializes a scheduled
-# firing against any in-flight manual dispatch.
+# own startSync/completeSync. The concurrency group serializes a second
+# dispatch behind any in-flight one (and a scheduled firing, once one returns).
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 10 * * 4"
 
 permissions:
   contents: read
