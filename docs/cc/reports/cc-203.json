@@ -1,0 +1,43 @@
+{
+  "cc": "203",
+  "prompt": "cc-prompt-203-burst-census-r1-r5-verdict-sampler-revert.md",
+  "started_at": "2026-10-09T00:04:21Z",
+  "finished_at": "2026-10-09T03:05:00Z",
+  "head_before": "70346de9",
+  "head_after": "1ae018a1",
+  "commits": [
+    {
+      "sha": "9845b18a",
+      "subject": "feat(scripts): FIX-1125 census — pgss-tick-sampler (bracketed deltas of pg_stat_statements / pg_stat_io / checkpointer around a cron minute) + test; in fixes:test"
+    },
+    {
+      "sha": "dbf075a9",
+      "subject": "docs(audits): FIX-1125 census — observation two, the R2 table, the sampler run, the verdict"
+    },
+    {
+      "sha": "83b98b38",
+      "subject": "docs(fixes): file FIX-1292 — the half-hour swap-in burst is the platform-snapshot route's firing, not a statement in it; FIX-1293 — get_ec_crawl_health's unbounded FR count"
+    },
+    {
+      "sha": "1ae018a1",
+      "subject": "chore(ops): FIX-1125 census — platform-snapshot cron back to */30 (R6 done: burst followed route; no statement owns)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1292",
+    "FIX-1293"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "one Vercel cron schedule change — /api/cron/platform-snapshot 7,37 back to */30, live with the production deploy of 1ae018a1 (GitHub deployment 6951505657, success 2026-10-09T02:31:50Z); no database writes (read-only db-query --prod reads, one Logs API read, Upstash ring reads)",
+  "ci": "green",
+  "stopped_items": [
+    "Verification '≤ 1 s skew' not met for 1 of 21 sampler reads: tick 3's opening sample landed 1,955 ms late (02:05:01.955Z). This machine's clock stepped between 01:41 and 02:03 (a supplementary read at 02:03:45 was 1.93 s late on the same lead); both reads self-corrected on the next one. The bracket still opened 2 min before the route fired, so the tick delta is kept and the breach is recorded in the audit §3.1.",
+    "No Fixes:/Closes: trailer anywhere (the census closes nothing, D4), so fixes:sync had nothing to sync.",
+    "B's bracket set (58,3,28,33) was not run: the verdict is A, and its residual is ec-crawl's quarter-hour regime, not a second half-hour owner (audit §2.1). FIX-1075 was not appended (the prompt appends it only under B-client)."
+  ],
+  "lane": "ops",
+  "project": "forker",
+  "owed": []
+}
