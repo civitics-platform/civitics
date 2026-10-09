@@ -6,8 +6,11 @@
  * Runs via:  tsx --test src/__tests__/weekly-size-tags-merge.test.ts
  *
  * Source anchors (no DB, run in CI). The weekly branch SETs work_mem 64MB
- * between `IF p_cadence = 'weekly'` and the _scan call, and nowhere else; the
- * daily's 256MB SET is still where it was. The gate is called for the weekly
+ * between `IF p_cadence = 'weekly'` and the _scan call. cc-210 M1
+ * (`*_work_mem_m1.sql`) took the daily's SET from 256MB to 64MB too, so the D1
+ * checker reads the LATEST body (M1's file, and the live one) and fails on a
+ * 256MB daily; the 1284 file is that 256MB body and is a rule-105 twin now.
+ * The weekly's own 64MB stays, explicit, once. The gate is called for the weekly
  * cadence only, BEFORE the advisory lock (P1-A: gate → lock → defer → work), and
  * its skip RETURNs before the lock. The procedure carries no SET clause
  * (FIX-1128: it COMMITs). The body minus the fenced FIX-1284 blocks, with the
@@ -16,8 +19,8 @@
  * guarded on `NOT active`, and never unschedules.
  *
  * Rule 105 — each checker is also run against the twin it must reject: the 1248
- * body (no 64MB, no gate), the SET moved up to where the daily would also take
- * it, and the gate moved after the lock.
+ * body (no 64MB, no gate), the 1284 body (the daily at 256MB), the M1 body
+ * without the weekly's own SET, and the gate moved after the lock.
  *
  * Against the local DB (skipped when it is unreachable): the same two checkers
  * over pg_get_functiondef — RED before `migration up --local` — the PROCEDURE's
@@ -44,10 +47,24 @@ const LOCAL_DSN =
 
 const read = (f: string) => fs.readFileSync(f, "utf8").replace(/\r\n/g, "\n");
 
-function migration(): string {
-  const hits = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(MIGRATION_SUFFIX));
-  assert.equal(hits.length, 1, `expected exactly one *${MIGRATION_SUFFIX}, found ${hits.join(", ") || "none"}`);
+function bySuffix(suffix: string): string {
+  const hits = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(suffix));
+  assert.equal(hits.length, 1, `expected exactly one *${suffix}, found ${hits.join(", ") || "none"}`);
   return read(path.join(MIGRATIONS, hits[0] as string));
+}
+const migration = () => bySuffix(MIGRATION_SUFFIX);
+/** cc-210 M1 — the latest run_rule_taggers definition (daily 64MB). */
+const latest = () => bySuffix("_work_mem_m1.sql");
+/**
+ * The run_rule_taggers statement alone, through its closing dollar-quote — the
+ * M1 file defines other bodies after it, with SETs of their own.
+ */
+function procOnly(src: string): string {
+  const i = src.indexOf(PROC);
+  assert.notEqual(i, -1, "run_rule_taggers not defined in this file");
+  const end = src.indexOf("$procedure$;", i);
+  assert.notEqual(end, -1, "no closing $procedure$;");
+  return src.slice(i, end);
 }
 
 const PROC = "CREATE OR REPLACE PROCEDURE public.run_rule_taggers(";
@@ -72,23 +89,24 @@ const SET_256 = "SET work_mem = '256MB';";
 const GATE = "public.box_backoff_gate('rule-taggers-weekly', 600)";
 const LOCK = "pg_try_advisory_lock(c_lock_key)";
 
-/** Everything wrong with D1 in a procedure definition; [] = the FIX-1284 shape. */
+/** Everything wrong with D1 in a procedure definition; [] = the FIX-1284 + cc-210 M1 shape. */
 function workMemProblems(def: string): string[] {
   const p: string[] = [];
   const code = stripComments(def);
   const scan = code.indexOf(SCAN_CALL);
   if (scan < 0) return ["no _scan call"];
   const branch = code.lastIndexOf(WEEKLY_IF, scan);
-  const set64 = code.indexOf(SET_64);
-  if (code.split(SET_64).length - 1 !== 1) p.push(`${code.split(SET_64).length - 1} SETs of work_mem 64MB (want exactly 1)`);
-  if (!(branch >= 0 && set64 > branch && set64 < scan)) {
+  const running = code.indexOf("VALUES ('run_rule_taggers', 'running'");
+  // cc-210 M1 — the daily's SET is 64MB now (it was 256MB through FIX-1284).
+  if (code.includes(SET_256)) p.push("the daily still reads 256MB (cc-210 M1: 64MB)");
+  const daily = code.indexOf(SET_64);
+  if (!(daily >= 0 && daily < running)) p.push("no SET work_mem = '64MB' before the running row (the daily's)");
+  const weekly = code.indexOf(SET_64, branch);
+  if (!(branch > running && weekly > branch && weekly < scan)) {
     p.push("no SET work_mem = '64MB' between the weekly branch and the _scan call");
   }
-  // The daily keeps its 256MB, set once, before the running row (FIX-1284 does not touch the daily).
-  if (code.split(SET_256).length - 1 !== 1) p.push("the daily's SET work_mem = '256MB' is not there exactly once");
-  const running = code.indexOf("VALUES ('run_rule_taggers', 'running'");
-  if (!(code.indexOf(SET_256) < running)) p.push("the 256MB SET no longer precedes the running row");
-  if (set64 >= 0 && set64 < running) p.push("the 64MB SET precedes the running row (the daily would take it too)");
+  const n = code.split(SET_64).length - 1;
+  if (n !== 2) p.push(`${n} SETs of work_mem 64MB (want 2: the daily's, then the weekly's own)`);
   return p;
 }
 
@@ -113,20 +131,25 @@ function gateProblems(def: string): string[] {
 // Source anchors — no database.
 // ---------------------------------------------------------------------------
 
-test("FIX-1284 D1: the weekly branch SETs work_mem 64MB before the trio; the daily keeps 256MB", () => {
-  assert.deepEqual(workMemProblems(migration().slice(migration().indexOf(PROC))), []);
+test("FIX-1284 D1 + cc-210 M1: the weekly branch SETs work_mem 64MB before the trio; the daily SETs 64MB too", () => {
+  assert.deepEqual(workMemProblems(procOnly(latest())), []);
 });
 
-test("FIX-1284 D1 rule 105 twins: the 1248 body and a 64MB SET the daily would also take are rejected", () => {
+test("FIX-1284 D1 rule 105 twins: the 1248 body, the 1284 body's 256MB daily, and a dropped weekly SET are rejected", () => {
   const prior = read(PRIOR).slice(read(PRIOR).indexOf(PROC));
   assert.ok(workMemProblems(prior).includes("no SET work_mem = '64MB' between the weekly branch and the _scan call"));
-  const src = migration().slice(migration().indexOf(PROC));
-  const twin = src.replace(SET_64, "").replace(SET_256, `${SET_256}\n  ${SET_64}`);
-  assert.ok(workMemProblems(twin).some((x) => x.includes("precedes the running row")), workMemProblems(twin).join("; "));
+  // The pre-M1 shape — this case FAILS if the daily reads 256MB.
+  const d1284 = migration().slice(migration().indexOf(PROC));
+  assert.ok(workMemProblems(d1284).includes("the daily still reads 256MB (cc-210 M1: 64MB)"), workMemProblems(d1284).join("; "));
+  const src = procOnly(latest());
+  const noWeekly = src.replace(/\n {8}SET work_mem = '64MB';/, "");
+  assert.ok(workMemProblems(noWeekly).includes("no SET work_mem = '64MB' between the weekly branch and the _scan call"),
+    workMemProblems(noWeekly).join("; "));
 });
 
 test("FIX-1284 D2: the P1-A gate, weekly only, before the lock; the skip RETURNs before the lock", () => {
   assert.deepEqual(gateProblems(migration().slice(migration().indexOf(PROC))), []);
+  assert.deepEqual(gateProblems(procOnly(latest())), [], "cc-210 M1 keeps the gate");
 });
 
 test("FIX-1284 D2 rule 105 twins: the 1248 body and the gate moved after the lock are rejected", () => {
@@ -146,6 +169,9 @@ test("FIX-1284: the PROCEDURE takes no SET clause (FIX-1128 — it COMMITs)", ()
   const src = migration();
   const head = src.slice(src.indexOf(PROC), src.indexOf("AS $procedure$", src.indexOf(PROC)));
   assert.doesNotMatch(head, /\bSET\s+\w+/, "ANY proconfig SET makes it atomic and it dies at the first COMMIT");
+  const m1 = latest();
+  const m1Head = m1.slice(m1.indexOf(PROC), m1.indexOf("AS $procedure$", m1.indexOf(PROC)));
+  assert.doesNotMatch(m1Head, /\bSET\s+\w+/, "cc-210 M1 adds no SET clause either");
   assert.doesNotMatch(stripComments(body(src, PROC)), /\bSET\s+(LOCAL\s+)?statement_timeout/i);
   assert.match(src, /REVOKE ALL ON PROCEDURE public\.run_rule_taggers\(text\) FROM PUBLIC, anon, authenticated;/);
   assert.match(src, /GRANT EXECUTE ON PROCEDURE public\.run_rule_taggers\(text\) TO service_role;/);
@@ -198,7 +224,7 @@ const live = async (c: Client): Promise<Live> =>
     `SELECT pg_get_functiondef('public.run_rule_taggers(text)'::regprocedure) AS d, proconfig AS cfg
        FROM pg_proc WHERE oid = 'public.run_rule_taggers(text)'::regprocedure`)).rows[0]!;
 
-test("FIX-1284 local (1): the live weekly branch SETs work_mem 64MB before the _scan call", async (t) => {
+test("FIX-1284 local (1): the live weekly branch SETs work_mem 64MB before the _scan call; the daily is 64MB (cc-210 M1)", async (t) => {
   const c = await connect(t);
   if (!c) return;
   try {
