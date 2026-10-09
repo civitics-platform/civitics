@@ -18,9 +18,10 @@ steps:
   - {id: s10, kind: cc, ref: "cc-195", title: "FIX-1145 — the home-page MV reads the two rollups; jobid 24 refreshes it after a run that moved the watermark"}
   - {id: s11, kind: receipt, ref: "FIX-1145", title: "Mon 06:00 unit 4 ≤ 5 s; the first jobid 24 run that moves the watermark stamps homepage_mv_refreshed true", after: 2026-10-05T09:30Z}
   - {id: s12, kind: cc, ref: "cc-198", title: "FIX-1281 — per-phase preflight; the Tuesday records"}
-  - {id: s13, kind: receipt, ref: "FIX-1281", title: "the first schedule fallback after landing reads already_ran=true on all four phases and exits in a runner-minute; a runnerless fec-phase (when one next happens) is retried", after: 2026-10-08T06:00Z}
+  - {id: s13, kind: receipt, ref: "FIX-1281", title: "the first schedule fallback after landing reads already_ran=true on all four phases and exits in a runner-minute; a runnerless fec-phase (when one next happens) is retried", after: 2026-10-08T06:00Z, done: 2026-10-08}
   - {id: s14, kind: cc, ref: "cc-205", title: "FIX-1284 — the merge at work_mem 64MB behind the P1-A box gate; keyed units if 10-13 reads > 50 % of budget"}
   - {id: s15, kind: receipt, ref: "FIX-1284", title: "jobid 12's 10-13 16:00Z merge complete, phase_seconds in the projection, box clear and the ring quiet 16:02-16:10Z", after: 2026-10-13T18:30Z}
+  - {id: s16, kind: cc, ref: "cc-209", title: "the Thursday records — 1281's fallback receipt, 501, 1255; 1189/1268 held under the USASpending saturation; the cap-kill filed"}
 ---
 
 # Paced ops
