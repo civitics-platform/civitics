@@ -1,0 +1,80 @@
+{
+  "cc": "210",
+  "prompt": "cc-prompt-210-work-mem-allowance-census-m1-role-64mb-ec-crawl-donor-rollup-daily-family-fix1287.md",
+  "started_at": "2026-10-09T01:04:19Z",
+  "finished_at": "2026-10-09T09:25:00Z",
+  "head_before": "e5a3276c",
+  "head_after": "c77ad58b",
+  "commits": [
+    {
+      "sha": "67dd1d67",
+      "subject": "docs(audits): work_mem allowance census — R1–R6, the five M1 verdicts"
+    },
+    {
+      "sha": "c75ed84f",
+      "subject": "chore(fixes): file FIX-1294 and FIX-1295"
+    },
+    {
+      "sha": "f2bed94b",
+      "subject": "fix(db): FIX-1294, FIX-1287 — the postgres role work_mem default 64MB; run_entity_connections_rebuild / donor_rollup_rebuild_bulk / rebuild_entity_search_index / run_rule_taggers / rebuild_official_vote_stats at 64MB with parallel 0; run_rule_taggers stamps phase_seconds per phase"
+    },
+    {
+      "sha": "197112ab",
+      "subject": "chore(fixes): sync status after FIX-1294, FIX-1287"
+    },
+    {
+      "sha": "c77ad58b",
+      "subject": "docs(fixes): cc-210 appends to FIX-1284, FIX-1185, FIX-1287, FIX-1295; paced-ops s17–s19"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1294",
+    "FIX-1287"
+  ],
+  "fixes_filed": [
+    "FIX-1294",
+    "FIX-1295"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql"
+  ],
+  "prod_writes": "One migration, 20261009030000, in ONE gated push. session:wait-for-gate:prod --expected-minutes 2 --census stop ran from the primary checkout's packages/data with --then 'node ../../scripts/db-push-prod.mjs --workdir ../..', under the FIX-950 claim. Two dry runs at 03:49Z (one from the root, one in the exact --then form) listed only this file. The gate waited out fr-vacuum spacing (to 04:33Z), then ec-vacuum spacing (to 06:01Z, inside the 05:45-09:00Z blackout). It opened at 09:09:52Z (census pass: 3 renders / 60 min, edge 0 of 137) and applied the one file. The claim was released and --then exited 0, all before 09:10:04Z. Content: ALTER ROLE postgres IN DATABASE postgres SET work_mem = '64MB' with a DO read-back (NOTICE {statement_timeout=3h,work_mem=64MB}), plus CREATE OR REPLACE of the five bodies with grants restated. No CALL, no data write, no VACUUM, no cron change. All other prod contact was READ ONLY db-query.",
+  "ci": "green",
+  "stopped_items": [
+    "No STOP condition fired: R1 bodies = files (md5), R3's worst pair = 1,024 MB (not over), all five R5 verdicts PASS, the FIX-1287 cancel proof showed partial phase_seconds, check:proconfig clean, the dry run listed one file, held=false at every push.",
+    "No permission prompt fired.",
+    "Deviation: R3's cron.job_run_details read started at 01:11:54Z, 6 s before the :12-:26 window (R2's pgss read ran 01:11:54-01:12:02Z). Both were outside cc-203's :07/:37 brackets. Every later table read ran inside a window.",
+    "Deviation: my first cc-203 poller used $(…) (rule 245). It ran one poll (01:14Z), then I stopped it and replaced it with a substitution-free node poller.",
+    "R5 ran both settings at max_parallel_workers_per_gather = 0, not at prod's 1 for the 256MB leg. That isolates work_mem, matches what M1 lands, and avoids the clone's 64 MB /dev/shm, on which a parallel hash fails."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1294",
+      "what": "the first platform-counts-daily after the push (Sat 10-10 03:53Z) in band, and a fresh postgres session reads work_mem 64MB",
+      "after": "2026-10-10T04:00Z"
+    },
+    {
+      "fix": "FIX-1287",
+      "what": "jobid 12's Tue 10-13 16:00Z data_sync_log row carries the incrementally built phase_seconds",
+      "after": "2026-10-13T18:30Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "ec-crawl's first unit with rows > 0 after the push, in band (ec_crawl.recent_units), the ring quiet",
+      "after": "2026-10-09T10:00Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "Sat 10-10 03:30Z vote-stats, 06:00Z unit 9 (unit_seconds.rebuild_entity_search_index vs p50 247 s) and 06:30Z daily rows in band, the ring quiet at each",
+      "after": "2026-10-10T07:30Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "donor-rollup's first watermark-moving firing in band (likely Mon 10-12 09:00Z), the ring quiet",
+      "after": "2026-10-12T10:00Z"
+    }
+  ]
+}
