@@ -31,7 +31,8 @@ test("FIX-1214: the derived set is the one cc-161 read 2 measured, not an empty 
     "api/browse/execute.ts",
     "api/cron/nightly-sync/route.ts",
     "api/cron/notify-followers/route.ts",
-    "api/cron/platform-snapshot/route.ts",
+    // FIX-1292 R7: the route's admin client moved into the shared runner.
+    "api/cron/platform-snapshot/_lib/run-platform-snapshot.ts",
     "api/cron/front-door-watch/route.ts",
   ]) {
     assert.ok(files.includes(f), `${f} is in scope`);

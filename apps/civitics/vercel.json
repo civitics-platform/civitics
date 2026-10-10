@@ -21,8 +21,12 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/cron/platform-snapshot",
-      "schedule": "*/30 * * * *"
+      "path": "/api/cron/platform-snapshot/usage",
+      "schedule": "7,37 * * * *"
+    },
+    {
+      "path": "/api/cron/platform-snapshot/status",
+      "schedule": "22,52 * * * *"
     },
     {
       "path": "/api/cron/front-door-watch",

@@ -487,7 +487,7 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 |---|---|---|---|
 | `/api/cron/nightly-sync` | `0 2 * * *` | Canary marker + grant-expiry sweep; the real nightly is GHA | yes |
 | `/api/cron/notify-followers` | `0 3 * * *` | Follower notification fan-out | yes |
-| `/api/cron/platform-snapshot` | `*/30 * * * *` | Platform counts snapshot (FIX-1127, off GHA) | no |
+| `/api/cron/platform-snapshot` | `*/30 * * * *` | Platform counts snapshot (FIX-1127, off GHA) — **split for 24 h from 2026-10-10 (FIX-1292 R7, cc-213): `/usage` at `7,37` and `/status` at `22,52` replace this entry; cc-214 reverts or keeps** | no |
 | `/api/cron/front-door-watch` | `*/15 * * * *` | Front-door wedge detector (FIX-1130) | no |
 | `/api/cron/cron-watchdog` | `*/2 * * * *` | Fires **both** budget watchdogs (FIX-1194) | yes |
 
@@ -806,6 +806,17 @@ no new substrate. That cron is a **Vercel cron at `*/30`** since FIX-1127
 (`apps/civitics/vercel.json`); it was a GHA `*/10` that actually fired about
 every 6 hours before that, which is the number every "detects in" figure below
 was really operating under.
+
+**R7 split (2026-10-10, 24 h, FIX-1292).** For one day the route's two halves
+fire on separate crons, so the off-box ring can show which half carries the
+half-hour swap-in burst. `/api/cron/platform-snapshot/usage` runs at `7,37`:
+the usage write and every alert pass below, since they read only the usage
+payload. `/api/cron/platform-snapshot/status` runs at `22,52`: the status
+write alone. The parent path keeps running both halves through the same
+shared runner, `platform-snapshot/_lib/run-platform-snapshot.ts`, but no cron
+fires it during the window. Detection latency does not change. cc-214 reads
+the verdict after 24 h. It then restores the single `*/30` entry (one
+`vercel.json` edit) or keeps the split.
 
 **Four layers, fastest first:**
 
