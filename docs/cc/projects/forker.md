@@ -17,6 +17,8 @@ steps:
   - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: verdict A (the burst moved to :10/:40 with the route; no statement owns it — FIX-1292); cron reverted to */30", done: 2026-10-09}
   - {id: s10, kind: decision, ref: "FIX-1289", title: "memory_day tiling: a 30 h ring (recommended) or chained windows; a 24 h ring cannot hold the slot window at a post-slot write"}
   - {id: s11, kind: cc, ref: "cc-208", title: "FIX-1286 auto-restart on the 4th consecutive Logs-arm DOWN tick (FIX-1285 shipped it in cc-206; armed 10-07); receipt = the next wedge", done: 2026-10-07}
+  - {id: s12, kind: cc, ref: "cc-213", title: "FIX-1292 R7 — the halves split 7,37 / 22,52 for 24 h; pre-split ring banked", done: 2026-10-10}
+  - {id: s13, kind: receipt, ref: "FIX-1292", title: "R7's verdict — which half's sample lit; revert or keep", after: 2026-10-11T18:16Z}
 ---
 
 # pg_cron forker starvation
