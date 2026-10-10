@@ -22,6 +22,13 @@
  * M1 file's body, proconfig is what it was (NULL on the three COMMITting
  * procedures), and the role row reads {statement_timeout=3h, work_mem=64MB}.
  * RED before `migration up --local`.
+ *
+ * cc-211 M2 + M3 (`*_work_mem_m2.sql`, `*_work_mem_m3.sql`) and FIX-1293
+ * (`*_ec_crawl_health_bounded_dirty_set.sql`) — the second half of the file:
+ * the same anchors, rule-34 diffs, rule-105 twins and live checks for the ten
+ * remaining allowance bodies and get_ec_crawl_health. The donor-party slice's
+ * allowance is a PROCONFIG, so its edit is a header edit (HEADER_EDITS), and its
+ * body must be byte-identical.
  */
 
 import { test } from "node:test";
@@ -45,11 +52,11 @@ function m1(): string {
   return read(path.join(MIGRATIONS, hits[0] as string));
 }
 
-/** A routine's body, between its opening and closing dollar-quote. */
+/** A routine's body, between its opening and closing dollar-quote (`$function$`, `$procedure$` or `$$`). */
 function body(src: string, signature: string): string {
   const i = src.indexOf(signature);
   assert.notEqual(i, -1, `routine not found: ${signature}`);
-  const m = src.slice(i).match(/AS \$(function|procedure)\$([\s\S]*?)\$\1\$/);
+  const m = src.slice(i).match(/AS (\$\w*\$)([\s\S]*?)\1/);
   assert.ok(m, `no dollar-quoted body after ${signature}`);
   return m[2] as string;
 }
@@ -443,6 +450,324 @@ test("local: the postgres@postgres role row reads statement_timeout=3h and work_
         WHERE r.rolname = 'postgres' AND d.datname = 'postgres'`)).rows[0]?.cfg ?? [];
     assert.ok(cfg.includes("statement_timeout=3h"), JSON.stringify(cfg));
     assert.ok(cfg.includes("work_mem=64MB"), JSON.stringify(cfg));
+  } finally {
+    await c.end();
+  }
+});
+
+// ===========================================================================
+// cc-211 — M2 (B4 treemap, B5 donor-party + its slice), M3 (B3 contract-flow,
+// B7 the five monthly sweeps, B8 group-donor), and FIX-1293 (get_ec_crawl_health
+// bounds its dirty-set count). Census: §7 of the M1 census; verdicts: cc-211 R5.
+// ===========================================================================
+
+const bySuffix = (suffix: string) => () => {
+  const hits = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(suffix));
+  assert.equal(hits.length, 1, `expected exactly one *${suffix}, found ${hits.join(", ") || "none"}`);
+  return read(path.join(MIGRATIONS, hits[0] as string));
+};
+const m2 = bySuffix("_work_mem_m2.sql");
+const m3 = bySuffix("_work_mem_m3.sql");
+const fix1293 = bySuffix("_ec_crawl_health_bounded_dirty_set.sql");
+const FILES = { m2, m3, fix1293 };
+
+type Kind = "plain" | "parallelAlready" | "slice" | "crawlHealth";
+type Body2 = Body & { file: keyof typeof FILES; kind: Kind };
+
+const F950_ROLLUP = "20260911000100_fix950_guards_rollup_family.sql";
+const F950_REBUILD = "20260911000200_fix950_guards_rebuild_family.sql";
+const sweep = (name: string): Body2 => ({
+  name, sig: `CREATE OR REPLACE PROCEDURE public.${name}(`, regproc: `public.${name}()`,
+  prior: F950_REBUILD, commits: true, file: "m3", kind: "plain",
+});
+
+const BODIES2: Body2[] = [
+  {
+    name: "refresh_treemap_individuals_global", sig: "CREATE OR REPLACE PROCEDURE public.refresh_treemap_individuals_global(",
+    regproc: "public.refresh_treemap_individuals_global()", prior: F950_ROLLUP, commits: true, file: "m2", kind: "plain",
+  },
+  {
+    name: "refresh_donor_party_rollup_incremental", sig: "CREATE OR REPLACE PROCEDURE public.refresh_donor_party_rollup_incremental(",
+    regproc: "public.refresh_donor_party_rollup_incremental()", prior: "20260927020000_fix918_primary_industry_tag.sql",
+    commits: true, file: "m2", kind: "parallelAlready",
+  },
+  {
+    name: "refresh_donor_party_rollup_slice", sig: "CREATE OR REPLACE FUNCTION public.refresh_donor_party_rollup_slice(",
+    regproc: "public.refresh_donor_party_rollup_slice()", prior: "20260903010000_fix983_fr_watermark_horizon.sql",
+    commits: false, file: "m2", kind: "slice",
+  },
+  {
+    name: "refresh_contract_flow_rollups", sig: "CREATE OR REPLACE PROCEDURE public.refresh_contract_flow_rollups(",
+    regproc: "public.refresh_contract_flow_rollups()", prior: "20261003030000_fix1194_p1a_box_backoff_gates.sql",
+    commits: true, file: "m3", kind: "plain",
+  },
+  sweep("reconcile_donation_edge_orphans"),
+  sweep("reconcile_donor_party_rollup_orphans"),
+  sweep("reconcile_donor_rollup_orphans"),
+  sweep("reconcile_entity_connection_stats_orphans"),
+  sweep("reconcile_financial_entity_totals"),
+  // B8 group-donor is NOT here: R5 STOPped it (see the STOP test below).
+  {
+    name: "get_ec_crawl_health", sig: "CREATE OR REPLACE FUNCTION public.get_ec_crawl_health(",
+    regproc: "public.get_ec_crawl_health()", prior: "20260828000200_fix1114c_crawl_health_symmetric_join.sql",
+    commits: false, file: "fix1293", kind: "crawlHealth",
+  },
+];
+
+const byName2 = (n: string) => BODIES2.find((b) => b.name === n) as Body2;
+const now2 = (b: Body2) => body(FILES[b.file](), b.sig);
+
+/** B5: ONE line changes — the SET to 64MB; the FIX-1212 parallel-0 line a comment block below stays, once. */
+function donorPartyProblems(def: string): string[] {
+  const code = stripComments(def);
+  const p: string[] = [];
+  if (count(code, SET_256) > 0) p.push("still SETs work_mem 256MB");
+  if (count(code, SET_64) !== 1) p.push(`${count(code, SET_64)} SETs of work_mem 64MB (want exactly 1)`);
+  if (count(code, PAR_0) !== 1) p.push(`${count(code, PAR_0)} SETs of parallel 0 (want exactly the FIX-1212 one)`);
+  if (!(code.indexOf(SET_64) >= 0 && code.indexOf(SET_64) < code.indexOf(PAR_0))) {
+    p.push("the 64MB SET no longer precedes the FIX-1212 parallel-0 line");
+  }
+  if (/SET LOCAL (work_mem|max_parallel_workers_per_gather)/.test(code)) p.push("SET LOCAL would reset at the first COMMIT");
+  return p;
+}
+
+const SLICE_64 = " SET work_mem TO '64MB'";
+const SLICE_256 = " SET work_mem TO '256MB'";
+
+/** B5 slice: the allowance is the proconfig — 64MB in the header, search_path kept, nothing in the body. */
+function sliceHeaderProblems(h: string): string[] {
+  const p: string[] = [];
+  if (h.includes(SLICE_256)) p.push("the header still SETs work_mem TO 256MB");
+  if (count(h, SLICE_64) !== 1) p.push(`${count(h, SLICE_64)} header SETs of work_mem TO 64MB (want exactly 1)`);
+  if (!h.includes(" SET search_path TO 'public', 'pg_catalog'")) p.push("the header lost its search_path");
+  if (/max_parallel_workers_per_gather/.test(h)) {
+    p.push("the slice inherits the procedure's parallel 0 — the header names work_mem only");
+  }
+  return p;
+}
+
+const BOUNDED_COUNT =
+  /EXECUTE 'SELECT count\(\*\), count\(DISTINCT from_id\)\s+FROM \(SELECT from_id\s+FROM public\.financial_relationships\s+WHERE relationship_type IN \(''donation'',''ie_support'',''ie_oppose''\)\s+AND updated_at > \$1\s+LIMIT 100001\) s'\s+INTO v_dirty_rows, v_dirty_dons\s+USING v_wm;/;
+const UNBOUNDED_COUNT = /count\(DISTINCT from_id\)\s+INTO v_dirty_rows, v_dirty_dons\s+FROM public\.financial_relationships/;
+/** The bounded count as STATIC SQL — the shape the cc-211 clone rejected (a cached generic plan seq-scans FR below the cap). */
+const STATIC_BOUNDED = /^\s+SELECT count\(\*\), count\(DISTINCT from_id\)\s+INTO v_dirty_rows, v_dirty_dons\s+FROM \(SELECT/m;
+
+/**
+ * FIX-1293: the dirty-set count runs over a LIMIT-ed subquery, through EXECUTE … USING
+ * (a one-shot plan with v_wm's value, every call), and reports the cap.
+ */
+function crawlHealthProblems(def: string): string[] {
+  const code = stripComments(def);
+  const p: string[] = [];
+  if (!BOUNDED_COUNT.test(code)) p.push("the dirty-set count is not an EXECUTE … USING v_wm over a LIMIT 100001 subquery");
+  if (STATIC_BOUNDED.test(code)) p.push("the bounded count is static SQL — its cached generic plan seq-scans FR below the cap");
+  if (UNBOUNDED_COUNT.test(code)) p.push("the dirty-set count still reads financial_relationships unbounded");
+  if (!code.includes("v_dirty_capped := v_dirty_rows > 100000;")) p.push("no capped flag at the 100,000 bound");
+  if (!code.includes("v_dirty_capped boolean := false;")) p.push("v_dirty_capped not declared false");
+  if (!code.includes("jsonb_build_object('rows', v_dirty_rows, 'donors', v_dirty_dons, 'capped', v_dirty_capped)")) {
+    p.push("dirty_set does not carry 'capped'");
+  }
+  return p;
+}
+
+/** The measured-result line each B7 sweep with an existing SET comment gains under it. */
+const R5_LINE = /^ {2}-- FIX-1295 M3 \(cc-211 R5\): .+$/;
+const PLAIN_EDIT = { removed: [`  ${SET_256}`], added: [`  ${SET_64}`, PAR_LINE] as (RegExp | string)[] };
+Object.assign(EDITS, {
+  refresh_treemap_individuals_global: PLAIN_EDIT,
+  refresh_donor_party_rollup_incremental: { removed: [`  ${SET_256}`], added: [`  ${SET_64}`] },
+  refresh_donor_party_rollup_slice: { removed: [], added: [] },
+  refresh_contract_flow_rollups: PLAIN_EDIT,
+  reconcile_donation_edge_orphans: { removed: [`  ${SET_256}`], added: [R5_LINE, `  ${SET_64}`, PAR_LINE] },
+  reconcile_donor_party_rollup_orphans: PLAIN_EDIT,
+  reconcile_donor_rollup_orphans: PLAIN_EDIT,
+  reconcile_entity_connection_stats_orphans: PLAIN_EDIT,
+  reconcile_financial_entity_totals: { removed: [`  ${SET_256}`], added: [R5_LINE, `  ${SET_64}`, PAR_LINE] },
+  get_ec_crawl_health: {
+    removed: [
+      "    SELECT count(*), count(DISTINCT from_id)",
+      "      FROM public.financial_relationships",
+      "     WHERE relationship_type IN ('donation','ie_support','ie_oppose')",
+      "       AND updated_at > v_wm;",
+      "    'dirty_set',      jsonb_build_object('rows', v_dirty_rows, 'donors', v_dirty_dons),",
+    ],
+    added: [
+      "  v_dirty_capped boolean := false;",
+      /^ {4}-- FIX-1293: bounded, and planned per call with v_wm's value\. .+$/,
+      /^ {4}-- plan for "updated_at > \$1" under LIMIT is a Seq Scan, .+$/,
+      /^ {4}-- reads all of financial_relationships \(cc-211 clone: .+\)\.$/,
+      "    EXECUTE 'SELECT count(*), count(DISTINCT from_id)",
+      "      FROM (SELECT from_id",
+      "              FROM public.financial_relationships",
+      "             WHERE relationship_type IN (''donation'',''ie_support'',''ie_oppose'')",
+      "               AND updated_at > $1",
+      "             LIMIT 100001) s'",
+      "      USING v_wm;",
+      "    v_dirty_capped := v_dirty_rows > 100000;   -- then rows/donors are LOWER BOUNDS",
+      "    'dirty_set',      jsonb_build_object('rows', v_dirty_rows, 'donors', v_dirty_dons, 'capped', v_dirty_capped),",
+    ],
+  },
+});
+
+/** Rule 34 for HEADERS: the only header that may change is the slice's, and only its work_mem line. */
+const HEADER_EDITS: Record<string, { removed: string[]; added: string[] }> = {
+  refresh_donor_party_rollup_slice: { removed: [SLICE_256], added: [SLICE_64] },
+};
+
+function headerProblems(b: Body2, src: string): string[] {
+  const h = header(src, b.sig);
+  const priorH = header(read(path.join(MIGRATIONS, b.prior)), b.sig);
+  const want = HEADER_EDITS[b.name] ?? { removed: [], added: [] };
+  const d = lineDiff(priorH, h);
+  const p: string[] = [];
+  if (JSON.stringify(d.removed) !== JSON.stringify(want.removed)) {
+    p.push(`header removed ${JSON.stringify(d.removed)} (want ${JSON.stringify(want.removed)})`);
+  }
+  if (JSON.stringify(d.added) !== JSON.stringify(want.added)) {
+    p.push(`header added ${JSON.stringify(d.added)} (want ${JSON.stringify(want.added)})`);
+  }
+  if (b.commits && /\bSET\s+\w+/.test(h)) p.push("COMMITs, but the header carries a SET clause (ANY proconfig makes it atomic — FIX-1128)");
+  return p;
+}
+
+test("M2 / M3 / FIX-1293: each file defines exactly its bodies, nothing else", () => {
+  for (const [f, get] of Object.entries(FILES)) {
+    const code = stripComments(get());
+    const defined = [...code.matchAll(/CREATE OR REPLACE (?:FUNCTION|PROCEDURE) public\.(\w+)\(/g)].map((m) => m[1]).sort();
+    const want = BODIES2.filter((b) => b.file === f).map((b) => b.name).sort();
+    assert.deepEqual(defined, want, f);
+  }
+});
+
+test("B4 / B3 / B7: plain SET 64MB + parallel 0 in treemap, contract-flow and the five sweeps", () => {
+  for (const b of BODIES2.filter((x) => x.kind === "plain")) assert.deepEqual(plainSetProblems(now2(b)), [], b.name);
+});
+
+test("B5: donor-party's ONE line — SET 64MB; the FIX-1212 parallel-0 line kept, once", () => {
+  assert.deepEqual(donorPartyProblems(now2(byName2("refresh_donor_party_rollup_incremental"))), []);
+});
+
+test("B5: the slice's proconfig reads work_mem 64MB; search_path kept; nothing else named", () => {
+  assert.deepEqual(sliceHeaderProblems(header(m2(), byName2("refresh_donor_party_rollup_slice").sig)), []);
+});
+
+/**
+ * B8 group-donor — R5 STOP. Its _gdr_agg HashAggregate (2.07M rows, B1 188 MB) became an
+ * external-merge Sort + GroupAggregate at 64MB and at 128MB: 2.30 / 2.35 s -> 4.61 s (2.0x),
+ * over the 1.5x bar, though the function whole read 42.7 -> 43.3 s. It keeps SET LOCAL 256MB.
+ */
+const GD = {
+  sig: "CREATE OR REPLACE FUNCTION public.refresh_group_donor_rollup(",
+  regproc: "public.refresh_group_donor_rollup()",
+  file: "20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql",
+};
+
+test("B8 R5 STOP: group-donor is in no cc-211 file and its source body keeps SET LOCAL work_mem 256MB", () => {
+  for (const [f, get] of Object.entries(FILES)) assert.ok(!get().includes(GD.sig), `${f} redefines group-donor`);
+  assert.equal(count(stripComments(body(read(path.join(MIGRATIONS, GD.file)), GD.sig)), LOCAL_256), 1);
+});
+
+test("FIX-1293: get_ec_crawl_health counts the dirty set over LIMIT 100001 and reports 'capped'", () => {
+  assert.deepEqual(crawlHealthProblems(now2(byName2("get_ec_crawl_health"))), []);
+});
+
+test("rule 34 (M2/M3/FIX-1293): each body is its source file's body with exactly the intended lines changed", () => {
+  for (const b of BODIES2) assert.deepEqual(editProblems(b.name, PRIOR_BODY(b), now2(b)), [], b.name);
+});
+
+test("FIX-1128 (M2/M3/FIX-1293): headers unchanged but the slice's work_mem line; no SET clause on a COMMITting procedure", () => {
+  for (const b of BODIES2) assert.deepEqual(headerProblems(b, FILES[b.file]()), [], b.name);
+});
+
+test("grants (M2/M3/FIX-1293) restated: service_role EXECUTE, nothing for PUBLIC / anon / authenticated", () => {
+  for (const b of BODIES2) {
+    const src = FILES[b.file]();
+    const kind = b.sig.includes("FUNCTION") ? "FUNCTION" : "PROCEDURE";
+    assert.ok(src.includes(`REVOKE ALL ON ${kind} ${b.regproc} FROM PUBLIC, anon, authenticated;`), b.name);
+    assert.ok(src.includes(`GRANT EXECUTE ON ${kind} ${b.regproc} TO service_role;`), b.name);
+  }
+});
+
+test("rollback is stated per body as SET … '256MB', and no file RESETs a memory GUC", () => {
+  for (const [f, get] of Object.entries(FILES)) {
+    assert.doesNotMatch(stripComments(get()), /\bRESET\s+(work_mem|max_parallel_workers_per_gather)/i, f);
+  }
+  for (const b of BODIES2.filter((x) => x.file !== "fix1293")) {
+    assert.match(FILES[b.file](), new RegExp(`-- +ROLLBACK[^\\n]*\\b${b.name}\\b`), `${b.name}: no rollback line in its file's header`);
+  }
+});
+
+test("rule 105 twins (M2/M3/FIX-1293): the prior bodies fail every checker", () => {
+  for (const b of BODIES2.filter((x) => x.kind === "plain")) {
+    assert.ok(plainSetProblems(PRIOR_BODY(b)).includes("still SETs work_mem 256MB"), b.name);
+  }
+  assert.ok(donorPartyProblems(PRIOR_BODY(byName2("refresh_donor_party_rollup_incremental"))).includes("still SETs work_mem 256MB"));
+  const slice = byName2("refresh_donor_party_rollup_slice");
+  assert.ok(sliceHeaderProblems(header(read(path.join(MIGRATIONS, slice.prior)), slice.sig))
+    .includes("the header still SETs work_mem TO 256MB"));
+  const ch = crawlHealthProblems(PRIOR_BODY(byName2("get_ec_crawl_health")));
+  assert.ok(ch.includes("the dirty-set count still reads financial_relationships unbounded"), ch.join("; "));
+  assert.ok(ch.includes("dirty_set does not carry 'capped'"), ch.join("; "));
+});
+
+test("rule 105 twins (M2/M3/FIX-1293): a dropped parallel line, a header SET on a procedure and a tampered edit are each caught", () => {
+  const cf = now2(byName2("refresh_contract_flow_rollups"));
+  assert.ok(plainSetProblems(cf.replace(`\n  ${PAR_0}`, "")).some((x) => x.startsWith("no SET max_parallel")));
+  // a second parallel-0 added to donor-party (the FIX-1212 one already zeroes it)
+  const dp = now2(byName2("refresh_donor_party_rollup_incremental"));
+  assert.ok(donorPartyProblems(dp.replace(`  ${SET_64}\n`, `  ${SET_64}\n  ${PAR_0}\n`))
+    .some((x) => x.includes("want exactly the FIX-1212 one")));
+  // a slice header that also names parallel
+  const sliceH = header(m2(), byName2("refresh_donor_party_rollup_slice").sig);
+  assert.ok(sliceHeaderProblems(sliceH.replace(SLICE_64, `${SLICE_64}\n SET max_parallel_workers_per_gather TO '0'`))
+    .some((x) => x.includes("names work_mem only")));
+  // a proconfig smuggled onto a COMMITting procedure
+  const tm = byName2("refresh_treemap_individuals_global");
+  const smuggled = m2().replace(`${tm.sig})\n LANGUAGE plpgsql\n`, `${tm.sig})\n LANGUAGE plpgsql\n SET work_mem TO '64MB'\n`);
+  assert.ok(headerProblems(tm, smuggled).some((x) => x.startsWith("COMMITs, but the header")), headerProblems(tm, smuggled).join("; "));
+  // an unrelated edit anywhere breaks rule 34; so does a cap at another number
+  const sw = byName2("reconcile_donor_rollup_orphans");
+  assert.ok(editProblems(sw.name, PRIOR_BODY(sw), now2(sw).replace("'ie_oppose'", "'ie_other'")).some((x) => x.startsWith("unexpected")));
+  const ch = byName2("get_ec_crawl_health");
+  assert.ok(crawlHealthProblems(now2(ch).replace("LIMIT 100001", "LIMIT 20001"))
+    .some((x) => x.startsWith("the dirty-set count is not an EXECUTE")));
+  // the bounded count as static SQL (the clone's generic-plan cliff) is caught
+  const asStatic = now2(ch).replace(
+    /EXECUTE 'SELECT count\(\*\), count\(DISTINCT from_id\)\n([\s\S]*?)''donation'',''ie_support'',''ie_oppose''([\s\S]*?)updated_at > \$1\n([\s\S]*?) s'\n {6}INTO v_dirty_rows, v_dirty_dons\n {6}USING v_wm;/,
+    "SELECT count(*), count(DISTINCT from_id)\n      INTO v_dirty_rows, v_dirty_dons\n$1'donation','ie_support','ie_oppose'$2updated_at > v_wm\n$3 s;");
+  assert.notEqual(asStatic, now2(ch), "the static-form fixture did not apply");
+  assert.ok(crawlHealthProblems(asStatic).includes("the bounded count is static SQL — its cached generic plan seq-scans FR below the cap"),
+    crawlHealthProblems(asStatic).join("; "));
+});
+
+const PROCONFIG2: Record<string, string[] | null> = {
+  refresh_donor_party_rollup_slice: ["search_path=public, pg_catalog", "work_mem=64MB"],
+  get_ec_crawl_health: ["search_path=public, cron, pg_temp"],
+};
+
+test("local (B8 R5 STOP): the live group-donor body still SET LOCALs work_mem 256MB", async (t) => {
+  const c = await connect(t);
+  if (!c) return;
+  try {
+    const s = (await c.query<{ s: string }>(`SELECT prosrc AS s FROM pg_proc WHERE oid = '${GD.regproc}'::regprocedure`)).rows[0]?.s ?? "";
+    assert.equal(count(stripComments(s.replace(/\r\n/g, "\n")), LOCAL_256), 1);
+  } finally {
+    await c.end();
+  }
+});
+
+test("local (M2/M3/FIX-1293): each live body is its file's; proconfig NULL x8, the slice at 64MB, search_path only on crawl health", async (t) => {
+  const c = await connect(t);
+  if (!c) return;
+  try {
+    for (const b of BODIES2) {
+      type Row = { s: string; cfg: string[] | null };
+      const res = await c.query<Row>(
+        `SELECT prosrc AS s, proconfig AS cfg FROM pg_proc WHERE oid = '${b.regproc}'::regprocedure`);
+      const row = res.rows[0] as Row;
+      assert.equal(row.s.replace(/\r\n/g, "\n"), now2(b), `${b.name} live body is not the ${b.file} file's`);
+      assert.deepEqual(row.cfg, PROCONFIG2[b.name] ?? null, `${b.name}: proconfig ${JSON.stringify(row.cfg)}`);
+    }
   } finally {
     await c.end();
   }

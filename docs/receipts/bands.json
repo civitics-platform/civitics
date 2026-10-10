@@ -35,5 +35,59 @@
     "lo_s": 0,
     "hi_s": 300,
     "source": "cc-prompt-123 D3 and cc-prompt-117 Phase 0 read 5 (FIX-1152's receipt: < 300 s expected; Mon 2026-09-07 was 236.0 s at 88.8% EC all-visible; the failure mode was 1,017 s at 79%). A UNIT band, not a job band — section 3 reports it from the run row's unit_seconds."
+  },
+
+  "treemap-individuals-global-refresh": {
+    "lo_s": 0,
+    "hi_s": 1492,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. docs/audits/2026-10-09-work-mem-allowance-census.md §1.1: 30-d max 994.1 s (09-15; also 916.4 / 907.5 / 872.2 on 09-22..10-06, n=4, no firing inside a rule-81 window); ceil(1.5 × 994.1) = 1492. Receipt for FIX-1295 M2 (64MB from 10-10)."
+  },
+
+  "donor-party-rollup-refresh": {
+    "lo_s": 0,
+    "hi_s": 119,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max is 11,335.1 s (09-22, a full-mode cycle ending partial) and is EXCLUDED as the full-mode outlier; the two crawl-mode firings left are 67.9 s (09-29) and 78.8 s (10-06), so ceil(1.5 × 78.8) = 119. A full-mode cycle (lag past full_rebuild_lag_days) runs to its 1,500 s CALL budget and renders out-of-band BY DESIGN — read the run row's metadata.mode before calling that a regression. Receipt for FIX-1295 M2."
+  },
+
+  "contract-flow-rollups-refresh": {
+    "lo_s": 0,
+    "hi_s": 8839,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max 5,892.2 s (09-17, before FIX-1194's box gate; the other four firings 1,889.5-1,920.1 s); ceil(1.5 × 5892.2) = 8839. LOOSE: a 1.5x regression of the typical 1,904 s (2,856 s) reads in-band. Re-base once 09-17 leaves the 30-d window (after 10-17) — the formula then gives ceil(1.5 × 1920.1) = 2881. Receipt for FIX-1295 M3."
+  },
+
+  "group-donor-rollup-refresh": {
+    "lo_s": 0,
+    "hi_s": 442,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max 294.2 s (09-16; the other four 55.7-109.7 s); ceil(1.5 × 294.2) = 442. Receipt for FIX-1295 M3."
+  },
+
+  "donation-edge-orphan-sweep": {
+    "lo_s": 0,
+    "hi_s": 204,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. PROVISIONAL, n=1: a monthly job; the 30-d window holds one firing, 135.5 s (10-01); ceil(1.5 × 135.5) = 204. Receipt for FIX-1295 M3 (11-01)."
+  },
+
+  "donor-party-rollup-orphan-sweep": {
+    "lo_s": 0,
+    "hi_s": 436,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. PROVISIONAL, n=1: one firing in 30 d, 290.5 s (10-01); ceil(1.5 × 290.5) = 436. Receipt for FIX-1295 M3 (11-01)."
+  },
+
+  "donor-rollup-orphan-sweep": {
+    "lo_s": 0,
+    "hi_s": 156,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. PROVISIONAL, n=1: one firing in 30 d, 103.5 s (10-01; the 09-01 firing ran 3,393.2 s and is outside the window); ceil(1.5 × 103.5) = 156. Receipt for FIX-1295 M3 (11-01)."
+  },
+
+  "entity-connection-stats-orphan-sweep": {
+    "lo_s": 0,
+    "hi_s": 140,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. PROVISIONAL, n=1: one firing in 30 d, 92.8 s (10-01; the 09-01 firing ran 1,796.9 s and is outside the window); ceil(1.5 × 92.8) = 140. Receipt for FIX-1295 M3 (11-01)."
+  },
+
+  "financial-entity-totals-reconcile": {
+    "lo_s": 0,
+    "hi_s": 234,
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. PROVISIONAL, n=1: one firing in 30 d, 155.4 s (10-01); ceil(1.5 × 155.4) = 234. Receipt for FIX-1295 M3 (11-01)."
   }
 }
