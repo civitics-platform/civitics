@@ -379,7 +379,7 @@ Pipelines run as Node.js scripts in `packages/data/`. They are NOT part of the N
 |--------|-------------|------|
 | `data:congress` | Congress.gov → officials + votes | Free |
 | `data:fec-bulk` | FEC bulk files → financial_relationships | Free |
-| `data:usaspending` | USASpending.gov → financial_relationships (contract/grant) | Free |
+| `data:usaspending-bulk` | USASpending.gov bulk archives → financial_relationships (contract/grant), both categories; `-assistance` for grants only; `:prod` for a supervised prod run (claims the session; see `packages/data/CLAUDE.md` → USASpending) | Free |
 | `data:regulations` | Regulations.gov → proposals | Free |
 | `data:openstates` | OpenStates → state legislators | Free |
 | `data:courtlistener` | CourtListener → judges | Free |
@@ -408,7 +408,7 @@ Source pipelines run first, then `rebuild_entity_connections()` derives edges. T
 ```
 1. data:congress           (heaviest — 227k vote records)
 2. data:fec-bulk           (PAC contributions, ~200MB streamed)
-3. data:usaspending        (spending records)
+3. data:usaspending-bulk   (contract/grant awards; on prod it is dispatch-only / a supervised :prod run — FIX-1291)
 4. data:regulations        (proposals + comment periods)
 5. rebuild_entity_connections()  (SQL function — see "Entity Connections Derivation" in packages/data/CLAUDE.md)
 6. data:tag-rules          (lightweight, no API cost)

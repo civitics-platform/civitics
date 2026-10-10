@@ -344,7 +344,7 @@ When a graph setting changes, the update is categorized to avoid unnecessary re-
 |--------|--------|----------------|
 | Congress.gov | 80MB | Daily 2am |
 | FEC bulk downloads | 50MB | Weekly |
-| USASpending.gov | 60MB | Daily 2am |
+| USASpending.gov | 60MB | Manual dispatch (`usaspending-bulk.yml`; out of the nightly since FIX-740, its weekly schedule off since 2026-10-08, FIX-1291) |
 | Regulations.gov | 40MB | Hourly (active periods) |
 | CourtListener | 20MB | Daily 2am |
 | OpenStates | 20MB | Daily 2am |
@@ -390,7 +390,7 @@ The `pas224.zip` file is never fully loaded into memory — it is streamed and f
 
 Vercel Cron fires at `0 2 * * *` (2:00 AM UTC), calling `/api/cron/nightly-sync` with `Authorization: Bearer ${CRON_SECRET}`.
 
-Full sequence: Congress → FEC (weekly only) → USASpending → Regulations → CourtListener → OpenStates → Connections (delta) → Tag rules → AI summaries → AI tagger.
+Full sequence: Congress → FEC (weekly only) → Regulations → CourtListener → OpenStates → Connections (delta) → Tag rules → AI summaries → AI tagger. (USASpending left this sequence in FIX-740 — it is its own dispatch-only workflow, `usaspending-bulk.yml`.)
 
 ### Recency Guards
 

@@ -29,6 +29,7 @@ steps:
   - {id: s21, kind: receipt, ref: "FIX-1295", title: "M2's Tuesday — treemap 14:00Z and donor-party 15:00Z in band (new bands), the ring quiet, beside the weekly at 64", after: 2026-10-13T16:00Z}
   - {id: s22, kind: receipt, ref: "FIX-1295", title: "M3 — contract-flow Thu 14:00Z in band; the five sweeps 11-01", after: 2026-10-15T15:30Z}
   - {id: s23, kind: cc, ref: "cc-212", title: "the Saturday records — 1189 (a+b+c), 1294's receipt, 1194's week line; 1295's M1 receipts held (no donation row stamped since 10-08, so no crawl rows and no watermark move; FIX-1297 filed)"}
+  - {id: s24, kind: cc, ref: "cc-214", title: "USASpending made resumable — skip-unchanged, delta checkpoints, dials, heartbeat + reaper predicate, the claim, mark-killed reaped"}
 ---
 
 # Paced ops
@@ -98,3 +99,16 @@ work_mem change is what matters. Still not paced: keyed units with a COMMIT per
 unit are the complete answer, and they get built only if the 10-13 firing (s15)
 reads more than half its 7,200 s budget. FIX-1248's two-Tuesday close moves to
 10-13 + 10-20.
+
+**USASpending made survivable (s24):** the 10-08 dispatch was a six-hour prod
+writer that nothing on the box could see or bound (FIX-1291; playbook rule C9).
+cc-214 gives the pipeline the shape the paced ops already have: every part
+checkpoints in delta mode too, the FR upsert skips unchanged rows, the box gate
+is read before each part and every 100k rows, a wall dial stops it `partial` at
+a boundary, its row heartbeats so the nightly's reaper spares it, and the
+supervised entry takes the FIX-950 claim while the workflow only reads it. The
+catch-up (cc-215) is then several claimed invocations of
+`data:usaspending-bulk:prod -- --category contracts --max-minutes N`, each one
+resuming the 2026-09-24 delta's parts from the kept zip, ending before the
+03:00Z `fr-vacuum-analyze` owner fires; assistance follows contracts. The
+schedule's return (FIX-1274 shape (2), FIX-1291 step 4) comes after it.

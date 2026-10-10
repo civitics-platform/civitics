@@ -61,7 +61,7 @@
   - Note: Full 2GB individual-level FEC file (`indiv24.zip`) pending Cloudflare R2 account
 - [x] Financial entities pipeline — `financial_entities` rows from FEC donor categories (`packages/data/src/pipelines/financial-entities/`)
   - 19,647 donation connections live
-- [x] USASpending.gov → financial_relationships (contract/grant) (`packages/data/src/pipelines/usaspending/`)
+- [x] USASpending.gov → financial_relationships (contract/grant) (`packages/data/src/pipelines/usaspending-bulk/`)
 - [x] Regulations.gov → proposals + comment periods (`packages/data/src/pipelines/regulations/`)
 - [x] OpenStates → state legislators (`packages/data/src/pipelines/openstates/`) — 6,268 inserted, 1,031 updated (2026-03-17)
 - [x] CourtListener → judges + rulings (`packages/data/src/pipelines/courtlistener/`)

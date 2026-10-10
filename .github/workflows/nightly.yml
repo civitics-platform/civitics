@@ -131,7 +131,7 @@ jobs:
   # 120-min budget:
   #   fec-phase        regulations → congress → openstates-bulk → edgar-daily
   #                    → (Sunday: FEC bulk → IRS 990)
-  #   enrichment-phase (Sunday: LittleSis → EDGAR weekly → USASpending →
+  #   enrichment-phase (Sunday: LittleSis → EDGAR weekly →
   #                    CourtListener → OpenStates API → agencies-hierarchy →
   #                    OPM FTE → PLUM Book → elections → committees →
   #                    agency-leadership → agency-enrichment → tag-industry)

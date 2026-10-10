@@ -20,6 +20,9 @@ rules **C5–C7**, **D6–D8**, **E9–E11**, plus dated addenda on **C2**, **C3
 **D2**, **D4** and **E3**. Rules are append-only — a correction is appended
 beneath the claim it corrects, never edited over it.
 
+**Extended 2026-10-10** with the USASpending arc (FIX-1291, FIX-1274): new rule
+**C9**, plus dated addenda on **A1**, **C3**, **C5**, **C6** and **D4**.
+
 ---
 
 ## A. Data-shape regimes
@@ -37,6 +40,12 @@ s/recipient**. Same instance, same night: **~314×**.
 than one scheduled window, build the bulk pass instead of scheduling more windows
 (auto-selection is still open — FIX-969).
 *FIX-973, FIX-974 · audit `2026-08-07-fix974-bulk-regime.md` §3*
+
+**Addendum — 2026-10-10.** A file NAMED "delta" is still the bulk regime when it
+is 1.45 GB: `FY(All)_All_Contracts_Delta_20260924.zip` is five 1M-row CSV parts
+(9.9 GB uncompressed), and the pipeline skipped its per-part checkpoint on the
+strength of the word. Regime is decided by size and rate, never by the vendor's
+label. *FIX-1274, FIX-1291 · `docs/cc/reports/cc-209.md` §4*
 
 ### A2. Chunk by key RANGE aligned to the read index — never by entity list.
 
@@ -248,6 +257,23 @@ firing on. "After the first unit of work" is a blind spot whenever one unit can
 be the whole budget — arm it from iteration 1 off a **durable cross-run** worst
 case rather than one seeded inside the run. *FIX-1002 · commit `b31c6029`*
 
+**Addendum — 2026-10-10, the FIX-962 guard no-op'd on the longest run AGAIN.**
+`usaspending-bulk.yml` still passed mark-killed no `--window-hours` (default 4 h
+against its 350-min cap) two months after FIX-962 named exactly that failure — and
+by the time the step ran, the 10-08 contracts row was not `running` anyway: the
+nightly's age-only `reap_stale_sync_log(60)` had flipped it to `reaped` at
+21:00:54Z while its GHA process ran on to 23:04:58Z. mark-killed treated only
+`running` as an orphan, so the run that saturated the box for six hours left no
+kill marker at all. Two detectors, each blind to the state the other leaves.
+
+**Apply:** a detector is sized on the job's CAP (the workflow now passes
+`--window-hours 6`), and it must recognise the states the OTHER detectors leave
+behind — a `reaped` row is an orphan (marked `reaped_first`). And an age-only
+reaper kills a live run that spans the nightly: a writer that can run past 60
+minutes stamps `metadata.heartbeat_at`, and `reap_stale_sync_log()` reads the
+heartbeat before `started_at`. *FIX-1291 · `20261010050000_fix1291_…sql` ·
+`packages/data/src/scripts/mark-killed.ts`*
+
 ### C4. Runtime measurements are floors. Design to survive the miss.
 
 `refresh_homepage_stats_mv()` takes 0.7 s on local and ran **22 minutes** against
@@ -303,6 +329,23 @@ believing any census. See A4.6 for the tail as part of the writer skeleton, D7
 for choosing the autovacuum lever.
 *FIX-1003, FIX-1005, FIX-1013, FIX-975, FIX-943, FIX-884 · `supabase/tests/verify_fix1003.sql`*
 
+**Addendum — 2026-10-10, "named owner" and "the tail" are reconciled by TIMING.**
+A USASpending landing writes three tables. `financial_relationships` and
+`financial_entities` have daily scheduled owners (`fr-vacuum-analyze` 03:00Z,
+`fe-vacuum-analyze` 04:50Z — `docs/receipts/2026-10-10.md` §2), and a script
+`VACUUM` of FR on prod is FIX-1133's front-door incident (the script banners cite it as FIX-1144).
+`external_source_refs` has NO owner — 580k rows, last autovacuum 2026-09-29
+(FIX-1291's reading). So the pipeline's tail vacuums ONLY the table nobody owns
+(`VACUUM (ANALYZE) external_source_refs` when a category completes), and the
+supervised catch-up is SCHEDULED to end before the owners fire for the rest.
+
+**Apply:** before writing a tail, read the vacuum schedule by table. Vacuum what
+has no owner; for what has one, end the landing before it runs and say so in the
+runbook. An ownerless table touched by a bulk writer is a filing, not a tail
+forever (FIX-1299 files the weekly `xsr-vacuum-analyze` job). *FIX-1291,
+FIX-1274, FIX-1133, FIX-1191 · `packages/data/src/pipelines/usaspending-bulk/index.ts`
+(`vacuumExternalSourceRefs`)*
+
 ### C6. When resume is hard, price a full replay's no-op fraction before designing a cursor.
 
 A content-keyed resume cursor for the FEC indiv ingest was **proven
@@ -330,6 +373,28 @@ cursor, and it beats an incorrect one by more. Watch for the sibling trap: an
 existence probe over already-present keys finds rows that are ABSENT but is blind
 to rows PRESENT WITH A CHANGED VALUE, so it silently drops real updates.
 *FIX-1008, FIX-1010, FIX-999 · `packages/data/src/lib/direct-pg-upsert.ts`*
+
+**Addendum — 2026-10-10, a rule proven on one writer is not a rule in every
+writer.** The skip predicate above was measured at **5.39×** on
+`financial_relationships` for the FEC replay — and
+`usaspending-bulk/writer.ts`'s FR `bulkUpsert` never passed it. The 10-08 delta
+run and every resumed part re-sent rows already landed, and each conflicting
+row was rewritten in full: 0 % HOT (C7), every FR index and a dead tuple per
+row. FIX-1274 adds `skipUnchangedRows: true`; the helper's predicate is built
+from the `SET` list, so all 11 updated columns are compared.
+
+**Apply, sharpened:** census every call site for the predicate whenever it is
+proven on one (`grep -rn "bulkUpsert(" packages/data/src/`). As of 2026-10-10,
+the `DO UPDATE` sites that pass neither `skipUnchangedRows` nor
+`updateOnlyIfSame`: `fec-bulk/writer.ts` pac-entity (`financial_entities`,
+`updateColumns` scoped) and ie-spender-name (`financial_entities` — its
+RETURNING feeds an id map, so a skip needs the C6 re-read), the
+`small_dollar_bracket_rollup` write (`fec-bulk/writer.ts` ~1685), and both
+`littlesis/writer.ts` upserts (`external_relationships`,
+`external_relationships_review_queue`). The FR sites — four in fec-bulk, one
+in usaspending — all skip now. *FIX-1274, FIX-1291 · cc-214 rehearsal audit
+`2026-10-10-usaspending-resumable-rehearsal.md` (run E is the receipt; cc-215
+adds prod's)*
 
 ### C7. Every index is a write cost — and indexing a column a trigger always changes makes HOT impossible by construction.
 
@@ -387,6 +452,40 @@ skipping is only free for work that has another owner that runs. Phase 3's MV
 refreshes are also refreshed by `refresh_derived_mvs('daily')`, so skipping them
 costs nothing; its `VACUUM` tail is **not** covered, so the abort message has to
 name it as outstanding and point at `--vacuum-only`. *FIX-1017, FIX-953*
+
+### C9. A prod-writing pipeline is VISIBLE to the interlock, or it does not run on prod.
+
+`prod_session_state()`'s writers-live list is 19 advisory locks plus the
+nightly's `running` rows; the `cron_job_budget` watchdog is keyed by
+`cron.job.jobname`. A GHA direct-pg writer holds neither. So on 2026-10-08 the
+USASpending dispatch wrote `financial_relationships` for **5 h 52 m** — three
+of the 2026-09-24 delta's five 1M-row parts in 2 h 04 m, then silence to the
+350-min cap — and nothing on the box could see it or bound it: **131** pg_cron
+startup timeouts, `fe-crawl` budget-cancelled, the nightly's fec-phase
+`partial`. It took no claim, read no box gate, had no wall dial, checkpointed
+nothing (delta mode never did — "deltas are small, a killed delta simply
+reprocesses" was false for a 1.45 GB delta), and rewrote every conflicting FR
+row (C6).
+
+**Apply:**
+
+- a SUPERVISED run takes the FIX-950 claim (`runUnderProdSession`) — then the
+  nightly's writer blocks, the guarded procedures and an unattended dispatch all
+  see it;
+- an UNATTENDED run preflights `prod_session_state()` and writes `skipped`
+  (`prod session held: …`) when a session is held — it never claims, because a
+  scheduled job holding the interlock is a nightly refusing itself;
+- every multi-unit landing checkpoints per unit IN EVERY MODE, so a stop is
+  resumable;
+- it reads the box gate (`box_backoff_gate`) at unit boundaries, as the pg_cron
+  rollups do — and since the gate's memory half is report-only (FIX-1125), a
+  wall dial (`--max-minutes`) is the memory stop until it isn't;
+- a long writer heartbeats its `data_sync_log` row, so the reaper (C3 addendum)
+  can tell a live run from an orphan.
+
+*FIX-1291, FIX-1274 · `docs/audits/2026-10-04-fix1274-usaspending-delta-read.md`,
+`docs/cc/reports/cc-209.md` §4, the cc-214 rehearsal audit
+(`2026-10-10-usaspending-resumable-rehearsal.md`) · `packages/data/src/scripts/usaspending-bulk.ts`*
 
 ---
 
@@ -494,6 +593,20 @@ excludes. And model a hold as its own state; a monitor that cannot represent
 "intentionally paused" trades a silent failure for a standing false alarm, which
 D4's own escalate-on-consequence rule then trains everyone to ignore.
 *FIX-1011, FIX-998, FIX-977*
+
+**Addendum — 2026-10-10, an unschedule and its hold row land together.** The
+FIX-1011 census now derives the registry from every `data_sync_log` pipeline,
+GHA ones included — so when `usaspending-bulk.yml`'s Thursday schedule came off
+on 2026-10-08, the canary kept reporting `rollup:usaspending_bulk` as overdue:
+the unschedule shipped without the `rollup_watch_overrides` hold row that the
+`20260903000000` convention asks for in the SAME change. A detector covers only
+what it enumerates, and it also covers everything it enumerates — including the
+pipeline a human just paused.
+
+**Apply:** an unschedule (a cron `unschedule`/`alter_job`, OR a workflow losing
+its `schedule:`) carries its hold row in the same commit; the schedule's return
+deletes it in the same commit. *FIX-1291 ·
+`20261010050000_fix1291_reaper_heartbeat_usaspending_hold.sql`*
 
 ### D5. Guard constants are tuned to a table size and go stale when the table steps.
 
