@@ -396,6 +396,13 @@ in usaspending — all skip now. *FIX-1274, FIX-1291 · cc-214 rehearsal audit
 `2026-10-10-usaspending-resumable-rehearsal.md` (run E is the receipt; cc-215
 adds prod's)*
 
+**Receipt — 2026-10-10, the rehearsal's run E** (`docs/audits/2026-10-10-usaspending-resumable-rehearsal.md` §5):
+a re-run of a completed 60k-row slice of the 09-24 delta sent **42,883** rows and
+changed **4,687** — FR `n_tup_ins` +0, `n_tup_upd` +4,687, HOT 0 — so **89.1 %** of
+the rewrite was avoided. The residue is the file's own churn, not the predicate:
+`contract_award_unique_key` is an AWARD key, and 1,299 keys carry 6,974
+transactions that rewrite one row each, last write wins (FIX-1298).
+
 ### C7. Every index is a write cost — and indexing a column a trigger always changes makes HOT impossible by construction.
 
 `financial_relationships` takes **exactly zero** HOT updates —
