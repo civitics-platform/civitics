@@ -1,0 +1,82 @@
+{
+  "cc": "211",
+  "prompt": "cc-prompt-211-work-mem-m2-m3-treemap-donor-party-contract-flow-sweeps-group-donor-fix1293-fix1290.md",
+  "started_at": "2026-10-10T04:20:25Z",
+  "finished_at": "2026-10-10T05:58:00Z",
+  "head_before": "b983199f",
+  "head_after": "069f62f0",
+  "commits": [
+    {
+      "sha": "921d7129",
+      "subject": "fix(data): FIX-1290 — the merge tool's tail table declares rebuild_ec_donation_edges_for_donors(partial) per caller; merge-same-person-official-dupes declares it not-run"
+    },
+    {
+      "sha": "707207e4",
+      "subject": "chore(fixes): file FIX-1296"
+    },
+    {
+      "sha": "572d175d",
+      "subject": "fix(db): FIX-1295 (M2+M3), FIX-1293 — treemap / donor-party (+ slice proconfig) / contract-flow / the five reconcile sweeps at 64MB with parallel 0; group-donor STOPped at 256MB; get_ec_crawl_health bounds its dirty-set count at 100k"
+    },
+    {
+      "sha": "b7cde327",
+      "subject": "chore(fixes): sync status after FIX-1290, FIX-1295, FIX-1293"
+    },
+    {
+      "sha": "48705f85",
+      "subject": "chore(fixes): reopen FIX-1293 — the bounded dirty-set count did not move prod's 8 s"
+    },
+    {
+      "sha": "069f62f0",
+      "subject": "docs(fixes): cc-211 appends to FIX-1295, FIX-1284, FIX-1185, FIX-1290, FIX-1293; paced-ops s20–s22"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1290",
+    "FIX-1295"
+  ],
+  "fixes_filed": [
+    "FIX-1296"
+  ],
+  "fixes_reopened": [
+    "FIX-1293"
+  ],
+  "migrations_pushed": [
+    "supabase/migrations/20261010010000_fix1295_work_mem_m2.sql",
+    "supabase/migrations/20261010020000_fix1295_work_mem_m3.sql",
+    "supabase/migrations/20261010030000_fix1293_ec_crawl_health_bounded_dirty_set.sql"
+  ],
+  "prod_writes": "Three migrations (20261010010000, 20261010020000, 20261010030000) in ONE gated push. session:wait-for-gate:prod --expected-minutes 3 --census stop ran from the primary checkout's packages/data with --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. The dry run (05:06:46Z, same form) listed exactly those three files, and held=false read at 05:06:53Z. The gate opened on its first poll at 05:06:57Z (census pass: 3 renders / 60 min, edge 0 of 152), took the interlock and held 17 guarded pipelines. It applied the three files, cleared the holds and released the interlock, and --then exited 0 before 05:07:23Z. Content: CREATE OR REPLACE of ten routine bodies with grants restated. No CALL, no data write, no VACUUM, no cron change. All other prod contact was READ ONLY db-query: pg_proc reads before and after, schema_migrations, one EXPLAIN and one read of status_snapshot.",
+  "ci": "green",
+  "stopped_items": [
+    "R5 STOP: refresh_group_donor_rollup keeps SET LOCAL 256MB. Its _gdr_agg went 2.30 / 2.35 s at 256MB to 4.61 s at 64MB (2.0x; 4.95 s at 128MB), over the 1.5x bar. It was left out of M3 and filed as FIX-1296.",
+    "FIX-1293's prod receipt FAILED. The 05:31:20Z tick read ec_crawl_health 8,173 ms with dirty_set null. There is no record commit; FIX-1293 is reopened (48705f85) with the clone reproduction at prod's shape.",
+    "Deviation: FIX-1293 landed as EXECUTE ... USING v_wm, not the prompt's static subquery. Below the cap, the static form's cached generic plan seq-scans all of FR (7.1 s cold on the clone, from a session's 6th call).",
+    "Deviation (rule 245): three commands used command substitution: a $(ls ...) loop in an early scratchpad search, a $(wc -l ...) in the gate-log wait, and backticks in the per-body diff count. None raised a permission prompt, and nothing they ran touched prod.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1295",
+      "what": "M2 — treemap-individuals-global-refresh Tue 10-13 14:00Z in band (<= 1,492 s), the ring quiet",
+      "after": "2026-10-13T14:30Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "M2 — donor-party-rollup-refresh Tue 10-13 15:00Z in band (<= 119 s, crawl mode), the ring quiet",
+      "after": "2026-10-13T15:30Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "M3 — contract-flow-rollups-refresh Thu 10-15 14:00Z in band, the ring quiet against R4's -240 MB",
+      "after": "2026-10-15T15:00Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "M3 — the five reconcile sweeps Sun 11-01 11:30-13:30Z each in band, the ring quiet",
+      "after": "2026-11-01T15:00Z"
+    }
+  ]
+}
