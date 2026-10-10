@@ -25,6 +25,9 @@ steps:
   - {id: s17, kind: cc, ref: "cc-210", title: "work_mem census R1–R6 + M1 — the postgres role default and five bodies at 64MB with parallel 0; FIX-1287's per-phase stamp"}
   - {id: s18, kind: receipt, ref: "FIX-1294", title: "the first platform-counts-daily after the push in band + a fresh postgres session reads 64MB", after: 2026-10-10T04:00Z}
   - {id: s19, kind: receipt, ref: "FIX-1295", title: "M1 bodies' first firings in band — ec-crawl's first dirty unit, donor-rollup's first watermark-moving firing, Sat 03:30 / 06:00 unit 9 / 06:30", after: 2026-10-12T10:00Z}
+  - {id: s20, kind: cc, ref: "cc-211", title: "work_mem M2+M3 — treemap, donor-party + slice, contract-flow, the five sweeps at 64MB (group-donor STOPped at 256MB, FIX-1296); FIX-1293 landed but did not move prod (reopened); FIX-1290"}
+  - {id: s21, kind: receipt, ref: "FIX-1295", title: "M2's Tuesday — treemap 14:00Z and donor-party 15:00Z in band (new bands), the ring quiet, beside the weekly at 64", after: 2026-10-13T16:00Z}
+  - {id: s22, kind: receipt, ref: "FIX-1295", title: "M3 — contract-flow Thu 14:00Z in band; the five sweeps 11-01", after: 2026-10-15T15:30Z}
 ---
 
 # Paced ops
