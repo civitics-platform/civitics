@@ -247,3 +247,48 @@ test("FIX-971a githubRunIdentity is empty off CI, so local rows are unchanged", 
   // Partial environments contribute only what they have.
   assert.deepEqual(githubRunIdentity({ GITHUB_RUN_ID: "7" }), { github_run_id: "7" });
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1291 — a `reaped` row is an orphan. The nightly's age-only reaper flipped
+// the 2026-10-08 USASpending contracts row (21:00:54Z) while its GHA process
+// ran on to the 350-min cap (23:04:58Z); mark-killed saw neither `running` nor
+// a terminal row and no-op'd. Rows below are that run's shape.
+// ---------------------------------------------------------------------------
+
+const usaspendingReaped: Row = {
+  id: "usa-1008",
+  status: "reaped",
+  started_at: "2026-10-08T17:12:58Z",
+  completed_at: null,
+  metadata: { github_run_id: "18350000001", github_run_attempt: "1" },
+};
+
+test("FIX-1291 a reaped row bound to this run is an orphan (the 10-08 no-op is the red)", () => {
+  const t = selectKillTarget([usaspendingReaped], undefined, { runId: "18350000001", runAttempt: "1" });
+  assert.equal(t.finished, undefined);
+  assert.equal(t.orphan?.id, "usa-1008");
+  assert.equal(t.orphan?.status, "reaped");
+  assert.equal(t.orphanIsOwnRun, true);
+});
+
+test("FIX-1291 with no binding evidence the newest reaped row in the window is the orphan", () => {
+  const older: Row = { ...usaspendingReaped, id: "usa-older", started_at: "2026-10-08T10:00:00Z", metadata: {} };
+  const t = selectKillTarget([{ ...usaspendingReaped, metadata: {} }, older]);
+  assert.equal(t.orphan?.id, "usa-1008");
+});
+
+test("FIX-1291 a reaped row from ANOTHER run is not this job's orphan", () => {
+  const t = selectKillTarget([usaspendingReaped], undefined, { runId: "99999999999", runAttempt: "1" });
+  assert.equal(t.orphan, undefined);
+});
+
+test("FIX-1291 a complete row still no-ops; a running row is still preferred over a reaped one", () => {
+  const complete: Row = { ...usaspendingReaped, id: "usa-ok", status: "complete", completed_at: "2026-10-08T20:00:00Z" };
+  assert.equal(
+    selectKillTarget([complete], undefined, { runId: "18350000001", runAttempt: "1" }).finished?.id,
+    "usa-ok",
+  );
+  const running: Row = { ...usaspendingReaped, id: "usa-run", status: "running" };
+  const t = selectKillTarget([usaspendingReaped, running], undefined, { runId: "18350000001", runAttempt: "1" });
+  assert.equal(t.orphan?.id, "usa-run");
+});

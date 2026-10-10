@@ -230,20 +230,30 @@ export interface SpendingRelationshipInput {
 export interface RelationshipBatchResult {
   upserted: number;
   failed: number;
+  /** Rows the server actually inserted or rewrote (FIX-1274 — see below). */
+  changed: number;
 }
 
 /**
  * Batched upsert of contract/grant relationships over the direct-pg `client`.
  * Dedup via the FULL unique index on usaspending_award_id (migration
  * 20260424000000 — changed from partial specifically to enable ON CONFLICT
- * batched upsert). The bare `ON CONFLICT (usaspending_award_id) DO UPDATE`
- * bulkUpsert emits matches PostgREST's former merge-duplicates resolution.
+ * batched upsert).
+ *
+ * FIX-1274 — `skipUnchangedRows`. Without it the statement was a bare
+ * `ON CONFLICT (usaspending_award_id) DO UPDATE SET <all 11 columns>` with no
+ * WHERE, so every conflicting row was rewritten even when byte-identical:
+ * financial_relationships takes 0 % HOT (its `updated_at` index + the
+ * set_updated_at trigger), so each one rewrote every FR index and left a dead
+ * tuple. The 2026-10-08 delta re-sent rows already landed, and a resumed part
+ * re-sends its whole boundary. The helper's predicate covers EXACTLY the SET
+ * columns (FIX-1008), so a genuine amendment to any of them still lands.
  */
 export async function upsertSpendingRelationshipsBatch(
   client: Client,
   inputs: SpendingRelationshipInput[],
 ): Promise<RelationshipBatchResult> {
-  if (inputs.length === 0) return { upserted: 0, failed: 0 };
+  if (inputs.length === 0) return { upserted: 0, failed: 0, changed: 0 };
 
   // Client-side dedupe by usaspending_award_id (same FEC-era defense against
   // "ON CONFLICT DO UPDATE cannot affect row a second time").
@@ -272,7 +282,7 @@ export async function upsertSpendingRelationshipsBatch(
     },
   ]);
 
-  const { upserted, failed } = await bulkUpsert(client, {
+  const { upserted, failed, changed } = await bulkUpsert(client, {
     table: "financial_relationships",
     columns: [
       "relationship_type",
@@ -289,10 +299,11 @@ export async function upsertSpendingRelationshipsBatch(
       "metadata",
     ],
     conflictColumns: ["usaspending_award_id"],
+    skipUnchangedRows: true,
     jsonbColumns: ["metadata"],
     label: "usaspending financial_relationships",
     rows,
   });
 
-  return { upserted, failed };
+  return { upserted, failed, changed };
 }

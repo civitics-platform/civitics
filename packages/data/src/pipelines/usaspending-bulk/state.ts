@@ -9,17 +9,28 @@
  * (local Docker vs Pro) holds its own, so the file's env-keying is unnecessary.
  *
  * Two things per category:
- *   - `baseline`:       the last FULLY-completed archive date. Delta decisions
- *                       read this; it advances only when an entire run finishes
- *                       (a partial Full must never seed a delta baseline).
- *   - `fullInProgress`: part-level resume for an in-flight Full run. Records the
- *                       archive identity (date) + the set of CSV parts already
- *                       upserted. A re-dispatch after a kill resumes the SAME
- *                       archive, skipping completed parts (upserts are idempotent
- *                       on *_award_unique_key, so replaying a boundary is
- *                       harmless); a different archive date discards the partial
- *                       and restarts. Resume granularity is a CSV part (~30 min
- *                       against a 350-min budget) — no row-offset cursors.
+ *   - `baseline`:      the last FULLY-completed archive date. Delta decisions
+ *                      read this; it advances only when an entire run finishes
+ *                      (a partial run must never seed a delta baseline).
+ *   - `runInProgress`: part-level resume for an in-flight run, Full OR Delta
+ *                      (FIX-1274). Records the run's identity (type + newest
+ *                      archive date + name) + the set of CSV parts already
+ *                      upserted. A re-dispatch after a kill or a dial stop
+ *                      resumes the SAME archive, skipping completed parts
+ *                      (upserts are idempotent on *_award_unique_key, so
+ *                      replaying a boundary is harmless); a different archive
+ *                      discards the partial and restarts. Resume granularity is
+ *                      a CSV part — no row-offset cursors.
+ *
+ * FIX-1274 retired the premise that only a Full needed this. Until 2026-10-10
+ * the record was `fullInProgress` and delta mode never checkpointed, on the
+ * grounds that "deltas are small and a killed delta simply reprocesses". The
+ * 2026-09-24 contracts delta is 1.45 GB in five 1M-row parts; the 10-08 run
+ * landed three of them in 2 h 04 m, went silent, and was killed at the 350-min
+ * cap with nothing recorded — the next run would have started at part 1.
+ * The legacy `fullInProgress` key is still READ (parseState lifts it into
+ * `runInProgress` in place), so a state row written by the pre-FIX-1274 code
+ * loads; the first save writes the new key and drops the old one.
  *
  * Pure decision helpers up top (unit-tested in state.test.ts); thin best-effort
  * DB load/save wrappers + the one-time file→DB lift at the bottom.
@@ -40,11 +51,22 @@ export interface CategoryBaseline {
   lastRunAt:       string;
 }
 
-/** Part-level resume record for a Full run still in flight. */
-export interface FullRunProgress {
-  /** YYYYMMDD identity of the Full archive being processed. */
+/** Part-level resume record for a run (Full or Delta) still in flight. */
+export interface RunProgress {
+  runType:        "full" | "delta";
+  /** YYYYMMDD of the newest archive in the run — its identity. */
   archiveDate:    string;
+  /** Zip name of that archive. "" when lifted from a pre-FIX-1274 record. */
+  archiveName:    string;
   /** Composite keys (see partKey) of CSV parts already upserted. */
+  completedParts: string[];
+  startedAt:      string;
+  updatedAt:      string;
+}
+
+/** The pre-FIX-1274 record (Full runs only). Read once, never written. */
+export interface LegacyFullRunProgress {
+  archiveDate:    string;
   completedParts: string[];
   startedAt:      string;
   updatedAt:      string;
@@ -52,7 +74,16 @@ export interface FullRunProgress {
 
 export interface CategoryState {
   baseline?:       CategoryBaseline;
-  fullInProgress?: FullRunProgress;
+  runInProgress?:  RunProgress;
+  /** Legacy key — parseState lifts it into runInProgress and deletes it. */
+  fullInProgress?: LegacyFullRunProgress;
+}
+
+/** The identity a run is started (or resumed) under. */
+export interface RunIdentity {
+  runType:     "full" | "delta";
+  archiveDate: string;
+  archiveName: string;
 }
 
 export interface UsaSpendingBulkState {
@@ -74,7 +105,34 @@ export function parseState(value: unknown): UsaSpendingBulkState | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const v = value as Record<string, unknown>;
   if (v["version"] !== USASPENDING_STATE_VERSION) return null;
-  return v as unknown as UsaSpendingBulkState;
+  const state = v as unknown as UsaSpendingBulkState;
+  for (const category of ["contracts", "assistance"] as const) {
+    const cat = state[category];
+    if (cat) liftLegacyProgress(cat);
+  }
+  return state;
+}
+
+/**
+ * FIX-1274 — the one-release reader for the pre-FIX-1274 `fullInProgress` key.
+ * Lifts it into `runInProgress` (type full, name unknown) unless a new-shape
+ * record already exists, and deletes the old key either way. In place, so the
+ * next saveState writes the migrated row. Returns whether anything was lifted.
+ */
+export function liftLegacyProgress(cat: CategoryState): boolean {
+  const legacy = cat.fullInProgress;
+  if (!legacy) return false;
+  delete cat.fullInProgress;
+  if (cat.runInProgress) return false;
+  cat.runInProgress = {
+    runType:        "full",
+    archiveDate:    legacy.archiveDate,
+    archiveName:    "",
+    completedParts: [...(legacy.completedParts ?? [])],
+    startedAt:      legacy.startedAt,
+    updatedAt:      legacy.updatedAt,
+  };
+  return true;
 }
 
 /** The completed-baseline used for delta decisions. null → run Full. */
@@ -86,7 +144,7 @@ export function getBaseline(
 }
 
 /**
- * Stable per-CSV-part identity within a Full run. Zip name + entry path so it is
+ * Stable per-CSV-part identity within a run. Zip name + entry path so it is
  * unique whether an archive splits at the zip level (`_N.zip` suffix) or into
  * multiple CSV entries inside one zip (the FIX-766 case).
  */
@@ -103,39 +161,51 @@ function ensureCategory(
   return cat;
 }
 
-/**
- * Begin (or resume) a Full run for `archiveDate`. An in-progress Full for the
- * SAME date has its completed parts preserved (resume); an in-progress Full for
- * a DIFFERENT date is discarded (a newer archive dropped — correctness over
- * saved progress). Returns what happened so the caller can log loudly and knows
- * which parts to skip.
- */
-export function startFullRun(
-  state:       UsaSpendingBulkState,
-  category:    BulkCategory,
-  archiveDate: string,
-  nowIso:      string = new Date().toISOString(),
-): { resumed: boolean; discardedDate: string | null; completedParts: string[] } {
-  const cat   = ensureCategory(state, category);
-  const prior = cat.fullInProgress;
+/** Same run? A record lifted from the legacy key has no name — its date decides. */
+function sameRun(prior: RunProgress, id: RunIdentity): boolean {
+  return (
+    prior.runType === id.runType &&
+    prior.archiveDate === id.archiveDate &&
+    (prior.archiveName === "" || prior.archiveName === id.archiveName)
+  );
+}
 
-  if (prior && prior.archiveDate === archiveDate) {
-    prior.updatedAt = nowIso;
+/**
+ * Begin (or resume) a run — Full or Delta (FIX-1274). An in-progress run with
+ * the SAME identity has its completed parts preserved (resume); one with a
+ * DIFFERENT identity is abandoned (a newer archive dropped, or the mode
+ * changed — correctness over saved progress). Returns what happened so the
+ * caller can log loudly and knows which parts to skip.
+ */
+export function startRun(
+  state:    UsaSpendingBulkState,
+  category: BulkCategory,
+  id:       RunIdentity,
+  nowIso:   string = new Date().toISOString(),
+): { resumed: boolean; abandoned: RunProgress | null; completedParts: string[] } {
+  const cat   = ensureCategory(state, category);
+  liftLegacyProgress(cat);
+  const prior = cat.runInProgress;
+
+  if (prior && sameRun(prior, id)) {
+    prior.archiveName = id.archiveName;
+    prior.updatedAt   = nowIso;
     return {
       resumed:        prior.completedParts.length > 0,
-      discardedDate:  null,
+      abandoned:      null,
       completedParts: [...prior.completedParts],
     };
   }
 
-  const discardedDate = prior ? prior.archiveDate : null;
-  cat.fullInProgress = {
-    archiveDate,
+  cat.runInProgress = {
+    runType:        id.runType,
+    archiveDate:    id.archiveDate,
+    archiveName:    id.archiveName,
     completedParts: [],
     startedAt:      nowIso,
     updatedAt:      nowIso,
   };
-  return { resumed: false, discardedDate, completedParts: [] };
+  return { resumed: false, abandoned: prior ?? null, completedParts: [] };
 }
 
 export function isPartComplete(
@@ -143,7 +213,7 @@ export function isPartComplete(
   category: BulkCategory,
   key:      string,
 ): boolean {
-  return state[category]?.fullInProgress?.completedParts.includes(key) ?? false;
+  return state[category]?.runInProgress?.completedParts.includes(key) ?? false;
 }
 
 export function markPartComplete(
@@ -153,11 +223,11 @@ export function markPartComplete(
   nowIso:   string = new Date().toISOString(),
 ): void {
   const cat = ensureCategory(state, category);
-  if (!cat.fullInProgress) return;   // defensive — startFullRun must precede
-  if (!cat.fullInProgress.completedParts.includes(key)) {
-    cat.fullInProgress.completedParts.push(key);
+  if (!cat.runInProgress) return;   // defensive — startRun must precede
+  if (!cat.runInProgress.completedParts.includes(key)) {
+    cat.runInProgress.completedParts.push(key);
   }
-  cat.fullInProgress.updatedAt = nowIso;
+  cat.runInProgress.updatedAt = nowIso;
 }
 
 /** A Full run finished every part: set the delta baseline, clear the partial. */
@@ -169,10 +239,11 @@ export function completeFullRun(
 ): void {
   const cat = ensureCategory(state, category);
   cat.baseline = { lastArchiveDate: archiveDate, lastRunType: "full", lastRunAt: nowIso };
+  delete cat.runInProgress;
   delete cat.fullInProgress;
 }
 
-/** A Delta run finished: advance the baseline (no fullInProgress is involved). */
+/** A Delta run finished every part: advance the baseline, clear the partial. */
 export function completeDeltaRun(
   state:           UsaSpendingBulkState,
   category:        BulkCategory,
@@ -181,6 +252,8 @@ export function completeDeltaRun(
 ): void {
   const cat = ensureCategory(state, category);
   cat.baseline = { lastArchiveDate, lastRunType: "delta", lastRunAt: nowIso };
+  delete cat.runInProgress;
+  delete cat.fullInProgress;
 }
 
 /** One-line summary for the loud state log line. */
@@ -189,15 +262,15 @@ export function describeState(
   category: BulkCategory,
 ): string {
   const cat = state[category];
-  if (!cat || (!cat.baseline && !cat.fullInProgress)) return `${category}=fresh`;
+  if (!cat || (!cat.baseline && !cat.runInProgress)) return `${category}=fresh`;
   const parts: string[] = [];
   if (cat.baseline) {
     parts.push(`baseline=${cat.baseline.lastArchiveDate}(${cat.baseline.lastRunType})`);
   }
-  if (cat.fullInProgress) {
+  if (cat.runInProgress) {
     parts.push(
-      `full-in-progress=${cat.fullInProgress.archiveDate} ` +
-      `parts=${cat.fullInProgress.completedParts.length}`,
+      `run-in-progress=${cat.runInProgress.runType}:${cat.runInProgress.archiveDate} ` +
+      `parts=${cat.runInProgress.completedParts.length}`,
     );
   }
   return `${category}: ${parts.join(" ")}`;

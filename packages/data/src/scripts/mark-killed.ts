@@ -32,6 +32,18 @@
  *   - with neither available (a local `pnpm data:mark-killed`), the legacy
  *     any-terminal-row-in-window behavior is kept, unchanged.
  *
+ * FIX-1291 — a `reaped` row is an orphan too. The nightly's age-only
+ * `reap_stale_sync_log(60)` can flip a still-running GHA job's row to
+ * `reaped` before this step ever looks; the row is then neither `running` nor
+ * terminal, and this step used to no-op on it. Measured 2026-10-08: the
+ * USASpending contracts row was reaped at 21:00:54Z while its process ran on
+ * to the 350-min cap at 23:04:58Z, and the marker was never written. A
+ * `reaped` row bound to this run (or, when the row carries no run id, the
+ * newest one in the window) now gets the marker, with
+ * `metadata.reaped_first = true`. A run that completes after a reap closes its
+ * own row (completeSync updates by id), so a row still `reaped` here means the
+ * run never finished.
+ *
  * Pipeline name defaults to `nightly_cron` to match the daily workflow's
  * completion-write at packages/data/src/pipelines/index.ts. Override with
  * `--pipeline=<name>` (e.g. `entity_connections_rebuild` for the rebuild
@@ -293,11 +305,15 @@ export function selectKillTarget(
 
   const terminal = scoped.filter((r) => TERMINAL_STATUSES.includes((r.status ?? "").toString()));
 
+  // FIX-1291 — `reaped` is what the OTHER detector leaves behind.
+  const reaped = scoped.filter((r) => r.status === "reaped");
+
   if (binding === "none") {
-    // No evidence to bind with (local/manual invocation). Legacy behavior.
+    // No evidence to bind with (local/manual invocation). Legacy behavior,
+    // with a reaped row as the fallback orphan.
     const finished = terminal[0];
     if (finished) return { finished, foreignFinished: [], binding };
-    const orphan = scoped.find((r) => r.status === "running");
+    const orphan = scoped.find((r) => r.status === "running") ?? reaped[0];
     return orphan
       ? { orphan, orphanIsOwnRun: false, foreignFinished: [], binding }
       : { foreignFinished: [], binding };
@@ -312,9 +328,18 @@ export function selectKillTarget(
   // reaped rather than left stranded.
   const running = scoped.filter((r) => r.status === "running");
   const ownRunning = running.find((r) => matchOwnRun(r, ownRun) === "own");
-  const orphan = ownRunning ?? running[0];
+  if (ownRunning ?? running[0]) {
+    const orphan = (ownRunning ?? running[0])!;
+    return { orphan, orphanIsOwnRun: Boolean(ownRunning), foreignFinished, binding };
+  }
+
+  // FIX-1291: then a `reaped` row — this run's, or the newest one that carries
+  // no proof of belonging to some OTHER run. A reaped row bound to a different
+  // run is that run's business, not this job's.
+  const ownReaped = reaped.find((r) => matchOwnRun(r, ownRun) === "own");
+  const orphan = ownReaped ?? reaped.find((r) => matchOwnRun(r, ownRun) === "unknown");
   return orphan
-    ? { orphan, orphanIsOwnRun: Boolean(ownRunning), foreignFinished, binding }
+    ? { orphan, orphanIsOwnRun: Boolean(ownReaped), foreignFinished, binding }
     : { foreignFinished, binding };
 }
 
@@ -423,6 +448,8 @@ async function main(): Promise<void> {
         "cron.job_run_details for pg_cron work.",
       orphan_own_run:  orphanIsOwnRun ?? false,
       own_run_binding: binding,
+      // FIX-1291: the orphan had already been flipped by reap_stale_sync_log().
+      reaped_first:    orphan.status === "reaped",
       ...githubRunIdentity(),
       peak_rss_mb:     captureRssMb(),
     },
@@ -438,7 +465,8 @@ async function main(): Promise<void> {
   await conn.close();
   console.info(
     `[mark-killed] wrote '${KILLED_PIPELINE}' row for orphan ${pipeline} run ` +
-      `(id=${orphan.id}, started_at=${orphan.started_at}, own_run=${orphanIsOwnRun ?? false}, completed_at=NULL)`,
+      `(id=${orphan.id}, status=${orphan.status}, started_at=${orphan.started_at}, ` +
+      `own_run=${orphanIsOwnRun ?? false}, reaped_first=${orphan.status === "reaped"}, completed_at=NULL)`,
   );
 }
 

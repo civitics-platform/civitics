@@ -156,7 +156,17 @@ export async function startSync(pipeline: string): Promise<string> {
   }
 }
 
-export async function completeSync(id: string, result: PipelineResult): Promise<void> {
+/**
+ * Close a run's row. `status` defaults to 'complete'; 'partial' is a run that
+ * stopped on purpose before its work was done (FIX-1274: a USASpending dial —
+ * --max-parts, --max-minutes, the box gate) and will resume. The canary reads
+ * 'partial' as a terminal-good status (FIX-290).
+ */
+export async function completeSync(
+  id: string,
+  result: PipelineResult,
+  status: "complete" | "partial" = "complete",
+): Promise<void> {
   if (!id) return;
   inFlightLogIds.delete(id);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,7 +189,7 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
       merged.seed_warning_count = result.seed_warnings.length;
     }
     await db.from("data_sync_log").update({
-      status: "complete",
+      status,
       completed_at: new Date().toISOString(),
       rows_inserted: result.inserted,
       rows_updated:  result.updated,
@@ -192,7 +202,16 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
   }
 }
 
-export async function failSync(id: string, errorMessage: string): Promise<void> {
+/**
+ * `metadata` (optional) is merged like completeSync's — the run's facts under
+ * the reserved keys. FIX-1268: a failed USASpending row used to carry no
+ * `fiscal_year_*`, so "which FY did the failed run ask for?" had no answer.
+ */
+export async function failSync(
+  id: string,
+  errorMessage: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
   if (!id) return;
   inFlightLogIds.delete(id);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -203,7 +222,11 @@ export async function failSync(id: string, errorMessage: string): Promise<void> 
       .select("metadata")
       .eq("id", id)
       .maybeSingle();
-    const merged = { ...(existing?.metadata ?? {}), peak_rss_mb: captureRssMb() };
+    const merged = {
+      ...(existing?.metadata ?? {}),
+      ...(metadata ?? {}),
+      peak_rss_mb: captureRssMb(),
+    };
     await db.from("data_sync_log").update({
       status: "failed",
       completed_at: new Date().toISOString(),

@@ -246,14 +246,23 @@ export async function withProdSession<T>(
  * `prod_session_label_stale`, and is overwritten by the next claim.
  */
 export async function runUnderProdSession(
-  opts: { script: string; expectedMinutes: number },
+  opts: {
+    script: string;
+    expectedMinutes: number;
+    /**
+     * Override the `--force` read. For a script whose own `--force` means
+     * something else (FIX-1274: usaspending-bulk's `--force` is "re-run the
+     * Full", and must not also claim over live writers).
+     */
+    force?: boolean;
+  },
   main: () => Promise<void>,
 ): Promise<void> {
   const argv = process.argv.slice(2);
   const reason = `${opts.script}${argv.length ? ` ${argv.join(" ")}` : ""}`.slice(0, 300);
   try {
     await withProdSession(
-      { reason, expectedMinutes: opts.expectedMinutes, force: argv.includes("--force") },
+      { reason, expectedMinutes: opts.expectedMinutes, force: opts.force ?? argv.includes("--force") },
       main,
     );
   } catch (err) {

@@ -32,7 +32,12 @@ import { vacuumAfterKilledFecWriter } from "../lib/heavy-rebuild";
 // call site in the Sunday block.
 import { runLittleSisPipeline } from "./littlesis";
 import { runEdgarPipeline, runEdgarDailyPipeline } from "./edgar";
-import { runUsaSpendingBulkPipeline } from "./usaspending-bulk";
+import { runUsaSpendingBulkPipeline, runUsaSpendingBulkCi } from "./usaspending-bulk";
+import {
+  parseUsaSpendingFlags,
+  UsaSpendingFlagError,
+  type UsaSpendingFlags,
+} from "./usaspending-bulk/flags";
 import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
 import { runBulkPeoplePipeline } from "./openstates-bulk/people";
@@ -1397,24 +1402,41 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
 // mirroring the `data:fec-bulk:ci` shape. Runs both categories sequentially —
 // each archive is 300 MB–1 GB, so parallel would double peak disk. Each
 // category self-logs to data_sync_log via its own startSync/completeSync, so
-// no nightly results object is threaded through here. Checkpoint/resume for the
-// full first-run is the deferred durable fix (FIX-739).
+// no nightly results object is threaded through here.
+//
+// FIX-1274 C7 — the dials come from the same parser the standalone entry uses
+// (the workflow passes --max-minutes 320, a soft stop at a part boundary under
+// the 350-min cap), and a CI run claims NOTHING: it preflights
+// prod_session_state() and, when a supervised session holds the box, writes a
+// `skipped` row per category and does no work (runUsaSpendingBulkCi).
 // ---------------------------------------------------------------------------
 
-export async function runUsaSpendingBulk(): Promise<void> {
+export async function runUsaSpendingBulk(argv: string[] = process.argv.slice(3)): Promise<void> {
   const startTime = Date.now();
   console.info("\n╔══════════════════════════════════════════╗");
   console.info("║   USASpending bulk (contracts + assistance) ║");
   console.info("╚══════════════════════════════════════════╝");
 
-  const contracts  = await runUsaSpendingBulkPipeline({ category: "contracts" });
-  const assistance = await runUsaSpendingBulkPipeline({ category: "assistance" });
+  let flags: UsaSpendingFlags;
+  try {
+    flags = parseUsaSpendingFlags(argv, "ci");
+  } catch (err) {
+    if (!(err instanceof UsaSpendingFlagError)) throw err;
+    console.error(`✗ ${err.message}`);
+    process.exit(2);
+  }
 
+  const { skipped, outcomes } = await runUsaSpendingBulkCi(flags);
   const mins = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+  if (skipped) {
+    console.info(`\n  USASpending skipped in ${mins} min — ${skipped}`);
+    return;
+  }
   console.info(
     `\n  USASpending done in ${mins} min — ` +
-    `contracts: inserted=${contracts.inserted} failed=${contracts.failed}; ` +
-    `assistance: inserted=${assistance.inserted} failed=${assistance.failed}`,
+    outcomes
+      .map((o) => `${o.category}: ${o.status}${o.stopReason ? `(${o.stopReason})` : ""} inserted=${o.inserted} failed=${o.failed}`)
+      .join("; "),
   );
 }
 

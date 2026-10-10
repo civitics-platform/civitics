@@ -21,6 +21,18 @@ name: usaspending-bulk
 # !baseline arm, a per-part checkpoint for delta mode, the gha-dispatch route).
 # Deliberately NOT rejoining the nightly: its 120-min budget is exactly what
 # FIX-740 pulled this out of.
+#
+# FIX-1274 (2026-10-10) landed shapes (1) and (3): every run — delta too —
+# checkpoints per CSV part and resumes; the FR upsert skips unchanged rows; the
+# box gate (box_backoff_gate) is read before each part and every 100k rows; the
+# run heartbeats its data_sync_log row so the nightly's reaper spares it; and
+# a CI run claims nothing — it reads prod_session_state() and writes `skipped`
+# when a supervised session holds the box. The dials (packages/data/src/
+# pipelines/usaspending-bulk/flags.ts): --category, --max-parts,
+# --max-minutes, --gate-wait-s, --breather-s, --keep-archive. This workflow
+# passes `--max-minutes 320`, so the 350-min cap below becomes a soft stop at a
+# part boundary (a `partial` row that the next dispatch resumes), never a
+# SIGTERM. The schedule's return is FIX-1274 shape (2), later (FIX-1291 step 4).
 # Runs both categories (contracts then assistance) sequentially against PROD
 # via `data:usaspending-bulk:ci` (index.ts `usaspending` command →
 # runUsaSpendingBulk). `--allow-prod` on the :ci script satisfies
@@ -87,14 +99,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # --max-minutes 320: a soft stop at a part boundary 30 min under the cap.
       - name: Run USASpending bulk (contracts + assistance)
-        run: pnpm --filter @civitics/data data:usaspending-bulk:ci
+        run: pnpm --filter @civitics/data data:usaspending-bulk:ci -- --max-minutes 320
 
       # Same kill-detector backstop the nightly/backfill use: if SIGTERM'd by
-      # timeout-minutes mid-run, the contracts data_sync_log row strands at
-      # status='running' (pipeline='usaspending_bulk' — the 2 GB first-run is the
-      # stage that overruns; assistance is smaller). Observability only; never
-      # gates the job.
-      - name: Mark killed if no completion row
+      # timeout-minutes mid-run, the data_sync_log row strands at
+      # status='running' — or at 'reaped', if the nightly's reaper got to it
+      # first, which mark-killed now treats as an orphan too (FIX-1291).
+      # --window-hours 6: sized on the job's 350-min CAP, not the default 4 h
+      # (FIX-962's lesson, missed here until 10-08). One step per category.
+      # Observability only; never gates the job.
+      - name: Mark killed if no completion row (contracts)
         if: always()
-        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=usaspending_bulk
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=usaspending_bulk --window-hours 6
+
+      - name: Mark killed if no completion row (assistance)
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=usaspending_bulk_assistance --window-hours 6
