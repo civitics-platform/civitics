@@ -1,0 +1,81 @@
+{
+  "cc": "214",
+  "prompt": "cc-prompt-214-fix1274-fix1291-usaspending-resumable-skip-unchanged-dials-claim-heartbeat-reaper.md",
+  "started_at": "2026-10-10T19:09:42Z",
+  "finished_at": "2026-10-10T21:00:00Z",
+  "head_before": "0ab88346",
+  "head_after": "d48dbefd",
+  "commits": [
+    {
+      "sha": "42c97ed6",
+      "subject": "fix(data): FIX-1274 — usaspending-bulk resumes per part in delta mode, skips unchanged FR rows, takes dials (--category/--max-parts/--max-minutes/--gate-wait-s/--breather-s/--keep-archive), heartbeats its row, claims the prod session (:prod) or refuses when held (CI), vacuums xsr on completion; mark-killed treats reaped as an orphan"
+    },
+    {
+      "sha": "111c7bf2",
+      "subject": "fix(db): FIX-1291 — reap_stale_sync_log spares a heartbeating row; usaspending_bulk held in rollup_watch_overrides"
+    },
+    {
+      "sha": "6f951749",
+      "subject": "chore(fixes): file FIX-1298 and FIX-1299"
+    },
+    {
+      "sha": "bac4e1b7",
+      "subject": "docs(playbook): FIX-1291 addenda C3/C5/C6/D4/A1 + rule C9 — a prod-writing pipeline is visible to the interlock or it does not run; USASpending doc census"
+    },
+    {
+      "sha": "6f3949e9",
+      "subject": "docs(audits): usaspending resumable rehearsal — runs A–E, the n_tup deltas, the D-row count"
+    },
+    {
+      "sha": "38e02263",
+      "subject": "docs(fixes): cc-214 appends to FIX-1274, FIX-1291, FIX-1268, FIX-1255, FIX-1075, FIX-1298"
+    },
+    {
+      "sha": "d48dbefd",
+      "subject": "chore(fixes): sync status after FIX-1274"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1274"
+  ],
+  "fixes_filed": [
+    "FIX-1298",
+    "FIX-1299"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261010050000_fix1291_reaper_heartbeat_usaspending_hold.sql"
+  ],
+  "prod_writes": "One migration (20261010050000) in ONE gated push. It ran from the primary checkout's packages/data: session:wait-for-gate:prod --expected-minutes 2 --census stop --reason 'cc-214 FIX-1291 migration 20261010050000 (reaper heartbeat + usaspending hold rows)' --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. The dry run (20:32:31Z) listed exactly that file, and held=false at 20:32:39Z. The gate opened on its first poll at 20:32:52Z (census pass: 2 renders / 60 min, edge 1 of 161 = 0.62 %). It took the claim and held 17 guarded pipelines, applied the file, cleared the holds and released; --then exited 0 by 20:32:57Z. Content: CREATE OR REPLACE public.reap_stale_sync_log, its two GRANTs and its COMMENT restated, plus two INSERTs into rollup_watch_overrides (usaspending_bulk, usaspending_bulk_assistance; ON CONFLICT DO NOTHING). No pipeline run, no CALL, no VACUUM and no cron change on prod. Every other prod contact was READ ONLY db-query --prod: the three stated reads, the schema_migrations head before and after, the post-push read-backs, and one catalog read for FIX-1299 (cron.job vacuum jobs, external_source_refs pg_stat_user_tables). A first gated attempt at 20:32:44Z exited 64 on usage (--reason missing) before claiming anything.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1144 append NOT made. In the tree, FIX-1144 is the archived search-index-variance bullet (closed-as-superseded 2026-09-07). The FR-VACUUM front-door incident the prompt cites is FIX-1133, also archived. The content went into the FIX-1291 append instead. The new playbook and CLAUDE.md text cite FIX-1133. The '(FIX-1144)' already in four script banners, two migrations and this run's index.ts comments is left as it is: a citation sweep, not filed.",
+    "Run C attempt 1 was not killed. Its 20k-row part 3 took about 12 s on the clone and the run completed at 20:48:20Z, 2 s before Stop-Process landed. It is used as the run-D evidence. The kill was repeated as C2a (--max-parts 2) and C2b, killed at part 3's header, about 3 s in.",
+    "Run E's n_tup_upd is NOT ~0: 4,687 changed of 42,883 sent (10.9 %). FR n_tup_ins was +0. The residue is the file's duplicate AWARD keys (1,299 keys / 6,974 rows, last write wins), reproduced exactly by C2a. The predicate is not the cause. Appended to FIX-1298.",
+    "Deviation: the script is data:usaspending-bulk:prod, following the tree's data: prefix, not the prompt's usaspending-bulk:prod. The claimed entry is src/scripts/usaspending-bulk.ts, because the FIX-1174 census (prod-scripts-interlock.test.ts) failed a :prod entry that runs no src/scripts/*.ts file. All three data:usaspending-bulk* scripts point there now.",
+    "Deviation: the claim is taken with force false. runUnderProdSession gained an optional force override, because it reads --force, and --force already means 're-run the Full' in this pipeline.",
+    "Deviation: the CI skip uses the tree's convention: skipSync with skip_reason 'prod session held: <reason> (claimed by <who>)', the prefix FIX-1137 keys on. It is not error_message 'prod session held — <claimant>'.",
+    "Deviation: on the clone, box_is_saturated read clear, not stale. Run A paused local jobid 85 (box-health-probe) from 20:36:47Z to about 20:41:30Z to make the reading stale. Run A's runInProgress is present with 0 parts, not absent: the identity is persisted at start, as the Full path always was.",
+    "Deviation (order): the filings landed after the migration commit, because they needed the D9 counts from the downloaded archive. The docs commit cites the audit by bare filename so check:doc-links stays green until the audit lands.",
+    "No permission prompt fired. No command substitution was used. External network: one curl of the S3 listing and the 1.45 GB archive download the prompt asked for."
+  ],
+  "lane": "fec",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1274",
+      "what": "cc-215's completed catch-up — both categories complete, baselines past 20260806, parts resumed across invocations, n_tup_ins 0 on re-read parts and n_tup_upd only the duplicate-award-key residue (~11 % of rows sent in the rehearsal)",
+      "after": "2026-10-11T04:00Z"
+    },
+    {
+      "fix": "FIX-1291",
+      "what": "the canary's next run reports no rollup:usaspending_bulk alert (the hold row)",
+      "after": "2026-10-11T06:00Z"
+    },
+    {
+      "fix": "FIX-1291",
+      "what": "the first nightly reap that runs beside a heartbeating usaspending row leaves it running (cc-215 invocation 1 if it spans 21:00Z; else vacuous — say so)",
+      "after": "2026-10-11T00:00Z"
+    }
+  ]
+}
