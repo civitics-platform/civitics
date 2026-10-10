@@ -1,0 +1,73 @@
+{
+  "cc": "212",
+  "prompt": "cc-prompt-212-saturday-records-fix1189-one-record-fix1294-fix1295-m1-receipts-fix1194-week.md",
+  "started_at": "2026-10-10T18:02:18Z",
+  "finished_at": "2026-10-10T18:23:00Z",
+  "head_before": "377a0293",
+  "head_after": "9a2042e8",
+  "commits": [
+    {
+      "sha": "9e22c948",
+      "subject": "chore(fixes): record prod verification of FIX-1189 — (a) the Senator's donor total 1,025,231,100 cents stands, (b) 63 vote_* edges all backed, (c) receipts 2026-10-10 §10 double_claim 46 / noop 488 with no Luján"
+    },
+    {
+      "sha": "92b8790e",
+      "subject": "chore(fixes): record prod verification of FIX-1294 — platform-counts-daily Sat 10-10 03:53Z succeeded in 25.2 s; a fresh postgres backend reads work_mem 64MB, statement_timeout 3h"
+    },
+    {
+      "sha": "33096663",
+      "subject": "chore(fixes): record prod verification of FIX-1194 — the week 10-02 to 10-09: two named-writer saturations (10-06 rule-taggers-weekly, 10-08 usaspending-bulk) and the vercel path proven inside 10-08's; no steady-state verdict"
+    },
+    {
+      "sha": "f047b12e",
+      "subject": "chore(fixes): file FIX-1297"
+    },
+    {
+      "sha": "9ad1589e",
+      "subject": "docs(fixes): cc-212 appends to FIX-1295, FIX-1281, FIX-1194; paced-ops s23"
+    },
+    {
+      "sha": "9a2042e8",
+      "subject": "chore(fixes): sync status after FIX-1189, FIX-1294, FIX-1194"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1189",
+    "FIX-1294",
+    "FIX-1194"
+  ],
+  "fixes_filed": [
+    "FIX-1297"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1295 record HELD. (ii) is met, but (i) and (iii) are not: no ec-crawl unit has had rows > 0 since the push, and no donor-rollup firing has moved the watermark. A FIX-1295 prod row would settle cc-210's (i) entry along with (ii), so I followed cc-209's FIX-1189 precedent: append and re-owe, after 2026-10-12T10:00Z. Cause filed as FIX-1297.",
+    "Ring unreadable for Fri 09:10-12:08Z, which covers (i)'s first post-push cycle and (iii)'s Fri 12:00Z firing, the prompt's headline number. The run started 18:02Z Sat, 8 h after the prompt's 10:00Z floor, and the 24 h Upstash ring had already aged those samples out. No banked copy exists: the receipts bank summary stats only, and cc-213's banked ring starts Fri 18:14Z.",
+    "ec_crawl.recent_units holds 50 entries, the oldest Fri 16:20Z, so it no longer covered the push window. I read the crawl's own data_sync_log rows instead.",
+    "Deviation (rule 245): two commands used $(...): the FIX-1293 section lookup and the cc-213 ring-file lookup. Both were local reads, neither raised a permission prompt, and neither touched prod.",
+    "Deviation: the s23 title says FIX-1295 was held, instead of the prompt's '1295's M1 receipts'.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1295",
+      "what": "(i)+(iii) re-owed. Once Sunday's drop-night FEC write stamps a donation row past 10-08T00:25:23Z: ec-crawl's first unit with rows > 0 (donations_incr_windows) and donor-rollup's first watermark-moving firing at 64MB (likely Mon 09:00Z), both in band, the ring read within 24 h. Then ONE FIX-1295 record carrying (i), (ii) as cc-212 read it, and (iii)",
+      "after": "2026-10-12T10:00Z"
+    },
+    {
+      "fix": "FIX-1189",
+      "what": "the first drop night (Sun 10-11 21:00Z): the cn stage mints 0 stubs for sitting members; promote-candidates skipped_bound about 538",
+      "after": "2026-10-12T03:00Z"
+    },
+    {
+      "fix": "FIX-1291",
+      "what": "Thu 10-15: no usaspending-bulk run with event schedule fires (gh run list --workflow usaspending-bulk.yml)",
+      "after": "2026-10-15T18:00Z"
+    }
+  ]
+}
