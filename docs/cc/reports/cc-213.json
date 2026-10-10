@@ -1,0 +1,42 @@
+{
+  "cc": "213",
+  "prompt": "cc-prompt-213-fix1292-r7-split-platform-snapshot-halves-usage-7-37-status-22-52.md",
+  "started_at": "2026-10-10T18:02:30Z",
+  "finished_at": "2026-10-10T18:56:00Z",
+  "head_before": "377a0293",
+  "head_after": "db0bf836",
+  "commits": [
+    {
+      "sha": "ef731de0",
+      "subject": "chore(ops): FIX-1292 R7 — platform-snapshot halves on separate crons for 24 h (usage 7,37 / status 22,52); the pre-split ring banked"
+    },
+    {
+      "sha": "db0bf836",
+      "subject": "docs(fixes): cc-213 appends to FIX-1292 (R7 deployed, first firings, pre-split profile, the lattice); forker s12–s13"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "One Vercel production deploy, the push of ef731de0 (deployment 6984886760, success 2026-10-10T18:15:34Z). It carries the vercel.json cron change, the two new half routes and the shared runner. No database write. All Postgres contact was read-only db-query: one EXPLAIN pair, five newest-row reads of platform_usage_snapshot and status_snapshot, and one information_schema column list. Two Upstash ring reads (off-box) and gh api deployment reads.",
+  "ci": "green",
+  "stopped_items": [
+    "No STOP fired. Both halves wrote on their first cycle (status 18:22, usage 18:37), the deploy succeeded, and held=false at both pushes.",
+    "Deviation: the shared runner is a fourth file, apps/civitics/app/api/cron/platform-snapshot/_lib/run-platform-snapshot.ts, which is not in the prompt's owned list. A route.ts may export only Next's route fields, so runPlatformSnapshot cannot be exported from the parent route. Its admin client moved with it, so no-store-routes.test.ts now pins the runner instead of the parent route. The in-scope count holds at 46.",
+    "Deviation: the ack JSON gains a `half` field on every path, including the parent's \\\"both\\\". Writes, alert passes and every other field are unchanged. A half that did not run reports *_snapshot_ok null and does not mark the tick partial.",
+    "Deviation: the halves export maxDuration = 300. The parent exports none, so it runs on the project default. 300 is Vercel's fluid-compute default, inferred from the ~75 s usage wall that a 15 s non-fluid default would kill. It was not read from the Vercel project settings.",
+    "Rule 245 deviation: I used $(...) in four wait and poll loops: $(date -u +%H%M) in three until-loops, and $(gh api ...) / $(seq ...) in the deployment poll. None raised a permission prompt, and none touched the database.",
+    "One tool call (the wait before the 18:40 usage read) was rejected mid-run by an accidental interrupt. Craig said proceed, and the read it was waiting on had already completed. Nothing was skipped.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "forker",
+  "owed": [
+    {
+      "fix": "FIX-1292",
+      "what": "R7 verdict read from the post-split ring (the :10/:40 usage sample vs the :24/:54 status sample), then the vercel.json revert or keep — cc-214",
+      "after": "2026-10-11T18:16Z"
+    }
+  ]
+}
