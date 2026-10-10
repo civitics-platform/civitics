@@ -28,6 +28,7 @@ steps:
   - {id: s20, kind: cc, ref: "cc-211", title: "work_mem M2+M3 — treemap, donor-party + slice, contract-flow, the five sweeps at 64MB (group-donor STOPped at 256MB, FIX-1296); FIX-1293 landed but did not move prod (reopened); FIX-1290"}
   - {id: s21, kind: receipt, ref: "FIX-1295", title: "M2's Tuesday — treemap 14:00Z and donor-party 15:00Z in band (new bands), the ring quiet, beside the weekly at 64", after: 2026-10-13T16:00Z}
   - {id: s22, kind: receipt, ref: "FIX-1295", title: "M3 — contract-flow Thu 14:00Z in band; the five sweeps 11-01", after: 2026-10-15T15:30Z}
+  - {id: s23, kind: cc, ref: "cc-212", title: "the Saturday records — 1189 (a+b+c), 1294's receipt, 1194's week line; 1295's M1 receipts held (no donation row stamped since 10-08, so no crawl rows and no watermark move; FIX-1297 filed)"}
 ---
 
 # Paced ops
