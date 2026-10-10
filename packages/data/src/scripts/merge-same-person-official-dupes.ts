@@ -2248,7 +2248,9 @@ async function main(): Promise<void> {
 
   // FIX-1165 (c) — the cost table, before anything is written.
   const owners = await readOwnerSchedulesOnce(client);
-  printTailTable(declareRemediationTail(defer), defer, owners);
+  // FIX-1290 — this script never hands drainFrRewrite deletedFrRowIds, so it never
+  // runs the EC partial-edge step; the table says so instead of HERE.
+  printTailTable(declareRemediationTail(defer, { ecPartial: false }), defer, owners);
   await client.query("BEGIN");
   try {
     // NOT `ON COMMIT DROP` — phase 2 runs after COMMIT and needs the manifest

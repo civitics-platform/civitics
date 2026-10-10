@@ -65,6 +65,11 @@ export interface TailStep {
   owner: string | null;
   /** True when --defer-tails skips this step. */
   deferred: boolean;
+  /**
+   * FIX-1290 — true when this CALLER never runs the step, whatever --defer-tails
+   * says. Not the same as deferred: nothing scheduled picks it up for this run.
+   */
+  notRun?: boolean;
 }
 
 /**
@@ -196,7 +201,7 @@ export function printTailTable(
     console.info(
       `  ${s.label.padEnd(w)}  ${CLASS_LABEL[s.cls].padEnd(24)}  ` +
         `${(s.owner ?? NO_OWNER).padEnd(ow)}  ${c.schedule.padEnd(sw)}  ` +
-        `${c.guarded.padEnd(7)}  ${s.deferred ? "deferred" : "HERE"}`,
+        `${c.guarded.padEnd(7)}  ${s.notRun ? "NOT RUN" : s.deferred ? "deferred" : "HERE"}`,
     );
   });
   if (!owners) {
@@ -207,11 +212,13 @@ export function printTailTable(
   }
   const orphaned = steps.filter((s, i) => s.deferred && cols[i]!.schedule === "NOT SCHEDULED");
   const unguarded = steps.filter((s, i) => s.deferred && cols[i]!.guarded === "NO");
-  const here = steps.filter((s) => !s.deferred);
+  const here = steps.filter((s) => !s.deferred && !s.notRun);
+  const notRun = steps.filter((s) => s.notRun);
   const plat = here.filter((s) => s.cls !== "manifest");
   console.info(
     `\n  ${here.length}/${steps.length} run here; ` +
-      `${steps.length - here.length} deferred to scheduled owners.`,
+      `${steps.filter((s) => s.deferred && !s.notRun).length} deferred to scheduled owners` +
+      (notRun.length > 0 ? `; ${notRun.length} not run by this caller.` : "."),
   );
   if (plat.length > 0) {
     console.info(
@@ -411,15 +418,22 @@ export function formatDiffLine(d: DiffInput, v: DiffVerdict): string {
  *
  * Owner column is the answer to "who else would do this?", checked BY NAME in
  * cron.job.command, pg_proc.prosrc and the GHA workflows — not assumed.
+ *
+ * FIX-1290 — `ecPartial: false` declares the EC partial-edge step NOT RUN for a
+ * caller that never hands drainFrRewrite `deletedFrRowIds` (the drain runs the
+ * step only with them). merge-same-person-official-dupes is that caller: its
+ * losers are deleted inside the manifest transaction with no RETURNING, and a
+ * --rollups-only resume could not recover them. Default true.
  */
-export function declareRemediationTail(defer: boolean): TailStep[] {
+export function declareRemediationTail(defer: boolean, opts: { ecPartial?: boolean } = {}): TailStep[] {
   const MANIFEST_OWNER = OWNER_THIS_RUN;
   const DAILY = "refresh-derived-mvs-daily";
   const WEEKLY = "refresh-derived-mvs-weekly";
+  const ecPartial = tailStep("rebuild_ec_donation_edges_for_donors(partial)", "manifest", MANIFEST_OWNER, defer);
   return [
     // Phase 2 — cost scales with the manifest. These are the change.
     // FIX-1211: the deleted rows' donors whose money edges kept other evidence.
-    tailStep("rebuild_ec_donation_edges_for_donors(partial)", "manifest", MANIFEST_OWNER, defer),
+    opts.ecPartial === false ? { ...ecPartial, notRun: true } : ecPartial,
     tailStep("donor_rollup_rebuild_recipients(affected)", "manifest", MANIFEST_OWNER, defer),
     tailStep("financial_entity_donation_totals_rebuild", "manifest", MANIFEST_OWNER, defer),
     tailStep("donor_party_rollup_rebuild_donors", "manifest", MANIFEST_OWNER, defer),

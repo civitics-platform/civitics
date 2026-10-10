@@ -26,6 +26,7 @@ import {
   diffActionable,
   diffVerdict,
   manifestColumn,
+  printTailTable,
   readManifest,
   tailStep,
   type DiffInput,
@@ -168,8 +169,9 @@ test("every fr-rewrite landing script prints the tail table before its go-ahead 
   for (const file of FR_REWRITE_SCRIPTS) {
     const src = fs.readFileSync(path.join(__dirname, file), "utf8");
 
-    const printAt = src.indexOf(
-      "printTailTable(declareRemediationTail(defer), defer, owners)",
+    // FIX-1290 — a caller may declare a step per caller (`, { ecPartial: false }`).
+    const printAt = src.search(
+      /printTailTable\(declareRemediationTail\(defer(?:, \{ ecPartial: false \})?\), defer, owners\)/,
     );
     assert.ok(
       printAt > -1,
@@ -339,6 +341,63 @@ test("runMvsAndVacuum short-circuits before its MV loop when deferring", () => {
       /if \(defer\)[\s\S]*?return;/,
       `${file}: runMvsAndVacuum must RETURN on defer before reaching the MV loop`,
     );
+  }
+});
+
+/**
+ * FIX-1290 — the table must say what this caller runs.
+ *
+ * drainFrRewrite runs rebuild_ec_donation_edges_for_donors(partial) only when
+ * it is handed scope.deletedFrRowIds. merge-same-person-official-dupes never
+ * hands them over: its losers are deleted inside the manifest transaction with
+ * no RETURNING, and a --rollups-only resume could not recover them anyway. cc-199's
+ * prod apply printed "4/18 run here" and ran 3. The step is declared per caller.
+ */
+const EC_PARTIAL = "rebuild_ec_donation_edges_for_donors(partial)";
+
+function tableRows(steps: ReturnType<typeof declareRemediationTail>): string[] {
+  const lines: string[] = [];
+  const info = console.info;
+  console.info = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+  try {
+    printTailTable(steps, true);
+  } finally {
+    console.info = info;
+  }
+  return lines.join("\n").split("\n");
+}
+
+test("FIX-1290 the merge caller's table does not print HERE for the EC partial-edge step", () => {
+  const row = tableRows(declareRemediationTail(true, { ecPartial: false })).find((l) => l.includes(EC_PARTIAL));
+  assert.ok(row, "the step stays in the table — undeclared is not the same as not run");
+  assert.doesNotMatch(row, /\bHERE$/, `the merge caller never runs it, so the table must not say HERE:\n${row}`);
+  assert.match(row, /NOT RUN$/);
+  const summary = tableRows(declareRemediationTail(true, { ecPartial: false })).find((l) => l.includes("run here"));
+  assert.match(summary ?? "", /^ {2}3\/18 run here; 14 deferred to scheduled owners; 1 not run by this caller\.$/);
+});
+
+test("FIX-1290 the three remediation callers (and the drain) still declare it HERE", () => {
+  const row = tableRows(declareRemediationTail(true)).find((l) => l.includes(EC_PARTIAL));
+  assert.match(row ?? "", /\bHERE$/);
+  const summary = tableRows(declareRemediationTail(true)).find((l) => l.includes("run here"));
+  assert.match(summary ?? "", /^ {2}4\/18 run here; 14 deferred to scheduled owners\.$/);
+});
+
+test("FIX-1290 merge-same-person-official-dupes declares the step not-run; the other scripts do not", () => {
+  for (const file of FR_REWRITE_SCRIPTS) {
+    const src = fs.readFileSync(path.join(__dirname, file), "utf8");
+    const merge = file === "merge-same-person-official-dupes.ts";
+    assert.equal(
+      src.includes("printTailTable(declareRemediationTail(defer, { ecPartial: false }), defer, owners)"),
+      merge,
+      `${file}: ${merge ? "must pass { ecPartial: false } — it never hands drainFrRewrite deletedFrRowIds"
+        : "passes ecPartial: false but is not the merge caller"}`,
+    );
+    if (merge) {
+      const drain = src.slice(src.indexOf("await drainFrRewrite("));
+      assert.doesNotMatch(drain.slice(0, drain.indexOf("\n    );")), /deletedFrRowIds/,
+        "the merge caller now passes deletedFrRowIds: declare the step HERE again");
+    }
   }
 });
 
