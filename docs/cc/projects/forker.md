@@ -18,7 +18,8 @@ steps:
   - {id: s10, kind: decision, ref: "FIX-1289", title: "memory_day tiling: a 30 h ring (recommended) or chained windows; a 24 h ring cannot hold the slot window at a post-slot write"}
   - {id: s11, kind: cc, ref: "cc-208", title: "FIX-1286 auto-restart on the 4th consecutive Logs-arm DOWN tick (FIX-1285 shipped it in cc-206; armed 10-07); receipt = the next wedge", done: 2026-10-07}
   - {id: s12, kind: cc, ref: "cc-213", title: "FIX-1292 R7 — the halves split 7,37 / 22,52 for 24 h; pre-split ring banked", done: 2026-10-10}
-  - {id: s13, kind: receipt, ref: "FIX-1292", title: "R7's verdict — which half's sample lit; revert or keep", after: 2026-10-11T18:16Z}
+  - {id: s13, kind: receipt, ref: "FIX-1292", title: "R7's verdict — which half's sample lit; revert or keep", after: 2026-10-11T18:16Z, done: 2026-10-11}
+  - {id: s14, kind: design, ref: "FIX-1292", title: "the fix from R7's verdict (B) — the status half's compute owns the burst"}
 ---
 
 # pg_cron forker starvation
@@ -90,3 +91,14 @@ for it. The owner is the route's firing ([[FIX-1292]]); R7, splitting its two
 halves onto separate minutes, is the next read. For s6: the threshold must
 expect one burst sample per firing, and 10-08's ring carries a second rule-81
 window (17:10Z → 23:50Z). See `docs/audits/2026-10-07-burst-census.md`.
+
+**R7's answer (s12–s13, cc-213 → cc-216): verdict B, the status half.** With
+usage at `7,37` and status at `22,52`, the status sample (:24/:54) lit at
+medians 458 / 388 with 39 of 40 samples above 240, while the usage sample
+(:10/:40) stayed at 90 / 109, no higher than the dispatcher's other :x0
+slots. The status compute, alone, starts ~+34 s after its minute and
+finishes inside that sample. The cron is back on the single `*/30` parent;
+the half routes stay without a cron. s14 is the fix, designed from the
+status compute (`writeStatusSnapshot`'s section fan-out, ec_crawl_health's
+8 s FR count — [[FIX-1293]] — and `recordDailyCounts`). See
+`docs/audits/2026-10-11-burst-census-r7-ring-post.json`.
