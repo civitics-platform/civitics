@@ -1,0 +1,60 @@
+{
+  "cc": "217",
+  "prompt": "cc-prompt-217-usaspending-catch-up-invocation-2-remainder-assistance-fix1274-fix1291-prod-record.md",
+  "started_at": "2026-10-11T07:30:00Z",
+  "finished_at": "2026-10-11T12:45:00Z",
+  "head_before": "87448952",
+  "head_after": "773570bf",
+  "commits": [
+    {
+      "sha": "60e06c56",
+      "subject": "chore(fixes): file FIX-1300"
+    },
+    {
+      "sha": "dda0687b",
+      "subject": "chore(fixes): record prod verification of FIX-1274 and FIX-1291 — the USASpending catch-up landed in 2 invocations (cc-215 + cc-217) under the FIX-950 claim and the box gate: contracts 20260806 → 20260924 (2,740,848 rows, parts 1–3 re-read at 22.3 % changed), assistance 20260806 → 20260923 (1,635,404 rows); n_tup_ins 379,376 / n_tup_upd 1,901,042 on FR; the xsr tail ran twice; 0 startup timeouts under cc-217's claim"
+    },
+    {
+      "sha": "f30c106e",
+      "subject": "docs(fixes): cc-217 appends to FIX-1274, FIX-1291, FIX-1297, FIX-1075, FIX-1298, FIX-1268, FIX-1295; paced-ops s27"
+    },
+    {
+      "sha": "773570bf",
+      "subject": "chore(fixes): sync status after FIX-1274, FIX-1291"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1274",
+    "FIX-1291"
+  ],
+  "fixes_filed": [
+    "FIX-1300"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "Two claimed sessions. (1) The pipeline's own writes under its own FIX-950 claim, 09:30:56.664Z to 09:39:07Z: FR n_tup_ins +5,064 and n_tup_upd +135,169 (fr_rows_changed 140,233); FE +407 ins and +407 upd; xsr +407 ins, plus the pipeline's VACUUM (ANALYZE) external_source_refs tail (1 s, last_vacuum 09:39:06.389Z). It also wrote data_sync_log rows 02980d27 (usaspending_bulk, complete, a no-op) and e8cfb862 (usaspending_bulk_assistance, complete), and pipeline_state.usaspending_bulk_state (assistance baseline 20260923, runInProgress cleared). The claim set and cleared its prod_session label and 17 session holds. (2) ONE row update under a second claim. session:claim-prod --minutes 10 --hold-seconds 600 held 09:39:09.365Z to 09:49:10Z, set and cleared its label and 17 holds, and deferred ec-crawl's 09:45Z cycle (one skipped row). Inside it, db-query --prod --call --yes-i-mean-prod --timeout 1min ran UPDATE public.financial_relationships SET updated_at = now() WHERE id = '4747b77f-b711-455b-9a4f-f9fc5b7779b0' and got UPDATE 1, stamped 09:39:37.516062Z. That is the FIX-1297 re-stamp, which the prompt ratifies through cc-218. No VACUUM of FR or FE, no cancel, no cron change. Every other prod contact was READ ONLY db-query --prod, the Logs API census or the off-box ring.",
+  "ci": "green",
+  "stopped_items": [
+    "Read as written, the autonomous loop's STOP 'a runInProgress for an archive other than 20260924' fires on the assistance runInProgress (archive 20260923). I did NOT stop. The same prompt names 20260923 as assistance's expected archive and baseline (header, the record, cc-215's resume point), so the STOP is cc-215's contracts wording carried over. The pipeline itself printed 'Resuming delta run', with no abandon line.",
+    "The 12:07Z census FAILED after the release: 5 renders, floor 3, ratio 10.1. The 12:22Z edge bucket (12:00-12:15Z) failed too, 5/203 = 2.46 %. Both are ec-crawl's _contracts (424 s) and _external (1,176 s) arms consuming the landing, inside their budgets. As the prompt directs, this was reported and not acted on: no cancel, no cron change. Not pushed to Craig either: the _external arm had already finished at 12:05:28Z when the 12:07Z verdict arrived, so there was nothing left to choose.",
+    "The FIX-1297 re-stamp was a prod write made on the prompt's own ratification (cc-218 ran, with Craig's go for that write). I did not ask Craig again in this session.",
+    "Phase 0 read 5's '~05:45Z ec-crawl arm wall' does not exist. 05:45Z is the start of ec_crawl's 05:45-09:00Z blackout, so no unit ran then. The first fresh post-stamp donations prepare has also not run yet: the 11:15Z unit resumed and closed the stale 02:02Z cycle, all 16 windows at its target. So that receipt stays owed (cc-218's entry, and this prompt's FIX-1297 entry).",
+    "Watch-loop gap: the per-tick pg_stat_activity filter never caught the pipeline's backend. At each 5-min read it was between statements (the run's whole DB life was 8.2 min, with hb 0 s on both in-run ticks). There was no stale heartbeat to judge, so the corrected hb rule never had to fire.",
+    "Phase 0 read 1: I did not run supabase migration list. I read the prod head with db-query on supabase_migrations.schema_migrations instead: 20261010050000, 504 rows.",
+    "No permission prompt fired. External network: one curl of the public S3 listing (files.usaspending.gov award_data_archive, prefix FY(All)_All_) before the invocation, to rule out a new delta that would abandon the checkpoint; the pipeline's own listing; the Logs API census. No archive was downloaded, because the kept zip was reused."
+  ],
+  "lane": "fec",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1274",
+      "what": "the designed consumers' first firings over the landing, each in band: agency staffing Tue 10-13 00:05Z (its contract/grant dirty set), jobid 28 contract-flow Thu 10-15 14:00Z (the FIX-1255 totals MOVE - a data change, not drift; band 8,839 is loose until 10-17 - cc-211)",
+      "after": "2026-10-15T15:00Z"
+    },
+    {
+      "fix": "FIX-1297",
+      "what": "the first donor-rollup / ec-crawl firing after the Sunday drop night stamps a donation row - the caught-up exit back under 1 s (Mon 10-12 09:00Z = FIX-1295 (iii)'s firing too); and the first FRESH ec-crawl donations prepare after the 09:39Z re-stamp in seconds (none had run by 12:30Z)",
+      "after": "2026-10-12T10:00Z"
+    }
+  ]
+}
