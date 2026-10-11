@@ -30,6 +30,7 @@ steps:
   - {id: s22, kind: receipt, ref: "FIX-1295", title: "M3 — contract-flow Thu 14:00Z in band; the five sweeps 11-01", after: 2026-10-15T15:30Z}
   - {id: s23, kind: cc, ref: "cc-212", title: "the Saturday records — 1189 (a+b+c), 1294's receipt, 1194's week line; 1295's M1 receipts held (no donation row stamped since 10-08, so no crawl rows and no watermark move; FIX-1297 filed)"}
   - {id: s24, kind: cc, ref: "cc-214", title: "USASpending made resumable — skip-unchanged, delta checkpoints, dials, heartbeat + reaper predicate, the claim, mark-killed reaped"}
+  - {id: s25, kind: op, ref: "cc-215", title: "USASpending catch-up invocation 1 — contracts COMPLETE (baseline 20260924; 2.74M sent / 926k changed), assistance 5/7 parts; killed 01:21Z on a census STOP; the front door stayed down to ~02:25Z on FIX-1297's prepare", done: 2026-10-11}
 ---
 
 # Paced ops
