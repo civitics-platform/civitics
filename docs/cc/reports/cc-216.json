@@ -1,0 +1,48 @@
+{
+  "cc": "216",
+  "prompt": "cc-prompt-216-fix1292-r7-verdict-bank-post-split-ring-usage-vs-status-sample-revert-or-keep.md",
+  "started_at": "2026-10-11T17:36:47Z",
+  "finished_at": "2026-10-11T18:56:00Z",
+  "head_before": "fb0a692d",
+  "head_after": "79c63f9a",
+  "commits": [
+    {
+      "sha": "0445e9ca",
+      "subject": "chore(ops): FIX-1292 R7 verdict (B) — platform-snapshot back on the single */30 parent; the post-split ring banked"
+    },
+    {
+      "sha": "651df69a",
+      "subject": "docs(fixes): cc-216 — FIX-1292 R7 verdict (B); forker s13–s14"
+    },
+    {
+      "sha": "79c63f9a",
+      "subject": "docs(fixes): cc-216 — FIX-1292 append correction (the scrape_ms range)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "One Vercel production deploy: the push of 0445e9ca (deployment 6999859753, success 2026-10-11T18:28:22Z), which restores vercel.json's single */30 platform-snapshot parent entry and removes the two half entries. No database write. All Postgres contact was read-only db-query --prod: data_sync_log usaspending rows, cron.job, cron.job_run_details (fr-vacuum-analyze, box-health-probe, startup timeouts), one EXPLAIN pair, and newest-row and walls reads of platform_usage_snapshot and status_snapshot. Two Upstash ring reads (off-box) and gh api deployment reads.",
+  "ci": "green",
+  "stopped_items": [
+    "No STOP fired. The ring returned 693 samples (≥ 600), held was false at both pushes, and both pushes ran before 20:30Z.",
+    "Deviation, ring timing: the session started at 17:36:47Z, 40 min before the when: window. I took a safety read at 17:37Z to the scratchpad (not banked), then ran Phase 0 reads 2–4. The banked read ran at 18:24:47Z, inside the window. That keeps the 18:26:22Z Sat sample the --after cut starts at, and adds Sunday's 18:24 status sample.",
+    "Deviation, exclusion source: docs/receipts/2026-10-11.md has no Sunday 03:00Z fr-vacuum-analyze wall. It was generated at 00:01Z, before the vacuum ran (its §2 row is Saturday's 9.4 s). I read the wall from prod cron.job_run_details instead: 03:00:00.131Z → 03:02:11.379Z (2 m 11 s), so the exclusion is 03:00:00Z..03:04:12Z.",
+    "Deviation, exclusion rule: the killed assistance row 7bc700a7 still reads status running (hb 01:18:18Z). Read literally, 'a running row is excluded from its started_at to NOW' would cut 23:59Z Sat → now, about 18 h. Its real end is the 01:21:59Z kill, inside cc-215's 22:37Z → 02:35Z window, so I did not apply that rule to it.",
+    "Deviation, exclusion added: cc-217's second claim (its one-row FIX-1297 write, 09:39:09Z → 09:49:10Z) is not named in the prompt. I excluded it by the same rule the prompt applies to cc-218's one-row claim, as one window 09:30:56Z → 09:49:11Z together with cc-217's FIX-950 claim and data_sync_log rows. It costs the :40 slot one sample; the floor holds either way.",
+    "Tree contradicted the prompt: OPERATIONS.md :490 and :805-808 did NOT already describe */30. cc-213 had rewritten both to describe the split. Both now describe the split as finished, and so do the three route headers (parent, usage, status), which said 'fired at 7,37 / 22,52'. These are comment and doc edits, not in the prompt's file list.",
+    "Method: box-health-minute-profile.mjs does not compute count > 240 per minute. A scratch helper with the same --after/--exclude semantics computed it, and reproduced cc-213 §2's pre-split figures exactly (:02 488.3/371.3 23/24, :32 423.8/355.0 23/24).",
+    "db-query --prod from the worktree fails (its .env.local.prod is a stub). Every prod read ran from the primary checkout, read-only. No $(...) was used. One deploy poll first ran with a mistyped sha and timed out harmlessly.",
+    "No permission prompt fired."
+  ],
+  "lane": "ops",
+  "project": "forker",
+  "owed": [
+    {
+      "fix": "FIX-1292",
+      "what": "the parent's first firings after the revert write both tables at :00/:30 (no half rows), and the next 24 h ring shows the burst back at :02/:32 — the control that the split, not something else, moved it",
+      "after": "2026-10-12T20:00Z"
+    }
+  ]
+}
