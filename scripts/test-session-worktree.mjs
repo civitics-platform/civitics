@@ -13,11 +13,20 @@
 // fails to read is still refused. Runs in CI (fixes-integrity.yml) and in
 // `pnpm fixes:test`.
 //
+// FIX-1282: slotRoot + slotPaths — every path create() and done() build hangs
+// off the PRIMARY checkout (the parent of --git-common-dir), from any tree. A
+// real throwaway primary + worktree pins it, because the bug only shows from
+// inside a linked worktree, where --show-toplevel is that worktree.
+//
 // Run:   pnpm session:worktree:test
 // Exit:  0 on pass, 1 on fail.
 
-import { resolve } from "node:path";
-import { isContainedWorktreePath, parseWorktreeList, worktreeDisposition } from "./session-worktree.mjs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { isContainedWorktreePath, parseWorktreeList, worktreeDisposition, slotPaths, slotRoot } from "./session-worktree.mjs";
+import { rootFromCommonDir } from "./lib/cc-config.mjs";
 
 const ROOT = resolve("/repos/civitics/App");          // pretend repo root
 const WT_BASE = resolve(ROOT, "..", "civitics-worktrees");
@@ -169,6 +178,51 @@ assert(
   isContainedWorktreePath(resolve(PRIMARY), resolve(PRIMARY)),
   false,
 );
+
+// ── FIX-1282: the slot is anchored on the primary checkout ───────────────────
+console.log("\nslotPaths / slotRoot (FIX-1282):");
+
+// Pure: a --git-common-dir value → the canonical slot, never nested.
+{
+  const root = rootFromCommonDir("C:/Users/Craig/Documents/Civitics/App/.git");
+  const p = slotPaths(root, "9999");
+  assert("common dir C:/…/App/.git → root C:/…/App", resolve(root), resolve("C:/Users/Craig/Documents/Civitics/App"));
+  assert("…→ slot C:/…/civitics-worktrees/fix-9999", p.wtDir, resolve("C:/Users/Craig/Documents/Civitics/civitics-worktrees/fix-9999"));
+  assert("…→ seed template is the PRIMARY's .env.local.dev", resolve(p.tmpl), resolve("C:/Users/Craig/Documents/Civitics/App/.env.local.dev"));
+  assert("a trailing separator on the common dir changes nothing", resolve(rootFromCommonDir("C:/Users/Craig/Documents/Civitics/App/.git/")), resolve(root));
+  assert("the slot passes the containment guard keyed on the same root", isContainedWorktreePath(p.wtDir, root), true);
+}
+
+// Real: a throwaway primary + linked worktree. From INSIDE the worktree the
+// anchor must still be the primary — the case the bullet's evidence ran.
+{
+  const tmp = mkdtempSync(join(tmpdir(), "fix1282-"));
+  const repo = join(tmp, "App");
+  mkdirSync(repo);
+  const g = (args, cwd = repo) => execFileSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" });
+  const norm = (x) => resolve(x).toLowerCase().replace(/\\/g, "/");
+  const real = (x) => norm(realpathSync.native(x));
+  try {
+    g(["init", "-q", "-b", "main"]);
+    g(["config", "user.email", "t@example.invalid"]);
+    g(["config", "user.name", "T"]);
+    writeFileSync(join(repo, "f.txt"), "x\n");
+    g(["add", "f.txt"]);
+    g(["commit", "-qm", "root"]);
+    mkdirSync(join(tmp, "civitics-worktrees"));
+    const wt = join(tmp, "civitics-worktrees", "fix-1");
+    g(["worktree", "add", "-q", "-b", "feature/fix-1", wt]);
+    const want = real(join(tmp, "civitics-worktrees")) + "/fix-9999";
+    const fromWt = slotPaths(slotRoot(wt), "9999");
+    assert("from INSIDE a worktree: the root is the primary", real(slotRoot(wt)), real(repo));
+    assert("from INSIDE a worktree: the slot is NOT nested", norm(fromWt.wtDir), want);
+    assert("from INSIDE a worktree: the seed template is the primary's", norm(fromWt.tmpl), real(repo) + "/.env.local.dev");
+    assert("from the primary: the same slot", norm(slotPaths(slotRoot(repo), "9999").wtDir), want);
+    try { g(["worktree", "remove", "--force", wt]); } catch {}
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch {}
+  }
+}
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} failure(s):\n${failures.join("\n")}`);

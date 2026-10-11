@@ -30,6 +30,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mainCheckoutRoot } from "./lib/cc-config.mjs";
 
 // Dependency-free synchronous sleep (the teardown path below is sync). Atomics
 // blocks the thread without a busy-spin; ms is clamped to a sane ceiling.
@@ -132,10 +133,26 @@ function normalizeId(raw) {
   return token; // e.g. "123"
 }
 
-function repoRoot() {
-  const r = git("rev-parse", "--show-toplevel");
-  if (!r.ok) die("not inside a git repository");
-  return r.out;
+// FIX-1282: the anchor is the PRIMARY checkout — the parent of
+// --git-common-dir, which is the same from the primary and from any linked
+// worktree. It used to be --show-toplevel, which inside a linked worktree is
+// that worktree: create() then nested the slot at
+// civitics-worktrees/civitics-worktrees/fix-<id>, looked for .env.local.dev in
+// a tree that never has one (so seeded nothing), and done() aimed at the same
+// nested path. Everything below keys on this one root, the containment guard
+// included. Exported for unit testing; `cwd` is the test's.
+export function slotRoot(cwd) {
+  try {
+    return mainCheckoutRoot(cwd);
+  } catch {
+    die("not inside a git repository");
+  }
+}
+
+/** Every path create() and done() derive from the anchor. Pure; exported for unit testing. */
+export function slotPaths(root, id) {
+  const base = resolve(root, "..", "civitics-worktrees");
+  return { base, wtDir: resolve(base, `fix-${id}`), tmpl: join(root, ".env.local.dev") };
 }
 
 function readEnvUrl(file) {
@@ -151,9 +168,9 @@ function readEnvUrl(file) {
 function create(rawId, argv = []) {
   const install = !argv.includes("--no-install");
   const id = normalizeId(rawId);
-  const root = repoRoot();
+  const root = slotRoot();
   const branch = `feature/fix-${id}`;
-  const wtDir = resolve(root, "..", "civitics-worktrees", `fix-${id}`);
+  const { wtDir, tmpl } = slotPaths(root, id);
 
   if (existsSync(wtDir)) die(`worktree dir already exists: ${wtDir}`);
   if (git("rev-parse", "--verify", "--quiet", branch).ok) {
@@ -176,7 +193,6 @@ function create(rawId, argv = []) {
 
   // Seed both .env.local files to LOCAL Docker (both are gitignored → absent in
   // a fresh worktree). Source: the primary checkout's .env.local.dev template.
-  const tmpl = join(root, ".env.local.dev");
   const seeds = [
     join(wtDir, ".env.local"),
     join(wtDir, "apps", "civitics", ".env.local"),
@@ -266,9 +282,9 @@ function landingRecipe(id, installed = false) {
 function done(rawId, argv) {
   const force = argv.includes("--force");
   const id = normalizeId(rawId);
-  const root = repoRoot();
+  const root = slotRoot();
   const branch = `feature/fix-${id}`;
-  const wtDir = resolve(root, "..", "civitics-worktrees", `fix-${id}`);
+  const { wtDir } = slotPaths(root, id);
 
   console.log(`[session:worktree] fetching origin ...`);
   git("fetch", "origin", "--quiet");

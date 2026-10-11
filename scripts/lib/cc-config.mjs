@@ -60,7 +60,12 @@ export function mainCheckoutRoot(cwd) {
   const common = git("rev-parse --path-format=absolute --git-common-dir", cwd);
   // A bare-ish fallback: older git without --path-format, or an unusual layout.
   if (!common) return repoRoot();
-  return dirname(common.replace(/\/$/, ""));
+  return rootFromCommonDir(common);
+}
+
+/** `<primary>/.git` → `<primary>`. Pure, so `test-session-worktree.mjs` can pin it (FIX-1282). */
+export function rootFromCommonDir(common) {
+  return dirname(common.replace(/[\\/]$/, ""));
 }
 
 // Config locations, first match wins:
