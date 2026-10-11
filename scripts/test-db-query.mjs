@@ -5,7 +5,7 @@
 // front of the caller's SQL). Dependency-free, no database, same shape as the
 // other scripts/test-*.mjs suites.
 
-import { buildPrelude, claimantProblem, sqlLiteral } from "./lib/db-query-prelude.mjs";
+import { buildPrelude, claimantProblem, sqlLiteral, targetLabel, headerLine } from "./lib/db-query-prelude.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -61,6 +61,25 @@ check("blank is refused", claimantProblem("   ") !== null);
 check("a newline is refused (it would split the SET)", claimantProblem("a\nCALL x()") !== null);
 check("a normal reason passes", claimantProblem("FIX-1212 bootstrap (cc-147 runner)") === null);
 check("sqlLiteral doubles every quote", sqlLiteral("a'b'c") === "'a''b''c'");
+
+console.log("db-query — the first line (FIX-1301)");
+{
+  // The label follows readOnly, which is known only once --call is.
+  const prodRead = headerLine({ label: targetLabel({ target: "prod", readOnly: true }), call: false, timeout: "60min" });
+  check("plain --prod says READ ONLY", prodRead === "[db-query] PROD (Supabase Pro) — READ ONLY", JSON.stringify(prodRead));
+  const prodCall = headerLine({ label: targetLabel({ target: "prod", readOnly: false }), call: true, timeout: "60min" });
+  check("--prod --call says WRITE PATH, keeping the CALL MODE suffix",
+    prodCall === "[db-query] PROD (Supabase Pro) — WRITE PATH — CALL MODE (autocommit, statement_timeout=60min)", JSON.stringify(prodCall));
+  check("--prod --call never says READ ONLY", !prodCall.includes("READ ONLY"), JSON.stringify(prodCall));
+  const prodClaim = headerLine({ label: targetLabel({ target: "prod", readOnly: false }), call: true, timeout: "40min", claimant: "FIX-1212 bootstrap" });
+  check("…and with --claimant",
+    prodClaim === "[db-query] PROD (Supabase Pro) — WRITE PATH — CALL MODE (autocommit, statement_timeout=40min, claimant=FIX-1212 bootstrap)", JSON.stringify(prodClaim));
+  const local = headerLine({ label: targetLabel({ target: "local", readOnly: false }), call: false, timeout: "60min" });
+  check("plain --local is the bare LOCAL label", local === "[db-query] LOCAL (127.0.0.1:54322)", JSON.stringify(local));
+  const localCall = headerLine({ label: targetLabel({ target: "local", readOnly: false }), call: true, timeout: "60min" });
+  check("--local --call is LOCAL + CALL MODE",
+    localCall === "[db-query] LOCAL (127.0.0.1:54322) — CALL MODE (autocommit, statement_timeout=60min)", JSON.stringify(localCall));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

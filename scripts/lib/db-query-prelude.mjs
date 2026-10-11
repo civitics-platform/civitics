@@ -52,3 +52,21 @@ export function buildPrelude({ call, readOnly, timeout, claimant = null }) {
     ? "SET LOCAL max_parallel_workers_per_gather = 0;\nSET TRANSACTION READ ONLY;\n"
     : "";
 }
+
+/**
+ * The connection label db-query.mjs prints first. FIX-1301: it follows
+ * `readOnly`, not the target. It used to be fixed when the prod URL was
+ * resolved, before anything knew about --call, so the one prod WRITE path
+ * announced itself as "READ ONLY — CALL MODE" above its own write banner.
+ *
+ * @param {{target: "local"|"prod", readOnly: boolean}} o
+ */
+export function targetLabel({ target, readOnly }) {
+  if (target === "local") return "LOCAL (127.0.0.1:54322)";
+  return readOnly ? "PROD (Supabase Pro) — READ ONLY" : "PROD (Supabase Pro) — WRITE PATH";
+}
+
+/** The first line db-query.mjs prints, to stderr. */
+export function headerLine({ label, call, timeout, claimant = null }) {
+  return `[db-query] ${label}${call ? ` — CALL MODE (autocommit, statement_timeout=${timeout}${claimant !== null ? `, claimant=${claimant}` : ""})` : ""}`;
+}

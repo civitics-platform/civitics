@@ -59,7 +59,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildPrelude, claimantProblem } from "./lib/db-query-prelude.mjs";
+import { buildPrelude, claimantProblem, headerLine, targetLabel } from "./lib/db-query-prelude.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_FILE = join(ROOT, ".env.local.prod");
@@ -159,10 +159,9 @@ if (call && target === "prod" && !yesIMeanProd) {
 }
 
 // ── Resolve connection URL ──────────────────────────────────────────────────
-let url, label;
+let url;
 if (target === "local") {
   url = LOCAL_URL;
-  label = "LOCAL (127.0.0.1:54322)";
 } else {
   const password = readEnvVar(ENV_FILE, "SUPABASE_DB_PASSWORD");
   if (!password) usage(`SUPABASE_DB_PASSWORD not found in ${ENV_FILE}`);
@@ -171,7 +170,6 @@ if (target === "local") {
     : POOLER_FALLBACK;
   url = baseUrl.replace(/^(postgresql:\/\/[^/@:]+)@/, `$1:${encodeURIComponent(password)}@`);
   if (!url.includes("@") || url === baseUrl) usage(`could not inject password into pooler URL: ${baseUrl}`);
-  label = "PROD (Supabase Pro) — READ ONLY";
 }
 
 // ── Build psql invocation ───────────────────────────────────────────────────
@@ -210,7 +208,8 @@ const readOnly = target === "prod" && !call;
 const prelude = buildPrelude({ call, readOnly, timeout, claimant });
 const stdin = prelude + sqlText + "\n";
 
-console.error(`[db-query] ${label}${call ? ` — CALL MODE (autocommit, statement_timeout=${timeout}${claimant !== null ? `, claimant=${claimant}` : ""})` : ""}`);
+// FIX-1301: the label follows readOnly, so --prod --call reads WRITE PATH.
+console.error(headerLine({ label: targetLabel({ target, readOnly }), call, timeout, claimant }));
 
 // FIX-791: a prod CALL is a supervised action. Say what is about to happen, to
 // which host, and leave a beat to Ctrl-C out of it.
