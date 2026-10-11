@@ -3,17 +3,21 @@
  * anchored by source.
  *
  * cc-203 found the half-hour swap-in burst follows the route's FIRING but no
- * Postgres statement in it. R7 asks which half carries it, so for 24 h the
- * usage half (vendor APIs + the alert passes) fires at 7,37 and the status
- * half (writeStatusSnapshot alone) at 22,52, 15 minutes apart. What this pins:
+ * Postgres statement in it. R7 asked which half carries it, so for 24 h the
+ * usage half (vendor APIs + the alert passes) fired at 7,37 and the status
+ * half (writeStatusSnapshot alone) at 22,52, 15 minutes apart. cc-216 read the
+ * verdict (B, the status half) and put the single parent entry back. What this
+ * pins:
  *
- *   - vercel.json carries the two half entries and NOT the parent, so each
- *     half fires exactly once per half hour. The 10-minute gha-dispatch entry for
- *     platform-snapshot.yml is a different workflow and is left alone.
- *   - each half route is thin: dynamic, maxDuration, and a GET that hands the
- *     request to the shared runner with its half.
- *   - the parent route still runs both halves, so cc-214's revert is one
- *     vercel.json edit and a plain hit behaves as before the split.
+ *   - vercel.json carries the parent every 30 minutes and NEITHER half entry, so
+ *     the route fires once per half hour with both halves in the pre-split order.
+ *     The 10-minute gha-dispatch entry for platform-snapshot.yml is a different
+ *     workflow and is left alone.
+ *   - each half route stays thin: dynamic, maxDuration, and a GET that hands the
+ *     request to the shared runner with its half. No cron fires them; they are
+ *     kept for FIX-1292's fix.
+ *   - the parent route runs both halves, so the revert is one vercel.json
+ *     edit and a plain hit behaves as before the split.
  *   - the runner gates each write on the half, and the alert passes read the
  *     usage outcome only (D2).
  */
@@ -35,11 +39,11 @@ function code(path: string): string {
   return readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 }
 
-test("FIX-1292 R7: vercel.json fires the halves at 7,37 and 22,52 and not the parent", () => {
+test("FIX-1292 R7: vercel.json fires the parent at */30 and neither half (cc-216's revert)", () => {
   const at = (p: string) => VERCEL.crons.filter((c) => c.path === p).map((c) => c.schedule);
-  assert.deepEqual(at("/api/cron/platform-snapshot/usage"), ["7,37 * * * *"]);
-  assert.deepEqual(at("/api/cron/platform-snapshot/status"), ["22,52 * * * *"]);
-  assert.deepEqual(at("/api/cron/platform-snapshot"), [], "the parent entry is removed for the 24 h");
+  assert.deepEqual(at("/api/cron/platform-snapshot"), ["*/30 * * * *"], "the single parent entry is back");
+  assert.deepEqual(at("/api/cron/platform-snapshot/usage"), [], "the usage half has no cron after R7");
+  assert.deepEqual(at("/api/cron/platform-snapshot/status"), [], "the status half has no cron after R7");
   assert.deepEqual(at("/api/cron/gha-dispatch/platform-snapshot"), ["*/10 * * * *"], "the dispatcher is untouched");
 });
 

@@ -35,12 +35,12 @@
  * the other. Returns a lightweight ack — full payloads live in the snapshot
  * rows themselves.
  *
- * FIX-1292 R7 (2026-10-10, 24 h): the body is runPlatformSnapshot() in
- * ./_lib, and this route runs both halves through it. While R7 runs,
- * vercel.json does not fire this path. It fires ./usage (write 1 and the
- * alert passes) at 7,37 and ./status (write 2) at 22,52, so the ring can
- * show which half carries the half-hour swap-in burst. cc-214 reads the
- * verdict and restores this path's half-hourly entry, or keeps the split.
+ * FIX-1292 R7 (2026-10-10 → 10-11): the body is runPlatformSnapshot() in
+ * ./_lib, and this route runs both halves through it. For one day
+ * vercel.json fired ./usage (write 1 and the alert passes) at 7,37 and
+ * ./status (write 2) at 22,52 instead of this path, so the ring could show
+ * which half carries the half-hour swap-in burst. cc-216 read verdict (B),
+ * the status half, and restored this path's half-hourly entry.
  */
 
 export const dynamic = "force-dynamic";
