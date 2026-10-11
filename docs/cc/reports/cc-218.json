@@ -1,0 +1,37 @@
+{
+  "cc": "218",
+  "prompt": "cc-prompt-218-fix1297-restamp-newest-donation-row-under-claim-collapse-the-backward-walk.md",
+  "started_at": "2026-10-11T04:28:00Z",
+  "finished_at": "2026-10-11T05:58:00Z",
+  "head_before": "cefdb7b9",
+  "head_after": "2dd8d620",
+  "commits": [
+    {
+      "sha": "2dd8d620",
+      "subject": "docs(fixes): cc-218 — FIX-1297 stop-gap applied; paced-ops s26"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "ONE row update on Craig's explicit go. db-query --prod --call --yes-i-mean-prod --timeout 1min ran UPDATE public.financial_relationships SET updated_at = now() WHERE id = '4747b77f-b711-455b-9a4f-f9fc5b7779b0' and got UPDATE 1, stamped 2026-10-11 05:28:20.443366Z. The claim's own writes: session:claim-prod set the prod_session label and 17 rollup_watch_overrides session holds at 05:27:58Z (sweeping cc-215's 17 stale holds and stale label first) and cleared them at 05:33:02Z through --hold-seconds 300. The deferral also wrote ec-crawl's 05:30Z skipped data_sync_log row. No VACUUM, no cancel, no cron change. Every other prod contact was READ ONLY db-query --prod or the Logs API census.",
+  "ci": "green",
+  "stopped_items": [
+    "STOP condition fired, then overridden by Craig. The candidate row's updated_at was 2026-10-10 21:07:11.43673Z, not about 10-08T00:25Z (the premise had moved: Saturday's fec_bulk stamped donation rows). I asked before writing (AskUserQuestion, ~04:37Z) and Craig answered 'Go: override, write' at ~05:27Z. The write targeted the 21:07Z row, not a 10-08 one.",
+    "Deviation, order: I asked for the go BEFORE taking the claim rather than after it, so the claim was not held through the wait. The wait was ~50 min.",
+    "Deviation, claim shape: the claim ran as a backgrounded process with --hold-seconds 300 rather than a foreground terminal released by Ctrl-C. On Windows a backgrounded console process cannot be signalled gracefully (the script header's own reason for --hold-seconds). It released itself through the same path at 05:33:02Z.",
+    "Step 6, the receipt, was not taken in-session and is OWED. The claim deferred the 05:30Z ec-crawl cycle (window 16/16), and ec_crawl's configured blackout is 05:45-09:00Z (the 05:45Z cycle skipped, last_skip_reason peer_due). So window 16 and then the first post-stamp prepare land after 09:00Z. Side effect of the claim: window 16 moved from 05:30Z to after 09:00Z.",
+    "Step 1: ec-crawl's donations_target_at was 2026-10-10T21:07:11.43673Z, not the expected 10-08T00:25:23.49Z. donor_rollup_watermark.last_indexed_at read 10-08T00:25:23.490517Z as expected.",
+    "No permission prompt fired. No command substitution was used in a foreground command."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1297",
+      "what": "the Sunday 09:00Z donor-rollup firing: a real watermark-moving run (targets >= 1; 1,167 dirty rows) in band, its MAX one probe, no walk; and, after ec_crawl's 05:45-09:00Z blackout, window 16/16 then the first post-stamp donations prepare in seconds (not 355-1,280 s)",
+      "after": "2026-10-11T09:30Z"
+    }
+  ]
+}
