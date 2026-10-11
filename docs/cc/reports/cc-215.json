@@ -1,0 +1,53 @@
+{
+  "cc": "215",
+  "prompt": "cc-prompt-215-usaspending-catch-up-invocation-1-both-categories-claimed-gated-tonight.md",
+  "started_at": "2026-10-10T21:56:40Z",
+  "finished_at": "2026-10-11T02:41:00Z",
+  "head_before": "ee4e39ae",
+  "head_after": "4c5a0a59",
+  "commits": [
+    {
+      "sha": "4c5a0a59",
+      "subject": "docs(fixes): cc-215 appends to FIX-1274, FIX-1291, FIX-1297, FIX-1075; paced-ops s25"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "The pipeline's own writes under its own FIX-950 claim, held 22:37:32.9Z to the kill at 01:21:59Z. FR upserts: n_tup_ins +374,312 and n_tup_upd +1,765,873 between the 21:59:01Z and 02:21:51Z reads. FE: +8,976 ins and +9,048 upd. xsr: +9,272 ins, plus the pipeline's own VACUUM (ANALYZE) external_source_refs tail (2.3 s at 23:59:30Z). data_sync_log rows 6029ec5d (usaspending_bulk, complete) and 7bc700a7 (usaspending_bulk_assistance, left running by the kill). pipeline_state.usaspending_bulk_state: contracts baseline 20260924, and an assistance runInProgress with parts 1-5. The claim's prod_session label and 17 rollup_watch_overrides session holds, both left behind as residue by the kill. Nothing else was written. Every other prod contact was READ ONLY db-query --prod, the Logs API census or the off-box ring. During the post-kill incident there was no cancel, no claim and no cron change.",
+  "ci": "green",
+  "stopped_items": [
+    "The invocation was KILLED at 01:21:59Z (taskkill /PID 9632 /T /F) on a census STOP. The 01:06-01:21Z window held 6 renders against a floor of 3 (ratio 12.1); edge 2/269 passed. It was not re-invoked: after the 10-min wait and a passing census, N would have been about floor(23) - 5 = 18, under 90. cc-217 resumes assistance from part 6.",
+    "Deviation: N = 191, not the formula's 197. Six more minutes came off because --max-minutes is only checked at part boundaries and at each 100k-row line, about 5.5 min apart at the 10-08 read rate, so 'minus 5' could not guarantee an exit by 02:00Z. A 02:00Z kill backstop was planned on top.",
+    "The front door stayed degraded from about 01:13Z to about 02:25Z, more than an hour, most of it after the pipeline was dead. On prod I made no pg_cancel_backend, no claim and no cron change; all three are outside the prompt's prod-writes posture and need Craig's confirmation (CLAUDE.md). It is recorded on FIX-1297. A PushNotification at 01:38Z was not delivered (Remote Control inactive).",
+    "Watch-loop gaps. The 22:37Z census tick was missed because the watch was armed at 22:38. The 22:52Z census came back empty: the watch spawned pnpm without a shell; it was re-read by hand (pass) and the script fixed. The 01:13Z tick's DB read was empty (transient). From 01:37Z to 02:13Z every DB tick failed with ECHECKOUTTIMEOUT.",
+    "Phase 0 read 7: the 1-hour ring read and the 60-min baseline census ran at 22:00:03Z and 22:00:24Z, inside the :00 +0-1 minute the prompt said to keep clear of.",
+    "Phase 0 read 1: supabase migration list was not run. Prod head was read with db-query on supabase_migrations.schema_migrations: 20261010050000, 504 rows.",
+    "No permission prompt fired. No command substitution was used. External network: the pipeline's S3 listing and the assistance archive download (2.29 GB), plus the Logs API census."
+  ],
+  "lane": "fec",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1274",
+      "what": "cc-217 completes assistance from tonight's checkpoint (parts 1-5 done; part 6 re-read + part 7) - baseline 20260923; contracts is already 20260924; n_tup_ins on the re-read part 6 is the residue, not 0",
+      "after": "2026-10-11T15:00Z"
+    },
+    {
+      "fix": "FIX-1297",
+      "what": "Sunday 09:00Z donor-rollup's caught-up wall and the next full ec-crawl donations prepare after tonight's landing (tonight: 32 min cancelled at budget, then 1,280 s on a saturated box)",
+      "after": "2026-10-11T09:30Z"
+    },
+    {
+      "fix": "FIX-1075",
+      "what": "the EC _contracts arm's first unit after the landing (no unit reached it tonight - every one stopped in the donations prepare or its windows)",
+      "after": "2026-10-11T12:00Z"
+    },
+    {
+      "fix": "FIX-1291",
+      "what": "the next nightly reap takes the killed usaspending_bulk_assistance row 7bc700a7 (hb 01:18:18Z) as reaped, and mark-killed treats it as an orphan",
+      "after": "2026-10-11T21:30Z"
+    }
+  ]
+}
