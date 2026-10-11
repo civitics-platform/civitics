@@ -22,6 +22,31 @@
 // costs one fetch per isolate per minute, not one per request.
 //
 // Edge-runtime safe: fetch + AbortController only, no Node API.
+//
+// FIX-1283 — the list is a `source` option, so /institutions/<slug> reuses
+// this whole shape over governing_bodies' slugs (institution-slug-redirects.ts).
+// Omitted, it is OFFICIAL_REDIRECTS, and nothing above changes.
+
+/** Which list a resolver reads, and which way it maps. */
+export interface RedirectSource {
+  /** The log prefix, `[<name>]`. */
+  name: string;
+  /** PostgREST `<table>?select=…[&filters]`, without the limit. */
+  query: string;
+  /** The row field resolved FROM, and the one resolved TO. */
+  from: string;
+  to: string;
+  /** Lowercase keys on load and on lookup (UUIDs: middleware's UUID_RE is case-insensitive). */
+  foldCase: boolean;
+}
+
+export const OFFICIAL_REDIRECTS: RedirectSource = {
+  name: "official-redirects",
+  query: "official_redirects?select=old_id,new_id",
+  from: "old_id",
+  to: "new_id",
+  foldCase: true,
+};
 
 export interface RedirectResolverOptions {
   supabaseUrl: string | undefined;
@@ -34,10 +59,12 @@ export interface RedirectResolverOptions {
   now?: () => number;
   timeoutMs?: number;
   log?: (message: string) => void;
+  /** The list to read. Defaults to OFFICIAL_REDIRECTS. */
+  source?: RedirectSource;
 }
 
 export interface RedirectResolver {
-  /** The survivor id for a retired official id, or null. */
+  /** The id `id` redirects to (a retired official's survivor, an institution slug's id), or null. */
   resolve(id: string): Promise<string | null>;
 }
 
@@ -62,7 +89,10 @@ export function createRedirectResolver(opts: RedirectResolverOptions): RedirectR
     now = Date.now,
     timeoutMs = 1_500,
     log = (m: string) => console.warn(m),
+    source = OFFICIAL_REDIRECTS,
   } = opts;
+  const tag = `[${source.name}]`;
+  const fold = (k: string) => (source.foldCase ? k.toLowerCase() : k);
 
   let cache: Loaded | null = null;
   let inflight: Promise<Loaded> | null = null;
@@ -70,11 +100,11 @@ export function createRedirectResolver(opts: RedirectResolverOptions): RedirectR
 
   async function load(): Promise<Loaded> {
     const fail = (why: string): Loaded => {
-      log(`[official-redirects] list read failed (${why}) — serving no redirects for ${failTtlMs / 1000}s`);
+      log(`${tag} list read failed (${why}) — serving no redirects for ${failTtlMs / 1000}s`);
       return { expiresAt: now() + failTtlMs, map: new Map() };
     };
 
-    const url = `${supabaseUrl}/rest/v1/official_redirects?select=old_id,new_id&limit=${ROW_CAP}`;
+    const url = `${supabaseUrl}/rest/v1/${source.query}&limit=${ROW_CAP}`;
     const t = timeoutSignal(timeoutMs);
     try {
       const res = await fetchImpl(url, {
@@ -91,14 +121,14 @@ export function createRedirectResolver(opts: RedirectResolverOptions): RedirectR
 
       const map = new Map<string, string>();
       for (const row of body) {
-        const oldId = (row as { old_id?: unknown })?.old_id;
-        const newId = (row as { new_id?: unknown })?.new_id;
-        if (typeof oldId === "string" && typeof newId === "string") {
-          map.set(oldId.toLowerCase(), newId);
+        const from = (row as Record<string, unknown> | null)?.[source.from];
+        const to = (row as Record<string, unknown> | null)?.[source.to];
+        if (typeof from === "string" && typeof to === "string") {
+          map.set(fold(from), to);
         }
       }
       if (body.length >= ROW_CAP) {
-        log(`[official-redirects] list at the ${ROW_CAP.toLocaleString("en-US")}-row cap — later rows may be missing`);
+        log(`${tag} list at the ${ROW_CAP.toLocaleString("en-US")}-row cap — later rows may be missing`);
       }
       return { expiresAt: now() + ttlMs, map };
     } catch (err) {
@@ -127,12 +157,12 @@ export function createRedirectResolver(opts: RedirectResolverOptions): RedirectR
       if (!supabaseUrl || !publishableKey) {
         if (!warnedEnv) {
           warnedEnv = true;
-          log("[official-redirects] NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY absent — no redirects served");
+          log(`${tag} NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY absent — no redirects served`);
         }
         return null;
       }
       const map = await current();
-      return map.get(id.toLowerCase()) ?? null;
+      return map.get(fold(id)) ?? null;
     },
   };
 }

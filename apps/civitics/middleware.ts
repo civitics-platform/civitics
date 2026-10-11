@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/ratelimit";
 import { createRedirectResolver } from "@/lib/official-redirects";
+import { createInstitutionSlugResolver } from "@/lib/institution-slug-redirects";
 
 // ---------------------------------------------------------------------------
 // Bot pattern filtering
@@ -189,6 +190,13 @@ const officialRedirects = createRedirectResolver({
   publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
 });
 
+// FIX-1283: the same shape over governing_bodies.slug → id
+// (src/lib/institution-slug-redirects.ts).
+const institutionSlugs = createInstitutionSlugResolver({
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+});
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
@@ -220,9 +228,10 @@ export async function middleware(request: NextRequest) {
   // ── FIX-439: same malformed-UUID → 404 guard for the other [id] routes that
   // pair loading.tsx (Suspense) with a page-level notFound(). Each returns 200
   // on a malformed path without this. /institutions/[id] is deliberately
-  // EXCLUDED — its page resolves non-UUID slugs to UUIDs via a DB lookup
-  // (governing_bodies.slug → permanentRedirect), so a format guard here would
-  // 404 legitimate slug URLs. The edge can't do that DB lookup, so the page
+  // EXCLUDED — a non-UUID there is a governing_bodies.slug, so a format guard
+  // would 404 legitimate slug URLs. A known slug is answered with a 308 below
+  // (FIX-1283), from a cached list read like FIX-1278's rather than a
+  // per-request lookup; anything else still falls through to the page, which
   // keeps ownership of /institutions/[id] not-found handling.
   const idGuardMatch = path.match(/^\/(districts|officials|proposals|meetings)\/([^/]+)\/?$/);
   if (idGuardMatch && !UUID_RE.test(idGuardMatch[2] ?? "")) {
@@ -252,6 +261,22 @@ export async function middleware(request: NextRequest) {
     if (to) {
       const dest = request.nextUrl.clone();
       dest.pathname = `/officials/${to}`;
+      return NextResponse.redirect(dest, 308);
+    }
+  }
+
+  // ── FIX-1283: /institutions/<slug> → /institutions/<uuid> (308) ───────────
+  // The page's own slug branch (permanentRedirect) runs under loading.tsx and
+  // degrades to a 200 + meta refresh. Same terms as FIX-1278 above: after the
+  // rate limit, one list read per isolate per hour, fail open. A miss or a
+  // failed load falls through to the page unchanged, so an unknown slug is
+  // still the page's 200-not-found.
+  const institutionMatch = path.match(/^\/institutions\/([^/]+)\/?$/);
+  if (institutionMatch && !UUID_RE.test(institutionMatch[1] ?? "")) {
+    const to = await institutionSlugs.resolve(institutionMatch[1]!);
+    if (to) {
+      const dest = request.nextUrl.clone();
+      dest.pathname = `/institutions/${to}`;
       return NextResponse.redirect(dest, 308);
     }
   }
