@@ -31,6 +31,7 @@ steps:
   - {id: s23, kind: cc, ref: "cc-212", title: "the Saturday records — 1189 (a+b+c), 1294's receipt, 1194's week line; 1295's M1 receipts held (no donation row stamped since 10-08, so no crawl rows and no watermark move; FIX-1297 filed)"}
   - {id: s24, kind: cc, ref: "cc-214", title: "USASpending made resumable — skip-unchanged, delta checkpoints, dials, heartbeat + reaper predicate, the claim, mark-killed reaped"}
   - {id: s25, kind: op, ref: "cc-215", title: "USASpending catch-up invocation 1 — contracts COMPLETE (baseline 20260924; 2.74M sent / 926k changed), assistance 5/7 parts; killed 01:21Z on a census STOP; the front door stayed down to ~02:25Z on FIX-1297's prepare", done: 2026-10-11}
+  - {id: s26, kind: op, ref: "cc-218", title: "FIX-1297 stop-gap — one donation row re-stamped under a claim (the Sat 21:07Z fec_bulk row, not the 10-08 one; the MAX walk 0.048 ms)", done: 2026-10-11}
 ---
 
 # Paced ops
