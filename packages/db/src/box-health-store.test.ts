@@ -136,7 +136,9 @@ test("FIX-1125: one firing — metrics, then LPUSH/LTRIM/SET in ONE pipeline, th
     ["LPUSH", BOX_HEALTH_RING_KEY],
     ["LTRIM", BOX_HEALTH_RING_KEY],
   ]);
-  assert.deepEqual(body[1], ["LTRIM", "civitics:box_health:mem", "0", "719"], "a 24 h ring at 2 min");
+  // FIX-1289: 900 = 30 h at 2 min, so a receipts run up to ~6 h after the
+  // 21:00Z slot still holds the whole [slot − 24 h, slot) window.
+  assert.deepEqual(body[1], ["LTRIM", "civitics:box_health:mem", "0", "899"], "a 30 h ring at 2 min");
   // cc-153: no `SET civitics:box_health:latest` — the ring's head is the latest sample.
   assert.ok(!body.some((c) => c[0] === "SET"), "no separate latest key");
   assert.equal(JSON.parse(body[0]![2]!).mem_available_bytes, 418258944);

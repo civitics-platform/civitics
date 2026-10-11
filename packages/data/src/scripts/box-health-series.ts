@@ -8,8 +8,8 @@
  * WHY THIS IS THE INSTRUMENT FOR THE NEXT OUTAGE READ. It reads Upstash only,
  * with ONE LRANGE (one command), and opens no Postgres connection. When the box
  * is down or the snapshot route has stopped writing, as it had 15:30–22:00 on
- * 09-22, this still answers. The ring holds 24 h (720 samples), so run it
- * inside a day of the event.
+ * 09-22, this still answers. The ring holds 30 h (900 samples, FIX-1289), so
+ * run it inside a day of the event.
  *
  * Needs UPSTASH_REDIS_REST_URL / _TOKEN. All three .env.local files carry them,
  * and there is one Upstash database, so the ring is the same whichever file
@@ -28,7 +28,7 @@ function parseArgs(argv: string[]): { hours: number; json: boolean } {
     else if (a === "--hours") hours = Number(argv[++i]);
     else if (a.startsWith("--hours=")) hours = Number(a.slice("--hours=".length));
     else if (a === "--help" || a === "-h") {
-      console.info("usage: data:box-health:series [--hours N (default 24, max 24)] [--json]");
+      console.info("usage: data:box-health:series [--hours N (default 24, max 30)] [--json]");
       process.exit(0);
     } else {
       console.error(`[box-health] unknown argument ${JSON.stringify(a)}`);

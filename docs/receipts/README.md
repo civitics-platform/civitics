@@ -70,7 +70,7 @@ never a claim without its instrument.
 
 **Section 9's memory series is banked here and nowhere else** (FIX-1194 /
 FIX-1125, cc-183). The box's swap series lives only in the off-box Upstash ring
-(`civitics:box_health:mem`, 720 samples = 24 h, no TTL), so each day's summary
+(`civitics:box_health:mem`, 900 samples = 30 h since FIX-1289, no TTL), so each day's summary
 is written into the day's JSON as `forker.memory_day`: samples, swap-in and
 swap-out pages/s (p50 / p95 / max), MemAvailable min and median, swap in use at
 its peak, and the count of gaps too long to rate. A memory threshold is sized
@@ -79,6 +79,17 @@ from seven of these. It needs two repository Actions secrets,
 `.env.local`). `nightly.yml`'s `receipts` job already passes them through. Until
 they exist, `memory_day` is `null` and §9 says why. Adding them is Craig's
 action. The banked series starts the night after they exist.
+
+**The window is fixed and banked once** (FIX-1289). `forker.window` is exactly
+`[slot − 24 h, slot)`, where slot is the 21:00Z that names the nominal day
+(so `2026-10-13.json` covers `2026-10-11T21:00Z → 2026-10-12T21:00Z`), and
+consecutive days tile. A ring that does not reach back to `window.from` is
+refused (`memory_day: null`, `mem_day.reason` names what the ring held) rather
+than banked short. Every later run of the same nominal day — the schedule
+fallback, a re-dispatch — keeps the committed `memory_day` and `mem_day`, and
+`forker.memory_day_banked_by` names the run that banked them; the rest of the
+file is rewritten as before (FIX-1218). Files before FIX-1289 carry no
+`window`: their `memory_day` is the 24 h ending at whichever run wrote last.
 
 **Section 9's crawl skip counters are banked here too** (FIX-1124, cc-189).
 `ec-crawl` and `fe-crawl` record every skip in

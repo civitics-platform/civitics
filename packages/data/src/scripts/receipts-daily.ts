@@ -44,7 +44,7 @@ import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
 import { readBoxHealthRing, upstashCredsFromEnv } from "@civitics/db";
-import { memoryDay, seriesRows, seriesStats, type MemoryDay } from "../lib/box-health-series";
+import { type MemoryDay } from "../lib/box-health-series";
 import { type DispatchStamp, type NightlyRunRow, isAlreadyRanRun } from "./receipts-format";
 import {
   type Bands,
@@ -71,9 +71,14 @@ import {
   type CrawlOverlapRow,
   type CrawlSkipCounters,
   type CrawlSkips,
+  type MemoryBankedBy,
+  type MemoryWindow,
   BURST_THRESHOLD,
+  bankMemoryWindow,
   compareToBand,
   crawlSkipsBaselineFrom,
+  keptMemoryDay,
+  memoryWindow,
   nominalDate,
   previousNominalDay,
   renderJson,
@@ -801,11 +806,24 @@ ORDER BY c.started_at`;
  * same names; until both exist they arrive empty, this reads
  * `available: false`, `memory_day` is null, and the line points at
  * data:box-health:series.
+ *
+ * FIX-1289 — the day is now exactly `window` (`[slot − 24 h, slot)`), banked
+ * ONCE per nominal day: `committedJson` is the day's file as this checkout has
+ * it, and when it already banked this window that day is kept and nothing is
+ * read from the ring. Otherwise the ring (900 samples = 30 h) must reach back
+ * to the window's start, or the day is refused rather than banked short.
  */
-async function readMemDay(now: Date): Promise<{ day: MemDay; memory_day: MemoryDay | null }> {
+async function readMemDay(
+  now: Date,
+  window: MemoryWindow,
+  committedJson: string | null,
+): Promise<{ day: MemDay; memory_day: MemoryDay | null; banked_by: MemoryBankedBy | null }> {
+  const kept = keptMemoryDay(committedJson, window);
+  if (kept !== null) return { day: kept.mem_day, memory_day: kept.memory_day, banked_by: kept.banked_by };
   const creds = upstashCredsFromEnv(process.env);
   if (!creds) {
     return {
+      banked_by: null,
       day: {
         available: false,
         reason:
@@ -816,10 +834,16 @@ async function readMemDay(now: Date): Promise<{ day: MemDay; memory_day: MemoryD
     };
   }
   const ring = await readBoxHealthRing(creds, fetch);
-  if (!ring.ok) return { day: { available: false, reason: "ring read failed: " + ring.error }, memory_day: null };
-  const rows = seriesRows(ring.samples, { hours: 24, now });
-  const st = seriesStats(rows, ring.samples);
-  return { day: { available: true, ...st }, memory_day: memoryDay(rows, st) };
+  if (!ring.ok) {
+    return { day: { available: false, reason: "ring read failed: " + ring.error }, memory_day: null, banked_by: null };
+  }
+  const banked = bankMemoryWindow(ring.samples, window, now);
+  // GITHUB_RUN_ID is the nightly.yml run this receipts job belongs to; a hand run has none.
+  const runId = Number(process.env["GITHUB_RUN_ID"]);
+  return {
+    ...banked,
+    banked_by: banked.memory_day === null ? null : { run_id: Number.isFinite(runId) && runId > 0 ? runId : null, at: now.toISOString() },
+  };
 }
 
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
@@ -1230,10 +1254,20 @@ async function main(): Promise<void> {
     // FIX-1194 P1-B / FIX-1125 — the probe, the memory mirror, and the ring's day.
     const boxRows = await r.run<{ key: string; value: Record<string, unknown> }>("box_health", Q_BOX_HEALTH);
     const boxBy = new Map(boxRows.map((row) => [row.key, row.value]));
-    const mem = await readMemDay(now).catch(
-      (err: unknown): { day: MemDay; memory_day: MemoryDay | null } => ({
+    // FIX-1289 — the window this nominal day banks, and the day's committed
+    // file (read from the directory THIS run writes to, like the crawl baseline
+    // below), so a later run of the same day keeps what the first one banked.
+    const memWindow = memoryWindow(date, SLOT_HOUR_UTC);
+    const committedPath = join(resolveReceiptPaths(args, isLocal).outDir, date + ".json");
+    const mem = await readMemDay(
+      now,
+      memWindow,
+      existsSync(committedPath) ? readFileSync(committedPath, "utf8") : null,
+    ).catch(
+      (err: unknown): { day: MemDay; memory_day: MemoryDay | null; banked_by: MemoryBankedBy | null } => ({
         day: { available: false, reason: err instanceof Error ? err.message : String(err) },
         memory_day: null,
+        banked_by: null,
       }),
     );
 
@@ -1407,6 +1441,8 @@ async function main(): Promise<void> {
         box_health_mem: boxBy.get("box_health_mem") ?? null,
         mem_day: mem.day,
         memory_day: mem.memory_day,
+        window: memWindow,
+        memory_day_banked_by: mem.banked_by,
         crawl_skips: crawlSkips,
         crawl_skips_baseline: crawlBaseline,
         crawl_overlaps_24h: crawlOverlaps,

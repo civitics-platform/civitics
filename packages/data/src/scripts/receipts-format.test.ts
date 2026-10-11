@@ -51,7 +51,11 @@ import {
   parkedArmLines,
   crawlSkipsBaselineFrom,
   previousNominalDay,
+  memoryWindow,
+  bankMemoryWindow,
+  keptMemoryDay,
 } from "./receipts-format";
+import type { BoxHealthSample } from "@civitics/db";
 
 const BAND: Band = { lo_s: 0, hi_s: 140, source: "test" };
 
@@ -1422,4 +1426,99 @@ test("FIX-1270: §9 Parked EC arms — a parked arm renders a row with since, ca
   assert.match(text, /^Parked EC arms \(FIX-1270\): \*\*1\*\* — skipped by every firing until the source fingerprint moves/);
   assert.match(text, /\| arm \| since \| cancels \| fp parked on \| last cancel \|/);
   assert.match(text, /\| rebuild_entity_connections_contracts \| 2026-10-04T02:28:00\.077Z \| 2 \| n=3901112;t=2026-08-31 12:00:00\+00 \| rebuild_entity_connections_contracts: canceling statement due to user request \|/);
+});
+
+// ── FIX-1289: the memory window — exact, refused when not held, banked once ──
+
+/** A synthetic ring, NEWEST FIRST: one sample every 2 min at :22 s, oldest→newest. */
+function ring(oldest: string, newest: string): BoxHealthSample[] {
+  const out: BoxHealthSample[] = [];
+  for (let t = Date.parse(oldest), i = 0; t <= Date.parse(newest); t += 120_000, i++) {
+    out.push({
+      route_at: new Date(t).toISOString(),
+      mem_available_bytes: (300 + (i % 50)) * 1024 * 1024,
+      mem_total_bytes: 904 * 1024 * 1024,
+      swap_total_bytes: 1024 * 1024 * 1024,
+      swap_free_bytes: 512 * 1024 * 1024,
+      pswpin: 1_000 * i,
+      pswpout: 500 * i,
+      scrape_ms: 900,
+    } as BoxHealthSample);
+  }
+  return out.reverse();
+}
+
+test("FIX-1289 (a): a nominal day's window is [slot − 24 h, slot), slot = 21:00Z the day before; days tile", () => {
+  assert.deepEqual(memoryWindow("2026-10-13", 21), { from: "2026-10-11T21:00:00.000Z", to: "2026-10-12T21:00:00.000Z" });
+  assert.deepEqual(memoryWindow("2026-10-12", 21), { from: "2026-10-10T21:00:00.000Z", to: "2026-10-11T21:00:00.000Z" });
+  assert.equal(memoryWindow("2026-10-12", 21).to, memoryWindow("2026-10-13", 21).from, "no gap, no overlap");
+  // Month and year edges come from previousNominalDay, not string arithmetic.
+  assert.deepEqual(memoryWindow("2027-01-01", 21), { from: "2026-12-30T21:00:00.000Z", to: "2026-12-31T21:00:00.000Z" });
+});
+
+test("FIX-1289 (a): a 30 h ring read at 21:12Z banks exactly the window — nothing after `to`, nothing before `from`", () => {
+  const w = memoryWindow("2026-10-13", 21);
+  const now = new Date("2026-10-12T21:12:40.000Z");
+  const r = bankMemoryWindow(ring("2026-10-11T15:14:22.000Z", "2026-10-12T21:12:22.000Z"), w, now);
+  assert.equal(r.day.available, true);
+  assert.ok(r.memory_day !== null);
+  assert.equal(r.memory_day!.samples, 720, "24 h at 2 min");
+  assert.equal(r.memory_day!.first_at, "2026-10-11T21:00:22.000Z");
+  assert.equal(r.memory_day!.last_at, "2026-10-12T20:58:22.000Z", "the 21:00:22 sample is the NEXT day's");
+});
+
+test("FIX-1289 (b): a ring that starts after `from` is refused — no short day is banked", () => {
+  const w = memoryWindow("2026-10-13", 21);
+  const now = new Date("2026-10-12T21:12:40.000Z");
+  // Today's 24 h ring at write time: oldest = write − 24 h, 12 min into the window.
+  const r = bankMemoryWindow(ring("2026-10-11T21:14:22.000Z", "2026-10-12T21:12:22.000Z"), w, now);
+  assert.equal(r.memory_day, null);
+  assert.deepEqual(r.day, {
+    available: false,
+    reason: "ring holds 2026-10-11T21:14:22.000Z → 2026-10-12T21:12:22.000Z; window 2026-10-11T21:00:00.000Z → 2026-10-12T21:00:00.000Z not held",
+  });
+  // An empty ring is refused the same way, not banked as a zero-sample day.
+  const empty = bankMemoryWindow([], w, now);
+  assert.equal(empty.memory_day, null);
+  assert.equal(empty.day.available, false);
+  // A window that has not closed yet (a hand run with a future --date) is refused too.
+  const early = bankMemoryWindow(ring("2026-10-11T15:00:22.000Z", "2026-10-12T20:00:22.000Z"), w, new Date("2026-10-12T20:01:00.000Z"));
+  assert.equal(early.memory_day, null);
+  assert.match((early.day as { reason: string }).reason, /has not closed/);
+});
+
+test("FIX-1289 (c): a later run of the nominal day keeps the committed memory_day when the window matches", () => {
+  const w = memoryWindow("2026-10-13", 21);
+  const memDay = {
+    available: true as const, n: 720, first_at: "2026-10-11T21:00:22.000Z", last_at: "2026-10-12T20:58:22.000Z",
+    min_mb: 300, min_at: "2026-10-11T21:00:22.000Z", median_mb: 324, max_mb: 349, mem_total_mb: 904,
+  };
+  const bankedBy = { run_id: 18300000001, at: "2026-10-12T21:12:40.000Z" };
+  const committed = (forker: Record<string, unknown>) => JSON.stringify({ nominal_date: "2026-10-13", forker });
+  const first = committed({ window: w, mem_day: memDay, memory_day: MEMORY_DAY, memory_day_banked_by: bankedBy });
+
+  const kept = keptMemoryDay(first, w);
+  assert.ok(kept !== null, "the fallback keeps the first run's day");
+  assert.deepEqual(kept!.memory_day, MEMORY_DAY);
+  assert.deepEqual(kept!.mem_day, memDay);
+  assert.deepEqual(kept!.banked_by, bankedBy, "and names the run that banked it");
+
+  // Anything else is recomputed: no file, an unparseable one, a refused day,
+  // a pre-1289 file with no window, or a different window.
+  assert.equal(keptMemoryDay(null, w), null);
+  assert.equal(keptMemoryDay("{not json", w), null);
+  assert.equal(keptMemoryDay(committed({ window: w, mem_day: { available: false, reason: "r" }, memory_day: null }), w), null);
+  assert.equal(keptMemoryDay(committed({ mem_day: memDay, memory_day: MEMORY_DAY }), w), null);
+  assert.equal(keptMemoryDay(first, memoryWindow("2026-10-12", 21)), null);
+});
+
+test("FIX-1289: §9 names the window and who banked it; a kept day says so", () => {
+  const w = memoryWindow("2026-10-13", 21);
+  const base = { ...quiet, memory_day: MEMORY_DAY, window: w };
+  const own = boxHealthLines({ ...base, memory_day_banked_by: { run_id: 18300000001, at: AS_OF } }, AS_OF).join("\n");
+  assert.match(own, /Memory window \(FIX-1289\): 2026-10-11T21:00:00\.000Z → 2026-10-12T21:00:00\.000Z, banked by run 18300000001 at 2026-09-12T06:30:00\.000Z\./);
+  const kept = boxHealthLines({ ...base, memory_day_banked_by: { run_id: null, at: "2026-09-12T05:00:00.000Z" } }, AS_OF).join("\n");
+  assert.match(kept, /banked by a hand run at 2026-09-12T05:00:00\.000Z — kept: this run did not re-read the ring\./);
+  const refused = boxHealthLines({ ...quiet, window: w, mem_day: { available: false, reason: "ring holds x → y; window a → b not held" }, memory_day: null }, AS_OF).join("\n");
+  assert.match(refused, /Memory window \(FIX-1289\): 2026-10-11T21:00:00\.000Z → 2026-10-12T21:00:00\.000Z, \*\*not banked\*\*\./);
 });

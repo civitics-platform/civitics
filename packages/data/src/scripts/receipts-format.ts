@@ -23,7 +23,8 @@
 
 import { BINDING_ACTIONS } from "../pipelines/congress/legislator-ids";
 import { nextCronOccurrence, restrictsDayOfMonthOrMonth } from "../lib/cron-next";
-import type { MemoryDay } from "../lib/box-health-series";
+import type { BoxHealthSample } from "@civitics/db";
+import { memoryDay, seriesStats, windowRows, type MemoryDay } from "../lib/box-health-series";
 
 /**
  * Verdict vocabulary.
@@ -712,6 +713,19 @@ export interface ForkerSection {
    */
   memory_day?: MemoryDay | null;
   /**
+   * FIX-1289 — the window `memory_day` covers: exactly `[slot − 24 h, slot)`,
+   * slot = the 21:00Z that names this nominal day. Present whether or not the
+   * ring held it (when it did not, `memory_day` is null and `mem_day` says why).
+   */
+  window?: MemoryWindow | null;
+  /**
+   * FIX-1289 — the run that banked `memory_day` for this window. Every later
+   * run of the same nominal day KEEPS the committed value and carries this, so
+   * the schedule fallback's rewrite of the file (FIX-1218) leaves the day as the
+   * first run banked it. null when nothing was banked.
+   */
+  memory_day_banked_by?: MemoryBankedBy | null;
+  /**
    * FIX-1124 — both crawls' LIFETIME skip counters, `pipeline_state.<key>.skips`
    * verbatim (`{<reason>: n, last_skip_at, last_skip_reason}`). Banked so the
    * next file can take a delta: nothing else keeps a history of them.
@@ -913,7 +927,7 @@ export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
     out.push("Day's memory series (off-box ring): the ring holds no samples from the last 24 h.");
   } else {
     out.push(
-      "Day's memory series (off-box ring, last 24 h): " + day.n + " samples " + n0(day.first_at) + " → " +
+      "Day's memory series (off-box ring, " + (f.window ? "the window below" : "last 24 h") + "): " + day.n + " samples " + n0(day.first_at) + " → " +
         n0(day.last_at) + "; MemAvailable min **" + n0(day.min_mb) + " MB** (at " + n0(day.min_at) +
         ") / median " + n0(day.median_mb) + " MB / max " + n0(day.max_mb) + " MB" +
         (day.mem_total_mb !== null ? " of " + day.mem_total_mb + " MB" : "") + ".",
@@ -931,12 +945,101 @@ export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
         n0(md.swap_used_mb.max) + " MB; gaps " + md.gaps + " (intervals over 6 min, not rated).",
     );
   }
+  // FIX-1289 — which window, and who banked it.
+  const w = f.window ?? null;
+  if (w !== null) {
+    const by = f.memory_day_banked_by ?? null;
+    out.push("");
+    out.push(
+      "Memory window (FIX-1289): " + w.from + " → " + w.to + ", " +
+        (md === null
+          ? "**not banked**."
+          : "banked by " + (by === null ? "an unrecorded run" : by.run_id === null ? "a hand run" : "run " + by.run_id) +
+            (by === null ? "" : " at " + by.at) +
+            (by !== null && by.at !== asOf ? " — kept: this run did not re-read the ring." : ".")),
+    );
+  }
   return out;
 }
 
 /** FIX-1124 — the nominal day before `date` (YYYY-MM-DD), whose file is the delta's baseline. */
 export function previousNominalDay(date: string): string {
   return new Date(Date.parse(date + "T00:00:00Z") - 86_400_000).toISOString().slice(0, 10);
+}
+
+/** FIX-1289 — a memory window, `[from, to)`, as ISO instants. */
+export type MemoryWindow = { from: string; to: string };
+
+/** FIX-1289 — who banked a window: the GHA run (null for a hand run) and when. */
+export type MemoryBankedBy = { run_id: number | null; at: string };
+
+/**
+ * FIX-1289 — the window a nominal day banks: `[slot − 24 h, slot)`, where slot
+ * is `slotHourUtc` on the day BEFORE `date` — the nightly that names `date`
+ * fires then (FIX-1163). So consecutive nominal days tile with no gap and no
+ * overlap, whenever each day's receipts run actually wrote.
+ */
+export function memoryWindow(date: string, slotHourUtc: number): MemoryWindow {
+  const to = Date.parse(previousNominalDay(date) + "T00:00:00Z") + slotHourUtc * 3_600_000;
+  return { from: new Date(to - 86_400_000).toISOString(), to: new Date(to).toISOString() };
+}
+
+/**
+ * FIX-1289 — bank exactly `window` from the ring, or refuse it.
+ *
+ * Refused (memory_day null, `day` says why) when the window has not closed or
+ * when the ring's OLDEST sample is after `window.from`: a ring that does not
+ * reach back to the window's start would bank a short day, and the head it
+ * drops is the previous nightly (cc-202). Before FIX-1289 this banked "the 24 h
+ * ending at write time", which moved with every run of the day.
+ */
+export function bankMemoryWindow(
+  newestFirst: BoxHealthSample[],
+  window: MemoryWindow,
+  now: Date,
+): { day: MemDay; memory_day: MemoryDay | null } {
+  const refuse = (reason: string) => ({ day: { available: false as const, reason }, memory_day: null });
+  if (now.getTime() < Date.parse(window.to)) {
+    return refuse("window " + window.from + " → " + window.to + " has not closed at " + now.toISOString());
+  }
+  const times = newestFirst.map((x) => Date.parse(x.route_at)).filter((t) => Number.isFinite(t));
+  if (times.length === 0) return refuse("the ring holds no samples; window " + window.from + " → " + window.to + " not held");
+  const oldest = new Date(Math.min(...times)).toISOString();
+  const newest = new Date(Math.max(...times)).toISOString();
+  if (Date.parse(oldest) > Date.parse(window.from)) {
+    return refuse("ring holds " + oldest + " → " + newest + "; window " + window.from + " → " + window.to + " not held");
+  }
+  const rows = windowRows(newestFirst, window);
+  const st = seriesStats(rows, newestFirst);
+  return { day: { available: true, ...st }, memory_day: memoryDay(rows, st) };
+}
+
+/**
+ * FIX-1289 — write-once. Given the COMMITTED file for this nominal day (null =
+ * none), the day it already banked for `window`, or null when this run must
+ * compute it: no file, an unparseable one, a day that was refused, a pre-1289
+ * file with no window, or a different window. Only the memory keys are kept —
+ * the rest of the file is rewritten as FIX-1218 intends.
+ */
+export function keptMemoryDay(
+  committedJson: string | null,
+  window: MemoryWindow,
+): { mem_day: MemDay; memory_day: MemoryDay; banked_by: MemoryBankedBy | null } | null {
+  if (committedJson === null) return null;
+  let forker: Partial<ForkerSection> | undefined;
+  try {
+    forker = (JSON.parse(committedJson) as { forker?: Partial<ForkerSection> }).forker;
+  } catch {
+    return null;
+  }
+  const w = forker?.window;
+  const md = forker?.memory_day ?? null;
+  if (md === null || !w || w.from !== window.from || w.to !== window.to) return null;
+  return {
+    mem_day: forker?.mem_day ?? { available: false, reason: "kept memory_day; the committed file carried no mem_day" },
+    memory_day: md,
+    banked_by: forker?.memory_day_banked_by ?? null,
+  };
 }
 
 /**

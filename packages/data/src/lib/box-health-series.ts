@@ -2,7 +2,7 @@
  * FIX-1125 — the off-box memory series, as rows a human reads.
  *
  * The ring (`civitics:box_health:mem`, packages/db/src/box-health-store.ts)
- * holds up to 720 samples, newest first, one every 2 minutes. This turns them
+ * holds up to 900 samples (30 h, FIX-1289), newest first, one every 2 minutes. This turns them
  * into oldest-first rows with the derived numbers, plus the day's
  * min / median / max. It is shared by `data:box-health:series` (the instrument
  * the next outage read uses, because it does not need this database) and by
@@ -53,9 +53,20 @@ function rate(prev: number | undefined, cur: number | undefined, seconds: number
 
 /** Newest-first samples → oldest-first rows inside the last `hours`. */
 export function seriesRows(newestFirst: BoxHealthSample[], opts: { hours: number; now: Date }): SeriesRow[] {
-  const since = opts.now.getTime() - opts.hours * 3_600_000;
+  return rowsBetween(newestFirst, opts.now.getTime() - opts.hours * 3_600_000, Infinity);
+}
+
+/** FIX-1289 — oldest-first rows with `route_at` in `[from, to)`: a receipts window, both ends fixed. */
+export function windowRows(newestFirst: BoxHealthSample[], w: { from: string; to: string }): SeriesRow[] {
+  return rowsBetween(newestFirst, Date.parse(w.from), Date.parse(w.to));
+}
+
+function rowsBetween(newestFirst: BoxHealthSample[], since: number, until: number): SeriesRow[] {
   const inWindow = newestFirst
-    .filter((s) => Date.parse(s.route_at) >= since)
+    .filter((s) => {
+      const t = Date.parse(s.route_at);
+      return t >= since && t < until;
+    })
     .sort((a, b) => Date.parse(a.route_at) - Date.parse(b.route_at));
   return inWindow.map((s, i) => {
     const prev = i > 0 ? inWindow[i - 1] : undefined;

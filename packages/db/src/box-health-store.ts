@@ -35,9 +35,15 @@
  *
  * Upstash, over REST, in ONE pipelined request per sample:
  *   LPUSH civitics:box_health:mem <json>
- *   LTRIM civitics:box_health:mem 0 719     — a 24 h ring at 2-min cadence
+ *   LTRIM civitics:box_health:mem 0 899     — a 30 h ring at 2-min cadence
  * These are 2 commands against the 500k/month allotment the rate limiter
  * shares: 720 samples/day × 2 = 1,440/day, about 43k per 30-day month, 8.6 %.
+ * That is set by the CADENCE, not the ring length: FIX-1289 took the ring from
+ * 720 (24 h) to 900 (30 h) at the same 2 commands a sample, so the command
+ * share is unchanged and only the stored list grows, by 25 %. The 30 h is so
+ * the receipts job, which runs after the 21:00Z slot (up to ~100 min after on a
+ * Sunday drop night, ~3 h for the schedule fallback), still holds the whole
+ * [slot − 24 h, slot) window it banks.
  * The latest sample IS the ring's head (LINDEX … 0 — one command, the same as
  * a GET). cc-153 dropped the `SET civitics:box_health:latest` that duplicated
  * it: nothing read that key, and it cost 21,600 commands a month. The on-box
@@ -61,8 +67,8 @@
 import { METRICS_URL, parsePrometheusText, type PromMatch } from "./supabase-prometheus";
 
 export const BOX_HEALTH_RING_KEY = "civitics:box_health:mem";
-/** 24 h at the route's 2-minute cadence. */
-export const BOX_HEALTH_RING_LEN = 720;
+/** 30 h at the route's 2-minute cadence (FIX-1289; was 720 = 24 h). */
+export const BOX_HEALTH_RING_LEN = 900;
 /** Upstash commands each sample costs, stated so the quota share is checkable. */
 export const BOX_HEALTH_COMMANDS_PER_SAMPLE = 2;
 
