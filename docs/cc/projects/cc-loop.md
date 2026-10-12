@@ -13,6 +13,7 @@ steps:
   - {id: s5, kind: cc, ref: "cc-172", title: "backlog, goals, windows, cron history, docs archive"}
   - {id: s6, kind: cc, ref: "cc-190", title: "the runner tears its worktree down; fixes:check guards fix:add collisions (FIX-1271)"}
   - {id: s7, kind: cc, ref: "cc-201", title: "1276 prunable orphan path + 1275 HEAVY gate", done: 2026-10-06}
+  - {id: s8, kind: cc, ref: "cc-221", title: "Sunday hygiene bundle — 1283 institutions 308, 1282 worktree root, 1289 ring 900 + slot windows, db-query label", done: 2026-10-12}
 ---
 
 # The CC loop
