@@ -378,3 +378,73 @@ held. Nothing filed for the crawl itself, per the prompt (but see §F item 4).
 10. **R4: "the host split (`civitics.com` vs `*.vercel.app`)".** A `*.vercel.app` host
     cannot appear in the zone's analytics. The 08-15 H2 check used `vercel logs`, which this
     prompt's posture excludes.
+
+---
+
+## §G Origin doors (addendum)
+
+This addendum was run in the same cc-229 session at 23:35Z with the same posture. It
+settles §E-1's "confirm the host" by probing the doors directly, without needing the
+Vercel log. It files **FIX-1305**.
+
+### G1. Probes (GET, UA `cc-229-probe`, from the primary root, 2026-10-12 23:35:27Z)
+
+```
+alias  200
+ip+host  307 https://www.civitics.com/officials
+cf-path  403
+ip+www  200
+```
+
+| line | request | reading |
+|---|---|---|
+| `alias` | `https://civitics-civitics.vercel.app/officials` | **Open.** The `*.vercel.app` production alias serves the page with no Cloudflare in the path. |
+| `ip+host` | `--resolve civitics.com:443:76.76.21.21 https://civitics.com/officials` | Vercel answered at its anycast IP, but the **apex** redirects to `www` (307), so this line alone does not settle the door. |
+| `ip+www` | `--resolve www.civitics.com:443:76.76.21.21 https://www.civitics.com/officials` | **Open.** Vercel serves the canonical host to anyone who resolves its IP themselves. This fourth GET was added because `ip+host`'s 307 left the door undecided; it is a deviation from the addendum's three probes. |
+| `cf-path` | `https://civitics.com/officials` | Control: 403 `challenge` (Under Attack is still in force). |
+
+**Both off-Cloudflare doors are open.** The IP door is the one no Vercel setting closes,
+because Vercel cannot tell a direct-to-IP request with `Host: www.civitics.com` apart from
+one Cloudflare forwarded. Only an origin-auth header (shape b) separates them.
+`76.76.21.21` answered, so the zone's A-record value (216.198.79.1) was not needed.
+
+### G2. The crawl's identity from the Vercel side: not readable here
+
+`pnpm dlx vercel whoami` → `> Logged out.` (Vercel CLI 63.1.2). Per the addendum, I
+stopped there: no login, no `vercel logs`. Identity remains Craig's dashboard read:
+Observability → Logs, 2026-10-12 16:30–19:15Z, path prefix `/officials/` and
+`/jurisdictions/`, grouped by host / UA / IP. The host split in that read says which door
+carried it. G1 says both could have.
+
+### G3. Caller census for the lockdown (tree at b98810c4)
+
+| caller | host it uses | survives (a) Deployment Protection on the alias | survives (b) origin-auth header |
+|---|---|---|---|
+| `platform-snapshot.yml:201` request-path probe: `APP_URL: ${{ secrets.PROBE_URL \|\| secrets.CIVITICS_APP_URL \|\| 'https://civitics-civitics.vercel.app' }}` | `civitics.com` (`PROBE_URL` since FIX-1057); the alias only if `PROBE_URL` is unset | yes, while `PROBE_URL` is set | yes: it rides Cloudflare, so the Transform Rule stamps it |
+| any other `.github/workflows/*` | none. The only `secrets.*URL` references are this one and `nightly.yml:688`'s `UPSTASH_REDIS_REST_URL`, which is not the app | n/a | n/a |
+| `run-platform-snapshot.ts:37` / `:545` / `:584`, `kill-switches/route.ts:37` / `:100`, `test-email/route.ts:35`: `NEXT_PUBLIC_SITE_URL ?? "https://civitics-civitics.vercel.app"` | used only as the **link base in alert emails**, never fetched | yes. Only a link in an email would hit protection, and only if `NEXT_PUBLIC_SITE_URL` is unset | yes, nothing is requested |
+| `front-door-watch/route.ts:232`: `probeFrontDoor(supabaseUrl)` | `NEXT_PUBLIC_SUPABASE_URL` (Supabase, not the app) | unaffected | unaffected |
+| `apps/civitics/vercel.json`: 9 crons, all `/api/cron/*` | invoked by Vercel against the production deployment | per Vercel's cron model, yes (not verified here) | yes, if `/api/cron/*` is exempt (they authenticate with `CRON_SECRET`) |
+| `middleware.ts` | reads `x-forwarded-for` (`:140`) and nothing about `host` | — | the origin-auth check is a **new first check**, placed before `checkRateLimit` (`:247`), so a refused request costs zero Upstash commands |
+| `notify-followers/route.ts:12` | a doc-comment curl example naming the alias | n/a (comment) | n/a |
+
+**`NEXT_PUBLIC_SITE_URL` in Vercel production is UNREAD.** `vercel env ls` needs the CLI,
+and the CLI is logged out (G2). The name is present in `.env.local.prod` (1 line; the value
+was not read), which is a local mirror and not proof of the Vercel setting. If it is set in
+Vercel, **the alias has no load-bearing caller in the tree.** Two pre-flight checks for (a),
+both dashboard reads for Craig: `NEXT_PUBLIC_SITE_URL` is set in Vercel production, and
+Supabase Auth's Site URL / redirect allowlist does not name the alias (magic links would
+land on a protected host).
+
+### G4. Decision table for Craig
+
+| door | open? (A1) | closes with | who | cost |
+|---|---|---|---|---|
+| `civitics-civitics.vercel.app` | **yes, 200** | Vercel Deployment Protection | Craig, dashboard | 0 code |
+| Vercel IP + `Host: civitics.com` | **yes**: apex 307 → www, `www` 200 | origin-auth header (CF Transform Rule + middleware) | cc-230 + Craig adds the rule | ~40 lines + 1 secret in two places |
+| `civitics.com` via Cloudflare | control (403 challenge) | nothing — this is the path that should carry 100 % | — | — |
+
+Filed as **FIX-1305** (🟠 S, lane app). Land shape (b) in two steps: report-only for 24 h
+(count the missing-header share; expect ≈ 0 on the Cloudflare path), THEN enforce. The
+Transform Rule must be live in Cloudflare before the enforcing deploy, or civitics.com 403s
+itself. This supersedes the 08-15 audit's D2-6 ranking ("not the leak"): it is the leak.

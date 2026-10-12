@@ -13,7 +13,8 @@
   ],
   "fixes_closed": [],
   "fixes_filed": [
-    "FIX-1304"
+    "FIX-1304",
+    "FIX-1305"
   ],
   "fixes_reopened": [],
   "migrations_pushed": [],
@@ -26,7 +27,9 @@
     "Deviation, R4/R6 breadth: four extra cf-analytics calls (UA and IP for 16–20Z, IP for 03–05Z, hourly for 10-11), plus one extra ring read (--hours 30 --json) for the restart samples. One further ring call died on argument parsing before it read anything.",
     "Not answerable under this posture, so recorded in the audit as such: the crawl's identity (host, UA, IPs live only in Vercel's request log); the restart class and who restarted it (postgres_logs); an EXPLAIN of the tail's work-list read (outside the eight statements).",
     "Not filed, by the prompt's rule: an origin-lockdown FIX. Section 6 says nothing for the crawl because Cloudflare owns the class, but the crawl bypassed Cloudflare. Recorded in audit F4 and offered as option E1 for Craig.",
-    "Known inaccuracy, not re-committed (the prompt allows one docs commit): the audit header says the reads ran from 22:58Z. They started after the 23:01:04Z --start marker; the Cloudflare window opens at 23:01:56Z."
+    "Known inaccuracy, not re-committed (the prompt allows one docs commit): the audit header says the reads ran from 22:58Z. They started after the 23:01:04Z --start marker; the Cloudflare window opens at 23:01:56Z.",
+    "Addendum (23:35Z): I ran a fourth GET (www.civitics.com resolved to 76.76.21.21) because the apex-on-IP probe answered 307 to www and did not settle the door. A2 stopped as instructed: pnpm dlx vercel whoami printed Logged out, so there was no vercel logs read, no login, and no vercel env ls. NEXT_PUBLIC_SITE_URL in Vercel production is therefore unread.",
+    "Addendum commit: the commit that re-commits this report (the addendum) cannot list its own sha in commits[], so commits[] and head_after still name the original run. The addendum commit is the one after b98810c4 on main."
   ],
   "lane": "ops",
   "owed": []
