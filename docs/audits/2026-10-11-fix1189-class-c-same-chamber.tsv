@@ -1,0 +1,25 @@
+# FIX-1189 — class C: same-chamber second id. NOT A MANIFEST THE TOOL CAN RUN.
+# Written by cc-222 (2026-10-11) from a read-only audit; nothing applied.
+# Audit of record: docs/audits/2026-10-11-fix1189-other-office-double-claim-audit.md
+#
+# Each row's survivor holds a live House id and the stub holds a SECOND House
+# id the dataset also lists for the same bioguide. --adopt-prior REFUSES every
+# row ("survivor does not claim …": its gate requires the survivor's live id to
+# be the OTHER chamber's letter, merge-same-person-official-dupes.ts:838-843).
+# This file is the input to the gate-extension design, in the shape the tool
+# reads (Luján manifest header), so the extension can be dry-run against it.
+#
+# Three of the four have NO determinable current id in the dataset
+# (currentFecId → ambiguous; the receipt's current_id is empty): Ivey and
+# Gillen hold two ids for the same district; McGuire's two ids are both VA-07
+# and he sits for VA-5. Only Onder's current id is determinable (H4MO03221
+# agrees with MO-3; H8MO09146 is the 2008 MO-9 race). So for three rows
+# "which id is live" is itself undecided — the extension must say how.
+#
+# Stub FR, class C: 468 rows, $8,680,285 ($1,300,546 donations + $7,379,739
+# IE support+oppose); 365 collisions, $8,358,680 of losers.
+survivor	dup	fec_id	name	evidence
+fed7caaa-0d38-45a8-a7f9-20ea8cfe4fb9	62165949-8118-4305-b0e2-10a20f2f75f8	H2MD04315	Glenn Ivey (H)  <-  Glenn Ivey (Candidate for Representative)	congress-legislators id.fec[] for I000058 lists H2MD04315, H2MD04232 (ETag W/"6ab4f9aa-166a83"); terms: rep MD-4 2023-01-03..2027-01-03 (2 terms); both ids H; stub 62165949 (fec_bulk_ie) holds H2MD04315 (cc-222 audit §2)
+84b91068-ab4b-4e2a-88cc-2113d126065e	3d66bd76-a62f-47d8-ac5b-754da7494df6	H2VA07196	John J. McGuire (H)  <-  John Mcguire (Candidate for Representative)	congress-legislators id.fec[] for M001239 lists H2VA07196, H0VA07133 (ETag W/"6ab4f9aa-166a83"); terms: rep VA-5 2025-01-03..2027-01-03; both ids H; stub 3d66bd76 (fec_bulk_cn) holds H2VA07196 (cc-222 audit §2)
+bd53f3dd-f6f9-4d8c-a0c0-3b13d33b8093	5815cd64-678f-4bb0-a0f2-c78255ad0211	H4NY04158	Laura Gillen (H)  <-  Laura Gillen (Candidate for Representative)	congress-legislators id.fec[] for G000602 lists H4NY04158, H2NY04244 (ETag W/"6ab4f9aa-166a83"); terms: rep NY-4 2025-01-03..2027-01-03; both ids H; stub 5815cd64 (fec_bulk_ie) holds H4NY04158 (cc-222 audit §2)
+f7ca909b-38d6-408a-a045-4bd6c6c8e840	36b1de16-e183-4263-a5e6-a91bb01612c9	H8MO09146	Robert F. Onder (H)  <-  Robert Onder Jr (Candidate for Representative)	congress-legislators id.fec[] for O000177 lists H8MO09146, H4MO03221 (ETag W/"6ab4f9aa-166a83"); terms: rep MO-3 2025-01-03..2027-01-03; both ids H; stub 36b1de16 (fec_bulk_cn) holds H8MO09146 (cc-222 audit §2)

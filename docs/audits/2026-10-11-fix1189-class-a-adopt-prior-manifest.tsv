@@ -1,0 +1,68 @@
+# FIX-1189 — class-A adopt-prior manifest (shape C, the Luján recipe). DRAFT.
+# THIS FILE IS A DRAFT, NOT YET AN AUTHORISATION. Written and committed by
+# cc-222 (2026-10-11) from a read-only audit; NOTHING HAS BEEN APPLIED. It
+# becomes an authorisation only when Craig says go, and a later supervised
+# prompt applies it under the script's own claim (rule 42: committed before any
+# dry run). Audit of record: docs/audits/2026-10-11-fix1189-other-office-double-claim-audit.md
+#
+# WHAT A ROW WOULD AUTHORISE (FIX-1288 shape C, --adopt-prior): the survivor
+# (a sitting member, live id = the chamber held) ADOPTS the stub's id into
+# source_ids.prior_fec_candidate_ids and keeps its live id; the stub's FR rows
+# move to the survivor (colliding losers deleted, fresher row kept — see the
+# audit §4(c)); the stub's id retires to merged_fec_candidate_ids. One
+# transaction, then manifest-scoped rollups; --defer-tails.
+#
+# POPULATION: docs/receipts/2026-10-12.json legislator_ids.complete (nightly
+# GHA run 38174539706, started 2026-10-11T22:43:19Z), double_claim 46,
+# split {other_id: 46, current_id: 0}. Class A = the contested id's office
+# letter is the OTHER chamber AND (the member held that chamber — A1, 20 rows —
+# OR the stub's fec_election_yr predates the member's current service — A2,
+# 2 rows: John James S8MI00372, Wesley Bell S4MO00250). 22 rows.
+#
+# DATASET READ 2026-10-11 23:45:24Z: legislators-current.json, ETag
+# W/"6ab4f9aa-166a83" (the file the nightly classified against), 539 members,
+# 46/46 bioguides matched.
+#
+# PROD STATE READ 2026-10-11 23:41Z..23:57Z (db-query --prod, read-only):
+#   every survivor tier elected / is_active, no prior_fec_candidate_ids;
+#   every stub tier candidate, no bioguide, 0 votes / career_history /
+#   committee memberships / promises / cosponsors / comments / civic responses
+#   / lobbying / sponsored bills / proposal actions / external_relationships.
+#   Stub FR, class A: 43,843 rows, $134,255,104 ($64,778,937 donations +
+#   $69,476,167 IE support+oppose), cycles 2020-2026.
+#
+# GATE PREVIEW (merge-same-person-official-dupes.ts:835-881, predicted from the
+# rows above — the dry run is the measurement): 18 accept, 4 REFUSE on the
+# FIX-929 first-name key, which compares the survivor's congress first name to
+# the stub's FEC legal first name:
+#   Bill Cassidy   BIL vs WIL (William)     Jim Banks   JIM vs JAM (James)
+#   Ted Budd       TED vs THE (Theodore)    Tom Cotton  TOM vs THO (Thomas)
+# A refused pair is reported and the run continues; those 4 rows stay listed
+# here so the dry run's 18/4 split is the expected result, not a surprise.
+#
+# COLLISION PREVIEW (audit §4(c)): 4,410 colliding (type, from_id, cycle) rows,
+# $22,181,468 of losers the fresher-row rule would delete; $8,721,644 of that
+# is on survivor rows refreshed AFTER the stub row was first written.
+survivor	dup	fec_id	name	evidence
+526e530f-ea39-4a01-bc24-33f02bf0a22a	44c85a80-4585-4611-95a6-a6b195940fc1	H8NJ03206	Andy Kim (S)  <-  Andy Kim (Candidate for Representative)	congress-legislators id.fec[] for K000394 lists H8NJ03206, S4NJ00466 (ETag W/"6ab4f9aa-166a83"); terms: rep NJ-3 2019-01-03..2024-12-08 (3 terms) (prior, ended); now sen NJ 2024-12-09..2031-01-03 (2 terms) -> live S4NJ00466; stub 44c85a80 (fec_bulk_cn) holds H8NJ03206 (cc-222 audit §2)
+fa237ff5-a496-4f4a-97cb-fed07a08efd0	03d38fae-b058-4c98-8933-1750a4cfdfad	H8LA00017	Bill Cassidy (S)  <-  William Cassidy (Candidate for Representative)	congress-legislators id.fec[] for C001075 lists H8LA00017, S4LA00107 (ETag W/"6ab4f9aa-166a83"); terms: rep LA-6 2009-01-06..2015-01-03 (3 terms) (prior, ended); now sen LA 2015-01-06..2027-01-03 (2 terms) -> live S4LA00107; stub 03d38fae (fec_bulk_ie) holds H8LA00017 (cc-222 audit §2)
+82cb033e-efe6-4f33-a12c-46afedc073cc	a3b33a19-697c-414a-902b-c8bfe7e8d2b1	H2MD08126	Chris Van Hollen (S)  <-  Chris Van Hollen (Candidate for Representative)	congress-legislators id.fec[] for V000128 lists H2MD08126, S6MD03441 (ETag W/"6ab4f9aa-166a83"); terms: rep MD-8 2003-01-07..2017-01-03 (7 terms) (prior, ended); now sen MD 2017-01-03..2029-01-03 (2 terms) -> live S6MD03441; stub a3b33a19 (fec_bulk_cn) holds H2MD08126 (cc-222 audit §2)
+bb23212c-9844-4ffa-8172-d92655440dd1	3a0a8ed8-e36c-4b90-bfca-0e35cc7885ad	H6MA07101	Edward J. Markey (S)  <-  Edward Markey (Candidate for Representative)	congress-legislators id.fec[] for M000133 lists H6MA07101, S4MA00028 (ETag W/"6ab4f9aa-166a83"); terms: rep MA-7/MA-5 1975-01-14..2013-07-15 (20 terms) (prior, ended); now sen MA 2013-07-16..2027-01-03 (3 terms) -> live S4MA00028; stub 3a0a8ed8 (fec_bulk_ie) holds H6MA07101 (cc-222 audit §2)
+dfd9dd3c-8d53-4bf3-8609-a5aebd73f5dd	6eb02baf-1234-4312-bcba-8508b1fc95a1	H8MI08102	Elissa Slotkin (S)  <-  Elissa Slotkin (Candidate for Representative)	congress-legislators id.fec[] for S001208 lists H8MI08102, S4MI00470 (ETag W/"6ab4f9aa-166a83"); terms: rep MI-8/MI-7 2019-01-03..2025-01-03 (3 terms) (prior, ended); now sen MI 2025-01-03..2031-01-03 -> live S4MI00470; stub 6eb02baf (fec_bulk_cn) holds H8MI08102 (cc-222 audit §2)
+a333edfb-4091-48f6-a08e-181f7dc646a2	1bc2d810-66d3-4ff3-bdf1-4c1880814d52	H6NV03139	Jacky Rosen (S)  <-  Jacky Rosen (Candidate for Representative)	congress-legislators id.fec[] for R000608 lists H6NV03139, S8NV00156 (ETag W/"6ab4f9aa-166a83"); terms: rep NV-3 2017-01-03..2019-01-03 (prior, ended); now sen NV 2019-01-03..2031-01-03 (2 terms) -> live S8NV00156; stub 1bc2d810 (fec_bulk_cn) holds H6NV03139 (cc-222 audit §2)
+c489979d-6543-4823-95e8-9a25e1cc88d5	d928d018-3ed3-48a3-88ab-1b0171d547a1	H0OK05114	James Lankford (S)  <-  James Lankford (Candidate for Representative)	congress-legislators id.fec[] for L000575 lists H0OK05114, S4OK00232 (ETag W/"6ab4f9aa-166a83"); terms: rep OK-5 2011-01-05..2015-01-03 (2 terms) (prior, ended); now sen OK 2015-01-06..2029-01-03 (3 terms) -> live S4OK00232; stub d928d018 (fec_bulk_cn) holds H0OK05114 (cc-222 audit §2)
+ef1811ae-882c-428e-b904-9ca6f2a48681	30489b7e-705f-4ff4-b46b-425278412239	H6IN03229	Jim Banks (S)  <-  James Banks (Candidate for Representative)	congress-legislators id.fec[] for B001299 lists H6IN03229, S4IN00196 (ETag W/"6ab4f9aa-166a83"); terms: rep IN-3 2017-01-03..2025-01-03 (4 terms) (prior, ended); now sen IN 2025-01-03..2031-01-03 -> live S4IN00196; stub 30489b7e (fec_bulk_cn) holds H6IN03229 (cc-222 audit §2)
+3c1674a2-1f45-4766-847a-877102e8a747	9c34c1b6-7c27-4974-b363-06c70bdf346c	S8MI00372	John James (H)  <-  John James (Candidate for Senator)	congress-legislators id.fec[] for J000307 lists H2MI10150, S8MI00372 (ETag W/"6ab4f9aa-166a83"); no sen term (a prior candidacy, never held): stub fec_election_yr 2020 < rep service start 2023-01-03; now rep MI-10 2023-01-03..2027-01-03 (2 terms) -> live H2MI10150; stub 9c34c1b6 (fec_bulk_cn) holds S8MI00372 (cc-222 audit §2)
+7aa932bb-f40c-44bf-8408-83860ef0f339	db447fea-e62f-40a7-9757-a25b25e6dc73	H0ND01026	Kevin Cramer (S)  <-  Kevin Cramer (Candidate for Representative)	congress-legislators id.fec[] for C001096 lists H0ND01026, H6ND00074, S8ND00120 (ETag W/"6ab4f9aa-166a83"); terms: rep ND-0 2013-01-03..2019-01-03 (3 terms) (prior, ended); now sen ND 2019-01-03..2031-01-03 (2 terms) -> live S8ND00120; stub db447fea (fec_bulk_cn) holds H0ND01026 (cc-222 audit §2)
+7a9f177b-a4b2-4730-bf87-2e903bf4e5c9	0b877e0e-6b9a-4b04-857b-5d21c23831a5	H6DE00206	Lisa Blunt Rochester (S)  <-  Lisa Blunt Rochester (Candidate for Representative)	congress-legislators id.fec[] for B001303 lists H6DE00206, S4DE00060 (ETag W/"6ab4f9aa-166a83"); terms: rep DE-0 2017-01-03..2025-01-03 (4 terms) (prior, ended); now sen DE 2025-01-03..2031-01-03 -> live S4DE00060; stub 0b877e0e (fec_bulk_cn) holds H6DE00206 (cc-222 audit §2)
+4ca98eee-59a8-4211-b6fc-a1451f9becb7	e3202c43-f104-4cdb-b8d9-4361f8b3b964	H2WA01054	Maria Cantwell (S)  <-  Maria Cantwell (Candidate for Representative)	congress-legislators id.fec[] for C000127 lists S8WA00194, H2WA01054 (ETag W/"6ab4f9aa-166a83"); terms: rep WA-1 1993-01-05..1995-01-03 (prior, ended); now sen WA 2001-01-03..2031-01-03 (5 terms) -> live S8WA00194; stub e3202c43 (fec_bulk_ie) holds H2WA01054 (cc-222 audit §2)
+4a8644ab-956e-4c64-addc-65822cd549b8	ace66c2a-0639-477f-b13f-ad8e102efcff	H2TN06030	Marsha Blackburn (S)  <-  Marsha Blackburn (Candidate for Representative)	congress-legislators id.fec[] for B001243 lists H2TN06030, S8TN00337 (ETag W/"6ab4f9aa-166a83"); terms: rep TN-7 2003-01-07..2019-01-03 (8 terms) (prior, ended); now sen TN 2019-01-03..2031-01-03 (2 terms) -> live S8TN00337; stub ace66c2a (fec_bulk_cn) holds H2TN06030 (cc-222 audit §2)
+f2e35edd-e242-4919-890f-b8ca7fe0d9bd	44ca3016-5775-4d6a-ac76-3d930250c328	H8NM01224	Martin Heinrich (S)  <-  Martin Heinrich (Candidate for Representative)	congress-legislators id.fec[] for H001046 lists H8NM01224, S2NM00088 (ETag W/"6ab4f9aa-166a83"); terms: rep NM-1 2009-01-06..2013-01-03 (2 terms) (prior, ended); now sen NM 2013-01-03..2031-01-03 (3 terms) -> live S2NM00088; stub 44ca3016 (fec_bulk_cn) holds H8NM01224 (cc-222 audit §2)
+6148b393-1a7e-4129-866a-26219278c5f2	0a59ec0e-73fb-4f31-894b-e017c1a48f35	H6VT00160	Peter Welch (S)  <-  Peter Welch (Candidate for Representative)	congress-legislators id.fec[] for W000800 lists H6VT00160, H8VT00034, S2VT00235 (ETag W/"6ab4f9aa-166a83"); terms: rep VT-0 2007-01-04..2023-01-03 (8 terms) (prior, ended); now sen VT 2023-01-03..2029-01-03 -> live S2VT00235; stub 0a59ec0e (fec_bulk_cn) holds H6VT00160 (cc-222 audit §2)
+90353c1a-3c19-4fe9-9aa5-9e1fc78c25ea	76475811-2730-4364-b08d-24645bf226bb	H4AZ07043	Ruben Gallego (S)  <-  Ruben Gallego (Candidate for Representative)	congress-legislators id.fec[] for G000574 lists H4AZ07043, S4AZ00139 (ETag W/"6ab4f9aa-166a83"); terms: rep AZ-7/AZ-3 2015-01-06..2025-01-03 (5 terms) (prior, ended); now sen AZ 2025-01-03..2031-01-03 -> live S4AZ00139; stub 76475811 (fec_bulk_cn) holds H4AZ07043 (cc-222 audit §2)
+f9b9bf43-d061-42bb-a6b4-e76fac125a2b	153bc6c4-48ab-4616-b3e8-40459dbb30e4	H2MT01060	Steve Daines (S)  <-  Steven Daines (Candidate for Representative)	congress-legislators id.fec[] for D000618 lists H2MT01060, S2MT00096 (ETag W/"6ab4f9aa-166a83"); terms: rep MT-0 2013-01-03..2015-01-03 (prior, ended); now sen MT 2015-01-06..2027-01-03 (2 terms) -> live S2MT00096; stub 153bc6c4 (fec_bulk_cn) holds H2MT01060 (cc-222 audit §2)
+7fe9c3a6-69d1-40fd-9737-14b68c5b46f9	4bfa6d18-f649-42d4-8c85-23341ffabfbd	H8WI00018	Tammy Baldwin (S)  <-  Tammy Baldwin (Candidate for Representative)	congress-legislators id.fec[] for B001230 lists H8WI00018, S2WI00219 (ETag W/"6ab4f9aa-166a83"); terms: rep WI-2 1999-01-06..2013-01-03 (7 terms) (prior, ended); now sen WI 2013-01-03..2031-01-03 (3 terms) -> live S2WI00219; stub 4bfa6d18 (fec_bulk_cn) holds H8WI00018 (cc-222 audit §2)
+1fce3e17-64a3-4be0-a692-bfa6063bba8b	fccec21a-82a1-4ffa-81e4-3cfa6594c785	H6NC13129	Ted Budd (S)  <-  Theodore Budd (Candidate for Representative)	congress-legislators id.fec[] for B001305 lists H6NC13129, S2NC00505 (ETag W/"6ab4f9aa-166a83"); terms: rep NC-13 2017-01-03..2023-01-03 (3 terms) (prior, ended); now sen NC 2023-01-03..2029-01-03 -> live S2NC00505; stub fccec21a (fec_bulk_cn) holds H6NC13129 (cc-222 audit §2)
+1f7f59ae-8899-493e-864b-879b73c063bc	99257045-e3b7-462e-9ae2-06821cc3fa8e	H0IN09070	Todd Young (S)  <-  Todd Young (Candidate for Representative)	congress-legislators id.fec[] for Y000064 lists H0IN09070, S6IN00191 (ETag W/"6ab4f9aa-166a83"); terms: rep IN-9 2011-01-05..2017-01-03 (3 terms) (prior, ended); now sen IN 2017-01-03..2029-01-03 (2 terms) -> live S6IN00191; stub 99257045 (fec_bulk_cn) holds H0IN09070 (cc-222 audit §2)
+033ba554-ee71-4609-b531-1252ce4ee531	17443fa7-c77b-4f6f-8d0f-cdc86beee9a1	H2AR04083	Tom Cotton (S)  <-  Thomas Cotton (Candidate for Representative)	congress-legislators id.fec[] for C001095 lists H2AR04083, S4AR00103 (ETag W/"6ab4f9aa-166a83"); terms: rep AR-4 2013-01-03..2015-01-03 (prior, ended); now sen AR 2015-01-06..2027-01-03 (2 terms) -> live S4AR00103; stub 17443fa7 (fec_bulk_cn) holds H2AR04083 (cc-222 audit §2)
+b9f695d4-1b3e-4fd6-87a2-c9f1b1673605	23ef6620-1713-48a8-9070-a7c5ba92c465	S4MO00250	Wesley Bell (H)  <-  Wesley Bell (Candidate for Senator)	congress-legislators id.fec[] for B001324 lists H4MO01134, S4MO00250 (ETag W/"6ab4f9aa-166a83"); no sen term (a prior candidacy, never held): stub fec_election_yr 2024 < rep service start 2025-01-03; now rep MO-1 2025-01-03..2027-01-03 -> live H4MO01134; stub 23ef6620 (fec_bulk_cn) holds S4MO00250 (cc-222 audit §2)
