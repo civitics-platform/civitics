@@ -1,0 +1,31 @@
+{
+  "cc": "222",
+  "prompt": "cc-prompt-222-fix1189-other-office-double-claim-audit-46-rows-classify-prior-vs-concurrent-draft-manifest.md",
+  "started_at": "2026-10-11T23:37:27Z",
+  "finished_at": "2026-10-12T00:12:00Z",
+  "head_before": "630d05a1",
+  "head_after": "1901f197",
+  "commits": [
+    {
+      "sha": "fe0d2ec9",
+      "subject": "docs(audits): FIX-1189 other-office double_claim audit — 46 rows classified; class-A adopt-prior manifest drafted (not applied)"
+    },
+    {
+      "sha": "1901f197",
+      "subject": "chore(fixes): file FIX-1302, FIX-1303"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1302",
+    "FIX-1303"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": []
+}
