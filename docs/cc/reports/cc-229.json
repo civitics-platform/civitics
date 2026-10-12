@@ -1,0 +1,33 @@
+{
+  "cc": "229",
+  "prompt": "cc-prompt-229-crawl-upstash-exhaustion-triage.md",
+  "started_at": "2026-10-12T23:01:04Z",
+  "finished_at": "2026-10-12T23:20:00Z",
+  "head_before": "cec6b019",
+  "head_after": "90b5e12f",
+  "commits": [
+    {
+      "sha": "90b5e12f",
+      "subject": "docs(audits): 2026-10-12 crawl — Upstash exhausted, Vercel spike, 03:53Z restart, enrichment-tail partial (cc-229 triage)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1304"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "No STOP fired. No db-query --prod statement ran over 60 s, Cloudflare accepted the token, session:held read held=false at the push, and no permission prompt fired.",
+    "Deviation, worktree timing: per /cc Step 2 I created the cc-229-triage worktree FIRST so --start would name the slot, instead of only for the commit. It ran no read and opened no Postgres connection. Every prod read ran from the primary checkout.",
+    "Deviation, R5 breadth: besides the one 24-h census I ran twelve 60-min census calls (10-11 20/21/22Z, 10-12 04/05Z, 10-12 16–22Z). The census shows the gateway's 15-min buckets only for the last hour of its window, and those buckets are the only series that shows the crawl. That is 26 Logs API reads in total, all reads, on the same instrument.",
+    "Deviation, R4/R6 breadth: four extra cf-analytics calls (UA and IP for 16–20Z, IP for 03–05Z, hourly for 10-11), plus one extra ring read (--hours 30 --json) for the restart samples. One further ring call died on argument parsing before it read anything.",
+    "Not answerable under this posture, so recorded in the audit as such: the crawl's identity (host, UA, IPs live only in Vercel's request log); the restart class and who restarted it (postgres_logs); an EXPLAIN of the tail's work-list read (outside the eight statements).",
+    "Not filed, by the prompt's rule: an origin-lockdown FIX. Section 6 says nothing for the crawl because Cloudflare owns the class, but the crawl bypassed Cloudflare. Recorded in audit F4 and offered as option E1 for Craig.",
+    "Known inaccuracy, not re-committed (the prompt allows one docs commit): the audit header says the reads ran from 22:58Z. They started after the 23:01:04Z --start marker; the Cloudflare window opens at 23:01:56Z."
+  ],
+  "lane": "ops",
+  "owed": []
+}
