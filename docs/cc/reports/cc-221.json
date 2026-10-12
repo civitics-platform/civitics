@@ -1,0 +1,70 @@
+{
+  "cc": "221",
+  "prompt": "cc-prompt-221-hygiene-bundle-fix1283-institutions-308-fix1282-worktree-root-fix1289-ring-900-slot-windows-db-query-label.md",
+  "started_at": "2026-10-11T23:39:07Z",
+  "finished_at": "2026-10-12T00:15:00Z",
+  "head_before": "630d05a1",
+  "head_after": "6deaf21c",
+  "commits": [
+    {
+      "sha": "d321b9fc",
+      "subject": "chore(fixes): file FIX-1301"
+    },
+    {
+      "sha": "b980b5ee",
+      "subject": "fix(scripts): FIX-1301 — db-query labels the prod --call path as a WRITE PATH, never READ ONLY"
+    },
+    {
+      "sha": "95a380c1",
+      "subject": "fix(scripts): FIX-1282 — session:worktree anchors on the main checkout root (git-common-dir), from any worktree"
+    },
+    {
+      "sha": "6ae6d062",
+      "subject": "fix(app): FIX-1283 — /institutions/<slug> answers a true 308 from middleware (per-isolate cached slug list, fail-open), the page branch kept as the fallback"
+    },
+    {
+      "sha": "40bdac37",
+      "subject": "fix(data): FIX-1289 — box-health ring 900 samples (30 h); receipts bank exactly [slot − 24 h, slot) once per nominal day"
+    },
+    {
+      "sha": "d6cf5ce6",
+      "subject": "docs(fixes): cc-221 appends to FIX-1283, FIX-1282, FIX-1289, FIX-1301; cc-loop s8"
+    },
+    {
+      "sha": "6deaf21c",
+      "subject": "chore(fixes): sync status after FIX-1283, FIX-1282, FIX-1289, FIX-1301"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1301",
+    "FIX-1282",
+    "FIX-1283",
+    "FIX-1289"
+  ],
+  "fixes_filed": [
+    "FIX-1301"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "No database write. Vercel production deploys from the code pushes to main: 7003509528 (d321b9fc), 7003521391 (b980b5ee), 7003547631 (95a380c1), 7003592199 (6ae6d062, FIX-1283, success 2026-10-11T23:52:54Z) and 7003764345 (40bdac37, FIX-1289, success 2026-10-12T00:10:41Z). The 40bdac37 deploy changes the box-health route's LTRIM to 0 899, so the off-box Upstash ring grows from 720 toward 900 entries (721 at 00:12:45Z). All other prod contact was read-only: two db-query --prod reads of governing_bodies from the primary checkout, curl -sI of the live site, gh api deployment and run reads, and off-box ring reads (one LRANGE each).",
+  "ci": "green",
+  "stopped_items": [
+    "No STOP fired. Prod slugs 622 (≤ 900); every premise line was where the prompt cited it; held=false at every push.",
+    "Deviation, prod reads: the prompt sanctioned one db-query --prod count. I ran two read-only statements against governing_bodies: the count (which also read the administrative-services-department id) and a second for slug uniqueness (622 distinct), uuid-shaped slugs (0) and max length (123). Both from the primary checkout.",
+    "Deviation, timing: FIX-1289 was committed at ~00:00Z but pushed at 00:09Z, after the nominal-10-12 schedule fallback (run 38186809951) was created at 00:07:26Z on 2d54fce9. Pushed earlier, that run would have checked out the new code, found the still-24 h ring short of the 10-10T21:00Z → 10-11T21:00Z window, and rewritten the 21:00 run's banked memory_day to null. It ran the old code instead (eaeef402).",
+    "One push was rejected by a race on main (cannot lock ref; eaeef402, the fallback's receipts commit, landed first). Rebased and retried; no conflict.",
+    "Not done: the resolver's first load in the Vercel logs. The resolver logs only failures and the row-cap warning, and I read no Vercel logs. The 308 at 23:53:10Z is the evidence that a load succeeded.",
+    "Flagged, not changed: scripts/test-db-query.mjs (where FIX-1301's cases went) runs only as pnpm db-query:test. It is not in fixes:test or any workflow. The prompt joined a test to fixes:test only for a new file, so I left package.json alone.",
+    "Flagged, not changed: docs/cc/projects/forker.md s10 (the FIX-1289 tiling decision) is still open on the board. The prompt asked only for the cc-loop step.",
+    "No permission prompt fired. No $(…) in any command against prod; db-query --prod ran from the primary because the worktree's .env.local.prod is a stub."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1289",
+      "what": "the Mon 10-12 21:00Z run (nominal 10-13) banks forker.window {2026-10-11T21:00Z → 2026-10-12T21:00Z} with memory_day non-null, and the ~00:xxZ schedule fallback keeps it (memory_day_banked_by names the first run) — cc-219 records it",
+      "after": "2026-10-12T23:30Z"
+    }
+  ]
+}
