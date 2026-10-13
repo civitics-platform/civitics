@@ -71,7 +71,10 @@ import {
 // here for the same reason: the truth table has to be assertable without this
 // module's import graph.
 import {
+  classifyFecClaimError,
+  fecBulkTrigger,
   fecChainHeld,
+  nightlyFecClaimReason,
   nightlyPhaseStatus,
   probeRecords,
   prodSessionHoldBanner,
@@ -79,7 +82,7 @@ import {
   writersRun,
   type NightlyHoldInputs,
 } from "./nightly-hold";
-import { readProdSessionState, withClient } from "../lib/prod-session";
+import { readProdSessionState, withClient, withProdSession } from "../lib/prod-session";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 
 // errMsg moved to ./utils (FIX-756) so fec-bulk's catch sites can share it
@@ -818,33 +821,74 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         if (!prevFecCycles)      process.env["FEC_CYCLES"]       = `${currentCycle - 2},${currentCycle}`;
         if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = `${currentCycle}`;
       }
-      // FIX-1100: a resume means the previous fec_bulk was KILLED mid-write —
-      // on 2026-08-24 by this job's own `timeout-minutes`, 780,150/998,823
-      // records into the committee route. A killed writer never reaches its
-      // FIX-943 vacuum tail, so it leaves financial_relationships part-rewritten
-      // and un-vacuumed (measured 80.66% all-visible the next day, no
-      // last_vacuum). A heap page loses its all-visible mark if ANY tuple on it
-      // is dead, so index-only scans over the table degrade to per-row heap
-      // fetches until something vacuums — and the resume is about to write on
-      // top of that. Pay the tail FIRST, here, because this is the only place
-      // that can: the dying job's `if: always()` step runs inside the SIGTERM
-      // that killed it (playbook C3, a guard where it cannot fire), while the
-      // resume signal is durable in pipeline_state. Never throws.
-      if (fecResumeState) {
-        console.info(
-          `[nightly] fec_bulk resume — paying the vacuum tail the killed writer skipped (FIX-1100/FIX-943)`,
-        );
-        const vacMs = await vacuumAfterKilledFecWriter();
-        console.info(`[nightly] fec_bulk resume vacuum complete in ${(vacMs / 1000).toFixed(1)}s (FIX-1100)`);
-      }
+      // FIX-1310 (D6) — the writer block runs under the FIX-950 claim, so the
+      // box sees a drop night the way it sees a supervised landing: the 17
+      // guarded pg_cron jobs skip with this reason for the wall, the freshness
+      // holds go up, and `session:held` reads true. The top-of-run read above
+      // decided whether to TRY; the claim decides whether we may WRITE.
+      //
+      // exemptWriters: this phase's own FIX-462 `running` row is in
+      // live_writers before we get here, so without it the nightly refuses
+      // itself every time (rule 169). One named row, not `force`, which would
+      // claim over EVERY live writer. `fec_bulk_pipeline` joins live_writers
+      // once runFecBulkPipeline takes it; by then the claim is ours.
+      //
+      // 150 min: the drop night's fec-phase wall was 92–107 min across the four
+      // drop nights 09-20..10-11 (docs/receipts). Twice this is the canary's
+      // overrun tier, and 300 is the fec-phase job's timeout-minutes.
+      const fecClaimReason = nightlyFecClaimReason({
+        trigger: fecBulkTrigger(fecTrigger, fecResumeState !== null),
+        runId: process.env["GITHUB_RUN_ID"],
+        cycles: process.env["FEC_CYCLES"],
+        indivCycles: process.env["FEC_INDIV_CYCLES"],
+      });
       try {
-        const r = await runFecBulkPipeline();
-        results.pipelines.fec_bulk = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+        await withProdSession(
+          {
+            reason: fecClaimReason,
+            expectedMinutes: 150,
+            force: false,
+            exemptWriters: [`nightly_cron:${phase}`],
+          },
+          async () => {
+            // FIX-1100: a resume means the previous fec_bulk was KILLED mid-write —
+            // on 2026-08-24 by this job's own `timeout-minutes`, 780,150/998,823
+            // records into the committee route. A killed writer never reaches its
+            // FIX-943 vacuum tail, so it leaves financial_relationships part-rewritten
+            // and un-vacuumed (measured 80.66% all-visible the next day, no
+            // last_vacuum). A heap page loses its all-visible mark if ANY tuple on it
+            // is dead, so index-only scans over the table degrade to per-row heap
+            // fetches until something vacuums — and the resume is about to write on
+            // top of that. Pay the tail FIRST, here, because this is the only place
+            // that can: the dying job's `if: always()` step runs inside the SIGTERM
+            // that killed it (playbook C3, a guard where it cannot fire), while the
+            // resume signal is durable in pipeline_state. Never throws.
+            if (fecResumeState) {
+              console.info(
+                `[nightly] fec_bulk resume — paying the vacuum tail the killed writer skipped (FIX-1100/FIX-943)`,
+              );
+              const vacMs = await vacuumAfterKilledFecWriter();
+              console.info(`[nightly] fec_bulk resume vacuum complete in ${(vacMs / 1000).toFixed(1)}s (FIX-1100)`);
+            }
+            try {
+              const r = await runFecBulkPipeline();
+              results.pipelines.fec_bulk = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+            } catch (err) {
+              const msg = errMsg(err);
+              console.error("[nightly] fec-bulk failed:", msg);
+              results.pipelines.fec_bulk = { status: "failed", error: msg };
+              results.errors.push(`FEC bulk: ${msg}`);
+            }
+          },
+        );
       } catch (err) {
-        const msg = errMsg(err);
-        console.error("[nightly] fec-bulk failed:", msg);
-        results.pipelines.fec_bulk = { status: "failed", error: msg };
-        results.errors.push(`FEC bulk: ${msg}`);
+        const claim = classifyFecClaimError(err);
+        if (claim.kind === "rethrow") throw err;
+        // E2: refused — a human holds the box, or another writer is live. The
+        // FIX-998 `skipped` vocabulary; the FIX-754 resume state is untouched,
+        // so the next nightly picks the work up.
+        console.warn(`  [nightly] ⏸  fec_bulk ${claim.error} (FIX-1310)`);
+        results.pipelines.fec_bulk = { status: "skipped", error: claim.error };
       } finally {
         if (!prevFecCycles)      delete process.env["FEC_CYCLES"];
         if (!prevFecIndivCycles) delete process.env["FEC_INDIV_CYCLES"];

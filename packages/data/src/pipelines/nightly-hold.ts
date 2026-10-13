@@ -51,6 +51,8 @@
  */
 
 import type { NightlyPhase } from "./index";
+import type { FecBulkTriggerInputs } from "./fec-hold";
+import { ProdSessionRefused } from "../lib/prod-session";
 
 export interface NightlyHoldInputs {
   /** `prod_session_state()->>'defer'`. False when the reader was unavailable. */
@@ -134,4 +136,67 @@ export function prodSessionHoldBanner(reason: string | null | undefined): string
     "daily ingest still runs. Release the session (Ctrl-C on session:claim-prod, " +
     "or let the landing script finish) to restore the normal path."
   );
+}
+
+// ---------------------------------------------------------------------------
+// FIX-1310 — the nightly's fec_bulk writer takes the claim (D6)
+// ---------------------------------------------------------------------------
+//
+// Everything above decides whether the nightly TRIES a writer block (it reads
+// prod_session_state() once, at the top). These three decide what happens when
+// the fec_bulk block then asks for the FIX-950 claim itself, so the box can see
+// a drop night the way it sees a supervised landing: the guarded pg_cron jobs
+// skip with this reason, the freshness holds go up, and `session:held` reads
+// true for the wall. Playbook C9: a prod-writing pipeline is visible to the
+// interlock, or it does not run on prod.
+
+/** Which of `shouldRunFecBulk`'s three conditions admitted this run. */
+export type FecBulkTrigger = "weekly" | "resume" | "drop";
+
+/**
+ * The trigger word, in `shouldRunFecBulk`'s own priority order. Only meaningful
+ * once that returned true. On a weekly run the resume state is never loaded
+ * (`shouldLoadResumeState`), so `weekly` wins by construction there too.
+ */
+export function fecBulkTrigger(i: FecBulkTriggerInputs, resumeStatePresent: boolean): FecBulkTrigger {
+  if (i.isWeekly) return "weekly";
+  return resumeStatePresent ? "resume" : "drop";
+}
+
+/**
+ * The claim's `reason`. It is what an operator reads in every guarded job's
+ * `skip_reason` ('prod session held: nightly fec_bulk weekly run …'), so it
+ * names the GHA run that holds the box — the one id that leads straight to a
+ * log. Capped at 300 like `runUnderProdSession`'s; `withProdSession` does not
+ * cap it.
+ */
+export function nightlyFecClaimReason(args: {
+  trigger: FecBulkTrigger;
+  runId: string | undefined;
+  cycles: string | undefined;
+  indivCycles: string | undefined;
+}): string {
+  const run = args.runId && args.runId.trim() !== "" ? args.runId : "local";
+  const list = (v: string | undefined) => (v && v.trim() !== "" ? v : "(default)");
+  return (
+    `nightly fec_bulk ${args.trigger} run ${run} ` +
+    `cycles=${list(args.cycles)} indiv=${list(args.indivCycles)}`
+  ).slice(0, 300);
+}
+
+/**
+ * What a claim error becomes. A REFUSAL — a human holds the box, or another
+ * writer is live — is a `skipped` fec_bulk, the FIX-998 vocabulary every
+ * consumer of the payload already reads; the FIX-754 resume state is left as it
+ * was, so the next nightly picks the work up. Anything else is rethrown:
+ * `withProdSession` already fails OPEN on every infrastructure error, so what
+ * reaches here un-refused is a real fault and must not be dressed as a skip.
+ */
+export function classifyFecClaimError(
+  err: unknown,
+): { kind: "skipped"; error: string } | { kind: "rethrow" } {
+  if (err instanceof ProdSessionRefused) {
+    return { kind: "skipped", error: `prod session claim refused: ${err.verdict.detail}` };
+  }
+  return { kind: "rethrow" };
 }
