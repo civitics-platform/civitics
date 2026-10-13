@@ -27,6 +27,7 @@ import {
   withClient,
   ProdSessionRefused,
   PROD_SESSION_LABEL_KEY,
+  sessionLabelValue,
   type ProdSessionState,
 } from "./prod-session";
 
@@ -152,6 +153,69 @@ test("preflight: an unreadable interlock FAILS OPEN", () => {
   const v = classifyPreflight(null, { force: false });
   assert.equal(v.ok, true);
   assert.equal(v.ok && v.forced, false);
+});
+
+// ---------------------------------------------------------------------------
+// Pure — FIX-1310: a claimant's OWN writer row is exempt (rule 169)
+// ---------------------------------------------------------------------------
+//
+// The nightly's fec phase writes its FIX-462 `running` row before it reaches
+// the claim, and prod_session_state() lists that row as `nightly_cron:fec`. An
+// interlock that cannot exempt the run it protects refuses that run every time.
+
+test("preflight (a): the nightly's own running row REFUSES when nothing exempts it", () => {
+  const v = classifyPreflight(state({ live_writers: ["nightly_cron:fec"] }), { force: false });
+  assert.equal(!v.ok && v.code, "writers-live");
+});
+
+test("preflight (b): exempting the nightly's own row admits the claim and says so", () => {
+  const v = classifyPreflight(state({ live_writers: ["nightly_cron:fec"] }), {
+    force: false,
+    exemptWriters: ["nightly_cron:fec"],
+  });
+  assert.equal(v.ok, true);
+  assert.equal(v.ok && v.forced, false, "an exemption is not a force");
+  assert.deepEqual(v.ok ? v.exempted : null, ["nightly_cron:fec"]);
+});
+
+test("preflight (c): the exemption names one row — any OTHER live writer still refuses", () => {
+  const v = classifyPreflight(
+    state({ live_writers: ["nightly_cron:fec", "usaspending_bulk"] }),
+    { force: false, exemptWriters: ["nightly_cron:fec"] },
+  );
+  assert.equal(!v.ok && v.code, "writers-live");
+  assert.deepEqual(!v.ok && v.code === "writers-live" ? v.writers : null, ["usaspending_bulk"]);
+  assert.doesNotMatch(v.ok ? "" : v.detail, /nightly_cron:fec/);
+});
+
+test("preflight (d): a held session refuses through the exemption — it is never exemptable", () => {
+  const v = classifyPreflight(
+    state({ held: true, claimed_by: "craig@box", live_writers: ["nightly_cron:fec"] }),
+    { force: false, exemptWriters: ["nightly_cron:fec"] },
+  );
+  assert.equal(!v.ok && v.code, "session-held");
+});
+
+test("preflight: an exemption with nothing live to exempt leaves the verdict as it was", () => {
+  const v = classifyPreflight(state(), { force: false, exemptWriters: ["nightly_cron:fec"] });
+  assert.deepEqual(v, { ok: true, forced: false, forcedOver: [] });
+});
+
+test("label: exempt_writers rides the label only when a writer was exempted", () => {
+  const plain = sessionLabelValue("r", 60, { ok: true, forced: false, forcedOver: [] });
+  assert.equal("exempt_writers" in plain, false);
+  assert.equal("forced_over" in plain, false);
+
+  const exempted = sessionLabelValue("nightly fec_bulk weekly run 1 cycles=2026 indiv=2026", 150, {
+    ok: true,
+    forced: false,
+    forcedOver: [],
+    exempted: ["nightly_cron:fec"],
+  });
+  assert.deepEqual(exempted["exempt_writers"], ["nightly_cron:fec"]);
+  assert.equal(exempted["expected_minutes"], 150);
+  assert.equal(exempted["reason"], "nightly fec_bulk weekly run 1 cycles=2026 indiv=2026");
+  assert.equal("forced_over" in exempted, false, "an exemption is not an override");
 });
 
 // ---------------------------------------------------------------------------

@@ -91,9 +91,14 @@ export interface ProdSessionState {
   reason_text: string;
 }
 
+/**
+ * `exempted` (FIX-1310) is present only when the caller's `exemptWriters`
+ * actually filtered a live writer out, so every caller that passes none gets
+ * the two ok shapes exactly as before.
+ */
 export type PreflightVerdict =
-  | { ok: true; forced: false; forcedOver: [] }
-  | { ok: true; forced: true; forcedOver: string[] }
+  | { ok: true; forced: false; forcedOver: []; exempted?: string[] }
+  | { ok: true; forced: true; forcedOver: string[]; exempted?: string[] }
   | { ok: false; code: "session-held"; detail: string }
   | { ok: false; code: "writers-live"; writers: string[]; detail: string };
 
@@ -106,7 +111,7 @@ export type PreflightVerdict =
  */
 export function classifyPreflight(
   state: ProdSessionState | null,
-  opts: { force: boolean },
+  opts: { force: boolean; exemptWriters?: readonly string[] },
 ): PreflightVerdict {
   if (state === null) return { ok: true, forced: false, forcedOver: [] };
 
@@ -124,7 +129,19 @@ export function classifyPreflight(
     };
   }
 
-  const writers = state.live_writers ?? [];
+  // FIX-1310 — a claimant's OWN writer row is not another writer (rule 169: an
+  // interlock must exempt the run it protects). The nightly's fec phase writes
+  // its FIX-462 `running` row before it reaches the claim, and the reader lists
+  // that row as `nightly_cron:fec`, so without this the nightly refuses itself
+  // every time. Exact names, filtered here and never above: a held session is
+  // not exemptable any more than it is forceable. Narrower than --force by
+  // construction — it names one row; force claims over every live writer.
+  const exempt = new Set(opts.exemptWriters ?? []);
+  const live = state.live_writers ?? [];
+  const writers = live.filter((w) => !exempt.has(w));
+  const exempted = live.filter((w) => exempt.has(w));
+  const ex = exempted.length > 0 ? { exempted } : {};
+
   if (writers.length > 0 && !opts.force) {
     return {
       ok: false,
@@ -137,8 +154,8 @@ export function classifyPreflight(
     };
   }
 
-  if (writers.length > 0) return { ok: true, forced: true, forcedOver: writers };
-  return { ok: true, forced: false, forcedOver: [] };
+  if (writers.length > 0) return { ok: true, forced: true, forcedOver: writers, ...ex };
+  return { ok: true, forced: false, forcedOver: [], ...ex };
 }
 
 /** `137` → `2m17s`. Used in every refusal and status line. */
@@ -203,6 +220,13 @@ export interface ProdSessionOptions {
   expectedMinutes?: number;
   /** Claim over live heavy writers, recording what was overridden. */
   force?: boolean;
+  /**
+   * FIX-1310 — exact `live_writers` names that are THIS run rather than another
+   * writer: filtered out before the writers-live preflight (never before
+   * session-held) and recorded in the label as `exempt_writers`. The nightly
+   * passes its own `nightly_cron:<phase>` row.
+   */
+  exemptWriters?: readonly string[];
   /** Override the DSN (tests). */
   dbUrl?: string;
 }
@@ -282,6 +306,30 @@ export async function runUnderProdSession(
 }
 
 /**
+ * The `pipeline_state.prod_session` value a claim writes. Pure, so what an
+ * operator can find afterwards is assertable without a database: an override
+ * (`forced_over`) and an exemption (`exempt_writers`, FIX-1310) each ride the
+ * label only when they happened. `prod_session_state()` reads only the keys it
+ * names, so these two are read from the row itself, not from the function.
+ */
+export function sessionLabelValue(
+  reason: string,
+  expectedMinutes: number,
+  verdict: Extract<PreflightVerdict, { ok: true }>,
+): Record<string, unknown> {
+  const value: Record<string, unknown> = {
+    reason,
+    claimed_by: claimedBy(),
+    claimed_at: new Date().toISOString(),
+    expected_minutes: expectedMinutes,
+    pid: process.pid,
+  };
+  if (verdict.forced) value["forced_over"] = verdict.forcedOver;
+  if (verdict.exempted) value["exempt_writers"] = verdict.exempted;
+  return value;
+}
+
+/**
  * The claim half of {@link withProdSession}, exposed for the foreground CLI
  * (which holds the session and does no work of its own).
  */
@@ -313,11 +361,17 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
   // The preflight runs on its own short-lived connection, BEFORE anything is
   // held: a refusal must not have taken the lock it is refusing to take.
   const state = await withClient(dbUrl, readProdSessionState);
-  const verdict = classifyPreflight(state, { force: opts.force === true });
+  const verdict = classifyPreflight(state, {
+    force: opts.force === true,
+    exemptWriters: opts.exemptWriters,
+  });
 
   if (!verdict.ok) {
     if (verdict.code === "writers-live" && state) {
-      for (const line of describeWriters(state.live_writer_detail ?? [])) {
+      // Only the writers that refused — an exempted self-row is not news.
+      const refusing = new Set(verdict.writers);
+      const detail = (state.live_writer_detail ?? []).filter((w) => refusing.has(w.name));
+      for (const line of describeWriters(detail)) {
         console.error(`  [prod-session]   ${line}`);
       }
     }
@@ -329,15 +383,14 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
         `${verdict.forcedOver.join(", ")} (FIX-950)`,
     );
   }
+  if (verdict.exempted) {
+    console.info(
+      `  [prod-session] exempting this run's own writer row(s): ` +
+        `${verdict.exempted.join(", ")} (FIX-1310)`,
+    );
+  }
 
-  const value: Record<string, unknown> = {
-    reason: opts.reason,
-    claimed_by: claimedBy(),
-    claimed_at: new Date().toISOString(),
-    expected_minutes: expected,
-    pid: process.pid,
-  };
-  if (verdict.forced) value["forced_over"] = verdict.forcedOver;
+  const value = sessionLabelValue(opts.reason, expected, verdict);
 
   const lock = await acquireNamedSessionLock(PROD_SESSION_LOCK_NAME, {
     logTag: "prod-session",
