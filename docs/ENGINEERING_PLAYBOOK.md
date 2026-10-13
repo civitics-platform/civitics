@@ -717,6 +717,77 @@ procedure and costs 117 pages to read. State the distribution you measured next
 to the constant you chose, so D5's re-derivation has something to re-derive
 against. *FIX-1002 · cf. D5, C3*
 
+### D9. A scheduled job is a registry row and a unit — the pipeline contract.
+
+A cron schedule says WHEN a job runs. It says nothing about how much of the
+box the job takes, whether two jobs touching the same tables overlap, or
+whether a firing that ran out of time picks up where it stopped. Each of those
+has cost a real incident: the overlap ledger of cc-210 R3, the 6 h chunk that
+committed nothing (D8), the bulk rewrite with no vacuum owner (C5). The
+registry (`public.job_registry`, FIX-1307) holds one row per scheduled job, and
+the unit dispatcher (FIX-1308) reads it to run ONE bounded unit at a time,
+under a box rule (Σ live `cap_mb` + the candidate's cap ≤
+`platform_dials.max_live_caps_mb`). Neither works for a job that does not meet
+the contract below. The receipt for each item is named after it.
+
+1. **One unit entry point** `(p_max_rows, p_max_units)`, with a persisted
+   cursor, reporting rows and wall per unit. `(NULL, 1)` is today's atomic run
+   (D10). A full rebuild that readers must see whole goes through the fix1134
+   staging-table-then-swap shape, chunk by chunk (D7 of the spec). Receipt:
+   `run_entity_connections_rebuild(…, p_max_units := 1)` — the ec-crawl's
+   `entity_connections_rebuild_cursor` — is the shape. In the contract audit
+   (`docs/audits/2026-10-12-job-registry-contract-audit.md` §3), 6 of the 21
+   active CALL jobs have a cursor and a bounded unit, and none has the
+   signature yet.
+2. **One `data_sync_log` row per unit**, with `partial` as a terminal status
+   that the next firing resumes from (A4, C2; FIX-754). Receipt: the crawl
+   arms' `partial` is a DESIGNED status, never a failure.
+3. **A registry row** (spec §2) — runner, unit_call, priority, deadline_rule,
+   cost_class, cap_mb, exclusion_group, budget_seconds, gates. Receipt:
+   `pnpm check:job-registry` fails CI for a cron job or a scheduled workflow
+   with no row.
+4. **The FIX-950 claim** for every GHA or manual writer (C9). A pg_cron
+   writer is guarded by `prod_session_state()` in its body; a writer outside
+   the database must CLAIM the session so the guarded jobs stand down under it.
+   Receipt: `usaspending-bulk` holds one today; the nightly's fec phase takes
+   one in N1 (cc-225).
+5. **A band in `docs/receipts/bands.json`** from its first firings:
+   `PROVISIONAL` at n = 1, re-based at five. Receipt: `check:job-registry`
+   fails a row with no band and no `no-band` declaration, so a missing band is
+   at least a stated decision.
+6. **A vacuum owner for every table it rewrites** (C5) — a registry row of
+   `unit_shape 'bare'` whose `unit_call` is that table's `VACUUM (ANALYZE)`,
+   with no budget row (D11 of the spec). FIX-1299's lesson: a remediation
+   script's tail is not an owner. Receipt: the audit's §2 item-6 column lists
+   each body's rewritten tables against the 14 vacuum rows.
+7. **The skip predicate on its upserts** (`skipUnchangedRows` /
+   `updateOnlyIfSame`, C6) and `updateColumns` named, so a replay of unchanged
+   input writes nothing and stamps no `updated_at` (C7). Receipt: the C6
+   census of the `DO UPDATE` sites. SQL procedures that write in place are
+   n/a.
+8. **Its own `SET work_mem` and `SET max_parallel_workers_per_gather = 0`**
+   in the body, sized against the BOX, not the query (cc-210; the M1–M3
+   migrations). The cap goes on the registry row:
+   `cap_mb = work_mem × hash_mem_multiplier (2)`, serial. A body that does not
+   zero parallel is budgeted at × 2 participants. Receipt:
+   `packages/data/src/__tests__/job-registry-seed.test.ts` fails a `CALL` row
+   whose `cap_mb` is not 2 × the work_mem its body's newest migration sets.
+9. **A `rollup_watch_overrides` cadence row** if it writes `data_sync_log`
+   (FIX-1059), until the registry absorbs that table: the canary's
+   `list_scheduled_rollup_pipelines()` then reads a declared cadence instead of
+   one inferred from a cron expression or an observed median. Receipt: the
+   audit's §2 item-9 column. Today only 5 rows exist, so this is the item the
+   registry's `deadline_rule` is most likely to absorb.
+
+**Apply:** `check:job-registry` verifies items 3 and 5 structurally on every
+push, and the seed test verifies 8's arithmetic. The audit is the first census
+of the rest. A new data source is onboarded by meeting all nine. When the
+registry and the contract disagree, the contract is the target and the
+registry row says so in its `note`. A row moves from `at …` to `by …` /
+`stale_after …` only when its job meets items 1, 2 and 8, because the
+dispatcher can only bound a unit it can see the end of.
+*FIX-1307 · spec-job-registry-and-dispatcher-2026-10-11 §1 · docs/audits/2026-10-12-job-registry-contract-audit.md*
+
 ---
 
 ## E. Verification and process
