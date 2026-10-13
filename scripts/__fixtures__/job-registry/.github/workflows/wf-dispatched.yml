@@ -1,0 +1,17 @@
+name: fixture-dispatched
+
+on:
+  schedule:
+    # The slot is a Vercel gha-dispatch route; this schedule is the fallback.
+    # A comment inside the block must not end it.
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo fixture

@@ -1,0 +1,4 @@
+{
+  "$comment": "Fixture bands for test-check-job-registry.mjs.",
+  "job-a": { "lo_s": 0, "hi_s": 10, "source": "fixture" }
+}

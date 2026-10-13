@@ -1,0 +1,7 @@
+{
+  "nominal_date": "2098-12-31",
+  "cron_jobs": [
+    { "jobname": "job-a", "jobid": 1, "schedule": "0 1 * * *", "active": true },
+    { "jobname": "retired-old", "jobid": 7, "schedule": "0 5 * * *", "active": true }
+  ]
+}

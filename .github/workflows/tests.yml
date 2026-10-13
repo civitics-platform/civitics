@@ -149,6 +149,18 @@ jobs:
       - name: No-store GET route guard
         run: pnpm check:no-store-routes
 
+      # Blocking (FIX-1307) — every scheduled job has a public.job_registry row,
+      # the catalog the unit dispatcher (FIX-1308) sums caps over: each
+      # cron_jobs[] jobname in the newest docs/receipts/<day>.json (prod's
+      # cron.job, active or not) and each workflow with an on.schedule block
+      # must appear in a `-- job-registry-seed:begin` fence in a migration. A
+      # unit_call must name a routine some migration CREATEs, and a job needs a
+      # bands.json key or a `no-band` declaration. A job missing from the
+      # registry runs outside the dispatcher's box rule and nothing says so.
+      # Tree-only, no DB or secrets. Fixtures: scripts/__fixtures__/job-registry.
+      - name: Job-registry parity guard (FIX-1307)
+        run: pnpm check:job-registry
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests

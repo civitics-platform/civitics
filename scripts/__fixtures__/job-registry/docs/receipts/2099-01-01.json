@@ -1,0 +1,10 @@
+{
+  "nominal_date": "2099-01-01",
+  "cron_jobs": [
+    { "jobname": "job-a", "jobid": 1, "schedule": "0 1 * * *", "active": true },
+    { "jobname": "job-vac", "jobid": 2, "schedule": "0 2 * * *", "active": true },
+    { "jobname": "job-sel", "jobid": 3, "schedule": "* * * * *", "active": true },
+    { "jobname": "job-old", "jobid": 9, "schedule": "0 8 * * 1", "active": false },
+    { "jobname": "disp-42", "jobid": 42, "schedule": "17 3 13 10 *", "active": true }
+  ]
+}
