@@ -1,0 +1,37 @@
+{
+  "cc": "225",
+  "prompt": "cc-prompt-225-dispatcher-n1-nightly-fec-bulk-takes-the-fix950-claim-withprodsession-refused-writes-skipped-branch-only.md",
+  "started_at": "2026-10-13T00:39:16Z",
+  "finished_at": "2026-10-13T01:30:00Z",
+  "head_before": "4e182dc7",
+  "head_after": "e8dd3c3b",
+  "commits": [
+    {
+      "sha": "e8dd3c3b",
+      "subject": "chore(fixes): file FIX-1310"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1310"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "worktree LEFT: fix-1310 — unmerged by design; cc-227 lands it. Branch feature/fix-1310 is at ad57fc1f on origin (three commits on top of e8dd3c3b: 0c886a9e, 37fe4901, ad57fc1f). No PR.",
+    "Local exercise (item 3) SKIPPED, by the prompt's own escape hatch. Three reasons. (1) The nightly has no --dry-run: index.ts's arg parser reads only --phase. (2) The fec phase runs its daily ingests first (regulations, congress officials/votes, the legislator-ids bind), which are local writes and take minutes, before it reaches the fec_bulk block. On a Tuesday the block is entered only with a resume state or a pending drop, and NIGHTLY_FORCE_WEEKLY would start the real FEC download. ≤ 60 s is not reachable. (3) Holding the FIX-950 lock on the shared clone would make its guarded pg_cron jobs defer while cc-219 works there (rule 241). The unit and structural tests are the verification.",
+    "pnpm --filter @civitics/data test is NOT fully green locally: 1502 pass, 1 fail, 21 skipped. The one failure is work-mem-allowances.test.ts 'local (B8 R5 STOP): the live group-donor body still SET LOCALs work_mem 256MB'. It is cc-219's: its 20261013010000_fix1296_group_donor_work_mem_64mb.sql is applied to the shared local clone and not yet on main. It reads the live local body, my diff does not touch it, and it skips in CI (no local DB). It failed identically before and after item 3.",
+    "Not a stop, a delay: prod refused connections for ~26 min (00:59Z to 01:25Z). session:held read held=unknown on every try — Supavisor: 'Failed to connect to database: authentication did not complete within 15000ms', alternating with psql spawn ETIMEDOUT — from the fix-1310 tree and from the primary checkout alike. The pre-push gate refuses an unreadable state, so the branch push waited until 01:25:14Z read held=false live_writers=0. No prod contact was attempted beyond the gate read; the cause was not investigated (code-only posture)."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1310",
+      "what": "cc-227 lands feature/fix-1310 Thu 10-15 23:15Z+ (code only, no migration). Then the first nightly whose fec_bulk RUNS (Sun 10-18 21:00Z drop night at the latest): prod_session_state() held with reason 'nightly fec_bulk weekly run <id> …' for the wall (claimed_at ≈ 21:0xZ, released ≈ 23:0xZ); pipeline_state.prod_session carries exempt_writers [nightly_cron:fec]; the 17 guarded jobs' skipped rows in that window carry skip_reason 'prod session held: nightly fec_bulk …' (ec-crawl :15, fe-crawl :30); live_writers showed fec_bulk_pipeline + nightly_cron:fec during the run; held=false and the hold rows cleared after; the enrichment phases unaffected",
+      "after": "2026-10-19T00:00Z"
+    }
+  ]
+}
