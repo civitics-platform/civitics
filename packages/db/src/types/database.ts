@@ -1749,6 +1749,57 @@ export type Database = {
         }
         Relationships: []
       }
+      dispatch_log: {
+        Row: {
+          armed_for: string | null
+          armed_jobid: number | null
+          armed_jobname: string | null
+          box: Json | null
+          decision: string
+          id: number
+          job: string | null
+          live_caps_mb: number | null
+          live_units: number | null
+          reason: string | null
+          source: string
+          ticked_at: string
+          unit_ms: number | null
+          unit_rows: number | null
+        }
+        Insert: {
+          armed_for?: string | null
+          armed_jobid?: number | null
+          armed_jobname?: string | null
+          box?: Json | null
+          decision: string
+          id?: never
+          job?: string | null
+          live_caps_mb?: number | null
+          live_units?: number | null
+          reason?: string | null
+          source?: string
+          ticked_at?: string
+          unit_ms?: number | null
+          unit_rows?: number | null
+        }
+        Update: {
+          armed_for?: string | null
+          armed_jobid?: number | null
+          armed_jobname?: string | null
+          box?: Json | null
+          decision?: string
+          id?: never
+          job?: string | null
+          live_caps_mb?: number | null
+          live_units?: number | null
+          reason?: string | null
+          source?: string
+          ticked_at?: string
+          unit_ms?: number | null
+          unit_rows?: number | null
+        }
+        Relationships: []
+      }
       donor_industry_tag_state: {
         Row: {
           donor_id: string
@@ -3937,6 +3988,60 @@ export type Database = {
           },
         ]
       }
+      job_registry: {
+        Row: {
+          budget_seconds: number | null
+          cap_mb: number | null
+          cost_class: string
+          deadline_rule: string
+          exclusion_group: string | null
+          gates: string[]
+          idempotent_refire: boolean
+          job: string
+          note: string
+          pipeline: string | null
+          priority: number
+          runner: string
+          unit_call: string | null
+          unit_shape: string
+          updated_at: string
+        }
+        Insert: {
+          budget_seconds?: number | null
+          cap_mb?: number | null
+          cost_class: string
+          deadline_rule: string
+          exclusion_group?: string | null
+          gates?: string[]
+          idempotent_refire?: boolean
+          job: string
+          note: string
+          pipeline?: string | null
+          priority: number
+          runner: string
+          unit_call?: string | null
+          unit_shape: string
+          updated_at?: string
+        }
+        Update: {
+          budget_seconds?: number | null
+          cap_mb?: number | null
+          cost_class?: string
+          deadline_rule?: string
+          exclusion_group?: string | null
+          gates?: string[]
+          idempotent_refire?: boolean
+          job?: string
+          note?: string
+          pipeline?: string | null
+          priority?: number
+          runner?: string
+          unit_call?: string | null
+          unit_shape?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       jurisdiction_page_cache: {
         Row: {
           jurisdiction_id: string
@@ -5015,6 +5120,39 @@ export type Database = {
           method?: string
           metric?: string
           value?: number
+        }
+        Relationships: []
+      }
+      platform_dials: {
+        Row: {
+          headroom_target_mb: number
+          id: boolean
+          max_concurrent_units: number
+          max_live_caps_mb: number
+          pause: boolean
+          tick_seconds: number
+          unit_target_seconds: number
+          updated_at: string
+        }
+        Insert: {
+          headroom_target_mb?: number
+          id?: boolean
+          max_concurrent_units?: number
+          max_live_caps_mb?: number
+          pause?: boolean
+          tick_seconds?: number
+          unit_target_seconds?: number
+          updated_at?: string
+        }
+        Update: {
+          headroom_target_mb?: number
+          id?: boolean
+          max_concurrent_units?: number
+          max_live_caps_mb?: number
+          pause?: boolean
+          tick_seconds?: number
+          unit_target_seconds?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -6827,6 +6965,7 @@ export type Database = {
           signals: Json
         }[]
       }
+      dispatch_one_unit: { Args: { p_source?: string }; Returns: Json }
       donor_outbound_summary: {
         Args: { p_donor_id: string; p_top?: number }
         Returns: Json
@@ -6997,6 +7136,7 @@ export type Database = {
         }[]
       }
       get_database_size_bytes: { Args: never; Returns: number }
+      get_dispatcher_status: { Args: never; Returns: Json }
       get_drift_source_presence: {
         Args: never
         Returns: {
@@ -7317,6 +7457,10 @@ export type Database = {
       }
       has_active_platform_admin_grant: {
         Args: { p_user_id: string }
+        Returns: boolean
+      }
+      in_blackout: {
+        Args: { p_config_key: string; p_now?: string }
         Returns: boolean
       }
       increment_service_usage: {
