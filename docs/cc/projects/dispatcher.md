@@ -12,15 +12,16 @@ steps:
   - {id: s4, kind: op, ref: "cc-226", title: "R1 lands — one gated migration, inert for the s14 S1 ring", after: 2026-10-14T23:15Z}
   - {id: s5, kind: op, ref: "cc-227", title: "R2 + N1 land — one gated migration + Vercel + the GHA step; ZERO eligible rows", after: 2026-10-15T23:15Z}
   - {id: s6, kind: receipt, ref: "FIX-1308", title: "proving Thu 23:15Z → Mon ~02:00Z (≈ 75 h, contains the Sun 10-18 drop night): tick cadence held on odd minutes, no unrecovered gap > 6 min, the re-fire exercised once (park the tick 10 min Sat), the tick's own cost from pgss, the Fri/Sat/Sun nightlies' claims visible in prod_session_state() and the guarded jobs skipped under them", after: 2026-10-19T02:00Z}
-  - {id: s7, kind: op, ref: "", title: "M1 — donor-rollup → stale_after 12 h (one registry row; the 0 9,12 cron parked)", after: 2026-10-19T16:00Z}
+  - {id: s7, kind: op, ref: "", title: "RETURN M1 — donor-rollup-refresh → stale_after 12 h (its cron parked since s16; write the row's rule + flip it + read the first dispatched firing in band)", after: 2026-10-19T16:00Z}
   - {id: s8, kind: receipt, ref: "FIX-1308", title: "M1 72 h: watermark lag ≤ 13 h at every read; the R3 overlap with ec-crawl not re-created; band held → the dial to 6 h", after: 2026-10-22T16:00Z}
-  - {id: s9, kind: op, ref: "", title: "V1 — fr-vacuum-analyze as a unit (dead_tuples > 60 % + floor 24 h; the 03:00Z cron parked; the role's vacuum_cost_delay set)", after: 2026-10-20T16:00Z}
-  - {id: s10, kind: op, ref: "", title: "E1 — ec-crawl eligible (stale_after 10 min under its */15 floor) + yield_to → exclusion_group + 3 small vacuums", after: 2026-10-21T16:00Z}
-  - {id: s11, kind: op, ref: "", title: "N2 — the nightly START by 21:00Z..23:00Z via the gha-dispatch stamp + 1124 part 2 retires the blackout config + 3 vacuums", after: 2026-10-22T16:00Z}
-  - {id: s12, kind: op, ref: "", title: "the remaining ~6 vacuums (2–3/day) + R1b cron_job_budget → VIEW", after: 2026-10-23T16:00Z}
+  - {id: s9, kind: op, ref: "", title: "MOVE V1 — fr-vacuum-analyze as a unit (dead_tuples > 60 % + floor 24 h; the 03:00Z cron parked AT this move — vacuums are KEEP, never parked by s16; the role's vacuum_cost_delay set)", after: 2026-10-20T16:00Z}
+  - {id: s10, kind: op, ref: "", title: "RETURN E1 — ec-crawl eligible (stale_after 10 min under its */15 floor) + yield_to → exclusion_group + 3 small vacuums (parked since s16)", after: 2026-10-21T16:00Z}
+  - {id: s11, kind: op, ref: "", title: "N2 — the nightly START by 21:00Z..23:00Z via the gha-dispatch stamp + 1124 part 2 retires the blackout config + 3 vacuums (GHA — untouched by s16)", after: 2026-10-22T16:00Z}
+  - {id: s12, kind: op, ref: "", title: "MOVE the remaining ~6 vacuums (2–3/day) + RETURN the parked dailies then weeklies + R1b cron_job_budget → VIEW and R1b's cron.unschedule of the returned jobs", after: 2026-10-23T16:00Z}
   - {id: s13, kind: design, ref: "FIX-1125", title: "the swap-in sensor design (Cowork, Wed/Thu 10-14/15; built against the 7 banked slot-window days)"}
   - {id: s14, kind: design, ref: "", title: "s7 contract-flow chunking design (Cowork, Thu/Fri after the Thu 14:00Z M3 reading)"}
   - {id: s15, kind: cc, ref: "FIX-1125", title: "FIX-1125 sensor + D8 headroom + the controller", after: 2026-10-19T16:00Z}
+  - {id: s16, kind: cc, ref: "cc-232", title: "park-derived-layer — the 18 derived-layer pg_cron jobs active := false by name + 16 FIX-1059 hold rows (FIX-1311); the 20 plumbing jobs stay on; each parked job returns only through the registry"}
 ---
 
 # Job registry + unit dispatcher
@@ -64,3 +65,110 @@ not in the tree. Each prompt restates the decisions it rests on. The contract
 itself becomes playbook D9, and cc-223's contract audit (dated 2026-10-12) is
 the first census of the 41 against it. Both ride FIX-1307's branch and reach
 main with cc-226.
+
+## s16 — the derived layer is parked (cc-232, FIX-1311, 2026-10-13)
+
+Craig's decision on Mon 10-12 (~20:20 PDT): the dispatcher migrates from
+**zero**, not alongside cron. Every derived-layer pg_cron job is parked
+(`active := false`, by NAME) by
+`20261013230000_fix1311_park_derived_layer_crons.sql`. R1 and R2 then land on a
+quiet box. Each job comes back **only** through a registry row with a real
+deadline rule (`stale_after` / `by` / `dead_tuples`): one return, one receipt.
+Derived data goes stale for a week or more, and Craig accepts that. In return:
+
+- the s6 proving week is clean, because no cron jobs are running for the tick
+  to defer around;
+- no job ever has two owners;
+- the two Tuesday weeklies that wedged the box twice in seven days stay off
+  until they come back behind `box_is_saturated()`. They are jobid 10
+  (`refresh-derived-mvs-weekly`, 10-13) and jobid 12 (`rule-taggers-weekly`'s
+  lineage, 10-06).
+
+**PARKED — 18 jobs.** Each pipeline below has a FIX-1059 hold row in
+`rollup_watch_overrides`, with `hold_reason` = `parked for the dispatcher
+cutover (cc-232, FIX-1311); returns via job_registry`. Two pairs share a
+pipeline, so 18 jobs make 16 rows.
+
+| job | pipeline (Q_CRON_JOB_PIPELINES) | class |
+|---|---|---|
+| `ec-crawl` | `entity_connections_rebuild` | crawl |
+| `fe-crawl` | `financial_entity_totals_refresh` | crawl |
+| `donor-rollup-refresh` | `donor_rollup_refresh` | daily ×2 |
+| `fe-inbound-rollup-refresh` | `financial_entity_inbound_rollup` | daily |
+| `rule-taggers-daily` | `run_rule_taggers` | daily |
+| `refresh-derived-mvs-daily` | `refresh_derived_mvs` | daily |
+| `donor-party-rollup-refresh` | `donor_party_rollup_refresh` | weekly |
+| `treemap-individuals-global-refresh` | `treemap_individuals_global_refresh` | weekly |
+| `contract-flow-rollups-refresh` | `contract_flow_rollups_rebuild` | weekly |
+| `agency-staffing-rollup-refresh` | `agency_staffing_rollup_refresh` | weekly |
+| `group-donor-rollup-refresh` | `group_donor_rollup_refresh` | weekly |
+| `rule-taggers-weekly` | `run_rule_taggers` | weekly |
+| `refresh-derived-mvs-weekly` | `refresh_derived_mvs` | weekly |
+| `financial-entity-totals-reconcile` | `financial_entity_totals_reconcile` | monthly |
+| `donation-edge-orphan-sweep` | `donation_edge_orphan_sweep` | monthly |
+| `donor-party-rollup-orphan-sweep` | `donor_party_rollup_orphan_sweep` | monthly |
+| `donor-rollup-orphan-sweep` | `donor_rollup_orphan_sweep` | monthly |
+| `entity-connection-stats-orphan-sweep` | `entity_connection_stats_orphan_sweep` | monthly |
+
+**KEPT ON — 20 jobs (the plumbing).**
+
+- `box-health-probe`: the dispatcher reads `box_is_saturated()` off its stamp.
+- `cron-job-budget-watchdog` and `derived-mvs-unit-watchdog`: they bound
+  whatever the dispatcher arms.
+- 13 vacuums, plus `vm-probe-pre-ec`: `dpr-`, `ec-`, `ecs-`, `fe-`, `fr-`,
+  `odbt-`, `odr-mv-`, `odt-`, `officials-`, `osar-`, `osdr-`,
+  `treemap-individuals-` and `xsr-vacuum-analyze`. The GHA nightly keeps
+  landing FR rows, so these must keep running (FIX-943).
+- `abuse-events-retention`, `cron-job-run-details-retention` and
+  `platform-counts-daily`.
+
+**NOT NAMED by cc-232, so left as they were — all active on prod at 23:14Z:**
+`vm-probe-pre-fe`, `vm-probe-pre-fr`, `votes-vacuum-analyze` and
+`vote-stats-refresh`. The first three are plumbing in all but name.
+`vote-stats-refresh` (`CALL rebuild_official_vote_stats()`, daily 03:30Z,
+guarded, pipeline `official_vote_stats_rebuild`) is a derived-layer rollup.
+Under the decision's own logic it would have been parked. Whether to park it is
+Craig's call; it is still on.
+
+**Already inactive and not touched:** `entity-connection-stats-rebuild`,
+`financial-entity-totals-incremental`, `rebuild-ec-incremental` and
+`rebuild-ec-incremental-mon`.
+
+**A return** means three things: write the row's deadline rule, flip it to
+eligible, and read the first dispatched firing in band. The same change also
+deletes that pipeline's hold row. Where a daily and a weekly share a pipeline,
+the row goes when the second of the pair returns. A return never re-schedules
+the cron job, because that would mint a new jobid. The parked row stays
+`active = false` until R1b's cleanup `cron.unschedule`s it.
+
+**Recommended return order** (Cowork's; Craig decides):
+
+1. the two crawls, one at a time — they can resume, and each has a week of
+   changes to walk;
+2. `donor-rollup-refresh` (`stale_after 12 hours`);
+3. the vacuum class, moved under `dead_tuples` rules (V1). The vacuums are
+   KEEP, so this is a move, not a return;
+4. the dailies (`by HH:MM`);
+5. the weeklies, last. They come back behind `box_is_saturated()` by
+   construction.
+
+The dated `after:` slots on s7/s9/s10/s12 above still follow the pre-park
+order (M1, then V1, then E1). They have not been re-sequenced to put the crawls
+first; moving them is Craig's call.
+
+**For cc-226 / `check:job-registry`:** an inactive `cron.job` row with an `at`
+registry row is the **expected cutover state**, not drift. If the checker fails
+on it, adjust the checker, not the park.
+
+**Receipts:** in the daily receipts file, an `inactive` verdict for any of the
+18 is the cutover, not a fault. The cron lookback is 14 days, so a parked job
+keeps showing its last pre-park firings, still band-compared, until those age
+out. A firing dated after the park instant is the fault. The cron-slot receipts that FIX-1248, 1284,
+1295 and 1296 were waiting on become first-dispatched-firing receipts when
+their jobs return.
+
+**Rollback** (whole cutover, valid only before the first return):
+`scripts/fix1311-unpark-derived-layer-crons.sql`, run with
+`db-query --prod --call --yes-i-mean-prod --file` under a FIX-950 claim. It
+flips the 18 back by name and deletes the 16 hold rows by their `hold_reason`.
+Once any job has returned, un-park the rest one at a time instead.

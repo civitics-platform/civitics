@@ -146,6 +146,13 @@ Precedence, and the reason for it:
    fire on if it were re-enabled. A job deactivated *mid*-lookback still has
    real firings, and those are still band-compared — `inactive` only ever
    replaces `missing`, never a measurement.
+   **The dispatcher cutover:** from 2026-10-13, the 18 derived-layer jobs
+   that FIX-1311 / cc-232 parked read `inactive` because of the cutover, not
+   because of a fault. Each one returns only through `job_registry`; see
+   `docs/cc/projects/dispatcher.md` s16. Because the cron lookback is 14 days,
+   a parked job keeps showing its last pre-park firings, still band-compared,
+   until those firings age out. Only after that does it read `inactive`. A
+   firing dated *after* the park is the fault.
 5. **`missing`** — an **active** job with no firing in the lookback window.
    Reserved for that: four prod jobs are permanently disabled
    (`entity-connection-stats-rebuild`, `financial-entity-totals-incremental`,

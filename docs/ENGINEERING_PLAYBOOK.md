@@ -498,6 +498,16 @@ row (C6).
 
 ## D. Scheduled work
 
+> **Between 2026-10-13 and each job's return, the derived layer is parked;
+> the registry is the only way back.** FIX-1311 / cc-232 set the 18
+> derived-layer pg_cron jobs (the crawls, the money rollups, the taggers, the
+> derived MVs, the reconcile and orphan sweeps) to `active = false` by name.
+> Each has a FIX-1059 hold row. Only the plumbing stays on: the probe, the two
+> watchdogs, the vacuums, the retention jobs and platform counts. Never
+> re-activate a parked job with `cron.alter_job`. Each job comes back through a
+> `job_registry` row with a deadline rule, read on its first dispatched firing.
+> The lists and the return order are in `docs/cc/projects/dispatcher.md` s16.
+
 ### D1. A pg_cron firing can be dropped silently — assume it, and back it up.
 
 With `cron.use_background_workers = off`, pg_cron opens a fresh libpq connection
