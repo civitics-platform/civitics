@@ -1,4 +1,8 @@
 User-agent: *
+# FIX-1305: on 2026-10-12 four search crawlers (OAI-SearchBot, Googlebot,
+# ExaSearchBot, DuckDuckBot) walked the site at ~29 req/s combined. Googlebot
+# ignores Crawl-delay; the others honour it.
+Crawl-delay: 5
 Allow: /
 Disallow: /api/
 Disallow: /dashboard/

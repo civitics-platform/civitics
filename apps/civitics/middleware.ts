@@ -3,6 +3,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/ratelimit";
 import { createRedirectResolver } from "@/lib/official-redirects";
 import { createInstitutionSlugResolver } from "@/lib/institution-slug-redirects";
+import {
+  ORIGIN_AUTH_HEADER,
+  ORIGIN_CHECK_HEADER,
+  ORIGIN_MISS_SAMPLE_RATE,
+  aliasRedirectTarget,
+  createSampler,
+  decideAliasRedirect,
+  decideOriginAuth,
+  formatOriginLogLine,
+  parseOriginAuthMode,
+  type OriginAuthDecision,
+} from "@/lib/origin-auth";
 
 // ---------------------------------------------------------------------------
 // Bot pattern filtering
@@ -32,9 +44,11 @@ const BOT_PATTERNS = [
 // The per-IP counters live in Upstash Redis (src/lib/ratelimit.ts) so they span
 // edge instances/regions and survive cold starts — the distributed upgrade this
 // file's previous in-memory `Map` comment always named. checkRateLimit FAILS
-// OPEN: if the Upstash env is absent or Upstash errors, every check allows the
-// request (the per-user DB caps in FIX-569 are the real integrity control), so
-// middleware builds and serves with UPSTASH_* unset.
+// OVER, never open (FIX-1038): if the Upstash env is absent or Upstash errors,
+// it degrades to a per-instance in-memory limiter with the same bucket caps —
+// never to allow-all — and it never throws, so middleware builds and serves
+// with UPSTASH_* unset. The per-user DB caps in FIX-569 remain the integrity
+// control behind it.
 //
 // NB on auth: the browser's signInWithOtp call goes straight to Supabase GoTrue,
 // not through this app, so the OTP-send throttle can't live here — it's enforced
@@ -167,6 +181,88 @@ function rateLimitResponse(retryAfterSec: number): NextResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Origin auth (FIX-1305)
+//
+// Two doors reach this origin without passing Cloudflare (cc-229 §G1): the
+// civitics-civitics.vercel.app alias, and Vercel's anycast IP with
+// `Host: www.civitics.com`. Deployment Protection cannot close the alias
+// without also gating www (both are public production domains). The decisions
+// are in src/lib/origin-auth.ts; this file reads headers and answers.
+//
+// D0 alias: the alias host is 308'd to www.civitics.com before anything else.
+//    The 10-12 crawl was four search engines on that mirror; www is where the edge sees them.
+// D2 mode: ORIGIN_AUTH_MODE off | report | enforce, default off. Forced off
+//    outside production and when ORIGIN_AUTH_SECRET is unset (passes, warns once).
+// D3 placement: the check runs before the BOT_PATTERNS 404 and checkRateLimit,
+//    so a refused request costs zero Upstash commands and zero origin work.
+// D4 exemption: /api/cron/* only — Vercel's scheduler calls it directly, and
+//    each route's CRON_SECRET bearer gate is what makes that safe.
+// D5 enforce: 403 {"error":"origin"} with the 429's no-store trio, so a
+//    refusal is never shared-cache-eligible.
+// D6 report: `x-civitics-origin-check: miss` on whatever is returned, and a
+//    warn on the first miss then 1-in-100 per isolate; enforce logs `refused`.
+// This lands in report mode (cc-230). cc-231 reads 24 h of the log and flips
+// ORIGIN_AUTH_MODE to enforce.
+// ---------------------------------------------------------------------------
+
+const originLogSampled = createSampler(ORIGIN_MISS_SAMPLE_RATE);
+const originWarnedOnce = new Set<string>();
+
+function warnOriginOnce(key: string, message: string): void {
+  if (originWarnedOnce.has(key)) return;
+  originWarnedOnce.add(key);
+  console.warn(`[origin-auth] ${message}`);
+}
+
+/** D2: a misconfiguration turns the check off; say so once per isolate rather than never. */
+function warnOnOriginMisconfig(
+  setting: ReturnType<typeof parseOriginAuthMode>,
+  origin: OriginAuthDecision,
+): void {
+  if (setting.reason === "unknown") {
+    const raw = JSON.stringify(process.env["ORIGIN_AUTH_MODE"]);
+    warnOriginOnce("mode", `ORIGIN_AUTH_MODE=${raw} is not off|report|enforce — check is OFF`);
+  }
+  if (origin.reason === "no-secret") {
+    warnOriginOnce("secret", `ORIGIN_AUTH_MODE=${setting.mode} but ORIGIN_AUTH_SECRET is unset — check is OFF`);
+  }
+}
+
+function noteOrigin(request: NextRequest, path: string, verb: "miss" | "refused"): void {
+  if (!originLogSampled()) return;
+  console.warn(
+    formatOriginLogLine({
+      verb,
+      host: request.headers.get("host"),
+      path,
+      method: request.method,
+      cfRay: request.headers.has("cf-ray"),
+      ua: request.headers.get("user-agent"),
+    }),
+  );
+}
+
+function aliasRedirectResponse(request: NextRequest): NextResponse {
+  return NextResponse.redirect(aliasRedirectTarget(request.nextUrl.pathname, request.nextUrl.search), {
+    status: 308,
+    headers: { "Cache-Control": "public, max-age=3600" },
+  });
+}
+
+function originRefusedResponse(): NextResponse {
+  return new NextResponse(JSON.stringify({ error: "origin" }), {
+    status: 403,
+    headers: {
+      "Content-Type": "application/json",
+      // Same trio as the 429 (FIX-797): a refusal is never shared-cache-eligible.
+      "Cache-Control": "no-store",
+      "CDN-Cache-Control": "no-store",
+      "Vercel-CDN-Cache-Control": "no-store",
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Middleware
 // ---------------------------------------------------------------------------
 
@@ -200,6 +296,34 @@ const institutionSlugs = createInstitutionSlugResolver({
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
+  // ── FIX-1305 D0: the vercel.app alias → www.civitics.com (308) ────────────
+  if (decideAliasRedirect({ host: request.headers.get("host"), path }).redirect) {
+    return aliasRedirectResponse(request);
+  }
+
+  // ── FIX-1305: origin auth — did this come through Cloudflare? ─────────────
+  const setting = parseOriginAuthMode(process.env["ORIGIN_AUTH_MODE"]);
+  const origin = decideOriginAuth({
+    path,
+    headerValue: request.headers.get(ORIGIN_AUTH_HEADER),
+    secret: process.env["ORIGIN_AUTH_SECRET"],
+    mode: setting.mode,
+    vercelEnv: process.env["VERCEL_ENV"],
+  });
+  warnOnOriginMisconfig(setting, origin);
+  if (origin.action === "refuse") {
+    noteOrigin(request, path, "refused");
+    return originRefusedResponse();
+  }
+  if (origin.action === "report") noteOrigin(request, path, "miss");
+
+  const response = await routeRequest(request, path);
+  if (origin.action === "report") response.headers.set(ORIGIN_CHECK_HEADER, "miss");
+  return response;
+}
+
+/** Everything after the origin decisions. Every return is a NextResponse, so D6 can stamp it. */
+async function routeRequest(request: NextRequest, path: string): Promise<NextResponse> {
   // ── Bot pattern filtering ──────────────────────────────────────────────────
   if (BOT_PATTERNS.some((p) => p.test(path))) {
     return new NextResponse(null, { status: 404 });
@@ -239,8 +363,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Rate limiting on public API + participation-write routes (FIX-570) ─────
-  // Durable (Upstash) and fail-open: an Upstash outage/quota allows the request
-  // and logs `[ratelimit]`; the per-user DB caps remain the real backstop.
+  // Durable (Upstash), failing over to per-instance memory on an Upstash
+  // outage/quota (FIX-1038) and logging `[ratelimit]`; never allow-all.
   const bucket = getRateLimitBucket(path, request.method, isPrefetchRequest(request));
   if (bucket) {
     const ip = getClientIp(request);

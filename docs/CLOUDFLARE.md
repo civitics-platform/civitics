@@ -75,6 +75,9 @@ test of whether the custom rule alone holds the line.
 Cache Rules 0 · Cache Response Rules 0 · Page Rules 0/3 · no Redirect / Transform /
 Configuration / Origin rules.
 
+*Since 2026-10-12 there is one Transform Rule, `Origin auth (FIX-1305)`: security, not
+caching. See §"Origin auth (FIX-1305)". The paragraph below still holds for caching.*
+
 This is correct, not a casualty of the account move. FIX-796 moved CDN cache headers *out*
 of `next.config.mjs` `headers()` and into per-response handler code, because config rules
 are method- and status-blind — a config rule on an API path stamps POST responses and error
@@ -146,6 +149,8 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Minimum TLS Version | 1.0 (default) | should be 1.2 |
 | DNSSEC | Not enabled | disabled for the move, never re-enabled |
 | Certificate Transparency Monitoring | **On since 2026-08-14** | free issuance alerts |
+| Transform Rule: `Origin auth (FIX-1305)` | **On since 2026-10-12** (Craig) | stamps `x-civitics-origin`; the origin checks it — see §"Origin auth (FIX-1305)" |
+| WAF custom rule: `Verified bots skip (FIX-1305)` | added 2026-10-12 (Craig) | Skip → Security Level only, `(cf.client.bot)` — not script-verified |
 
 ### The 2026-08-12 526 — an expired ORIGIN certificate, renewals failing silently
 
@@ -227,6 +232,9 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
       GitHub Actions secret of the same name — and both must change in the same sitting.
       A mismatch does not fail open: the probe gets challenged and
       `.github/workflows/platform-snapshot.yml` goes red on a 403.
+- [ ] **Flip `ORIGIN_AUTH_MODE` to `enforce` — cc-231.** Only after 24 h of report-mode
+      log shows no `cf-ray=yes` misses (the Transform Rule is stamping everything
+      Cloudflare forwards). See §"Origin auth (FIX-1305)".
 - [ ] **Add the FIX-799 Skip rule** for same-origin `RSC eq "1"` GETs, so managed challenge
       stops firing on the app's own soft navigations. More urgent while Under Attack is on.
 - [ ] **Add a DMARC record** — `_dmarc.civitics.com` TXT, `v=DMARC1; p=none; rua=…` to
@@ -359,6 +367,119 @@ The effective threshold rides in the snapshot payload and the card shows
 3,000 — because a verify-run value left in place is its own incident. A
 non-numeric or non-positive value is ignored rather than obeyed, so an env typo
 cannot set the threshold to 0 and trip the loop on every quiet hour.
+
+## Origin auth (FIX-1305)
+
+**Every control on this page assumes traffic comes through this zone. On 2026-10-12 it
+did not.** Two doors reach the Vercel origin around Cloudflare. cc-230 closes one with a
+redirect and puts a check on the other, in report mode. cc-231 flips the check to
+enforce.
+
+### The two doors
+
+Probed by cc-229 (GET, 2026-10-12 23:35:27Z,
+`docs/audits/2026-10-12-crawl-upstash-exhaustion.md` §G1):
+
+```
+alias  200
+ip+host  307 https://www.civitics.com/officials
+cf-path  403
+ip+www  200
+```
+
+| line | request | reading |
+|---|---|---|
+| `alias` | `https://civitics-civitics.vercel.app/officials` | **Open.** Vercel's production alias, with no Cloudflare in the path. |
+| `ip+host` | `--resolve civitics.com:443:76.76.21.21 https://civitics.com/officials` | The apex at Vercel's anycast IP 307s to `www`, which is the same door one hop later. |
+| `ip+www` | `--resolve www.civitics.com:443:76.76.21.21 https://www.civitics.com/officials` | **Open.** Vercel serves the canonical host to anyone who resolves its IP themselves. |
+| `cf-path` | `https://civitics.com/officials` | Control: the Under Attack 403 challenge. |
+
+The 10-12 crawl came through the alias. Craig's Vercel log read named four **search
+engines**: OAI-SearchBot, Googlebot, ExaSearchBot and DuckDuckBot, about 29 req/s
+combined. They were indexing the alias as an un-canonicalised mirror, because the
+entity pages carry no `alternates.canonical`. Cloudflare saw 0.4 % of that traffic.
+The WAF, Under Attack and the FIX-1045 loop above were all blind to it, and the
+limiter spent 357k Upstash commands on requests no edge control could see.
+
+**Deployment Protection does not close the alias.** Vercel's Standard Protection lists
+`civitics-civitics.vercel.app` among the PUBLIC production domains (Craig, dashboard,
+2026-10-12). No Deployment Protection setting gates the alias without also gating
+`www.civitics.com`. Do not go looking for that switch.
+
+### The alias: a 308 to www, not a 403
+
+The first statement of `apps/civitics/middleware.ts` 308s any request on the alias host
+to the same path and query on `https://www.civitics.com`, with
+`Cache-Control: public, max-age=3600`. The crawlers are wanted. A 403 would drop the
+pages from their indexes. A 308 moves the index to `www`, where Cloudflare, the loop and
+the limiter can see the traffic.
+
+`/api/cron/*` is the one exemption, because Vercel's scheduler may call the production
+deployment on the alias host. Every cron route checks the `CRON_SECRET` bearer itself.
+That is therefore the redirect's one failure mode, and it is cheap to check:
+
+```
+curl -s -o /dev/null -w "alias-cron %{http_code}\n" https://civitics-civitics.vercel.app/api/cron/box-health
+```
+
+The answer must be **401**, which is the route's own gate. If it is a 308, the
+scheduled jobs are being redirected, so revert the redirect.
+
+Once on civitics.com, the crawlers meet Under Attack mode. Craig added a WAF custom rule
+for that:
+
+> **Verified bots skip (FIX-1305)** — Skip → **Security Level only**, where
+> `(cf.client.bot)`.
+
+It has the same shape as `Probe skip (FIX-1057)`, and for the same reason. It skips
+Security Level only, so `Common Exploit Paths` still applies. `cf.client.bot` is
+Cloudflare's verified-bot classification, not a User-Agent match, so Googlebot,
+DuckDuckBot and OAI-SearchBot pass while a forged UA string does not. Whether
+ExaSearchBot is on that list is unverified.
+
+`robots.txt` also carries `Crawl-delay: 5` under `User-agent: *`. Googlebot ignores the
+directive; the other three honour it.
+
+### The IP: an origin-auth header
+
+A Transform Rule stamps a secret header on every request this zone forwards, and
+middleware checks for it. The check keys on whether the request came through
+Cloudflare, not on the hostname, so it closes the IP door. It would also close the
+alias, which no longer needs it.
+
+| | |
+|---|---|
+| Where | Rules → Transform Rules → **Modify Request Header** |
+| Name | `Origin auth (FIX-1305)` |
+| Expression | `(http.host contains "civitics.com")` |
+| Action | **Set static**: header `x-civitics-origin`, value = the secret |
+
+The secret is 32 random bytes (`openssl rand -hex 32`). It lives in exactly two places:
+this rule and the Vercel env `ORIGIN_AUTH_SECRET` (Production scope only). The comparison
+is constant-time, in `apps/civitics/src/lib/origin-auth.ts`. Middleware runs it after
+the alias redirect and before the `BOT_PATTERNS` 404 and `checkRateLimit`, so a refused
+request costs zero Upstash commands.
+
+**The mode ladder** is set by the Vercel env `ORIGIN_AUTH_MODE` (Production scope). It
+controls what happens to a request that arrives without the header:
+
+| mode | a request without the header |
+|---|---|
+| `off`: the default. Also forced outside `VERCEL_ENV=production`, and whenever `ORIGIN_AUTH_SECRET` is unset | served; nothing logged |
+| `report`: since cc-230 | served, with `x-civitics-origin-check: miss` on the response; logs `[origin-auth] miss host=… path=… method=… cf-ray=yes\|no ua=…` on the first miss, then 1-in-100 per isolate |
+| `enforce`: cc-231 | 403 `{"error":"origin"}`, no-store; the same log line, with `refused` |
+
+On a miss, `cf-ray=yes` means the request DID come through Cloudflare and the rule is
+not stamping it. Fix the rule before enforcing. `cf-ray=no` is the direct-to-origin
+traffic the check exists for. The only exemption is `/api/cron/*`, which the bearer
+gates.
+
+**Rotation.** Change the Transform Rule's value and the Vercel `ORIGIN_AUTH_SECRET` in
+the same sitting, then redeploy: a Vercel env change reaches only new deployments. A
+mismatch under `enforce` 403s civitics.com itself, for every real visitor. It is the
+same class as the [[FIX-1057]] probe-secret rotation warning, with a far larger blast
+radius. Under `report`, a mismatch only logs `cf-ray=yes` misses, so rotate while in
+`report` if there is a choice.
 
 ## If the zone ever moves accounts again
 
