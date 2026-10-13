@@ -49,6 +49,8 @@ import {
   CRAWL_SKIP_REASONS,
   crawlSkipLines,
   parkedArmLines,
+  unitDispatcherFromStatus,
+  unitDispatcherLine,
   crawlSkipsBaselineFrom,
   previousNominalDay,
   memoryWindow,
@@ -1521,4 +1523,58 @@ test("FIX-1289: §9 names the window and who banked it; a kept day says so", () 
   assert.match(kept, /banked by a hand run at 2026-09-12T05:00:00\.000Z — kept: this run did not re-read the ring\./);
   const refused = boxHealthLines({ ...quiet, window: w, mem_day: { available: false, reason: "ring holds x → y; window a → b not held" }, memory_day: null }, AS_OF).join("\n");
   assert.match(refused, /Memory window \(FIX-1289\): 2026-10-11T21:00:00\.000Z → 2026-10-12T21:00:00\.000Z, \*\*not banked\*\*\./);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1308 — the §9 unit-dispatcher line
+// ---------------------------------------------------------------------------
+
+/** get_dispatcher_status() as the clone answered it (cc-224), trimmed to what the line reads. */
+const DISPATCHER_STATUS = {
+  last_tick_at: "2026-09-12T06:28:47.000Z",
+  last_tick_source: "pg_cron",
+  last_decision: "nothing_due",
+  ticks_60m: 30,
+  expected_ticks_60m: 30,
+  decisions_24h: { nothing_due: 718, armed: 1, reaped: 1 },
+  live: [],
+  dials: { pause: false, tick_seconds: 120 },
+  registry: { rows: 54, eligible: 0, by_runner: { pg_cron: 47, github_actions: 7 } },
+};
+
+test("FIX-1308: §9 dispatcher line — present", () => {
+  const d = unitDispatcherFromStatus(DISPATCHER_STATUS);
+  assert.deepEqual(d, {
+    last_tick_at: "2026-09-12T06:28:47.000Z",
+    last_tick_source: "pg_cron",
+    ticks_60m: 30,
+    expected_ticks_60m: 30,
+    decisions_24h: { nothing_due: 718, armed: 1, reaped: 1 },
+    live_count: 0,
+    eligible_rows: 0,
+    pause: false,
+  });
+  assert.equal(
+    unitDispatcherLine(d, AS_OF),
+    "Dispatcher (FIX-1308): 30/30 ticks last 60 min (last 1.2 min before this file, pg_cron); " +
+      "24 h: 1 armed / 1 reaped / 0 missed / 0 skipped; 0 eligible rows; pause false",
+  );
+});
+
+test("FIX-1308: §9 dispatcher line — not capturable until the migration lands, and a failed read", () => {
+  assert.equal(
+    unitDispatcherLine({ not_capturable: "dispatcher not landed" }, AS_OF),
+    "Dispatcher (FIX-1308): not capturable — dispatcher not landed.",
+  );
+  assert.deepEqual(unitDispatcherFromStatus(null), { not_capturable: "get_dispatcher_status() read failed" });
+  // A file written before the reader existed is "not read", never "not capturable".
+  assert.equal(unitDispatcherLine(undefined, AS_OF), "Dispatcher (FIX-1308): not read.");
+});
+
+test("FIX-1308: §9 dispatcher line — paused is bold; a dispatcher that never ticked says never", () => {
+  const paused = unitDispatcherFromStatus({ ...DISPATCHER_STATUS, dials: { pause: true }, decisions_24h: { paused: 30 } });
+  assert.ok(unitDispatcherLine(paused, AS_OF).endsWith("; pause **true**"));
+  assert.ok(unitDispatcherLine(paused, AS_OF).includes("24 h: 0 armed / 0 reaped / 0 missed / 0 skipped"));
+  const never = unitDispatcherFromStatus({ ...DISPATCHER_STATUS, last_tick_at: null, ticks_60m: 0 });
+  assert.ok(unitDispatcherLine(never, AS_OF).startsWith("Dispatcher (FIX-1308): 0/30 ticks last 60 min (last never)"));
 });

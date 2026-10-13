@@ -73,6 +73,7 @@ import {
   type CrawlSkips,
   type MemoryBankedBy,
   type MemoryWindow,
+  type UnitDispatcherReceipt,
   BURST_THRESHOLD,
   bankMemoryWindow,
   compareToBand,
@@ -83,6 +84,7 @@ import {
   previousNominalDay,
   renderJson,
   renderMarkdown,
+  unitDispatcherFromStatus,
   verdictsFor,
 } from "./receipts-format";
 
@@ -765,6 +767,14 @@ WHERE key IN ('ec_crawl', 'fe_crawl')`;
  * FIX-1270 — the generic EC arms parked after two consecutive cancels. One key;
  * an absent row is nothing parked, the same as `{}`.
  */
+// FIX-1308 — the unit dispatcher. Asked first whether the function exists, so a
+// database without the migration reads `not_capturable`, not a failed query.
+const Q_DISPATCHER_LANDED = `
+SELECT to_regprocedure('public.get_dispatcher_status()') IS NOT NULL AS landed`;
+
+const Q_DISPATCHER_STATUS = `
+SELECT public.get_dispatcher_status() AS s`;
+
 const Q_EC_ARM_PARKED = `
 SELECT value
 FROM public.pipeline_state
@@ -1308,6 +1318,18 @@ async function main(): Promise<void> {
     );
     const ecArmParked = parkedRows[0]?.value ?? {};
 
+    // FIX-1308 — §9, the unit dispatcher.
+    const dispLanded = await r.run<{ landed: boolean }>("dispatcher_landed", Q_DISPATCHER_LANDED);
+    let unitDispatcher: UnitDispatcherReceipt;
+    if (dispLanded.length === 0) {
+      unitDispatcher = { not_capturable: "the landed check failed" };
+    } else if (dispLanded[0]?.landed !== true) {
+      unitDispatcher = { not_capturable: "dispatcher not landed" };
+    } else {
+      const dispRows = await r.run<{ s: Record<string, unknown> | null }>("dispatcher_status", Q_DISPATCHER_STATUS);
+      unitDispatcher = unitDispatcherFromStatus(dispRows[0]?.s ?? null);
+    }
+
     // FIX-1189 O2 — §10.
     const legRows = await r.run<Record<string, unknown>>("legislator_ids", Q_LEGISLATOR_IDS);
     const legRun = (which: string): LegislatorIdsRun | null => {
@@ -1449,6 +1471,7 @@ async function main(): Promise<void> {
         ec_arm_parked: ecArmParked,
       },
       legislator_ids: { latest: legRun("latest"), complete: legRun("complete"), bind: legRun("bind") },
+      unit_dispatcher: unitDispatcher,
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
     };

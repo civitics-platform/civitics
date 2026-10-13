@@ -1171,6 +1171,71 @@ export function parkedArmLines(f: ForkerSection): string[] {
 }
 
 /**
+ * FIX-1308 — the unit dispatcher, as the receipts file carries it: the parts of
+ * `get_dispatcher_status()` a daily reader needs, or `not_capturable` with
+ * the reason when the function is not on the database (the migration has not
+ * landed) or its read failed.
+ */
+export type UnitDispatcherReceipt =
+  | { not_capturable: string }
+  | {
+      last_tick_at: string | null;
+      last_tick_source: string | null;
+      ticks_60m: number;
+      expected_ticks_60m: number;
+      decisions_24h: Record<string, number>;
+      live_count: number;
+      eligible_rows: number;
+      pause: boolean | null;
+    };
+
+/** get_dispatcher_status()'s jsonb → the receipt. Null (a failed read) is not capturable. */
+export function unitDispatcherFromStatus(s: Record<string, unknown> | null | undefined): UnitDispatcherReceipt {
+  if (s === null || s === undefined || typeof s !== "object") {
+    return { not_capturable: "get_dispatcher_status() read failed" };
+  }
+  const n = (v: unknown): number => (typeof v === "number" ? v : Number(v ?? 0) || 0);
+  const decisions: Record<string, number> = {};
+  for (const [k, v] of Object.entries((s["decisions_24h"] ?? {}) as Record<string, unknown>)) decisions[k] = n(v);
+  const dials = (s["dials"] ?? null) as Record<string, unknown> | null;
+  const registry = (s["registry"] ?? null) as Record<string, unknown> | null;
+  return {
+    last_tick_at: typeof s["last_tick_at"] === "string" ? (s["last_tick_at"] as string) : null,
+    last_tick_source: typeof s["last_tick_source"] === "string" ? (s["last_tick_source"] as string) : null,
+    ticks_60m: n(s["ticks_60m"]),
+    expected_ticks_60m: n(s["expected_ticks_60m"]),
+    decisions_24h: decisions,
+    live_count: Array.isArray(s["live"]) ? (s["live"] as unknown[]).length : 0,
+    eligible_rows: n(registry?.["eligible"]),
+    pause: typeof dials?.["pause"] === "boolean" ? (dials["pause"] as boolean) : null,
+  };
+}
+
+/**
+ * FIX-1308 — the §9 dispatcher line. Pure. `undefined` is a file written before
+ * the reader existed ("not read"); `not_capturable` is a database without the
+ * migration; otherwise the cadence, the 24 h decisions, the eligible rows and
+ * the pause dial — paused is bold, because a paused dispatcher arms nothing.
+ */
+export function unitDispatcherLine(d: UnitDispatcherReceipt | undefined, asOf: string): string {
+  if (d === undefined) return "Dispatcher (FIX-1308): not read.";
+  if ("not_capturable" in d) return "Dispatcher (FIX-1308): not capturable — " + d.not_capturable + ".";
+  const t = d.last_tick_at === null ? NaN : Date.parse(d.last_tick_at);
+  const ref = Date.parse(asOf);
+  const last =
+    Number.isNaN(t) || Number.isNaN(ref)
+      ? "last never"
+      : "last " + ((ref - t) / 60_000).toFixed(1) + " min before this file, " + (d.last_tick_source ?? "?");
+  const c = (k: string) => d.decisions_24h[k] ?? 0;
+  return (
+    "Dispatcher (FIX-1308): " + d.ticks_60m + "/" + d.expected_ticks_60m + " ticks last 60 min (" + last + "); " +
+    "24 h: " + c("armed") + " armed / " + c("reaped") + " reaped / " + c("missed") + " missed / " +
+    c("skipped") + " skipped; " + d.eligible_rows + " eligible rows; " +
+    (d.pause === true ? "pause **true**" : "pause " + String(d.pause))
+  );
+}
+
+/**
  * FIX-1208 — how stale the Vercel watchdog stamp may be before it is `missing`.
  *
  * The route fires every 2 minutes, so ten minutes is five missed firings. Two
@@ -1495,6 +1560,12 @@ export interface ReceiptsData {
   forker: ForkerSection;
   /** FIX-1189 O2 — §10. Optional so a pre-O2 JSON still renders. */
   legislator_ids?: LegislatorIdsSection;
+  /**
+   * FIX-1308 — §9, the unit dispatcher. Optional so a pre-FIX-1308 JSON still
+   * renders. Not `dispatcher`: `nightly.dispatcher` is the GHA nightly
+   * dispatcher's stamp (FIX-1218), a different machine.
+   */
+  unit_dispatcher?: UnitDispatcherReceipt;
   not_capturable: string[];
   queries: QueryRecord[];
 }
@@ -2019,6 +2090,8 @@ export function renderMarkdown(d: ReceiptsData): string {
   for (const line of crawlSkipLines(d.forker)) p(line);
   p("");
   for (const line of parkedArmLines(d.forker)) p(line);
+  p("");
+  p(unitDispatcherLine(d.unit_dispatcher, d.generated_at));
   p(
     queryBlock(d.queries, [
       "forker_24h",
@@ -2030,6 +2103,8 @@ export function renderMarkdown(d: ReceiptsData): string {
       "crawl_skips",
       "crawl_overlaps",
       "ec_arm_parked",
+      "dispatcher_landed",
+      "dispatcher_status",
     ]),
   );
 
