@@ -40,6 +40,16 @@
  * predicate and one file, and a memory scrape that failed or ran long there
  * would share a firing with the budget guard.
  *
+ * ── THE DISPATCHER RE-FIRE (FIX-1308) ────────────────────────────────────────
+ *
+ * After the memory work, one more read: the newest dispatch_log.ticked_at.
+ * The dispatcher ticks on odd minutes from pg_cron; when its newest row is
+ * more than 360 s old (three missed ticks), this route calls
+ * dispatch_one_unit('vercel') once — the second path, for the same reason
+ * the budget watchdog has one (FIX-1194 P2-A). The function reads the box and
+ * the pause dial itself; the route only decides whether to call. The decision
+ * is the pure shouldRefireDispatcher() in src/lib/dispatcher-refire.ts.
+ *
  * No data_sync_log row, for the cron-watchdog reason: 720 firings a day would be
  * noise the freshness registry would try to infer a cadence from. Answers 200
  * on every failure except auth, for the same reason as its sibling.
@@ -47,14 +57,19 @@
 
 export const dynamic = "force-dynamic";
 
-// Bounded well under Vercel's limit: a 10 s scrape, a 5 s Upstash write, and
-// the RPC's 10 s race.
+// Bounded under Vercel's limit: a 10 s scrape, a 5 s Upstash write, the RPC's
+// 10 s race, and the dispatcher's two 2 s races (FIX-1308) — 29 s worst case.
 export const maxDuration = 30;
 
 import { NextResponse, type NextRequest } from "next/server";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { shouldRefireDispatcher } from "@/lib/dispatcher-refire";
 
 const RPC_TIMEOUT_MS = 10_000;
+// FIX-1308 — the dispatch_log read is one indexed row and the re-fire is a
+// tens-of-ms function; 2 s each keeps the route inside maxDuration. A re-fire
+// the race abandons still runs to completion server-side and logs its row.
+const DISPATCH_TIMEOUT_MS = 2_000;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (process.env["CRON_DISABLED"] === "true") {
@@ -73,6 +88,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Lazy, inside the try (FIX-1130): module-scope construction would fail
     // the route before it could report anything.
     const { createAdminClient, noStoreFetch, runBoxHealth } = await import("@civitics/db");
+    const db = createAdminClient({ fetch: noStoreFetch });
 
     const result = await runBoxHealth({
       env: {
@@ -84,7 +100,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // passes `cache: "no-store"` itself too; this is the second fence.
       fetchImpl: noStoreFetch,
       stampOnBox: async (sample) => {
-        const db = createAdminClient({ fetch: noStoreFetch });
         const { data, error } = await withDbTimeout(
           db.rpc("record_box_health_mem", { p: sample }),
           RPC_TIMEOUT_MS,
@@ -99,12 +114,53 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (result.ok) console.info(result.line);
     else console.error(result.line);
 
+    // FIX-1308 — the dispatcher's second path. Read the newest dispatch_log
+    // row; when it is more than 360 s old (three missed odd-minute ticks),
+    // call the tick's function once. dispatch_one_unit() reads the box and the
+    // pause dial itself, so this route decides only whether to call. Until the
+    // tables reach Pro the read fails "absent", which is expected and quiet.
+    const dispatchRead = await withDbTimeout(
+      db.from("dispatch_log").select("ticked_at").order("ticked_at", { ascending: false }).limit(1),
+      DISPATCH_TIMEOUT_MS,
+      "box-health:dispatch",
+    );
+    const lastTickAt =
+      (dispatchRead.data as Array<{ ticked_at: string }> | null)?.[0]?.ticked_at ?? null;
+    const verdict = shouldRefireDispatcher({
+      read: { lastTickAt, error: dispatchRead.error },
+      now: new Date(),
+    });
+    let refireResult: unknown = null;
+    if (verdict.refire) {
+      const { data, error } = await withDbTimeout(
+        db.rpc("dispatch_one_unit", { p_source: "vercel" }),
+        DISPATCH_TIMEOUT_MS,
+        "box-health:dispatch",
+      );
+      refireResult = error ? { error: error.message } : data;
+      const d = (data ?? {}) as { decision?: unknown; job?: unknown; reason?: unknown };
+      // PGRST202: the function is not on this database (before the push, or
+      // after a ROLLBACK that dropped it). Expected, so not an error line.
+      if (error && (error as { code?: string }).code === "PGRST202") console.info(`[cron/box-health] dispatcher re-fire skipped: dispatch_one_unit absent`);
+      else if (error) console.error(`[cron/box-health] dispatcher re-fire failed: ${error.message}`);
+      else console.info(`[cron/box-health] dispatcher re-fired (${verdict.reason}): ${String(d.decision)} ${String(d.job ?? "-")} — ${String(d.reason ?? "")}`);
+    } else if (dispatchRead.error && !verdict.notLanded) {
+      console.error(`[cron/box-health] ${verdict.reason}`);
+    }
+
     return NextResponse.json({
       ok: result.ok,
       sample: result.sample,
       off_box: result.off_box,
       on_box: result.on_box,
       ambiguous: result.ambiguous,
+      dispatcher: {
+        checked: true,
+        last_tick_at: lastTickAt,
+        refired: verdict.refire,
+        reason: verdict.reason,
+        result: refireResult,
+      },
       elapsed_ms: Date.now() - startedAt,
     });
   } catch (err) {
