@@ -82,7 +82,9 @@ test("FIX-1223: correlation joins through a shared minute, with nested loops off
 test("FIX-1221: the retention job deletes at the registry's 42 days, one statement, 01:51, budgeted", () => {
   const f = registrySource();
   const corrDays = Number(/v_corr_since timestamptz := GREATEST\(v_since, now\(\) - make_interval\(days => (\d+)\)\)/.exec(f)![1]);
-  const job = latestContaining("'cron-job-run-details-retention'");
+  // The scheduling declaration, not the bare literal: FIX-1307's job_registry
+  // seed also carries 'cron-job-run-details-retention' and sorts later.
+  const job = latestContaining("CONSTANT text := 'cron-job-run-details-retention'");
   const m = /cron\.schedule\(c_jobname, c_sched,\s+\$job\$(.*?)\$job\$\)/s.exec(job);
   assert.ok(m, "the job is scheduled by name");
   const cmd = m[1]!;
