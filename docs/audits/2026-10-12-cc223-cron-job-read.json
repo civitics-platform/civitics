@@ -1,0 +1,1430 @@
+{
+ "$comment": "cc-223 (FIX-1307) Phase 0 prod reads, banked as the job_registry seed provenance. Three read-only statements via node scripts/db-query.mjs --prod (SET TRANSACTION READ ONLY; max_parallel_workers_per_gather = 0) from the primary checkout. cron_job = cron.job LEFT JOIN cron_job_budget LEFT JOIN the cron-job-pipelines.ts derivation (Q_CRON_JOB_PIPELINES imported as-is). caps = md5(prosrc), proconfig and every work_mem / max_parallel_workers_per_gather line per routine (prosrc not banked), with the md5 cross-check against the newest migration defining it. cadences_and_sizes = rollup_watch_overrides + pg_stat_user_tables + reloptions for the vacuumed tables. See docs/audits/2026-10-12-job-registry-contract-audit.md.",
+ "cron_job": {
+  "read_at": "2026-10-13T00:41:25.9745+00:00",
+  "rows": [
+   {
+    "jobname": "abuse-events-retention",
+    "jobid": 29,
+    "schedule": "15 4 * * *",
+    "active": true,
+    "command": "CALL public.purge_abuse_events();",
+    "proc": "purge_abuse_events",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "agency-staffing-rollup-refresh",
+    "jobid": 25,
+    "schedule": "5 0 * * 2",
+    "active": true,
+    "command": "CALL public.refresh_agency_staffing_rollup();",
+    "proc": "refresh_agency_staffing_rollup",
+    "pipeline": "agency_staffing_rollup_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 3600
+   },
+   {
+    "jobname": "box-health-probe",
+    "jobid": 53,
+    "schedule": "* * * * *",
+    "active": true,
+    "command": "SELECT public.record_box_health()",
+    "proc": "record_box_health",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": 60
+   },
+   {
+    "jobname": "contract-flow-rollups-refresh",
+    "jobid": 28,
+    "schedule": "0 14 * * 4",
+    "active": true,
+    "command": "CALL public.refresh_contract_flow_rollups();",
+    "proc": "refresh_contract_flow_rollups",
+    "pipeline": "contract_flow_rollups_rebuild",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 9000
+   },
+   {
+    "jobname": "cron-job-budget-watchdog",
+    "jobid": 44,
+    "schedule": "*/2 * * * *",
+    "active": true,
+    "command": "SELECT public.enforce_cron_job_budgets();",
+    "proc": "enforce_cron_job_budgets",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "cron-job-run-details-retention",
+    "jobid": 54,
+    "schedule": "51 1 * * *",
+    "active": true,
+    "command": "DELETE FROM cron.job_run_details WHERE start_time < now() - make_interval(days => 42)",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": 300
+   },
+   {
+    "jobname": "derived-mvs-unit-watchdog",
+    "jobid": 40,
+    "schedule": "*/2 * * * *",
+    "active": true,
+    "command": "SELECT public.enforce_derived_mvs_unit_budget();",
+    "proc": "enforce_derived_mvs_unit_budget",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "donation-edge-orphan-sweep",
+    "jobid": 23,
+    "schedule": "30 11 1 * *",
+    "active": true,
+    "command": "CALL public.reconcile_donation_edge_orphans();",
+    "proc": "reconcile_donation_edge_orphans",
+    "pipeline": "donation_edge_orphan_sweep",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "donor-party-rollup-orphan-sweep",
+    "jobid": 18,
+    "schedule": "0 13 1 * *",
+    "active": true,
+    "command": "CALL public.reconcile_donor_party_rollup_orphans();",
+    "proc": "reconcile_donor_party_rollup_orphans",
+    "pipeline": "donor_party_rollup_orphan_sweep",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "donor-party-rollup-refresh",
+    "jobid": 17,
+    "schedule": "0 15 * * 2",
+    "active": true,
+    "command": "CALL public.refresh_donor_party_rollup_incremental();",
+    "proc": "refresh_donor_party_rollup_incremental",
+    "pipeline": "donor_party_rollup_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 1800
+   },
+   {
+    "jobname": "donor-rollup-orphan-sweep",
+    "jobid": 15,
+    "schedule": "30 12 1 * *",
+    "active": true,
+    "command": "CALL public.reconcile_donor_rollup_orphans();",
+    "proc": "reconcile_donor_rollup_orphans",
+    "pipeline": "donor_rollup_orphan_sweep",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "donor-rollup-refresh",
+    "jobid": 24,
+    "schedule": "0 9,12 * * *",
+    "active": true,
+    "command": "CALL public.donor_rollup_rebuild_bulk();",
+    "proc": "donor_rollup_rebuild_bulk",
+    "pipeline": "donor_rollup_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 9000
+   },
+   {
+    "jobname": "dpr-vacuum-analyze",
+    "jobid": 31,
+    "schedule": "0 2 * * 0,3",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.donor_party_rollup_mv;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "ec-crawl",
+    "jobid": 45,
+    "schedule": "*/15 * * * *",
+    "active": true,
+    "command": "CALL public.run_entity_connections_rebuild('incremental', p_max_units := 1);",
+    "proc": "run_entity_connections_rebuild",
+    "pipeline": "entity_connections_rebuild",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 1800
+   },
+   {
+    "jobname": "ec-vacuum-analyze",
+    "jobid": 6,
+    "schedule": "30 4 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.entity_connections;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "ecs-vacuum-analyze",
+    "jobid": 47,
+    "schedule": "20 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.entity_connection_stats_mv;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "entity-connection-stats-orphan-sweep",
+    "jobid": 19,
+    "schedule": "30 13 1 * *",
+    "active": true,
+    "command": "CALL public.reconcile_entity_connection_stats_orphans();",
+    "proc": "reconcile_entity_connection_stats_orphans",
+    "pipeline": "entity_connection_stats_orphan_sweep",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "entity-connection-stats-rebuild",
+    "jobid": 16,
+    "schedule": "0 16 * * 1,3",
+    "active": false,
+    "command": "CALL public.rebuild_entity_connection_stats();",
+    "proc": "rebuild_entity_connection_stats",
+    "pipeline": "entity_connection_stats_rebuild",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 9000
+   },
+   {
+    "jobname": "fe-crawl",
+    "jobid": 46,
+    "schedule": "*/30 * * * *",
+    "active": true,
+    "command": "CALL public.run_fe_totals_crawl(p_max_units := 1);",
+    "proc": "run_fe_totals_crawl",
+    "pipeline": "financial_entity_totals_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 1800
+   },
+   {
+    "jobname": "fe-inbound-rollup-refresh",
+    "jobid": 55,
+    "schedule": "13 2 * * *",
+    "active": true,
+    "command": "CALL public.run_fe_inbound_rollup(p_max_units := 10)",
+    "proc": "run_fe_inbound_rollup",
+    "pipeline": "financial_entity_inbound_rollup",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 1800
+   },
+   {
+    "jobname": "fe-vacuum-analyze",
+    "jobid": 30,
+    "schedule": "50 4 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.financial_entities;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "financial-entity-totals-incremental",
+    "jobid": 13,
+    "schedule": "0 10 * * 2",
+    "active": false,
+    "command": "CALL public.refresh_financial_entity_totals_incremental();",
+    "proc": "refresh_financial_entity_totals_incremental",
+    "pipeline": "financial_entity_totals_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 7200
+   },
+   {
+    "jobname": "financial-entity-totals-reconcile",
+    "jobid": 14,
+    "schedule": "0 12 1 * *",
+    "active": true,
+    "command": "CALL public.reconcile_financial_entity_totals();",
+    "proc": "reconcile_financial_entity_totals",
+    "pipeline": "financial_entity_totals_reconcile",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "fr-vacuum-analyze",
+    "jobid": 38,
+    "schedule": "0 3 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.financial_relationships;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "group-donor-rollup-refresh",
+    "jobid": 49,
+    "schedule": "10 3 * * 3",
+    "active": true,
+    "command": "CALL public.run_group_donor_rollup_refresh();",
+    "proc": "run_group_donor_rollup_refresh",
+    "pipeline": "group_donor_rollup_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 1800
+   },
+   {
+    "jobname": "odbt-vacuum-analyze",
+    "jobid": 37,
+    "schedule": "18 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.official_donor_bracket_totals;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "odr-mv-vacuum-analyze",
+    "jobid": 32,
+    "schedule": "5 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.official_donor_rollup_mv;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "odt-vacuum-analyze",
+    "jobid": 34,
+    "schedule": "12 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.official_donor_totals;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "officials-vacuum-analyze",
+    "jobid": 39,
+    "schedule": "30 1 * * 1",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.officials;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "osar-vacuum-analyze",
+    "jobid": 36,
+    "schedule": "16 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.official_sector_affinity_rollup;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "osdr-vacuum-analyze",
+    "jobid": 35,
+    "schedule": "14 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.official_small_dollar_rollup;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "platform-counts-daily",
+    "jobid": 48,
+    "schedule": "53 3 * * *",
+    "active": true,
+    "command": "CALL public.refresh_platform_counts();",
+    "proc": "refresh_platform_counts",
+    "pipeline": "platform_counts_daily",
+    "writes_dsl": true,
+    "guarded": false,
+    "budget_seconds": 1800
+   },
+   {
+    "jobname": "rebuild-ec-incremental",
+    "jobid": 2,
+    "schedule": "0 8 * * 3",
+    "active": false,
+    "command": "CALL public.run_entity_connections_rebuild('incremental');",
+    "proc": "run_entity_connections_rebuild",
+    "pipeline": "entity_connections_rebuild",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 18000
+   },
+   {
+    "jobname": "rebuild-ec-incremental-mon",
+    "jobid": 22,
+    "schedule": "0 8 * * 1",
+    "active": false,
+    "command": "CALL public.run_entity_connections_rebuild('incremental');",
+    "proc": "run_entity_connections_rebuild",
+    "pipeline": "entity_connections_rebuild",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 18000
+   },
+   {
+    "jobname": "refresh-derived-mvs-daily",
+    "jobid": 9,
+    "schedule": "0 6 * * *",
+    "active": true,
+    "command": "CALL public.refresh_derived_mvs('daily');",
+    "proc": "refresh_derived_mvs",
+    "pipeline": "refresh_derived_mvs",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 5400
+   },
+   {
+    "jobname": "refresh-derived-mvs-weekly",
+    "jobid": 10,
+    "schedule": "47 0 * * 2",
+    "active": true,
+    "command": "CALL public.refresh_derived_mvs('weekly');",
+    "proc": "refresh_derived_mvs",
+    "pipeline": "refresh_derived_mvs",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 5400
+   },
+   {
+    "jobname": "rule-taggers-daily",
+    "jobid": 11,
+    "schedule": "30 6 * * *",
+    "active": true,
+    "command": "CALL public.run_rule_taggers('daily');",
+    "proc": "run_rule_taggers",
+    "pipeline": "run_rule_taggers",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 7200
+   },
+   {
+    "jobname": "rule-taggers-weekly",
+    "jobid": 12,
+    "schedule": "0 16 * * 2",
+    "active": true,
+    "command": "CALL public.run_rule_taggers('weekly');",
+    "proc": "run_rule_taggers",
+    "pipeline": "run_rule_taggers",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 7200
+   },
+   {
+    "jobname": "treemap-individuals-global-refresh",
+    "jobid": 26,
+    "schedule": "0 14 * * 2",
+    "active": true,
+    "command": "CALL public.refresh_treemap_individuals_global();",
+    "proc": "refresh_treemap_individuals_global",
+    "pipeline": "treemap_individuals_global_refresh",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": 5400
+   },
+   {
+    "jobname": "treemap-individuals-vacuum-analyze",
+    "jobid": 33,
+    "schedule": "10 11,17 * * *",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.treemap_individuals_rollup;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "vm-probe-pre-ec",
+    "jobid": 51,
+    "schedule": "25 4 * * *",
+    "active": true,
+    "command": "SELECT public.record_vm_probe('pre-ec', ARRAY['entity_connections','votes'])",
+    "proc": "record_vm_probe",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "vm-probe-pre-fe",
+    "jobid": 52,
+    "schedule": "45 4 * * *",
+    "active": true,
+    "command": "SELECT public.record_vm_probe('pre-fe', ARRAY['financial_entities'])",
+    "proc": "record_vm_probe",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "vm-probe-pre-fr",
+    "jobid": 50,
+    "schedule": "55 2 * * *",
+    "active": true,
+    "command": "SELECT public.record_vm_probe('pre-fr', ARRAY['financial_relationships'])",
+    "proc": "record_vm_probe",
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "vote-stats-refresh",
+    "jobid": 27,
+    "schedule": "30 3 * * *",
+    "active": true,
+    "command": "CALL public.rebuild_official_vote_stats();",
+    "proc": "rebuild_official_vote_stats",
+    "pipeline": "official_vote_stats_rebuild",
+    "writes_dsl": true,
+    "guarded": true,
+    "budget_seconds": null
+   },
+   {
+    "jobname": "votes-vacuum-analyze",
+    "jobid": 56,
+    "schedule": "37 2 * * 6",
+    "active": true,
+    "command": "VACUUM (ANALYZE) public.votes;",
+    "proc": null,
+    "pipeline": null,
+    "writes_dsl": false,
+    "guarded": false,
+    "budget_seconds": null
+   }
+  ]
+ },
+ "caps": {
+  "read_at": "2026-10-13T00:42:15.533545+00:00",
+  "role_settings": [
+   {
+    "db": "0",
+    "cfg": [
+     "search_path=\"\\$user\", public, extensions"
+    ]
+   },
+   {
+    "db": "5",
+    "cfg": [
+     "statement_timeout=3h",
+     "work_mem=64MB"
+    ]
+   }
+  ],
+  "server_work_mem": "64MB",
+  "maintenance_work_mem": "64MB",
+  "hash_mem_multiplier": "2",
+  "rows": [
+   {
+    "proname": "donor_rollup_rebuild_bulk",
+    "why": "cron",
+    "sig": "donor_rollup_rebuild_bulk()",
+    "prokind": "p",
+    "md5": "1de3c10f261899852e11c5867b45bdc5",
+    "newest": "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "enforce_cron_job_budgets",
+    "why": "cron",
+    "sig": "enforce_cron_job_budgets()",
+    "prokind": "f",
+    "md5": "4996f602cc1a1ece3ebc4921fc63d037",
+    "newest": "20260826000000_fix1101_ec_window_budget_and_fec_interlock.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260826000000_fix1101_ec_window_budget_and_fec_interlock.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "enforce_derived_mvs_unit_budget",
+    "why": "cron",
+    "sig": "enforce_derived_mvs_unit_budget(integer)",
+    "prokind": "f",
+    "md5": "0adf8117d404ab146077d84dc1d9b25f",
+    "newest": "20260814000000_fix1035_watchdog_liveness_first.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260814000000_fix1035_watchdog_liveness_first.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "entity_search_conn_window",
+    "why": "named-unit",
+    "sig": "entity_search_conn_window(uuid,uuid)",
+    "prokind": "f",
+    "md5": "6ae88578e043e485014b33b933e6956a",
+    "newest": "20260901000000_fix1123_search_index_bounded_conn_windows.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260901000000_fix1123_search_index_bounded_conn_windows.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog",
+     "work_mem=64MB",
+     "max_parallel_workers_per_gather=0"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "purge_abuse_events",
+    "why": "cron",
+    "sig": "purge_abuse_events(integer,integer)",
+    "prokind": "p",
+    "md5": "81ec53856cdacb9c70faa895cbabf715",
+    "newest": "20260722020000_fix880_abuse_events_substrate.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260722020000_fix880_abuse_events_substrate.sql"
+    ],
+    "proconfig": null,
+    "set_lines": []
+   },
+   {
+    "proname": "rebuild_entity_connection_stats",
+    "why": "cron",
+    "sig": "rebuild_entity_connection_stats()",
+    "prokind": "p",
+    "md5": "86ad2546907a4592d27583c45bf8fe6c",
+    "newest": "20260911000200_fix950_guards_rebuild_family.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260911000200_fix950_guards_rebuild_family.sql"
+    ],
+    "proconfig": null,
+    "set_lines": []
+   },
+   {
+    "proname": "rebuild_entity_connection_stats_window",
+    "why": "named-unit",
+    "sig": "rebuild_entity_connection_stats_window(uuid,uuid)",
+    "prokind": "f",
+    "md5": "d17a1ba6ea62f552a957f5f2dd639f86",
+    "newest": "20260828010000_fix1115_1117_ec_stats_arm_and_source_gate.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260828010000_fix1115_1117_ec_stats_arm_and_source_gate.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog",
+     "work_mem=64MB"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "rebuild_entity_search_index",
+    "why": "named-unit",
+    "sig": "rebuild_entity_search_index()",
+    "prokind": "f",
+    "md5": "52568a1ae4918e264324f88bcabc34dc",
+    "newest": "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql"
+    ],
+    "proconfig": [
+     "search_path=public, extensions"
+    ],
+    "set_lines": [
+     "SET LOCAL work_mem = '64MB';",
+     "SET LOCAL max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "rebuild_official_vote_stats",
+    "why": "cron",
+    "sig": "rebuild_official_vote_stats()",
+    "prokind": "p",
+    "md5": "e41de2f21251e5662c2527851fa348a5",
+    "newest": "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_temp"
+    ],
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "reconcile_donation_edge_orphans",
+    "why": "cron",
+    "sig": "reconcile_donation_edge_orphans()",
+    "prokind": "p",
+    "md5": "26a26588573220085174632fd2ce6c1b",
+    "newest": "20261010020000_fix1295_work_mem_m3.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010020000_fix1295_work_mem_m3.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "reconcile_donor_party_rollup_orphans",
+    "why": "cron",
+    "sig": "reconcile_donor_party_rollup_orphans()",
+    "prokind": "p",
+    "md5": "fda377bb4d6ba88572310dbce55f0fd1",
+    "newest": "20261010020000_fix1295_work_mem_m3.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010020000_fix1295_work_mem_m3.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "reconcile_donor_rollup_orphans",
+    "why": "cron",
+    "sig": "reconcile_donor_rollup_orphans()",
+    "prokind": "p",
+    "md5": "cab2b74b4be409426e5d469276950441",
+    "newest": "20261010020000_fix1295_work_mem_m3.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010020000_fix1295_work_mem_m3.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "reconcile_entity_connection_stats_orphans",
+    "why": "cron",
+    "sig": "reconcile_entity_connection_stats_orphans()",
+    "prokind": "p",
+    "md5": "791e3ba3e669570fbb3eed89e2e08004",
+    "newest": "20261010020000_fix1295_work_mem_m3.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010020000_fix1295_work_mem_m3.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "reconcile_financial_entity_totals",
+    "why": "cron",
+    "sig": "reconcile_financial_entity_totals()",
+    "prokind": "p",
+    "md5": "f0710a7c430963597d67c83d1467a368",
+    "newest": "20261010020000_fix1295_work_mem_m3.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010020000_fix1295_work_mem_m3.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "record_box_health",
+    "why": "cron",
+    "sig": "record_box_health(timestamp with time zone)",
+    "prokind": "f",
+    "md5": "12bbeb6030e891c8174123fe098858e0",
+    "newest": "20260920130000_fix1194_box_health_probe.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260920130000_fix1194_box_health_probe.sql"
+    ],
+    "proconfig": [
+     "search_path=public, cron, pg_catalog"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "record_vm_probe",
+    "why": "cron",
+    "sig": "record_vm_probe(text,text[])",
+    "prokind": "f",
+    "md5": "c321c8d34507e92041abd55e26ef258a",
+    "newest": "20260920030000_fix1169_pre_vacuum_vm_probes.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260920030000_fix1169_pre_vacuum_vm_probes.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_temp"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "refresh_agency_staffing_rollup",
+    "why": "cron",
+    "sig": "refresh_agency_staffing_rollup()",
+    "prokind": "p",
+    "md5": "c2802f128d566bc068d8fab1175277b1",
+    "newest": "20261003030000_fix1194_p1a_box_backoff_gates.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261003030000_fix1194_p1a_box_backoff_gates.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '128MB';"
+    ]
+   },
+   {
+    "proname": "refresh_contract_flow_rollups",
+    "why": "cron",
+    "sig": "refresh_contract_flow_rollups()",
+    "prokind": "p",
+    "md5": "c699dc7d6acf1cf35a3164b71ec0a3aa",
+    "newest": "20261010020000_fix1295_work_mem_m3.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010020000_fix1295_work_mem_m3.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "refresh_derived_mvs",
+    "why": "cron",
+    "sig": "refresh_derived_mvs(text)",
+    "prokind": "p",
+    "md5": "1779de0bb3db75b4a782b9ea97ffaa4a",
+    "newest": "20261004075000_fix1124_crawl_yield_to_peers.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261004075000_fix1124_crawl_yield_to_peers.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '128MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "refresh_donor_party_rollup_incremental",
+    "why": "cron",
+    "sig": "refresh_donor_party_rollup_incremental()",
+    "prokind": "p",
+    "md5": "7bf24bc1476db8e0e82b7cf4afb6a280",
+    "newest": "20261010010000_fix1295_work_mem_m2.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010010000_fix1295_work_mem_m2.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "refresh_donor_party_rollup_slice",
+    "why": "named-unit",
+    "sig": "refresh_donor_party_rollup_slice()",
+    "prokind": "f",
+    "md5": "e2fde86c9665e6093c38d51da4996bee",
+    "newest": "20261010010000_fix1295_work_mem_m2.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260903010000_fix983_fr_watermark_horizon.sql",
+     "20261010010000_fix1295_work_mem_m2.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog",
+     "work_mem=64MB"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "refresh_entity_connection_stats_mv",
+    "why": "named-unit",
+    "sig": "refresh_entity_connection_stats_mv()",
+    "prokind": "f",
+    "md5": "7b1901c2b3ca84a067c699317eb3423e",
+    "newest": "20261004100000_fix1269_1132_1270_search_index_stamp_stats_read_arm_park.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261004100000_fix1269_1132_1270_search_index_stamp_stats_read_arm_park.sql"
+    ],
+    "proconfig": [
+     "search_path=public",
+     "work_mem=64MB",
+     "max_parallel_workers_per_gather=0"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "refresh_fe_inbound_rollup_unit",
+    "why": "callee",
+    "sig": "refresh_fe_inbound_rollup_unit(uuid[])",
+    "prokind": "f",
+    "md5": "d0b4b9f5a40c3dead08937f2f8270a3a",
+    "newest": "20260926000000_fix1217_fe_inbound_rollup.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260926000000_fix1217_fe_inbound_rollup.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog",
+     "work_mem=64MB"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "refresh_fe_totals_slice",
+    "why": "callee",
+    "sig": "refresh_fe_totals_slice()",
+    "prokind": "f",
+    "md5": "faebd6274732b18b9fa0c84d1c4a7dac",
+    "newest": "20260903010000_fix983_fr_watermark_horizon.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260903010000_fix983_fr_watermark_horizon.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_catalog",
+     "work_mem=64MB"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "refresh_financial_entity_totals_incremental",
+    "why": "cron",
+    "sig": "refresh_financial_entity_totals_incremental()",
+    "prokind": "p",
+    "md5": "b61ec19c399b702ec0a9b473bb651b09",
+    "newest": "20260911000100_fix950_guards_rollup_family.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260911000100_fix950_guards_rollup_family.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '128MB';"
+    ]
+   },
+   {
+    "proname": "refresh_group_donor_rollup",
+    "why": "callee",
+    "sig": "refresh_group_donor_rollup()",
+    "prokind": "f",
+    "md5": "c75a956afa5a12cb7b418face3353d76",
+    "newest": "20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_temp"
+    ],
+    "set_lines": [
+     "SET LOCAL work_mem = '256MB';"
+    ]
+   },
+   {
+    "proname": "refresh_platform_counts",
+    "why": "cron",
+    "sig": "refresh_platform_counts()",
+    "prokind": "p",
+    "md5": "a7fdc22d4da0da94b95ca2f35374a7f4",
+    "newest": "20260906000400_fix1126_planned_counts_cached.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260906000400_fix1126_planned_counts_cached.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_temp"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "refresh_treemap_individuals_global",
+    "why": "cron",
+    "sig": "refresh_treemap_individuals_global()",
+    "prokind": "p",
+    "md5": "227e99957d5f2db9b8e9b3b2bd8c984c",
+    "newest": "20261010010000_fix1295_work_mem_m2.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261010010000_fix1295_work_mem_m2.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "run_entity_connections_rebuild",
+    "why": "cron",
+    "sig": "run_entity_connections_rebuild(text,integer)",
+    "prokind": "p",
+    "md5": "38227eeb0969ca825db74e4dcc4cd2e0",
+    "newest": "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;"
+    ]
+   },
+   {
+    "proname": "run_fe_inbound_rollup",
+    "why": "cron",
+    "sig": "run_fe_inbound_rollup(integer)",
+    "prokind": "p",
+    "md5": "05881c6e7ec88188ce6c99c0701b86b5",
+    "newest": "20260926000000_fix1217_fe_inbound_rollup.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260926000000_fix1217_fe_inbound_rollup.sql"
+    ],
+    "proconfig": null,
+    "set_lines": []
+   },
+   {
+    "proname": "run_fe_totals_crawl",
+    "why": "cron",
+    "sig": "run_fe_totals_crawl(integer)",
+    "prokind": "p",
+    "md5": "2ab5cd786f0c1dc609335354f2de7d16",
+    "newest": "20260911000200_fix950_guards_rebuild_family.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260911000200_fix950_guards_rebuild_family.sql"
+    ],
+    "proconfig": null,
+    "set_lines": []
+   },
+   {
+    "proname": "run_group_donor_rollup_refresh",
+    "why": "cron",
+    "sig": "run_group_donor_rollup_refresh()",
+    "prokind": "p",
+    "md5": "a656fca845af1414348c282ed2f29ccd",
+    "newest": "20260911000100_fix950_guards_rollup_family.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20260911000100_fix950_guards_rollup_family.sql"
+    ],
+    "proconfig": [
+     "search_path=public, pg_temp"
+    ],
+    "set_lines": []
+   },
+   {
+    "proname": "run_rule_taggers",
+    "why": "cron",
+    "sig": "run_rule_taggers(text)",
+    "prokind": "p",
+    "md5": "7040827e52a2cc511e3454dd6dc283b0",
+    "newest": "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql",
+    "n_defs_in_newest": 1,
+    "match_newest": true,
+    "matches_any": [
+     "20261009030000_fix1294_fix1295_fix1287_work_mem_m1.sql"
+    ],
+    "proconfig": null,
+    "set_lines": [
+     "SET work_mem = '64MB';",
+     "SET max_parallel_workers_per_gather = 0;",
+     "SET work_mem = '64MB';"
+    ]
+   }
+  ]
+ },
+ "cadences_and_sizes": {
+  "read_at": "2026-10-13T00:43:03.722014+00:00",
+  "global_scale_factor": "0.2",
+  "global_threshold": "50",
+  "overrides": [
+   {
+    "pipeline": "entity_connection_stats_rebuild",
+    "cadence_hours": null,
+    "retired_at": "2026-08-26T16:00:00+00:00",
+    "held_since": null,
+    "hold_reason": null,
+    "note": "FIX-1161. Retired: the entity-connection stats rebuild moved into the bounded ec-crawl arm (jobid 45, */15) by FIX-1115/FIX-1117, and its own job -- jobid 16, entity-connection-stats-rebuild, 0 16 * * 1,3 -- was deactivated at that point and is active=f today. retired_at is its LAST OBSERVED RUN (2026-08-26 16:00 UTC, the newest of only 12 data_sync_log rows), not the deactivation instant, which was never recorded. Declared here because FIX-1115/1117 skipped the same-migration override row the FIX-1059 convention requires, leaving this the sole standing entry in the canary orphans[] array. DO NOT RESUME jobid 16: the ec-crawl arm owns this work now and a second writer would duplicate it. Cross-ref FIX-1059, FIX-1135, FIX-1115, FIX-1117."
+   },
+   {
+    "pipeline": "front_door_watch",
+    "cadence_hours": 0.25,
+    "retired_at": null,
+    "held_since": null,
+    "hold_reason": null,
+    "note": "FIX-1130 — Postgres-free front-door watchdog. Driven by a Vercel cron (*/15 * * * *, apps/civitics/vercel.json), NOT pg_cron, because the failure mode it detects is the front door in front of Postgres wedging while Postgres itself is healthy — a pg_cron-driven watcher would be dead in exactly that outage (the FIX-1120/FIX-1125 lesson). Its data_sync_log rows are a best-effort breadcrumb written AFTER the alert decision and inside a catch, so gaps in them are expected and are not evidence of a missed tick. Declared here so the registry stops inferring a 168h default cadence for it."
+   },
+   {
+    "pipeline": "recipient_count_reconcile",
+    "cadence_hours": null,
+    "retired_at": "2026-07-05T00:00:00+00:00",
+    "held_since": null,
+    "hold_reason": null,
+    "note": "FIX-736 retired the EC-based recipient_count sweep: recipient_count is now FR-derived inside refresh_financial_entity_totals_incremental, and the orphan pass lives in reconcile_financial_entity_totals() Sweep C. The ec-recipient-count-reconcile pg_cron job was unscheduled the same day. Declared here by FIX-1059 so the registry stops carrying it as live."
+   },
+   {
+    "pipeline": "usaspending_bulk",
+    "cadence_hours": null,
+    "retired_at": null,
+    "held_since": "2026-10-10T20:32:56.857755+00:00",
+    "hold_reason": "FIX-1291 — dispatch-only since 2026-10-08; the catch-up is a supervised op (cc-215); the schedule returns with FIX-1274 shape (2)",
+    "note": "FIX-1291 (cc-214) — usaspending-bulk.yml lost its Thu 10:00Z schedule on 2026-10-08 (cc-209); this hold is the rollup_watch_overrides row that unschedule should have carried (20260903000000 convention). Delete it in the migration that restores the schedule."
+   },
+   {
+    "pipeline": "usaspending_bulk_assistance",
+    "cadence_hours": null,
+    "retired_at": null,
+    "held_since": "2026-10-10T20:32:56.857755+00:00",
+    "hold_reason": "FIX-1291 — dispatch-only since 2026-10-08; the catch-up is a supervised op (cc-215); the schedule returns with FIX-1274 shape (2)",
+    "note": "FIX-1291 (cc-214) — usaspending-bulk.yml lost its Thu 10:00Z schedule on 2026-10-08 (cc-209); this hold is the rollup_watch_overrides row that unschedule should have carried (20260903000000 convention). Delete it in the migration that restores the schedule."
+   }
+  ],
+  "tables": [
+   {
+    "relname": "donor_party_rollup_mv",
+    "reltuples": 2972746,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.02",
+     "autovacuum_analyze_scale_factor=0.01"
+    ],
+    "n_live_tup": 0,
+    "n_dead_tup": 0,
+    "last_vacuum": null,
+    "last_autovacuum": null,
+    "scale_factor": 0.02,
+    "threshold": 50,
+    "trigger": 59505,
+    "size": "306 MB"
+   },
+   {
+    "relname": "entity_connection_stats_mv",
+    "reltuples": 4857076,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 4866629,
+    "n_dead_tup": 6677,
+    "last_vacuum": "2026-10-12T17:20:00.111881+00:00",
+    "last_autovacuum": null,
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 242904,
+    "size": "327 MB"
+   },
+   {
+    "relname": "entity_connections",
+    "reltuples": 10515503,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02",
+     "autovacuum_enabled=true"
+    ],
+    "n_live_tup": 10516517,
+    "n_dead_tup": 387846,
+    "last_vacuum": "2026-10-12T04:31:16.640719+00:00",
+    "last_autovacuum": null,
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 525825,
+    "size": "2920 MB"
+   },
+   {
+    "relname": "external_source_refs",
+    "reltuples": 609548,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 1,
+    "n_dead_tup": 339,
+    "last_vacuum": null,
+    "last_autovacuum": null,
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 30527,
+    "size": "112 MB"
+   },
+   {
+    "relname": "financial_entities",
+    "reltuples": 5265098,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 5265098,
+    "n_dead_tup": 180,
+    "last_vacuum": "2026-10-12T04:51:32.663462+00:00",
+    "last_autovacuum": null,
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 263305,
+    "size": "1919 MB"
+   },
+   {
+    "relname": "financial_relationships",
+    "reltuples": 15600127,
+    "reloptions": [
+     "autovacuum_analyze_scale_factor=0.02",
+     "autovacuum_vacuum_scale_factor=0.02"
+    ],
+    "n_live_tup": 0,
+    "n_dead_tup": 0,
+    "last_vacuum": null,
+    "last_autovacuum": null,
+    "scale_factor": 0.02,
+    "threshold": 50,
+    "trigger": 312053,
+    "size": "5245 MB"
+   },
+   {
+    "relname": "official_donor_bracket_totals",
+    "reltuples": 20468,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 20468,
+    "n_dead_tup": 0,
+    "last_vacuum": "2026-10-12T17:18:00.217732+00:00",
+    "last_autovacuum": "2026-10-12T09:21:28.779199+00:00",
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 1073,
+    "size": "2064 kB"
+   },
+   {
+    "relname": "official_donor_rollup_mv",
+    "reltuples": 658815,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 658815,
+    "n_dead_tup": 0,
+    "last_vacuum": "2026-10-12T17:05:00.121988+00:00",
+    "last_autovacuum": "2026-10-12T09:21:33.484476+00:00",
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 32991,
+    "size": "256 MB"
+   },
+   {
+    "relname": "official_donor_totals",
+    "reltuples": 7494,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 7494,
+    "n_dead_tup": 0,
+    "last_vacuum": "2026-10-12T17:12:00.062985+00:00",
+    "last_autovacuum": "2026-10-12T09:21:28.623869+00:00",
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 425,
+    "size": "968 kB"
+   },
+   {
+    "relname": "official_sector_affinity_rollup",
+    "reltuples": 25517,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 25517,
+    "n_dead_tup": 0,
+    "last_vacuum": "2026-10-12T17:16:00.327028+00:00",
+    "last_autovacuum": "2026-10-12T09:21:42.608602+00:00",
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 1326,
+    "size": "4000 kB"
+   },
+   {
+    "relname": "official_small_dollar_rollup",
+    "reltuples": 7504,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 7504,
+    "n_dead_tup": 0,
+    "last_vacuum": "2026-10-12T17:14:00.148518+00:00",
+    "last_autovacuum": "2026-10-12T09:21:42.71904+00:00",
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 425,
+    "size": "840 kB"
+   },
+   {
+    "relname": "officials",
+    "reltuples": 39107,
+    "reloptions": [
+     "autovacuum_vacuum_threshold=1000",
+     "autovacuum_vacuum_scale_factor=0.0",
+     "autovacuum_analyze_threshold=1000",
+     "autovacuum_analyze_scale_factor=0.0"
+    ],
+    "n_live_tup": 39107,
+    "n_dead_tup": 0,
+    "last_vacuum": null,
+    "last_autovacuum": "2026-10-12T21:07:03.340031+00:00",
+    "scale_factor": 0,
+    "threshold": 1000,
+    "trigger": 1000,
+    "size": "20 MB"
+   },
+   {
+    "relname": "treemap_individuals_rollup",
+    "reltuples": 1244235,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 1244235,
+    "n_dead_tup": 0,
+    "last_vacuum": "2026-10-12T17:10:00.133222+00:00",
+    "last_autovacuum": "2026-10-12T09:21:41.653457+00:00",
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 62262,
+    "size": "141 MB"
+   },
+   {
+    "relname": "votes",
+    "reltuples": 984828,
+    "reloptions": [
+     "autovacuum_vacuum_scale_factor=0.05",
+     "autovacuum_analyze_scale_factor=0.02"
+    ],
+    "n_live_tup": 0,
+    "n_dead_tup": 0,
+    "last_vacuum": null,
+    "last_autovacuum": null,
+    "scale_factor": 0.05,
+    "threshold": 50,
+    "trigger": 49291,
+    "size": "571 MB"
+   }
+  ]
+ }
+}
