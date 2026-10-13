@@ -308,7 +308,7 @@ passing, and both failures the clock rather than the data.
 
 - `pnpm build` (or `turbo run typecheck` + `lint` for a code-only change) before
   any non-`[skip vercel]` commit.
-- **`tests.yml` runs EIGHT blocking checks** (FIX-1214 added the last one):
+- **`tests.yml` runs NINE blocking checks** (FIX-1307 added `check:job-registry`):
   `typecheck` · `lint` · `check:reads` · `check:render-timeouts` ·
   `check:workflow-parity` · `check:proconfig` · `check:no-store-routes` · the
   three unit suites (`@civitics/data`, `@civitics/app-civitics`,
@@ -319,7 +319,7 @@ passing, and both failures the clock rather than the data.
 - The `scripts/test-*.mjs` suites are fast and dependency-free — run them
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `board:test`,
   `session:worktree:test`, `drain:test`, `check:proconfig:test`,
-  `check:no-store-routes:test`, `check:render-timeouts:test`,
+  `check:no-store-routes:test`, `check:render-timeouts:test`, `check:job-registry:test`,
   `check:doc-links:test`, `session:held:test`, `hook:test`). `cc:verify:test`
   also covers `cc:prompt`; `fixes:test` also runs `session:held:test`.
   `board:test` (which also runs the phase-goals pin) and `pnpm check:doc-links`
