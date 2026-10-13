@@ -1,0 +1,39 @@
+{
+  "cc": "224",
+  "prompt": "cc-prompt-224-dispatcher-r2-dispatch-one-unit-odd-minute-tick-arm-one-shot-reap-dispatch-log-route-refire-dashboard-tile-clone-rehearsal-branch-only.md",
+  "started_at": "2026-10-13T22:51:01Z",
+  "finished_at": "2026-10-13T23:32:00Z",
+  "head_before": "d81a3aaf",
+  "head_after": "d81a3aaf",
+  "commits": [],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Branch-only by design (rule 240). FIX-1308's build is 6 commits on feature/fix-1308, pushed to origin at head ae3d16b4 (2ba41c94 migration [Fixes FIX-1308, Verified local], aafe148b types, 5de399ee route, 0d57b3f4 tile, abbb2f58 receipts, ae3d16b4 SQL tests). Not on main; no PR. cc-227 lands it Thu 10-15 23:15Z+. worktree LEFT: fix-1308 — unmerged by design; cc-227 lands it.",
+    "The branch was rebased onto origin/feature/fix-1307 (75beb0b2) as the prompt says. R1's branch sits 12 commits behind main, so those 12 main commits are replayed on feature/fix-1308 under new shas (e.g. 6d33664f = main's d81a3aaf). cc-227's rebase onto main drops them by patch-id once R1 has landed.",
+    "Clone rehearsal ran BEFORE cc-220's window, not after it: there was no cc-220.running marker at 23:04Z, and the whole rehearsal ran 23:04–23:24Z, ahead of cc-220's 23:15Z start. Nothing of cc-220's was waited for.",
+    "box-health-probe was ACTIVE on the clone at Phase 0, not parked as the prompt said. It was not un-parked or re-parked (it was left as found). box_is_saturated() read clear throughout, and no p_stale_seconds override was needed.",
+    "The C1 probe AS WRITTEN (EXECUTE 'CALL public.refresh_platform_counts()') SUCCEEDED. That cannot test premise (a): refresh_platform_counts carries a SET search_path proconfig, so it runs atomic and never COMMITs. Measured instead with a one-line COMMITting procedure, and both inline paths die (§3).",
+    "The rehearsal armed one unplanned unit: abuse-events-retention (CALL public.purge_abuse_events(), the clone's own daily retention). A hand tick at 23:13:13Z reaped the finished platform-counts run and found the platform group free. The row was reverted in the same transaction, but the arm had already happened. It ran at 23:17Z (17 ms, succeeded) and was reaped at 23:19Z. Clone only.",
+    "Data suite, first run: 2 failures (prod-session.test.ts 'claim:' ×2, 'a supervised prod session is already held'). Cause: the rehearsal's own pg_advisory_lock(hashtext('prod_supervised_session')) holder, 23:14:18–23:19:38Z on the clone. After release the file passed 13/13, and the final branch run was 1,509 pass / 0 fail / 21 skipped.",
+    "Trailers: Co-Authored-By Claude Opus 5.5 (the model that ran), not the prompt's 'Claude Fable 5.1'; no Claude-Session line. Same as cc-223."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1308",
+      "what": "cc-227 lands 20261015230000 + the route + the tile Thu 10-15 23:15Z+ (after S1 closes Thu 02:30Z; dry run lists exactly R2's file — R1's landed Wed); read-back: dispatcher-tick active 1-59/2 with its 120 s budget row; dispatch_log filling with nothing_due on odd minutes from the first tick; get_dispatcher_status() answers; the tile after the next :24/:54 snapshot; the §9 line in Fri's receipts",
+      "after": "2026-10-16T00:30Z"
+    },
+    {
+      "fix": "FIX-1308",
+      "what": "s6 proving Thu 23:15Z → Mon 10-19 ~02:00Z: ticks/60 min = 30 ± 1 every hour (odd minutes), no gap > 6 min unrecovered, the re-fire exercised once (pause stays false; park dispatcher-tick active=false for 10 min Sat, source 'vercel' rows appear, un-park), the tick's pgss mean_exec_time quoted, the Sun 10-18 drop night: ticks held through the ~2 h nightly (and N1's claim visible — cc-225's receipt), zero armed rows (nothing eligible), the box-health route's elapsed_ms unchanged",
+      "after": "2026-10-19T02:00Z"
+    }
+  ]
+}
