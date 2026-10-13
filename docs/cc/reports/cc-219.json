@@ -1,0 +1,76 @@
+{
+  "cc": "219",
+  "prompt": "cc-prompt-219-monday-records-drop-night-1189-1295-1297-1292-1291-fix1296-group-donor-64mb-gated-migration.md",
+  "started_at": "2026-10-13T00:40:02Z",
+  "finished_at": "2026-10-13T02:31:00Z",
+  "head_before": "4e182dc7",
+  "head_after": "9da4b7b2",
+  "commits": [
+    {
+      "sha": "7088bff5",
+      "subject": "fix(db): FIX-1299 — weekly xsr-vacuum-analyze (Tue 01:41Z) in the pg_cron vacuum family; no budget row (rule 120)"
+    },
+    {
+      "sha": "3b6b7722",
+      "subject": "fix(db): FIX-1296 — refresh_group_donor_rollup at 64MB + parallel 0 (Craig's (a): the 2 s external-merge sort on a weekly 43 s function)"
+    },
+    {
+      "sha": "4acb41ea",
+      "subject": "chore(fixes): record FIX-1296 and FIX-1299 landed on prod — refresh_group_donor_rollup at 64MB + parallel 0; xsr-vacuum-analyze scheduled Tue 01:41Z (20261013010000/020000 at 02:22:56Z; receipts Tue 10-20 01:41Z and Wed 10-14 03:10Z)"
+    },
+    {
+      "sha": "366b1659",
+      "subject": "chore(fixes): record prod verification of FIX-1289 — the nominal-10-13 receipts banked forker.window 2026-10-11T21:00Z → 10-12T21:00Z once (by the 02:19Z schedule fallback, after the 21:00Z run's Upstash read failed; ring 900, 30 h)"
+    },
+    {
+      "sha": "a7d9809c",
+      "subject": "chore(fixes): sync status after FIX-1296, FIX-1299, FIX-1289"
+    },
+    {
+      "sha": "9da4b7b2",
+      "subject": "docs(fixes): cc-219 appends to FIX-1189, FIX-1295, FIX-1297, FIX-1292, FIX-1291, FIX-1296, FIX-1299, FIX-1289; paced-ops s28"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1296",
+    "FIX-1299",
+    "FIX-1289"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261013010000_fix1296_group_donor_work_mem_64mb.sql",
+    "supabase/migrations/20261013020000_fix1299_xsr_vacuum_analyze.sql"
+  ],
+  "prod_writes": "One gated migration push (prod_op_gate open 02:22:56Z, census pass, FIX-950 claim held for the push only): 20261013010000 (CREATE OR REPLACE refresh_group_donor_rollup at SET LOCAL 64MB + parallel 0, grants restated) and 20261013020000 (cron.schedule xsr-vacuum-analyze, jobid 57, 41 1 * * 2). The gated dry run before it also took and released the claim (02:22:21Z). Every other prod contact was read-only through db-query --prod, plus the Upstash ring and the Logs API census inside the gate.",
+  "ci": "green",
+  "stopped_items": [
+    "Donor-rollup filing NOT made (the prompt's conditional trigger). Mon 09:00Z ran 1,287.1 s against band 0–400 after Sunday 09:00Z's 680.2 s, but Sunday's 12:00Z firing (1 target, 127.0 s, in band) sat between them, so 'two consecutive over-band real firings' is not met literally. The per-unit evidence also points at the band, not the allowance (§2). Left for Cowork.",
+    "Deviation, item 1/2 order: supabase migration up --local ran ONCE, after both files existed, instead of after item 1. Applying 020000 first and then adding 010000 below it would have put a lower version behind an applied higher one. The red test came before the 010000 file, as the prompt asked.",
+    "Deviation, item 2 checker: the prompt's two literal lines are SET LOCAL (kept, correct for a FUNCTION), but it also says 'via the same plainSetProblems', and plainSetProblems rejects any SET LOCAL by design. I added localSetProblems (the B6 search-index shape minus its _conn clause) and used the M2/M3 editProblems / headerProblems / grants / rollback checks unchanged.",
+    "Deviation, pnpm db:types not run: it generates from the PROD project (--project-id), which still had the pre-push function at that point. I generated from local via --db-url into the scratchpad instead and compared the refresh_group_donor_rollup entry: { Args: never; Returns: Json } in both, so no type change and database.ts is untouched.",
+    "FIX-1299's first firing slips a week, to Tue 10-20 01:41Z, not 10-13. Prod was unreachable 00:55–01:25Z and restarted at 01:24:52Z (jobid 10 refresh-derived-mvs-weekly failed 'server restarted'). The gate then held on the startup timeouts until 02:22:56Z, past tonight's slot. So cc-220 cannot write the xsr band on Tuesday; owed[] carries the 10-20 date.",
+    "Prod restart 01:24:52Z NOT triaged (out of this prompt's read-only scope); facts in §5 for Cowork. The pre-push hook refused the first push at 00:55Z with held=unknown (prod_session_state() errored, then psql ETIMEDOUT / pooler ECHECKOUTTIMEOUT). I waited on a 1-min background session:held probe until 01:25:41Z; no bypass.",
+    "Ring reads: one Upstash --hours 24 read landed (00:41:02Z) and is the one banked. A --hours 31 read to cover the control from 18:30Z 10-11 was refused (quota), and so was its retry. That first refused attempt redirected into the PRIMARY checkout's docs/audits and left an empty file there for under a minute. I moved it out to the scratchpad (mv); it was never staged or committed.",
+    "Rule 245: the background held-probe loop used $(seq 1 45) and backtick substitution. No permission prompt fired. No permission prompt fired anywhere in the run."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1296",
+      "what": "Wed 10-14 03:10Z group-donor-rollup-refresh (jobid 49) at 64MB: wall in band 0–442 s (expected ~100 s + ~2 s), rows_inserted as before (47,208 on 10-07), ring at 03:10–03:15Z flatter than R4's −187 MB (if the ring takes writes again)",
+      "after": "2026-10-14T04:00Z"
+    },
+    {
+      "fix": "FIX-1299",
+      "what": "the first scheduled xsr-vacuum-analyze firing (jobid 57, Tue 10-20 01:41Z — slipped from 10-13, see stopped_items): cron.job_run_details succeeded, wall vs the clone's 0.73 s; then the provisional bands.json entry (hi_s = wall + 15 %, n=1)",
+      "after": "2026-10-20T02:00Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "M2 receipts Tue 10-13 14:00Z / 15:00Z (treemap, donor-party in band), read by cc-220 after 15:30Z; M3 Thu 10-15 14:00Z contract-flow (band 8,839 LOOSE); the sweeps Sun 11-01",
+      "after": "2026-10-13T15:30Z"
+    }
+  ]
+}
