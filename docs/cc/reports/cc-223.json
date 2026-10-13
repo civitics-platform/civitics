@@ -1,0 +1,48 @@
+{
+  "cc": "223",
+  "prompt": "cc-prompt-223-dispatcher-r1-job-registry-platform-dials-dispatch-log-seed-check-job-registry-contract-audit-branch-only.md",
+  "started_at": "2026-10-13T00:39:10Z",
+  "finished_at": "2026-10-13T01:25:00Z",
+  "head_before": "4e182dc7",
+  "head_after": "5ae1c4ac",
+  "commits": [
+    {
+      "sha": "5ae1c4ac",
+      "subject": "docs(dispatcher): file FIX-1307, FIX-1308, FIX-1309; the dispatcher plan file (s1–s15); PROMPT_TEMPLATE names the ninth check"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1307",
+    "FIX-1308",
+    "FIX-1309"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Branch-only by design (rule 240). FIX-1307's build is 8 commits on feature/fix-1307, pushed to origin at head 75beb0b2 (f175dc06 migration, 39191e4e check, 4cfc1b53 seed-note fix, 885f2d19 audit, 756b21d2 playbook D9, 6efa266b retention-test fix, 75beb0b2 seed test). It is NOT on main; cc-226 rebases and lands it Wed 10-14 23:15Z. No PR opened. worktree LEFT: fix-1307 — unmerged by design; cc-226 lands it.",
+    "Data suite on the branch: 1,491 pass, 1 fail, 21 skipped. The one failure is not this run's: work-mem-allowances.test.ts 'local (B8 R5 STOP): the live group-donor body still SET LOCALs work_mem 256MB'. cc-219 applied 20261013010000/020000 to the SHARED clone (its schema_migrations reads 20261013020000), so the live body is 64MB. That file is cc-219's and out of scope here (rule 241 collision). CI has no DB and skips that case.",
+    "This run broke one test and fixed it (6efa266b): cron-job-run-details-retention.test.ts took 'the latest migration containing the job literal' as the scheduling file, and the registry seed now carries that literal. A sweep of every test that reads migrations for one of the 53 seeded names found no other lookup of that shape.",
+    "Manual pnpm session:held before the branch push returned held=unknown (psql spawn ETIMEDOUT). The pre-push hook's own read passed, and so did the read before the docs push (held=false, live_writers=1). No permission prompt fired anywhere in the run.",
+    "Order departures. The audit (item 5) was committed BEFORE the playbook (item 4), because D9 cites the audit by path and check:doc-links must be clean at every commit. Two extra branch commits: 4cfc1b53 names the second write family in the two refresh-derived-mvs notes, and 6efa266b (above). The report was written straight into the cc-223-report tree rather than committed on the R1 branch and cherry-picked; the result on main is the same.",
+    "commits[] lists only 5ae1c4ac. The prompt asked for [the docs commit, the report], but a report cannot name its own sha.",
+    "Trailers: Co-Authored-By: Claude Opus 5.5 (the model that ran), matching cc-230's commits, not the prompt's 'Claude Fable 5.1' line. The prompt's Claude-Session line was not added.",
+    "A Vercel production deploy fired for the docs commit 5ae1c4ac at 00:48:57Z (success; docs-only content). The prompt expected none: tests.yml's paths-ignore does not stop Vercel, and the prompt's commit subject carried no [skip vercel]."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1307",
+      "what": "cc-226 lands 20261014230000 on prod via the gated push (dry run lists exactly that file); read-back: 53 registry rows, every deadline_rule 'at …', platform_dials one row of defaults, cron_job_budget and rollup_watch_overrides row counts unchanged; check:job-registry green on main; the s14 S1 ring unaffected",
+      "after": "2026-10-15T00:30Z"
+    },
+    {
+      "fix": "FIX-1308",
+      "what": "cc-224 builds the dispatcher Tue; cc-227 lands it Thu 10-15 23:15Z+ with N1; proving to Mon 10-19 ~02:00Z (plan s6)",
+      "after": "2026-10-16T00:30Z"
+    }
+  ]
+}
