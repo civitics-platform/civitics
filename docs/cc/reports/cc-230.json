@@ -1,0 +1,38 @@
+{
+  "cc": "230",
+  "prompt": "cc-prompt-230-fix1305-origin-auth-report-mode.md",
+  "started_at": "2026-10-13T00:10:12Z",
+  "finished_at": "2026-10-13T00:31:00Z",
+  "head_before": "e45a3503",
+  "head_after": "5c8d474a",
+  "commits": [
+    {
+      "sha": "5c8d474a",
+      "subject": "feat(app): FIX-1305 — alias 308 to www + origin-auth header check (report mode) in middleware (cc-230)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1306"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "No STOP fired. All 9 /api/cron/* routes carry the bearer gate. The middleware's first statement was the BOT_PATTERNS 404, and the build is green on the edge runtime. No permission prompt fired.",
+    "Scope change mid-run (Craig's delta, two messages): I folded D0 (the alias 308), robots.txt Crawl-delay, the four crawlers, the Verified bots skip WAF rule, and probe 4 into the same commit, under the delta's subject. Because of the delta I filed FIX-1306 (alternates.canonical), so fixes_filed is not the prompt's [].",
+    "Deviation from the delta's literal code: new URL(pathname + search, origin) treats a //host path as protocol-relative and would make the alias an open redirect. The target is now built by assigning pathname/search onto a fixed https://www.civitics.com URL, with a unit test.",
+    "Deviation, middleware shape: the existing body moved unchanged into routeRequest(), so D6's miss stamp lands on every return (early 404/308/429 included) without editing eleven return sites. The source-text test pins the order two ways: file order (decideAliasRedirect, then decideOriginAuth, then BOT_PATTERNS.some, then checkRateLimit) and order inside middleware() (alias, then origin, then routeRequest).",
+    "Scope note: besides the named FIX-570 paragraph, I also corrected a second stale 'fail-open' comment, at the limiter call (old :242-243). It is in middleware.ts. FIX-1304's two comments, in ratelimit.ts and upstash-usage.ts, are untouched.",
+    "Not verifiable from here: whether the Cloudflare Transform Rule is stamping (read 1 (c)). Under Attack hides the header on probe 3, and in report mode a non-stamping rule still serves 200, so platform-snapshot.yml staying green does not prove it. The proof is cc-231's count of cf-ray=yes misses."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1305",
+      "what": "24 h report-mode log read (misses by host/path/cf-ray; alias now 308s) → enforce flip + the 403 probes",
+      "after": "2026-10-14T00:26Z"
+    }
+  ]
+}
