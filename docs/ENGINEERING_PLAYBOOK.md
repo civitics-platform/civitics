@@ -494,6 +494,8 @@ row (C6).
 `docs/cc/reports/cc-209.md` §4, the cc-214 rehearsal audit
 (`2026-10-10-usaspending-resumable-rehearsal.md`) · `packages/data/src/scripts/usaspending-bulk.ts`*
 
+The nightly's `fec_bulk` writer claims since FIX-1310 (cc-225), exempting its own `nightly_cron:fec` row (rule 169).
+
 ---
 
 ## D. Scheduled work
