@@ -142,5 +142,10 @@ export async function GET(request: Request) {
     // Undefined on any snapshot written before this shipped — the client treats
     // absence as "draw no sparkline".
     daily_counts: payload.daily_counts,
+    // FIX-1308 — the dispatcher tile. On /core because the client's mount fetch
+    // REPLACES the SSR status with /core + /quality; a key on neither would draw
+    // on first paint and vanish on the first refresh. Undefined on a snapshot
+    // written before this shipped.
+    dispatcher: payload.dispatcher,
   });
 }

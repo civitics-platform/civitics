@@ -163,6 +163,34 @@ export type StatusData = {
   // status_snapshot persists whole payloads and the one-tick-old row predates
   // this field; the cards must render without it.
   daily_counts?: DailyCountsSectionData | PartialError;
+  // FIX-1308 — the dispatcher tile. Optional: older snapshots have no key, and
+  // the section is null when get_dispatcher_status() failed or is absent.
+  dispatcher?: DispatcherStatus | null | PartialError;
+};
+
+/** FIX-1308 — get_dispatcher_status()'s shape (see 20261015230000_fix1308_dispatcher.sql). */
+export type DispatcherStatus = {
+  last_tick_at: string | null;
+  last_tick_source: string | null;
+  last_decision: string | null;
+  last_job: string | null;
+  last_reason: string | null;
+  ticks_60m: number;
+  expected_ticks_60m: number;
+  decisions_24h: Record<string, number>;
+  live: Array<{ job: string; armed_jobname: string; armed_for: string; run_status: string }>;
+  dials: {
+    pause: boolean;
+    tick_seconds: number;
+    unit_target_seconds: number;
+    max_concurrent_units: number;
+    max_live_caps_mb: number;
+    headroom_target_mb: number;
+    updated_at: string;
+  } | null;
+  registry: { rows: number; eligible: number; by_runner: Record<string, number> } | null;
+  tick_job: { jobid: number; active: boolean; schedule: string; budget_seconds: number | null } | null;
+  generated_at: string;
 };
 
 /**
@@ -477,6 +505,7 @@ export function useDashboardData(initialStatus?: StatusData | null) {
         activity: core.activity,
         officials_breakdown: core.officials_breakdown,
         daily_counts: core.daily_counts,
+        dispatcher: core.dispatcher,
         quality: qualityFailed ? partialErr : quality.quality!,
         self_tests: qualityFailed ? partialErr : quality.self_tests!,
         chord: qualityFailed ? partialErr : quality.chord,

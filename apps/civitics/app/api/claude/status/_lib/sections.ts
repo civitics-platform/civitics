@@ -1595,6 +1595,21 @@ export async function getEcCrawlHealth(db: Db) {
   return data as Record<string, unknown>;
 }
 
+// ── 11b'. The dispatcher (FIX-1308) ──────────────────────────────────────────
+//
+// The read-only tile's one RPC: get_dispatcher_status() — the last tick, ticks
+// in the last 60 min against what the schedule fires, the 24 h decision counts,
+// the live one-shots, the six dials, the registry counts and the tick job. One
+// bounded read over dispatch_log's ticked_at index (<= 720 rows in 24 h), so it
+// adds nothing worth measuring to the status half's compute (FIX-1292). Null on
+// error — including "the function is not on this database yet" — so the tile
+// degrades rather than the snapshot.
+export async function getDispatcher(db: Db) {
+  const { data, error } = await db.rpc("get_dispatcher_status");
+  if (error || !data) return null;
+  return data as Record<string, unknown>;
+}
+
 // ── 11c. Daily counts — the 30-day stat-card series (FIX-090) ────────────────
 //
 // Reads public.daily_platform_counts, the day-keyed table the recorder below

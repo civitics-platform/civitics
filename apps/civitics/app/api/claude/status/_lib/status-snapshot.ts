@@ -40,6 +40,7 @@ import {
   getSelfTests,
   getChord,
   getEcCrawlHealth,
+  getDispatcher,
   getDailyCounts,
 } from "./sections";
 
@@ -124,6 +125,10 @@ export type StatusPayload = {
   // FIX-1114 — EC crawl lag/health. Optional so a snapshot written before this
   // shipped still type-checks when read back.
   ec_crawl_health?: Sectioned<Awaited<ReturnType<typeof getEcCrawlHealth>>>;
+  // FIX-1308 — the dispatcher tile (get_dispatcher_status). Optional for the same
+  // reason: a snapshot written before this shipped has no key, and the tile
+  // appears on /dashboard only once status_snapshot.payload rolls.
+  dispatcher?: Sectioned<Awaited<ReturnType<typeof getDispatcher>>>;
   // FIX-090 — 30-day daily series behind the stat-card sparklines. Optional for
   // the same reason: the one-tick-old payload predates this field and must still
   // render (the cards simply draw no sparkline).
@@ -246,6 +251,7 @@ export async function computeStatusPayload(
       getResourceWarnings(dbAsDb),
     )],
     ["ec_crawl_health", () => timed("ec_crawl_health", () => getEcCrawlHealth(dbAsDb))],
+    ["dispatcher", () => timed("dispatcher", () => getDispatcher(dbAsDb))],
     ["version", () => timed("version", () => getVersion(dbAsDb))],
   ];
 
@@ -276,6 +282,7 @@ export async function computeStatusPayload(
     self_tests: byKey.self_tests as StatusPayload["self_tests"],
     chord: byKey.chord as StatusPayload["chord"],
     ec_crawl_health: byKey.ec_crawl_health as StatusPayload["ec_crawl_health"],
+    dispatcher: byKey.dispatcher as StatusPayload["dispatcher"],
     daily_counts: byKey.daily_counts as StatusPayload["daily_counts"],
   };
 

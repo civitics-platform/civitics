@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Users, ScrollText, Vote, DollarSign,
   RefreshCw, Lightbulb, Eye, Rocket, CircleCheck, CircleX,
-  Megaphone,
+  Megaphone, Timer,
 } from "lucide-react";
 import { Icon } from "@civitics/graph";
 import {
@@ -32,6 +32,7 @@ import {
   type DatabaseStats,
   type StatusData,
   type PipelineRuntimeStat,
+  type DispatcherStatus,
 } from "./useDashboardData";
 import { useIsAdmin } from "@/lib/use-is-admin";
 // FIX-1082/1083 — duration + 30-day-stat formatting shared with
@@ -2427,6 +2428,147 @@ function SelfTestsSection({
   );
 }
 
+// ── Dispatcher (FIX-1308) ─────────────────────────────────────────────────────
+//
+// Read-only. One RPC (get_dispatcher_status) via the status half; nothing here
+// writes. The tile appears once status_snapshot.payload rolls after a deploy
+// (the next :24/:54 status half), not on deploy. Until the migration is on the
+// database the section is null and the card says so.
+
+const DISPATCH_DECISION_ORDER = [
+  "armed", "reaped", "missed", "skipped", "nothing_due", "paused",
+  "unsupported_deadline", "lock_busy", "no_dials", "error",
+];
+
+function DispatcherSection({ dispatcher }: { dispatcher: DispatcherStatus | null | undefined }) {
+  if (!dispatcher) {
+    return (
+      <SectionCard>
+        <SectionHeader icon={<Timer size={16} />} title="Dispatcher" description="FIX-1308 — the unit dispatcher" />
+        <p className="mt-3 text-sm text-ink-soft">
+          No dispatcher reading in this snapshot — the migration is not on this database yet, or the read failed.
+        </p>
+      </SectionCard>
+    );
+  }
+
+  const d = dispatcher;
+  const ageMs = d.last_tick_at ? Date.now() - new Date(d.last_tick_at).getTime() : null;
+  const stale = ageMs === null || ageMs > 6 * 60_000;
+  const paused = d.dials?.pause === true;
+  const status: "ok" | "warning" | "error" =
+    d.tick_job === null || d.tick_job.active === false || d.last_decision === "error"
+      ? "error"
+      : paused || stale || d.ticks_60m < d.expected_ticks_60m - 1
+        ? "warning"
+        : "ok";
+  const decisions = Object.entries(d.decisions_24h ?? {}).sort(
+    ([a], [b]) => {
+      const ia = DISPATCH_DECISION_ORDER.indexOf(a);
+      const ib = DISPATCH_DECISION_ORDER.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+    },
+  );
+
+  return (
+    <SectionCard>
+      <SectionHeader
+        icon={<Timer size={16} />}
+        title="Dispatcher"
+        description="FIX-1308 — arms one due unit per odd-minute tick; read-only"
+        status={status}
+      />
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-xs text-ink-soft">Last tick</dt>
+          <dd className="font-mono tabular-nums" suppressHydrationWarning>
+            {formatRelativeTime(d.last_tick_at)}
+            {d.last_tick_source ? <span className="text-ink-soft"> · {d.last_tick_source}</span> : null}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-ink-soft">Ticks, last 60 min</dt>
+          <dd className="font-mono tabular-nums">{d.ticks_60m} / {d.expected_ticks_60m}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-ink-soft">Last decision</dt>
+          <dd className="font-mono" title={d.last_reason ?? undefined}>
+            {d.last_decision ?? "—"}{d.last_job ? <span className="text-ink-soft"> · {d.last_job}</span> : null}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-ink-soft">Tick job</dt>
+          <dd className="font-mono">
+            {d.tick_job ? `${d.tick_job.active ? "active" : "PARKED"} · ${d.tick_job.schedule}` : "not scheduled"}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-4">
+        <p className="text-xs text-ink-soft">Decisions, last 24 h</p>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {decisions.length === 0 ? (
+            <span className="text-sm text-ink-soft">none</span>
+          ) : (
+            decisions.map(([k, n]) => (
+              <span key={k} className="rounded-full bg-ink/10 px-2 py-0.5 font-mono text-xs tabular-nums text-ink">
+                {k} {n}
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <p className="text-xs text-ink-soft">Live units</p>
+        {d.live.length === 0 ? (
+          <p className="mt-1 text-sm text-ink-soft">none armed</p>
+        ) : (
+          <table className="mt-1 w-full text-left text-xs">
+            <thead className="text-ink-soft">
+              <tr><th className="font-normal">job</th><th className="font-normal">one-shot</th><th className="font-normal">armed for</th><th className="font-normal">run</th></tr>
+            </thead>
+            <tbody className="font-mono">
+              {d.live.map((u) => (
+                <tr key={u.armed_jobname}>
+                  <td>{u.job}</td>
+                  <td className="break-all">{u.armed_jobname}</td>
+                  <td suppressHydrationWarning>{new Date(u.armed_for).toISOString().slice(11, 16)}Z</td>
+                  <td>{u.run_status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
+        <div>
+          <p className="text-ink-soft">Dials</p>
+          {d.dials ? (
+            <p className="mt-1 font-mono">
+              {paused ? <span className="font-medium text-accent">PAUSED · </span> : null}
+              tick {d.dials.tick_seconds} s · {d.dials.max_concurrent_units} units · {d.dials.max_live_caps_mb} MB caps ·
+              headroom {d.dials.headroom_target_mb} MB · unit target {d.dials.unit_target_seconds} s
+            </p>
+          ) : (
+            <p className="mt-1 text-accent">platform_dials has no row</p>
+          )}
+        </div>
+        <div>
+          <p className="text-ink-soft">Registry</p>
+          {d.registry ? (
+            <p className="mt-1 font-mono">
+              {d.registry.rows} rows · {d.registry.eligible} dispatchable ·{" "}
+              {Object.entries(d.registry.by_runner).map(([k, n]) => `${k} ${n}`).join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function DashboardClient({
@@ -2623,6 +2765,15 @@ export function DashboardClient({
         pipelines={data?.status.pipelines ?? { error: "Loading", partial: true }}
         quality={data?.status.quality ?? { error: "Loading", partial: true }}
         database={data?.status.database ?? { error: "Loading", partial: true }}
+      />
+
+      {/* ── Dispatcher (FIX-1308) — read-only ── */}
+      <DispatcherSection
+        dispatcher={
+          data?.status.dispatcher && !isPartial(data.status.dispatcher)
+            ? (data.status.dispatcher as DispatcherStatus)
+            : null
+        }
       />
 
       {/* ── Platform Costs ── */}

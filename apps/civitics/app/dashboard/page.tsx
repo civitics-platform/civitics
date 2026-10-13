@@ -179,6 +179,10 @@ async function getInitialStatus(): Promise<StatusData | null> {
       // block; undefined on a pre-FIX-090 snapshot, which the cards handle.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       daily_counts: payload.daily_counts as any,
+      // FIX-1308 — the dispatcher tile. Undefined until the first status half
+      // after the deploy rolls status_snapshot.payload.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      dispatcher: payload.dispatcher as any,
     };
   } catch {
     return null;
