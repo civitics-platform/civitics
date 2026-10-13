@@ -29,6 +29,11 @@
  * remaining allowance bodies and get_ec_crawl_health. The donor-party slice's
  * allowance is a PROCONFIG, so its edit is a header edit (HEADER_EDITS), and its
  * body must be byte-identical.
+ *
+ * cc-219 FIX-1296 (`*_group_donor_work_mem_64mb.sql`) — B8 group-donor, which
+ * R5 STOPped, lands on Craig's call (a): SET LOCAL 64MB + SET LOCAL parallel 0.
+ * A FUNCTION (it cannot COMMIT), so SET LOCAL as before, the B6 search-index
+ * shape — not the plain SET the COMMITting procedures take.
  */
 
 import { test } from "node:test";
@@ -469,9 +474,11 @@ const bySuffix = (suffix: string) => () => {
 const m2 = bySuffix("_work_mem_m2.sql");
 const m3 = bySuffix("_work_mem_m3.sql");
 const fix1293 = bySuffix("_ec_crawl_health_bounded_dirty_set.sql");
-const FILES = { m2, m3, fix1293 };
+const fix1296 = bySuffix("_group_donor_work_mem_64mb.sql");
+const FILES = { m2, m3, fix1293, fix1296 };
+const CC211_FILES = { m2, m3, fix1293 };
 
-type Kind = "plain" | "parallelAlready" | "slice" | "crawlHealth";
+type Kind = "plain" | "parallelAlready" | "slice" | "crawlHealth" | "local";
 type Body2 = Body & { file: keyof typeof FILES; kind: Kind };
 
 const F950_ROLLUP = "20260911000100_fix950_guards_rollup_family.sql";
@@ -506,7 +513,13 @@ const BODIES2: Body2[] = [
   sweep("reconcile_donor_rollup_orphans"),
   sweep("reconcile_entity_connection_stats_orphans"),
   sweep("reconcile_financial_entity_totals"),
-  // B8 group-donor is NOT here: R5 STOPped it (see the STOP test below).
+  // B8 group-donor: R5 STOPped it in cc-211; FIX-1296 lands it alone (Craig's (a)).
+  {
+    name: "refresh_group_donor_rollup", sig: "CREATE OR REPLACE FUNCTION public.refresh_group_donor_rollup(",
+    regproc: "public.refresh_group_donor_rollup()",
+    prior: "20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql",
+    commits: false, file: "fix1296", kind: "local",
+  },
   {
     name: "get_ec_crawl_health", sig: "CREATE OR REPLACE FUNCTION public.get_ec_crawl_health(",
     regproc: "public.get_ec_crawl_health()", prior: "20260828000200_fix1114c_crawl_health_symmetric_join.sql",
@@ -528,6 +541,22 @@ function donorPartyProblems(def: string): string[] {
     p.push("the 64MB SET no longer precedes the FIX-1212 parallel-0 line");
   }
   if (/SET LOCAL (work_mem|max_parallel_workers_per_gather)/.test(code)) p.push("SET LOCAL would reset at the first COMMIT");
+  return p;
+}
+
+/**
+ * B8 group-donor (FIX-1296): a FUNCTION, so SET LOCAL — one SET LOCAL 64MB, the
+ * SET LOCAL parallel-0 line right after it, no 256MB, no plain SET.
+ */
+function localSetProblems(def: string): string[] {
+  const code = stripComments(def);
+  const p: string[] = [];
+  if (count(code, LOCAL_256) > 0) p.push("still SET LOCAL work_mem 256MB");
+  if (count(code, LOCAL_64) !== 1) p.push(`${count(code, LOCAL_64)} SET LOCAL work_mem 64MB (want exactly 1)`);
+  if (!new RegExp(`^ {2}${esc(LOCAL_64)}\\n {2}${esc(LOCAL_PAR_0)}$`, "m").test(code)) {
+    p.push("no SET LOCAL max_parallel_workers_per_gather = 0 on the line after the 64MB SET LOCAL");
+  }
+  if (/^\s*SET (work_mem|max_parallel_workers_per_gather)\b/m.test(code)) p.push("a plain SET would outlive the function's transaction");
   return p;
 }
 
@@ -583,6 +612,7 @@ Object.assign(EDITS, {
   reconcile_donor_rollup_orphans: PLAIN_EDIT,
   reconcile_entity_connection_stats_orphans: PLAIN_EDIT,
   reconcile_financial_entity_totals: { removed: [`  ${SET_256}`], added: [R5_LINE, `  ${SET_64}`, PAR_LINE] },
+  refresh_group_donor_rollup: { removed: [`  ${LOCAL_256}`], added: [`  ${LOCAL_64}`, `  ${LOCAL_PAR_0}`] },
   get_ec_crawl_health: {
     removed: [
       "    SELECT count(*), count(DISTINCT from_id)",
@@ -630,7 +660,7 @@ function headerProblems(b: Body2, src: string): string[] {
   return p;
 }
 
-test("M2 / M3 / FIX-1293: each file defines exactly its bodies, nothing else", () => {
+test("M2 / M3 / FIX-1293 / FIX-1296: each file defines exactly its bodies, nothing else", () => {
   for (const [f, get] of Object.entries(FILES)) {
     const code = stripComments(get());
     const defined = [...code.matchAll(/CREATE OR REPLACE (?:FUNCTION|PROCEDURE) public\.(\w+)\(/g)].map((m) => m[1]).sort();
@@ -652,19 +682,16 @@ test("B5: the slice's proconfig reads work_mem 64MB; search_path kept; nothing e
 });
 
 /**
- * B8 group-donor — R5 STOP. Its _gdr_agg HashAggregate (2.07M rows, B1 188 MB) became an
- * external-merge Sort + GroupAggregate at 64MB and at 128MB: 2.30 / 2.35 s -> 4.61 s (2.0x),
- * over the 1.5x bar, though the function whole read 42.7 -> 43.3 s. It keeps SET LOCAL 256MB.
+ * B8 group-donor — R5 STOPped it in cc-211: its _gdr_agg HashAggregate (2.07M rows, B1 188 MB)
+ * became an external-merge Sort + GroupAggregate at 64MB and at 128MB: 2.30 / 2.35 s -> 4.61 s
+ * (2.0x), over the 1.5x bar, though the function whole read 42.7 -> 43.3 s. FIX-1296 lands it
+ * anyway on Craig's call (a): take the ~2 s on a weekly ~43 s function. Its own file, not cc-211's.
  */
-const GD = {
-  sig: "CREATE OR REPLACE FUNCTION public.refresh_group_donor_rollup(",
-  regproc: "public.refresh_group_donor_rollup()",
-  file: "20261004070000_fix501_group_donor_topn_fix1204_null_committee_overrides.sql",
-};
+const GD = byName2("refresh_group_donor_rollup");
 
-test("B8 R5 STOP: group-donor is in no cc-211 file and its source body keeps SET LOCAL work_mem 256MB", () => {
-  for (const [f, get] of Object.entries(FILES)) assert.ok(!get().includes(GD.sig), `${f} redefines group-donor`);
-  assert.equal(count(stripComments(body(read(path.join(MIGRATIONS, GD.file)), GD.sig)), LOCAL_256), 1);
+test("B8 / FIX-1296: group-donor is in no cc-211 file; its FIX-1296 body reads SET LOCAL 64MB + SET LOCAL parallel 0", () => {
+  for (const [f, get] of Object.entries(CC211_FILES)) assert.ok(!get().includes(GD.sig), `${f} redefines group-donor`);
+  assert.deepEqual(localSetProblems(now2(GD)), []);
 });
 
 test("FIX-1293: get_ec_crawl_health counts the dirty set over LIMIT 100001 and reports 'capped'", () => {
@@ -708,6 +735,12 @@ test("rule 105 twins (M2/M3/FIX-1293): the prior bodies fail every checker", () 
   const ch = crawlHealthProblems(PRIOR_BODY(byName2("get_ec_crawl_health")));
   assert.ok(ch.includes("the dirty-set count still reads financial_relationships unbounded"), ch.join("; "));
   assert.ok(ch.includes("dirty_set does not carry 'capped'"), ch.join("; "));
+  const gd = localSetProblems(PRIOR_BODY(GD));
+  assert.ok(gd.includes("still SET LOCAL work_mem 256MB"), gd.join("; "));
+  assert.ok(gd.some((x) => x.startsWith("no SET LOCAL max_parallel")), gd.join("; "));
+  // a plain SET in the function, or a dropped parallel line, is caught too
+  assert.ok(localSetProblems(now2(GD).replace(`  ${LOCAL_64}`, `  ${SET_64}`)).some((x) => x.startsWith("a plain SET")));
+  assert.ok(localSetProblems(now2(GD).replace(`\n  ${LOCAL_PAR_0}`, "")).some((x) => x.startsWith("no SET LOCAL max_parallel")));
 });
 
 test("rule 105 twins (M2/M3/FIX-1293): a dropped parallel line, a header SET on a procedure and a tampered edit are each caught", () => {
@@ -743,20 +776,21 @@ test("rule 105 twins (M2/M3/FIX-1293): a dropped parallel line, a header SET on 
 const PROCONFIG2: Record<string, string[] | null> = {
   refresh_donor_party_rollup_slice: ["search_path=public, pg_catalog", "work_mem=64MB"],
   get_ec_crawl_health: ["search_path=public, cron, pg_temp"],
+  refresh_group_donor_rollup: ["search_path=public, pg_temp"],
 };
 
-test("local (B8 R5 STOP): the live group-donor body still SET LOCALs work_mem 256MB", async (t) => {
+test("local (B8 / FIX-1296): the live group-donor body SET LOCALs work_mem 64MB + parallel 0, no 256MB", async (t) => {
   const c = await connect(t);
   if (!c) return;
   try {
     const s = (await c.query<{ s: string }>(`SELECT prosrc AS s FROM pg_proc WHERE oid = '${GD.regproc}'::regprocedure`)).rows[0]?.s ?? "";
-    assert.equal(count(stripComments(s.replace(/\r\n/g, "\n")), LOCAL_256), 1);
+    assert.deepEqual(localSetProblems(s.replace(/\r\n/g, "\n")), []);
   } finally {
     await c.end();
   }
 });
 
-test("local (M2/M3/FIX-1293): each live body is its file's; proconfig NULL x8, the slice at 64MB, search_path only on crawl health", async (t) => {
+test("local (M2/M3/FIX-1293/FIX-1296): each live body is its file's; proconfig NULL x8, the slice at 64MB, search_path only on crawl health and group-donor", async (t) => {
   const c = await connect(t);
   if (!c) return;
   try {
