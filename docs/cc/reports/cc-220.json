@@ -1,0 +1,72 @@
+{
+  "cc": "220",
+  "prompt": "cc-prompt-220-fix1297-fix1293-fr-donation-updated-at-partial-index-cic-gated-twin-after-indisvalid-tuesday-records.md",
+  "started_at": "2026-10-14T00:36:23Z",
+  "finished_at": "2026-10-14T01:40:00Z",
+  "head_before": "b5019042",
+  "head_after": "88a70b8a",
+  "commits": [
+    {
+      "sha": "a4a213c8",
+      "subject": "chore(scripts): FIX-1297/1293 — the CIC script for financial_relationships_donation_updated_at (fix1217's shape + fix1269's claim gate)"
+    },
+    {
+      "sha": "fe27f936",
+      "subject": "fix(db): FIX-1297 — financial_relationships_donation_updated_at: the donation-types updated_at partial (CIC on prod 2026-10-14T00:43:59Z, 75,169,792 B, 97.6 s); the MAX is one probe and the tile's count is bounded by qualifying rows"
+    },
+    {
+      "sha": "e0c5ea1c",
+      "subject": "chore(fixes): sync status after FIX-1297"
+    },
+    {
+      "sha": "88a70b8a",
+      "subject": "docs(fixes): cc-220 appends to FIX-1297, FIX-1293, FIX-1300, FIX-1299, FIX-1284, FIX-1248, FIX-1287, FIX-1295; paced-ops s29"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1297"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261014010000_fix1297_fix1293_fr_donation_updated_at_index_twin.sql"
+  ],
+  "prod_writes": "Two gated prod writes, each under its own FIX-950 claim with the census passing. (1) ONE CREATE INDEX CONCURRENTLY financial_relationships_donation_updated_at via scripts/fix1297-build-fr-donation-updated-at-index.mjs --apply. Gate open 2026-10-14T00:42:15Z, census 0 renders / edge 0 of 319. Build 00:42:21Z to 00:43:59Z, 97.6 s, 75,169,792 B, indisvalid true. The script also wrote COMMENT ON INDEX. Claim released about 00:44:00Z. (2) ONE gated migration push of the twin 20261014010000. Gate open 01:06:17Z, census 0 renders / edge 0 of 85. CREATE INDEX IF NOT EXISTS was a no-op ('already exists, skipping'); its COMMENT ON INDEX replaced the script's comment; the DO guard did not raise. Head is now 20261014010000 (508). The gated dry runs before each (00:41:52Z, 01:06:05Z) also took and released the claim. Each claim held 1 guarded pipeline (official_vote_stats_rebuild); the 16 cc-232 park rows were skipped and are intact after both releases. Every other prod contact was READ ONLY: db-query --prod, the gate's census, and the cancellation census. No VACUUM, cancel, cron change, re-stamp or DROP.",
+  "ci": "green",
+  "stopped_items": [
+    "Changed premise, the park: cc-232 (FIX-1311) parked 18 derived-layer pg_cron jobs at 2026-10-13T23:32:42Z, 23 min before this run. These include ec-crawl, donor-rollup-refresh, group-donor-rollup-refresh, rule-taggers-weekly, treemap and donor-party. Item 12's 'ec-crawl's next prepare' and 'donor_rollup_rebuild_bulk's next firing' are therefore unobservable. owed[] carries both to the first dispatched or unparked firing after a non-donation landing. fr-vacuum-analyze (03:00Z) is KEEP, so the 02:15Z cutoff stood. The build finished at 00:43:59Z.",
+    "FIX-1293 NOT closed, by the prompt's own rule ('below 1 s on two ticks'). 01:01:22Z read 1,258 ms and 01:31:14Z read 379 ms, both with dirty_set rows 0. The commit carries Fixes: FIX-1297 only, and its subject names FIX-1297 only (the prompt's subject named both). The rule did not test the count: before the index the tile was already 492–838 ms, not cc-216's 8.3 s, because the EC watermark sits at the FR head. The function itself is 70–245 ms on prod. See §5.",
+    "Changed premise, Phase 0: the open count was 42, not 34–35. The prod head was 20261013230000 (cc-232), not 20261013020000. The twin version stayed 20261014010000.",
+    "'Nothing else in flight' was not true: cc-231 (code-only, app lane, FIX-1305 enforce flip) started 00:37:08Z and landed 58f3f696 between this run's commits. It writes no DB. Both gates' censuses passed with it in flight.",
+    "Design of record not on disk: claude/design-fix1297-fix1293-fr-donation-updated-at-partial-index-2026-10-11.md is absent from Civitics/Claude (find, glob). The script's WHY block quotes the §0 numbers as the prompt states them, and the file:lines were verified in the tree.",
+    "Item 10 deviation: the script cannot be dry-run 'against the clone's env'. fix1217's shape has one target, the prod pooler URL plus SUPABASE_DB_PASSWORD. Changing that is outside 'change ONLY …'. The clone build ran via db-query --local --call (item 8), and the dry run ran against prod both plain and gated.",
+    "Item 8 cold: no container restart (the local-stop hazard). Evidence instead is pg_buffercache: 7 of 442,655 FR heap pages resident before the build, out of 16,384 shared buffers. The OS page cache is not knowable from here. I created the extension on local for that read and dropped it again afterwards (my own addition, local only).",
+    "Item 7 ring: Upstash returned 'ERR max requests limit exceeded' (500,001 of 500,000), so docs/audits/2026-10-13-cc220-ring.json was NOT written. MemAvailable and swap-in over 14:00–18:30Z are not banked. Startup timeouts came from cron.job_run_details instead: 0.",
+    "Item 7 FIX-1299: no first firing. cc-219 landed at 02:22:56Z Tue, after the 01:41Z slot. So there is no bands.json entry and no record commit. The first slot is Tue 10-20 01:41Z, already owed by cc-219.",
+    "Item 13 types: pnpm db:types was not run, because it generates from the prod project. A local --db-url gen was diffed against database.ts instead: no line mentions the index, and the rest is pre-existing local-only drift (cc-224's dispatcher objects and others). database.ts is untouched.",
+    "supabase migration up --local also formally recorded 20261013230000 (cc-232 had applied it to the clone via --file). It was a no-op: 0 parked, 18 already inactive.",
+    "Beyond the prompt: one discriminating clone proof inside a ROLLED-BACK transaction. It re-stamped 500k contract rows above the donation head, then ran EXPLAIN ANALYZE on the tile's count both ways plus the MAX (§3). Local only.",
+    "No local pnpm build. No commit touches the app or a built package: one .mjs script, one migration, docs. tests.yml is green on fe27f936 (run 38493837609) and on a4a213c8 (run 38491616632).",
+    "Not this run's item, but flagged: cc-219's owed FIX-1296 receipt (Wed 10-14 03:10Z group-donor-rollup-refresh, jobid 49) cannot happen, because jobid 49 is parked by FIX-1311.",
+    "No permission prompt fired. External calls: the gate's and the census's Logs API reads, the Upstash read (refused on quota), gh run list."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1297",
+      "what": "the first non-donation FR landing above the newest donation row (a contract/grant/IRS-990 landing, or FIX-1300's weekly): the prod MAX plan still Index Only Scan Backward on the partial, then ec-crawl's prepare in seconds and donor-rollup's caught-up exit < 1 s at their first firing after it (both PARKED by FIX-1311 — dispatched or unparked)",
+      "after": "2026-10-17T06:00Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "the first landing above the EC watermark that the tile must count (the Sun 10-18 drop night, or any non-donation landing): section_times.ec_crawl_health on two consecutive */30 ticks under 1 s with dirty_set honest (capped when > 100k), the count on the partial — or the close is argued on the function's own time rather than the tick",
+      "after": "2026-10-19T00:00Z"
+    },
+    {
+      "fix": "FIX-1284",
+      "what": "Pattern B's second reading: the next weekly run_rule_taggers at 64MB in budget with the ring readable — NOT Tue 10-20 16:00Z on pg_cron (rule-taggers-weekly is parked by FIX-1311), the first weekly after the dispatcher cutover",
+      "after": "2026-10-20T18:30Z"
+    }
+  ]
+}
