@@ -149,7 +149,7 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Minimum TLS Version | 1.0 (default) | should be 1.2 |
 | DNSSEC | Not enabled | disabled for the move, never re-enabled |
 | Certificate Transparency Monitoring | **On since 2026-08-14** | free issuance alerts |
-| Transform Rule: `Origin auth (FIX-1305)` | **On since 2026-10-12** (Craig) | stamps `x-civitics-origin`; the origin checks it — see §"Origin auth (FIX-1305)" |
+| Transform Rule: `Origin auth (FIX-1305)` | **On since 2026-10-12** (Craig); origin check **`enforce` since 2026-10-14 02:25Z** (cc-231) | stamps `x-civitics-origin`; the origin 403s a request without it — see §"Origin auth (FIX-1305)" |
 | WAF custom rule: `Verified bots skip (FIX-1305)` | added 2026-10-12 (Craig) | Skip → Security Level only, `(cf.client.bot)` — not script-verified |
 
 ### The 2026-08-12 526 — an expired ORIGIN certificate, renewals failing silently
@@ -232,9 +232,9 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
       GitHub Actions secret of the same name — and both must change in the same sitting.
       A mismatch does not fail open: the probe gets challenged and
       `.github/workflows/platform-snapshot.yml` goes red on a 403.
-- [ ] **Flip `ORIGIN_AUTH_MODE` to `enforce` — cc-231.** Only after 24 h of report-mode
-      log shows no `cf-ray=yes` misses (the Transform Rule is stamping everything
-      Cloudflare forwards). See §"Origin auth (FIX-1305)".
+- [x] ~~**Flip `ORIGIN_AUTH_MODE` to `enforce` — cc-231.**~~ **Done 2026-10-14
+      02:25:29Z** (deploy `cd866ff5`). 24 h of report mode logged zero `cf-ray=yes`
+      misses against 26,221 zone requests. See §"Origin auth (FIX-1305)".
 - [ ] **Add the FIX-799 Skip rule** for same-origin `RSC eq "1"` GETs, so managed challenge
       stops firing on the app's own soft navigations. More urgent while Under Attack is on.
 - [ ] **Add a DMARC record** — `_dmarc.civitics.com` TXT, `v=DMARC1; p=none; rua=…` to
@@ -372,8 +372,8 @@ cannot set the threshold to 0 and trip the loop on every quiet hour.
 
 **Every control on this page assumes traffic comes through this zone. On 2026-10-12 it
 did not.** Two doors reach the Vercel origin around Cloudflare. cc-230 closes one with a
-redirect and puts a check on the other, in report mode. cc-231 flips the check to
-enforce.
+redirect and puts a check on the other, in report mode. cc-231 flipped the check to
+enforce on 2026-10-14.
 
 ### The two doors
 
@@ -440,6 +440,15 @@ ExaSearchBot is on that list is unverified.
 `robots.txt` also carries `Crawl-delay: 5` under `User-agent: *`. Googlebot ignores the
 directive; the other three honour it.
 
+- **AI Crawl Control** is the per-crawler allow/block lever, and the zone-side monitor
+  for this bot class. Its baseline for the 24 h to 10-12 (Craig, dashboard) was Google
+  422, OpenAI 312, Bing 135 and others 0, about 870 zone requests. The origin saw about
+  445k in the same window, so 99.8 % bypassed the zone.
+- **Bot Preference Sync stays OFF.** It prepends per-bot `User-agent` groups to
+  robots.txt. A crawler that finds its own group ignores `*`, so the sync would silently
+  drop FIX-513's `Disallow: /*?` and the `Crawl-delay` for every bot Cloudflare names.
+  The repo's `apps/civitics/public/robots.txt` is the only robots.txt.
+
 ### The IP: an origin-auth header
 
 A Transform Rule stamps a secret header on every request this zone forwards, and
@@ -466,8 +475,11 @@ controls what happens to a request that arrives without the header:
 | mode | a request without the header |
 |---|---|
 | `off`: the default. Also forced outside `VERCEL_ENV=production`, and whenever `ORIGIN_AUTH_SECRET` is unset | served; nothing logged |
-| `report`: since cc-230 | served, with `x-civitics-origin-check: miss` on the response; logs `[origin-auth] miss host=… path=… method=… cf-ray=yes\|no ua=…` on the first miss, then 1-in-100 per isolate |
-| `enforce`: cc-231 | 403 `{"error":"origin"}`, no-store; the same log line, with `refused` |
+| `report`: cc-230 to cc-231 | served, with `x-civitics-origin-check: miss` on the response; logs `[origin-auth] miss host=… path=… method=… cf-ray=yes\|no ua=…` on the first miss, then 1-in-100 per isolate |
+| `enforce`: **since 2026-10-14 02:25:29Z** (cc-231) | 403 `{"error":"origin"}`, no-store; the same log line, with `refused` |
+
+Middleware strips `x-civitics-origin` before it forwards the request
+(`forwardRequest()`, cc-231), so no route handler ever sees the secret.
 
 On a miss, `cf-ray=yes` means the request DID come through Cloudflare and the rule is
 not stamping it. Fix the rule before enforcing. `cf-ray=no` is the direct-to-origin
@@ -480,6 +492,16 @@ mismatch under `enforce` 403s civitics.com itself, for every real visitor. It is
 same class as the [[FIX-1057]] probe-secret rotation warning, with a far larger blast
 radius. Under `report`, a mismatch only logs `cf-ray=yes` misses, so rotate while in
 `report` if there is a choice.
+
+**Both Vercel variables are `sensitive` type, so the dashboard never shows their values.**
+cc-231's first flip edit landed on `ORIGIN_AUTH_SECRET` instead of `ORIGIN_AUTH_MODE`.
+The next deploy then ran a secret that Cloudflare does not stamp, and report mode is the
+only reason no visitor was refused. Before any redeploy that follows an edit here,
+confirm that only the intended variable moved. The Vercel API's env metadata
+(`GET /v9/projects/{id}/env`, the `updatedAt` per key, never the value) answers this
+from the terminal. After a secret change, prove the new value in `report` mode before
+enforcing: the deploy should show zero `cf-ray=yes` lines across a platform-snapshot
+run, and an IP-door probe should log its first `cf-ray=no` miss.
 
 ## If the zone ever moves accounts again
 
