@@ -34,6 +34,7 @@ steps:
   - {id: s26, kind: op, ref: "cc-218", title: "FIX-1297 stop-gap — one donation row re-stamped under a claim (the Sat 21:07Z fec_bulk row, not the 10-08 one; the MAX walk 0.048 ms)", done: 2026-10-11}
   - {id: s27, kind: op, ref: "cc-217", title: "USASpending catch-up invocation 2 + the FIX-1274/1291 prod record + the FIX-1297 re-stamp (assistance 6-7/7 in 8.2 min, baselines 20260924 / 20260923; FIX-1300 files the weekly's return)", done: 2026-10-11}
   - {id: s28, kind: op, ref: "cc-219", title: "Monday records (1189 drop night, 1295 M1 (iii), 1297 clear, 1292 revert control, 1291 reap, 1289 window) + FIX-1296 group-donor 64MB and FIX-1299 xsr weekly vacuum landed", done: 2026-10-13}
+  - {id: s29, kind: op, ref: "cc-220", title: "FIX-1297/1293 — the donation-types updated_at partial index CIC'd on prod + the twin; the stop-gap retired; Tuesday records 1284/1248/1287/1295 M2 (1293 stays open on the tick rule)", done: 2026-10-14}
 ---
 
 # Paced ops
