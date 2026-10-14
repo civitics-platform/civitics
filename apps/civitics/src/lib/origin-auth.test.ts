@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
   ALIAS_HOST,
   CRON_PATH_PREFIX,
+  ORIGIN_AUTH_HEADER,
   aliasRedirectTarget,
   constantTimeEqual,
   createSampler,
@@ -17,6 +18,7 @@ import {
   decideOriginAuth,
   formatOriginLogLine,
   parseOriginAuthMode,
+  withoutOriginAuthHeader,
   type OriginAuthMode,
 } from "./origin-auth";
 
@@ -193,5 +195,39 @@ describe("formatOriginLogLine (D6)", () => {
       formatOriginLogLine({ verb: "refused", host: null, path: "/", method: "POST", cfRay: true, ua: null }),
       "[origin-auth] refused host=- path=/ method=POST cf-ray=yes ua=-",
     );
+  });
+});
+
+describe("withoutOriginAuthHeader (cc-231)", () => {
+  it("the forwarded set never carries the secret header, whatever its case", () => {
+    for (const name of [ORIGIN_AUTH_HEADER, "X-Civitics-Origin", "X-CIVITICS-ORIGIN"]) {
+      const out = withoutOriginAuthHeader(new Headers({ [name]: SECRET, host: "www.civitics.com" }));
+      assert.equal(out.has(ORIGIN_AUTH_HEADER), false, name);
+      assert.equal([...out.keys()].includes(ORIGIN_AUTH_HEADER), false, name);
+    }
+  });
+
+  it("keeps every other header, and leaves the incoming set untouched", () => {
+    const incoming = new Headers({
+      [ORIGIN_AUTH_HEADER]: SECRET,
+      host: "www.civitics.com",
+      cookie: "sb-x=1",
+      "cf-ray": "abc-IAD",
+      // A near-miss name: only the exact secret header is stripped.
+      "x-civitics-origin-check": "miss",
+    });
+    const out = withoutOriginAuthHeader(incoming);
+    assert.deepEqual(
+      [...out.keys()].sort(),
+      ["cf-ray", "cookie", "host", "x-civitics-origin-check"],
+    );
+    assert.equal(out.get("cookie"), "sb-x=1");
+    assert.equal(incoming.get(ORIGIN_AUTH_HEADER), SECRET, "a copy, not a mutation");
+    assert.notEqual(out, incoming);
+  });
+
+  it("a request that never had the header forwards unchanged", () => {
+    const out = withoutOriginAuthHeader(new Headers({ host: "www.civitics.com", accept: "text/html" }));
+    assert.deepEqual([...out.entries()], [["accept", "text/html"], ["host", "www.civitics.com"]]);
   });
 });

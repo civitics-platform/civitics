@@ -125,6 +125,19 @@ export function decideOriginAuth(input: {
   return { action: input.mode === "report" ? "report" : "refuse", reason };
 }
 
+/**
+ * The request headers middleware forwards to the app, minus the secret (cc-231).
+ * The check has read it by then, and a route handler that echoes or logs its
+ * headers must not be able to leak it. A copy, so the check's own read is
+ * unaffected; Headers names are case-insensitive, so one delete covers every
+ * spelling.
+ */
+export function withoutOriginAuthHeader(headers: Headers): Headers {
+  const forwarded = new Headers(headers);
+  forwarded.delete(ORIGIN_AUTH_HEADER);
+  return forwarded;
+}
+
 // ── D6: the sampled log ─────────────────────────────────────────────────────
 
 /** True on the first call, then on every `rate`-th. One counter per sampler. */

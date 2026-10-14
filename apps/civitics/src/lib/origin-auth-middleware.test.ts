@@ -100,3 +100,18 @@ test("FIX-1305 D7: the core is edge-safe — no next/* and no Node imports", () 
   assert.doesNotMatch(CORE_CODE, /from "node:/);
   assert.doesNotMatch(CORE_CODE, /require\(/);
 });
+
+test("cc-231: every NextResponse.next( forwards the stripped header set, never request.headers", () => {
+  const nexts = [...MW.matchAll(/NextResponse\.next\(/g)];
+  assert.ok(nexts.length >= 1, "middleware forwards somewhere");
+  // The one place that builds the forwarded set is forwardRequest(); every other
+  // site calls it. A bare `headers: request.headers` would hand the secret to
+  // route handlers (cc-230's contradiction 4).
+  assert.equal(nexts.length, 1, "NextResponse.next( appears once — inside forwardRequest()");
+  const start = MW.indexOf("function forwardRequest(");
+  assert.ok(start >= 0, "forwardRequest exists");
+  const fn = MW.slice(start, MW.indexOf("\n}\n", start));
+  assert.match(fn, /NextResponse\.next\(\{\s*request: \{ headers: withoutOriginAuthHeader\(request\.headers\) \}/);
+  assert.doesNotMatch(MW, /headers: request\.headers/, "no site forwards the raw request headers");
+  assert.match(CORE_CODE, /export function withoutOriginAuthHeader\(/);
+});

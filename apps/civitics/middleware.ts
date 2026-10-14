@@ -13,6 +13,7 @@ import {
   decideOriginAuth,
   formatOriginLogLine,
   parseOriginAuthMode,
+  withoutOriginAuthHeader,
   type OriginAuthDecision,
 } from "@/lib/origin-auth";
 
@@ -201,8 +202,9 @@ function rateLimitResponse(retryAfterSec: number): NextResponse {
 //    refusal is never shared-cache-eligible.
 // D6 report: `x-civitics-origin-check: miss` on whatever is returned, and a
 //    warn on the first miss then 1-in-100 per isolate; enforce logs `refused`.
-// This lands in report mode (cc-230). cc-231 reads 24 h of the log and flips
-// ORIGIN_AUTH_MODE to enforce.
+// Landed in report mode (cc-230); cc-231 read 24 h of the log and flipped
+// ORIGIN_AUTH_MODE to enforce. forwardRequest() strips the header, so no route
+// handler ever sees the secret.
 // ---------------------------------------------------------------------------
 
 const originLogSampled = createSampler(ORIGIN_MISS_SAMPLE_RATE);
@@ -247,6 +249,11 @@ function aliasRedirectResponse(request: NextRequest): NextResponse {
     status: 308,
     headers: { "Cache-Control": "public, max-age=3600" },
   });
+}
+
+/** Hand the request to the app. The one NextResponse.next(): the secret header stops here (cc-231). */
+function forwardRequest(request: NextRequest): NextResponse {
+  return NextResponse.next({ request: { headers: withoutOriginAuthHeader(request.headers) } });
 }
 
 function originRefusedResponse(): NextResponse {
@@ -410,7 +417,7 @@ async function routeRequest(request: NextRequest, path: string): Promise<NextRes
   // The PKCE code verifier cookie must reach the callback handler intact —
   // any Supabase client call here can overwrite it and break the exchange.
   if (path.startsWith("/auth/")) {
-    return NextResponse.next({ request: { headers: request.headers } });
+    return forwardRequest(request);
   }
 
   // ── PKCE code intercept ────────────────────────────────────────────────────
@@ -428,9 +435,7 @@ async function routeRequest(request: NextRequest, path: string): Promise<NextRes
     return NextResponse.redirect(callbackUrl);
   }
 
-  const response = NextResponse.next({
-    request: { headers: request.headers },
-  });
+  const response = forwardRequest(request);
 
   // Skip the Supabase Auth round-trip for anonymous visitors. No routes are
   // auth-protected today (all civic content is public), so refreshing a
