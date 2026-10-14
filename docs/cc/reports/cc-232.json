@@ -1,0 +1,57 @@
+{
+  "cc": "232",
+  "prompt": "cc-prompt-232-park-derived-layer-crons-dispatcher-cutover.md",
+  "started_at": "2026-10-13T23:14:14Z",
+  "finished_at": "2026-10-13T23:58:00Z",
+  "head_before": "d81a3aaf",
+  "head_after": "7bf40410",
+  "commits": [
+    {
+      "sha": "d468db7a",
+      "subject": "feat(ops): FIX-1311 — park the 18 derived-layer pg_cron jobs for the dispatcher cutover; 20 plumbing jobs stay; rollback payload + dispatcher plan s16 (cc-232)"
+    },
+    {
+      "sha": "b697cd54",
+      "subject": "chore(fixes): record FIX-1311 landed on prod — the 18 derived-layer pg_cron jobs parked by name + 16 FIX-1059 hold rows (20261013230000 at 23:32:42Z under the FIX-950 claim; 0 parked firings in the next 20 min)"
+    },
+    {
+      "sha": "7bf40410",
+      "subject": "chore(fixes): sync status after FIX-1311"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1311"
+  ],
+  "fixes_filed": [
+    "FIX-1311"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261013230000_fix1311_park_derived_layer_crons.sql"
+  ],
+  "prod_writes": "ONE gated migration push under its own FIX-950 claim (gate open 2026-10-13T23:32:37Z, census pass 0 renders / edge 0 of 256; claim held 23:32:4xZ for the push only, released 23:32:45Z): 20261013230000 ran cron.alter_job(active := false) BY NAME on the 18 PARK jobs (jobids 45 46 24 17 26 28 25 49 55 11 12 9 10 14 23 18 15 19; 0 already inactive) and wrote 16 rollup_watch_overrides hold rows (held_since 2026-10-13T23:32:42.338206Z, hold_reason 'parked for the dispatcher cutover (cc-232, FIX-1311); returns via job_registry') by taking over the claim's own session rows for those 16 pipelines. The claim itself set 17 session holds and its release cleared 1 (official_vote_stats_rebuild). Override count after: 16 cc-232 rows + the 5 pre-existing. Every other prod contact was READ ONLY db-query --prod plus the gate's census (Logs API) and the dry run.",
+  "ci": "green",
+  "stopped_items": [
+    "Read 1: 4 UNLISTED active jobs (the prompt expected about 3): vm-probe-pre-fe, vm-probe-pre-fr, votes-vacuum-analyze, and vote-stats-refresh (CALL rebuild_official_vote_stats(), daily 03:30Z, guarded, a derived-layer rollup by the decision's own logic). Each was a STOP for that job only: not parked, not kept by assumption, left active. vote-stats-refresh needs Craig's call.",
+    "Deviation, item 2: the override insert is NOT a plain ON CONFLICT DO NOTHING. The gated push's claim runs setGuardedHolds() before the migration and holds all 16 parked pipelines; DO NOTHING would have inserted nothing, and the release would then have deleted those rows (0 holds). The migration takes over only a pure session row (note = SESSION_HOLD_NOTE, no cadence, not retired) and RAISEs on any other row. Re-run stays a no-op. Proven on the clone and in the prod push log (17 held, 16 taken over, 1 cleared).",
+    "Changed premise, §9 / item 2: 16 hold rows, not 18. rollup_watch_overrides keys on the derived pipeline; rule-taggers-daily/-weekly share run_rule_taggers and refresh-derived-mvs-daily/-weekly share refresh_derived_mvs.",
+    "Changed premise, owed: the 'nominal-10-14 receipts file (generated Wed 00:01Z)' was generated 2026-10-13T21:14Z (d81a3aaf), BEFORE the park. Also, CRON_LOOKBACK_DAYS = 14 and `inactive` only replaces `missing`, so a parked job keeps showing its pre-park firings band-compared for up to 14 days. The owed entry was rewritten to the nominal-10-15 file and to 'no firing after the park instant'. The receipts README and the plan file say the same.",
+    "Not done here: §9's 'next canary_check run' is 10-14 05:00Z, after this session; carried in owed. The registry read (16 held, NULL thresholds) and the canary bodies (read 3) are the evidence until then.",
+    "Minor deviations: the record commit's Verified is `local + prod`, not `prod`, because the clone apply ×2 is the local half. No Claude-Session trailer: the prompt names no session URL. The FIX bullet rides the code commit (the prompt's 'Commit (one)'), not a separate filing commit. The worktree slot was chosen by peeking the next free id (1311), and fix-add.mjs, run inside the worktree, printed FIX-1311.",
+    "No permission prompt fired. External calls: gh workflow run tests.yml on feature/fix-1311 (CI 38484351519 green), and the gate's Logs API census."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1311",
+      "what": "the nominal-10-15 receipts file (Wed 10-14 21:00Z nightly) shows no firing of any of the 18 after 2026-10-13T23:32:42Z and no startup-timeout burst since the park; the Wed box memory series (the quiet-box reading for FIX-1125)",
+      "after": "2026-10-14T22:00Z"
+    },
+    {
+      "fix": "FIX-1311",
+      "what": "the 10-14 05:00Z canary_check pushes no rollup: condition for the 16 held pipelines (none escalate) and lists them as held in its meta row",
+      "after": "2026-10-14T06:00Z"
+    }
+  ]
+}
