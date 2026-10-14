@@ -1,0 +1,48 @@
+{
+  "cc": "231",
+  "prompt": "cc-prompt-231-fix1305-origin-auth-enforce.md",
+  "started_at": "2026-10-14T00:35:51Z",
+  "finished_at": "2026-10-14T02:38:00Z",
+  "head_before": "b5019042",
+  "head_after": "2949044a",
+  "commits": [
+    {
+      "sha": "58f3f696",
+      "subject": "fix(app): FIX-1305 — strip the origin-auth header before forwarding; enforce flip (cc-231)"
+    },
+    {
+      "sha": "fcbebefa",
+      "subject": "chore(app): redeploy to re-read the restored ORIGIN_AUTH_SECRET, report mode (cc-231)"
+    },
+    {
+      "sha": "cd866ff5",
+      "subject": "chore(app): redeploy to re-read ORIGIN_AUTH_MODE=enforce (cc-231)"
+    },
+    {
+      "sha": "03ec1f94",
+      "subject": "docs(app): FIX-1305 prod record — origin auth enforced 2026-10-14T02:25:29Z; alias 308s, IP door 403s, Cloudflare path serves"
+    },
+    {
+      "sha": "ff34ec1b",
+      "subject": "chore(fixes): sync status after FIX-1305"
+    },
+    {
+      "sha": "2949044a",
+      "subject": "docs(cloudflare): FIX-1305 enforce flip recorded; AI Crawl Control + Bot Preference Sync notes (cc-231)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1305"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "No DB contact. CC wrote no prod config: Craig edited the Vercel Production env (ORIGIN_AUTH_SECRET changed by mistake at 00:58:51Z and restored from the Cloudflare rule at 02:08:20Z, ORIGIN_AUTH_MODE=enforce at 02:23:30Z). The six pushes to main each deployed through Vercel's normal path.",
+  "ci": "green",
+  "stopped_items": [
+    "The first flip attempt stopped. Craig's 00:58:51Z edit landed on ORIGIN_AUTH_SECRET, not ORIGIN_AUTH_MODE. The 58f3f696 deploy came up in report mode with a secret Cloudflare does not stamp, and a real visitor logged cf-ray=yes at 01:03:03Z. I did not flip. Recovery took two steps with Craig: restore the secret, redeploy (fcbebefa) and prove it in report mode, then set MODE and redeploy (cd866ff5). That is two empty commits more than the prompt's one.",
+    "Permission prompt, twice: `taskkill //PID 13028 //T //F 2>&1 | tail -2; cd …/fix-1305 && rm apps/civitics/app/api/zz-cc231-echo/route.ts && rmdir apps/civitics/app/api/zz-cc231-echo && git status --short` was denied. After Craig approved the rm, `rm apps/civitics/app/api/zz-cc231-echo/route.ts && rmdir apps/civitics/app/api/zz-cc231-echo && git status --short && date -u +%H:%M:%SZ` was denied again. I stopped both. The taskkill then ran on its own, and the untracked throwaway route was mv'd into the session scratchpad instead (Craig's option 2). It was never staged."
+  ],
+  "lane": "app",
+  "owed": []
+}
