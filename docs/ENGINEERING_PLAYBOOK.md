@@ -480,8 +480,21 @@ row (C6).
   nightly's writer blocks, the guarded procedures and an unattended dispatch all
   see it;
 - an UNATTENDED run preflights `prod_session_state()` and writes `skipped`
-  (`prod session held: …`) when a session is held — it never claims, because a
-  scheduled job holding the interlock is a nightly refusing itself;
+  (`prod session held: …`) when a session is held. It claims only as a
+  DECLARED SELF-EXEMPT writer — `exemptWriters: ['nightly_cron:<phase>']`,
+  recorded in the label as `exempt_writers` — and never with `force`. The
+  exemption names its own FIX-462 `running` row and nothing else; without it a
+  scheduled job holding the interlock is a nightly refusing itself (rule 169).
+  A refused claim still writes `skipped`. The nightly's `fec_bulk` writer is
+  that claimant since FIX-1310 (cc-225);
+- a claimant killed by its job cap (SIGTERM — `sync-log.ts` re-kills, so
+  `withProdSession`'s `finally` never runs) or by SIGKILL drops its advisory
+  lock with its backend but LEAVES ITS HOLD ROWS. Today's net is the next
+  claimant's leftover-hold sweep (it runs first, even on a refused claim, and
+  logs what it swept) and, until then, `canary-prod-session`'s
+  `prod_session_hold_stale` report. The nightly is the first claimant killed
+  on a schedule (FIX-1100's Sunday overruns); a kill-path sweep is N2's
+  (cc-225 finding 1, decided cc-227);
 - every multi-unit landing checkpoints per unit IN EVERY MODE, so a stop is
   resumable;
 - it reads the box gate (`box_backoff_gate`) at unit boundaries, as the pg_cron
@@ -492,9 +505,8 @@ row (C6).
 
 *FIX-1291, FIX-1274 · `docs/audits/2026-10-04-fix1274-usaspending-delta-read.md`,
 `docs/cc/reports/cc-209.md` §4, the cc-214 rehearsal audit
-(`2026-10-10-usaspending-resumable-rehearsal.md`) · `packages/data/src/scripts/usaspending-bulk.ts`*
-
-The nightly's `fec_bulk` writer claims since FIX-1310 (cc-225), exempting its own `nightly_cron:fec` row (rule 169).
+(`2026-10-10-usaspending-resumable-rehearsal.md`) · `packages/data/src/scripts/usaspending-bulk.ts`
+· FIX-1310 `packages/data/src/pipelines/index.ts` (the nightly's claim)*
 
 ---
 
