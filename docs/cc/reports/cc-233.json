@@ -1,0 +1,63 @@
+{
+  "cc": "233",
+  "prompt": "cc-prompt-233-fix1304-upstash-limiter-hard-budget-protects-ring-and-restart.md",
+  "started_at": "2026-10-15T02:03:10Z",
+  "finished_at": "2026-10-15T03:04:40Z",
+  "head_before": "768bd964",
+  "head_after": "4067fef7",
+  "commits": [
+    {
+      "sha": "5c736297",
+      "subject": "docs(fixes): FIX-1304 re-shaped — budget the limiter's Upstash spend instead of moving the ring/arm (cc-233)"
+    },
+    {
+      "sha": "eb61c9f8",
+      "subject": "docs(fixes): cc-233 files FIX-1313, FIX-1314; appends to FIX-1089"
+    },
+    {
+      "sha": "287ff2bb",
+      "subject": "feat(db): FIX-1304 — the Upstash usage probe writes a 2 h budget flag at 70 % of the vendor cap and records budget_hold (cc-233)"
+    },
+    {
+      "sha": "05492241",
+      "subject": "fix(app): FIX-1304 — the edge limiter honours the Upstash budget flag (memory path before exhaustion; one GET per 200 commands) (cc-233)"
+    },
+    {
+      "sha": "5ee5706b",
+      "subject": "docs(ops): FIX-1304 — the Upstash budget, the three tenants, the flag (cc-233)"
+    },
+    {
+      "sha": "4067fef7",
+      "subject": "chore(fixes): sync status after FIX-1304 (cc-233)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1304"
+  ],
+  "fixes_filed": [
+    "FIX-1313",
+    "FIX-1314"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none (Vercel deploy only). Prod contact was two read-only db-query --prod reads (pipeline_state, platform_usage_snapshot) and vercel logs. The deployed probe's own 03:00Z tick tried the flag SET, Upstash refused it, and the probe recorded its pipeline_state transition. That was the cron, not this run.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 4, the ENGINEERING_PLAYBOOK paragraph: not written. The prompt finds it with grep -n FIX-1038, and the playbook has no FIX-1038, Upstash or limiter paragraph. Its one 'rate limit' hit is D8, about discriminators. The tree contradicts the item. The .env.example half landed (5ee5706b). Separately, cc-227's branches all edit the playbook.",
+    "§9's edge reading through the status route: not observable. getLimiterHealth() has no caller outside the tests, the status route does not render it, and §8 says not to add rendering. The edge half was read from vercel logs instead (see §9 below)."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1304",
+      "what": "after the Upstash reset (observed cadence 11-01 00:0xZ): the probe records healthy and budget.state clear, the flag key is absent (DEL landed, flag_written true), live limiter instances read source upstash again, and pipeline_state.upstash_limiter_health shows quota_exhausted → healthy with no budget_hold flap",
+      "after": "2026-11-01T06:00Z"
+    },
+    {
+      "fix": "FIX-1304",
+      "what": "the FIRST real budget hold: a probe tick records budget_hold with flag_written true at used ≥ 350,000 while the PINGs read healthy; limiter instances flip to memory within one refresh window; the ring and the arm keep writing through the rest of that period (newest ring sample < 4 min old; the restart MGET answering)",
+      "after": "2026-11-01T06:00Z"
+    }
+  ]
+}
