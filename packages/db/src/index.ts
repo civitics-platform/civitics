@@ -318,6 +318,15 @@ export {
   parseQuotaError,
   __resetUpstashHealthCache,
   __resetUpstashUsageCache,
+  LIMITER_BUDGET_KEY,
+  LIMITER_BUDGET_PCT_DEFAULT,
+  LIMITER_BUDGET_TTL_SECONDS,
+  budgetFor,
+  clearLimiterBudgetFlag,
+  limiterBudgetFlag,
+  resolveLimiterBudgetPct,
+  resolveLimiterState,
+  writeLimiterBudgetFlag,
 } from "./upstash-usage";
 export type {
   UpstashHealth,
@@ -327,6 +336,9 @@ export type {
   UpstashLimiterState,
   UpstashLimiterHistory,
   UpstashLimiterTransition,
+  LimiterBudget,
+  LimiterBudgetFlag,
+  LimiterFlagWrite,
 } from "./upstash-usage";
 
 // Vercel current-cycle usage (Pro Usage endpoint + Billing Charges fallback)

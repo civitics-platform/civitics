@@ -64,13 +64,22 @@ import { getVercelAccount } from "./vercel-account";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import {
+  budgetFor,
+  clearLimiterBudgetFlag,
   getUpstashHealth,
   getUpstashUsage,
+  limiterBudgetFlag,
   recordUpstashLimiterState,
+  resolveLimiterBudgetPct,
+  resolveLimiterState,
+  writeLimiterBudgetFlag,
+  type LimiterBudget,
+  type LimiterFlagWrite,
   type UpstashLimiterState,
   type UpstashLimiterTransition,
   type UpstashUsage,
 } from "./upstash-usage";
+import { upstashCredsFromEnv } from "./box-health-store";
 import { getVercelUsage, type VercelUsage } from "./vercel-usage";
 import { getGitHubUsage } from "./github-usage";
 import {
@@ -266,6 +275,10 @@ export type PlatformUsagePayload = {
     // number parsed off a refusal) are different counters that disagree, and
     // collapsing them would hide that.
     usage?: UpstashUsage;
+    // FIX-1304: the limiter's budget against `usage`, and this tick's flag
+    // command (SET while it holds, DEL while it is clear). `flag_written` is
+    // whether that command landed. Absent when `usage` is.
+    budget?: LimiterBudget & { flag_written: boolean; flag_error: string | null };
   };
   // FIX-1044: the LEADING cost signal. Cloudflare is the only near-real-time,
   // script-readable counter in this stack, and every downstream dollar (Vercel
@@ -582,8 +595,10 @@ export async function computePlatformUsagePayload(
   // limiter dies rather than at the instant it does. The quota-error parse stays
   // as the fallback for when the management key is absent. The two counters
   // disagree — billing lags enforcement — so health, not usage, decides
-  // `limiter_degraded`. Missing env on either side is benign (matches the
-  // github/cloudflare convention).
+  // `limiter_degraded`, with one deliberate exception: FIX-1304's budget_hold
+  // is usage-driven and counts as degraded, because while it holds the edge
+  // limiter IS on its per-instance memory path. Missing env on either side is
+  // benign (matches the github/cloudflare convention).
   let upstashPayload: PlatformUsagePayload["upstash"] = undefined;
   try {
     const [upstash, usage] = await Promise.all([getUpstashHealth(), getUpstashUsage()]);
@@ -601,13 +616,52 @@ export async function computePlatformUsagePayload(
       errors.push(`upstash_usage: ${usage.error}`);
     }
 
+    // FIX-1304: hold the limiter to its budget. Every tick with a usage reading
+    // issues exactly one flag command — SET (2 h TTL) while used ≥ budget, DEL
+    // otherwise — and that command doubles as the write-class probe: a refused
+    // write is quota_exhausted even when the PINGs answered. No usage reading,
+    // no command: the flag is left to its TTL.
+    let budget: LimiterBudget | null = null;
+    let flagWrite: LimiterFlagWrite | null = null;
+    let budgetBlock: NonNullable<PlatformUsagePayload["upstash"]>["budget"] = undefined;
+    if (usageOk) {
+      const { pct, invalid } = resolveLimiterBudgetPct(process.env.UPSTASH_LIMITER_BUDGET_PCT);
+      if (invalid) errors.push(`upstash_budget: ${invalid}`);
+      budget = budgetFor(usage, pct);
+      const creds = upstashCredsFromEnv(process.env);
+      if (creds) {
+        flagWrite =
+          budget.state === "hold"
+            ? await writeLimiterBudgetFlag(
+                creds,
+                limiterBudgetFlag(budget, usage.limit_commands, new Date().toISOString()),
+              )
+            : await clearLimiterBudgetFlag(creds);
+      }
+      budgetBlock = {
+        ...budget,
+        flag_written: flagWrite?.ok ?? false,
+        flag_error: creds ? (flagWrite?.error ?? null) : "UPSTASH_REDIS_REST_URL/TOKEN not set",
+      };
+      // One line per tick while it holds or the command did not land; a clear
+      // tick whose DEL landed is silent (the payload still records it).
+      if (budget.state === "hold" || !budgetBlock.flag_written) {
+        console.warn(
+          `[upstash] budget state=${budget.state} used=${budget.used} limit=${usage.limit_commands} ` +
+            `budget=${budget.commands} pct=${budget.pct} daily=${usage.daily_commands} ` +
+            `flag_written=${budgetBlock.flag_written} flag_error=${JSON.stringify(budgetBlock.flag_error)}`,
+        );
+      }
+    }
+
     if (!("error" in upstash)) {
-      const history = await recordUpstashLimiterState(anyDb, upstash.state);
+      const resolved = resolveLimiterState({ health: upstash, budget, flagWrite });
+      const history = await recordUpstashLimiterState(anyDb, resolved.state);
       await updateUsage(
         db,
         "upstash",
         "limiter_degraded",
-        upstash.state === "healthy" ? 0 : 1,
+        resolved.state === "healthy" ? 0 : 1,
         "api",
       );
       // Fallback only: without the management key the quota error is the sole
@@ -617,8 +671,13 @@ export async function computePlatformUsagePayload(
       }
       upstashPayload = {
         ...upstash,
+        // The recorded state, not the PINGs' alone: `refusals`/`attempts`
+        // above still say what the PINGs saw.
+        state: resolved.state,
+        detail: resolved.detail,
         ...history,
         ...(usageOk ? { usage } : {}),
+        ...(budgetBlock ? { budget: budgetBlock } : {}),
       };
     } else if (!/UPSTASH_REDIS_REST/i.test(upstash.error)) {
       errors.push(`upstash: ${upstash.error}`);

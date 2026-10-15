@@ -51,12 +51,16 @@
  * roughly 60% of ticks of the very incident it exists to catch, which is the
  * FIX-1038 blindness reproduced in the instrument.
  *
- * PROBE_ATTEMPTS = 3 therefore: P(all three miss) ≈ 0.62³ ≈ 24% for one tick,
- * and ≈ 1e-4 across an hour of 10-minute ticks — and `refusals`/`attempts` ride
- * in the payload so severity is visible, not just the boolean. Worst case 3
- * commands × 144 ticks = 432/day against 500,000: 0.09% of the allotment it is
- * watching. Note this also softens the audit's "the limiter is FULLY open"
+ * PROBE_ATTEMPTS = 3 therefore: P(all three miss) ≈ 0.62³ ≈ 24% for one tick
+ * — and `refusals`/`attempts` ride in the payload so severity is visible, not
+ * just the boolean. The tick is the half-hourly Vercel cron (FIX-1127), not the
+ * 10 minutes this was written against: 3 commands × 48 ticks = 144/day against
+ * 500,000. Note this also softens the audit's "the limiter is FULLY open"
  * reading: over quota it is intermittently open, not uniformly dead.
+ *
+ * 24 % per tick was not a bound in practice: 10-13 → 10-15 the recorded state
+ * flipped healthy ↔ quota_exhausted every 30–90 min while the allotment stayed
+ * spent. FIX-1304's flag write is the deterministic half (resolveLimiterState).
  *
  * ── THE ALLOTMENT IS MONTHLY. Settled 2026-08-16, do not re-litigate ─────────
  *
@@ -88,7 +92,21 @@
  * Neither function throws. Missing env returns `{ error }` matching the
  * convention every other vendor helper here uses, so the snapshot writer treats
  * it as benign and the whole block simply does not appear in the payload.
+ *
+ * ── FIX-1304: the budget, and a write-class probe ────────────────────────────
+ *
+ * One Upstash database (the free tier allows one; pay-as-you-go is ruled out)
+ * carries three tenants: the edge limiter (traffic-proportional, unbounded
+ * under a crawl), the box-health ring and the front-door restart arm (both
+ * flat). This probe holds the limiter to a share of the vendor's cap — see
+ * "The limiter's budget" below — so a crawl cannot spend the other two's share.
+ * The flag SET/DEL it issues every tick is also the write-class reading the
+ * PINGs cannot give: over quota, reads land intermittently and writes do not
+ * (cc-229: the ring's last write landed 20:30:22Z on 10-12, the PINGs read
+ * healthy until 22:30:46Z).
  */
+
+import { upstashRequest, type UpstashCreds } from "./box-health-store";
 
 const CACHE_TTL_MS = 60 * 1000;
 const PROBE_TIMEOUT_MS = 5_000;
@@ -97,7 +115,14 @@ const PROBE_ATTEMPTS = 3;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export type UpstashLimiterState = "healthy" | "quota_exhausted" | "unreachable";
+/**
+ * `budget_hold` (FIX-1304): the management API reads used ≥ the limiter's
+ * budget, so the probe has written the flag that sends the edge limiter to its
+ * per-instance memory path. Deliberately a non-healthy state: the limiter IS
+ * weaker while it holds, and the transition is the early warning FIX-1038 asked
+ * for — it fires at 70 % of the cap, not at 100 %.
+ */
+export type UpstashLimiterState = "healthy" | "quota_exhausted" | "budget_hold" | "unreachable";
 
 export type UpstashHealth = {
   state: UpstashLimiterState;
@@ -264,7 +289,7 @@ export function __resetUpstashHealthCache(): void {
 // The LEADING indicator the health probe cannot be. The probe tells you the
 // limiter is dead; this tells you it is going to be, while there is still time
 // to do something. Two GETs against the management API per tick, cached 5 min
-// (the snapshot cron runs every 10) — these do NOT count against the Redis
+// (the snapshot cron runs every 30) — these do NOT count against the Redis
 // command allotment, they are a different API.
 //
 // SECURITY. UPSTASH_API_KEY is an UNSCOPED account-level credential — Upstash
@@ -302,6 +327,10 @@ export type UpstashUsage = {
    * 500,000 in 15.5 hours; "99.8% used" with no cycle end cannot answer the
    * only question anyone had — when does the rate limiter come back — and the
    * calendar-month answer (Sep 1) is wrong by twelve days.
+   *
+   * CONTRADICTED since (FIX-1314): the only observed reset was 09-01T00:01:16Z,
+   * and 10-13 07:51Z passed with used still at 499,693. The reset reads as
+   * calendar. The field stays; the cycle built from it is FIX-1314's.
    */
   created_at: string | null;
   fetched_at: string;
@@ -405,12 +434,164 @@ export function __resetUpstashUsageCache(): void {
   usageCache = null;
 }
 
+// ── FIX-1304: the limiter's budget ────────────────────────────────────────────
+//
+// THE HOG IS BUDGETED; NOTHING MOVES. The limiter spends ~150k commands a month
+// at human traffic and has no ceiling under a crawl; the box-health ring (2 per
+// */2 sample, ~43k/month) and the front-door restart arm (one MGET per */2
+// tick, ~25k/month) are flat. Twice (08-15, 10-12) a crawl spent all 500,000 and
+// the ring and the arm went dark for the rest of the billing period. So once the
+// management API reads used ≥ pct of the vendor's cap, this probe writes a flag
+// and the edge limiter (apps/civitics/src/lib/ratelimit.ts) takes its
+// per-instance memory path BEFORE the quota is gone. At the default 70 % the
+// other two keep 150,000 commands: twice their monthly 68k.
+//
+// The flag lives in the same database, under LIMITER_BUDGET_KEY, with a 2 h TTL
+// rewritten every tick while the hold lasts and DELeted once used < budget. The
+// TTL is what keeps a dead probe from pinning the limiter in memory forever:
+// four missed */30 ticks and the limiter spends again, which is the pre-FIX
+// behaviour rather than a new failure. The edge has no admin client, and
+// Postgres is the thing a wedge takes down, so the flag cannot live there.
+//
+// LAG. The hold engages one probe tick (≤ 30 min) after `total_monthly_requests`
+// crosses the budget — and that counter is itself stale: on 10-12 it moved in
+// ~3 h steps (241,414 → 375,889 at 19:00Z → 499,669 at 22:00Z) while
+// `daily_commands` climbed every tick. See FIX-1313.
+
+/** Must equal BUDGET_FLAG_KEY in apps/civitics/src/lib/ratelimit.ts. */
+export const LIMITER_BUDGET_KEY = "civitics:limiter:budget";
+export const LIMITER_BUDGET_TTL_SECONDS = 7_200;
+export const LIMITER_BUDGET_PCT_DEFAULT = 70;
+const LIMITER_BUDGET_PCT_MIN = 10;
+const LIMITER_BUDGET_PCT_MAX = 95;
+const FLAG_TIMEOUT_MS = 5_000;
+
+/**
+ * UPSTASH_LIMITER_BUDGET_PCT, validated. Absent or empty is the default and is
+ * not an error; anything else outside 10–95 falls back to the default and says
+ * why, so a typo cannot silently disable the hold (0) or make it permanent.
+ */
+export function resolveLimiterBudgetPct(raw: string | undefined): { pct: number; invalid: string | null } {
+  if (raw === undefined || raw.trim() === "") return { pct: LIMITER_BUDGET_PCT_DEFAULT, invalid: null };
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= LIMITER_BUDGET_PCT_MIN && n <= LIMITER_BUDGET_PCT_MAX) {
+    return { pct: n, invalid: null };
+  }
+  return {
+    pct: LIMITER_BUDGET_PCT_DEFAULT,
+    invalid:
+      `UPSTASH_LIMITER_BUDGET_PCT=${JSON.stringify(raw)} is not a number in ` +
+      `${LIMITER_BUDGET_PCT_MIN}–${LIMITER_BUDGET_PCT_MAX}; using ${LIMITER_BUDGET_PCT_DEFAULT}`,
+  };
+}
+
+export type LimiterBudget = {
+  pct: number;
+  /** floor(limit_commands × pct / 100) — the vendor's cap, never a constant. */
+  commands: number;
+  used: number;
+  used_pct: number;
+  state: "clear" | "hold";
+};
+
+export function budgetFor(
+  usage: Pick<UpstashUsage, "limit_commands" | "used_commands" | "used_pct">,
+  pct: number,
+): LimiterBudget {
+  const commands = Math.floor((usage.limit_commands * pct) / 100);
+  return {
+    pct,
+    commands,
+    used: usage.used_commands,
+    used_pct: usage.used_pct,
+    state: usage.used_commands >= commands ? "hold" : "clear",
+  };
+}
+
+/** The flag's value. `pct` is the budget's percentage, not usage. */
+export type LimiterBudgetFlag = {
+  state: "hold";
+  used: number;
+  limit: number;
+  budget: number;
+  pct: number;
+  at: string;
+};
+
+export function limiterBudgetFlag(budget: LimiterBudget, limit: number, at: string): LimiterBudgetFlag {
+  return { state: "hold", used: budget.used, limit, budget: budget.commands, pct: budget.pct, at };
+}
+
+export type LimiterFlagWrite = { ok: boolean; error: string | null };
+
+/** SET the flag with its TTL. One command. Never throws. */
+export async function writeLimiterBudgetFlag(
+  creds: UpstashCreds,
+  flag: LimiterBudgetFlag,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = FLAG_TIMEOUT_MS,
+): Promise<LimiterFlagWrite> {
+  const r = await upstashRequest(
+    creds,
+    "",
+    ["SET", LIMITER_BUDGET_KEY, JSON.stringify(flag), "EX", String(LIMITER_BUDGET_TTL_SECONDS)],
+    fetchImpl,
+    timeoutMs,
+  );
+  if (!r.ok) return { ok: false, error: r.error };
+  const result = (r.reply as { result?: unknown } | null)?.result;
+  return result === "OK" ? { ok: true, error: null } : { ok: false, error: `upstash SET: unexpected ${JSON.stringify(result)}` };
+}
+
+/** DEL the flag. One command; deleting an absent key is a success. Never throws. */
+export async function clearLimiterBudgetFlag(
+  creds: UpstashCreds,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = FLAG_TIMEOUT_MS,
+): Promise<LimiterFlagWrite> {
+  const r = await upstashRequest(creds, "", ["DEL", LIMITER_BUDGET_KEY], fetchImpl, timeoutMs);
+  return r.ok ? { ok: true, error: null } : { ok: false, error: r.error };
+}
+
+/**
+ * The state this tick records. Precedence: quota_exhausted > budget_hold >
+ * unreachable > healthy.
+ *
+ * A refused flag write means quota_exhausted even when every PING answered:
+ * over quota, reads land intermittently and writes do not, and the limiter's
+ * sliding window is writes. A write that fails for any other reason does not
+ * change the state; the payload's budget.flag_error carries it.
+ */
+export function resolveLimiterState(input: {
+  health: Pick<UpstashHealth, "state" | "detail">;
+  budget: LimiterBudget | null;
+  flagWrite: LimiterFlagWrite | null;
+}): { state: UpstashLimiterState; detail: string | null } {
+  const { health, budget, flagWrite } = input;
+  const writeRefused =
+    flagWrite !== null && !flagWrite.ok && isQuotaExhaustedMessage(flagWrite.error ?? "");
+  if (writeRefused) {
+    const pings = health.state === "quota_exhausted" ? ` · ${health.detail}` : "";
+    return { state: "quota_exhausted", detail: `write refused: ${flagWrite.error}${pings}` };
+  }
+  if (health.state === "quota_exhausted") return { state: "quota_exhausted", detail: health.detail };
+  if (budget?.state === "hold") {
+    const unwritten = flagWrite && !flagWrite.ok ? ` — flag NOT written: ${flagWrite.error}` : "";
+    return {
+      state: "budget_hold",
+      detail: `budget hold: used ${budget.used} ≥ budget ${budget.commands} (${budget.pct} % of the cap)${unwritten}`,
+    };
+  }
+  if (health.state === "unreachable") return { state: "unreachable", detail: health.detail };
+  return { state: "healthy", detail: null };
+}
+
 // ── Durable state-TRANSITION record (FIX-1040) ────────────────────────────────
 //
 // FIX-1040's rule: durable signals are state TRANSITIONS, not per-request rows.
 // A per-request durable write at the 7,200 req/hr this incident ran at is a
 // second self-inflicted incident, so nothing here scales with traffic — one
-// read + at most one write per 10-minute snapshot tick, and the write only
+// read + at most one write per 30-minute snapshot tick, and the write only
 // happens when the state actually changes.
 //
 // It lives on the SNAPSHOT side rather than in the edge limiter on purpose: an

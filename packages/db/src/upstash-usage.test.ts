@@ -12,6 +12,14 @@ import {
   parseQuotaError,
   __resetUpstashHealthCache,
   __resetUpstashUsageCache,
+  LIMITER_BUDGET_KEY,
+  LIMITER_BUDGET_PCT_DEFAULT,
+  resolveLimiterBudgetPct,
+  budgetFor,
+  resolveLimiterState,
+  limiterBudgetFlag,
+  writeLimiterBudgetFlag,
+  clearLimiterBudgetFlag,
   type UpstashLimiterState,
 } from "./upstash-usage";
 
@@ -416,5 +424,143 @@ describe("recordUpstashLimiterState", () => {
     const h = await recordUpstashLimiterState(broken, "quota_exhausted");
     assert.equal(h.previous_state, null);
     assert.deepEqual(h.transitions, []);
+  });
+});
+
+// ── FIX-1304: the limiter's budget and its flag ──────────────────────────────
+
+/** A management-API reading, at the vendor's cap unless told otherwise. */
+const usageAt = (used: number, limit = 500_000) => ({
+  limit_commands: limit,
+  used_commands: used,
+  used_pct: Math.round((used / limit) * 10000) / 100,
+});
+
+const healthy = {
+  state: "healthy" as const,
+  detail: null,
+  limit_commands: null,
+  usage_commands: null,
+  attempts: 3,
+  refusals: 0,
+  latency_ms: 40,
+  checked_at: "2026-10-14T00:00:00.000Z",
+};
+
+const fakeCreds = { url: "https://example.upstash.io", token: "test-token" };
+
+/** A fetch stand-in for upstashRequest: records each command, answers `reply`. */
+function flagFetch(reply: { status?: number; body: unknown }): { commands: unknown[]; impl: typeof fetch } {
+  const commands: unknown[] = [];
+  const impl = (async (_url: string, init?: RequestInit) => {
+    commands.push(JSON.parse(String(init?.body)));
+    const status = reply.status ?? 200;
+    return { ok: status < 400, status, json: async () => reply.body } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return { commands, impl };
+}
+
+describe("FIX-1304 — the limiter budget", () => {
+  it("UPSTASH_LIMITER_BUDGET_PCT defaults to 70 and is validated to 10–95", () => {
+    assert.equal(LIMITER_BUDGET_PCT_DEFAULT, 70);
+    assert.deepEqual(resolveLimiterBudgetPct(undefined), { pct: 70, invalid: null });
+    assert.deepEqual(resolveLimiterBudgetPct(""), { pct: 70, invalid: null });
+    assert.deepEqual(resolveLimiterBudgetPct("60"), { pct: 60, invalid: null });
+    assert.deepEqual(resolveLimiterBudgetPct("10"), { pct: 10, invalid: null });
+    assert.deepEqual(resolveLimiterBudgetPct("95"), { pct: 95, invalid: null });
+    for (const bad of ["9", "96", "100", "0", "-5", "seventy", "NaN", "Infinity"]) {
+      const r = resolveLimiterBudgetPct(bad);
+      assert.equal(r.pct, 70, `${bad} must fall back to the default`);
+      assert.match(r.invalid ?? "", /UPSTASH_LIMITER_BUDGET_PCT/, `${bad} must say why`);
+    }
+  });
+
+  it("the threshold sits at floor(limit × pct / 100), read off the vendor's cap: budget − 1 clear, budget and budget + 1 hold", () => {
+    const at = (used: number) => budgetFor(usageAt(used), 70);
+    assert.equal(at(0).commands, 350_000);
+    assert.equal(at(349_999).state, "clear");
+    assert.equal(at(350_000).state, "hold");
+    assert.equal(at(350_001).state, "hold");
+    assert.deepEqual(at(350_000), {
+      pct: 70,
+      commands: 350_000,
+      used: 350_000,
+      used_pct: 70,
+      state: "hold",
+    });
+    // The denominator is the vendor's own number, never a hard-coded 500,000.
+    assert.equal(budgetFor(usageAt(0, 1_000_000), 70).commands, 700_000);
+    assert.equal(budgetFor(usageAt(0, 333_333), 70).commands, 233_333, "floored, never rounded up");
+  });
+
+  it("the recorded state: quota_exhausted > budget_hold > unreachable > healthy", () => {
+    const quota = { ...healthy, state: "quota_exhausted" as const, detail: "2/3 PINGs refused — " + QUOTA_ERROR, refusals: 2 };
+    const unreachable = { ...healthy, state: "unreachable" as const, detail: "fetch failed" };
+    const hold = budgetFor(usageAt(400_000), 70);
+    const clear = budgetFor(usageAt(100_000), 70);
+    const landed = { ok: true, error: null };
+    const refused = { ok: false, error: `upstash 200: ${QUOTA_ERROR}` };
+    const other = { ok: false, error: "upstash: fetch failed" };
+
+    const table: [Parameters<typeof resolveLimiterState>[0], string][] = [
+      [{ health: healthy, budget: clear, flagWrite: landed }, "healthy"],
+      [{ health: healthy, budget: null, flagWrite: null }, "healthy"],
+      [{ health: healthy, budget: clear, flagWrite: other }, "healthy"],
+      [{ health: unreachable, budget: clear, flagWrite: other }, "unreachable"],
+      [{ health: healthy, budget: hold, flagWrite: landed }, "budget_hold"],
+      [{ health: unreachable, budget: hold, flagWrite: other }, "budget_hold"],
+      [{ health: quota, budget: hold, flagWrite: landed }, "quota_exhausted"],
+      [{ health: quota, budget: clear, flagWrite: landed }, "quota_exhausted"],
+      [{ health: healthy, budget: hold, flagWrite: refused }, "quota_exhausted"],
+      [{ health: healthy, budget: clear, flagWrite: refused }, "quota_exhausted"],
+      [{ health: unreachable, budget: null, flagWrite: null }, "unreachable"],
+    ];
+    for (const [input, want] of table) {
+      assert.equal(resolveLimiterState(input).state, want, JSON.stringify(input));
+    }
+    assert.match(resolveLimiterState({ health: healthy, budget: hold, flagWrite: landed }).detail ?? "", /400000.*350000/);
+  });
+
+  it("the flag: SET civitics:limiter:budget <json> EX 7200 on hold, DEL on clear, neither throws", async () => {
+    const hold = budgetFor(usageAt(360_000), 70);
+    const flag = limiterBudgetFlag(hold, 500_000, "2026-10-14T00:00:00.000Z");
+    assert.deepEqual(flag, {
+      state: "hold",
+      used: 360_000,
+      limit: 500_000,
+      budget: 350_000,
+      pct: 70,
+      at: "2026-10-14T00:00:00.000Z",
+    });
+
+    const set = flagFetch({ body: { result: "OK" } });
+    assert.deepEqual(await writeLimiterBudgetFlag(fakeCreds, flag, set.impl), { ok: true, error: null });
+    assert.deepEqual(set.commands, [["SET", LIMITER_BUDGET_KEY, JSON.stringify(flag), "EX", "7200"]]);
+    assert.equal(LIMITER_BUDGET_KEY, "civitics:limiter:budget");
+
+    const del = flagFetch({ body: { result: 1 } });
+    assert.deepEqual(await clearLimiterBudgetFlag(fakeCreds, del.impl), { ok: true, error: null });
+    assert.deepEqual(del.commands, [["DEL", LIMITER_BUDGET_KEY]]);
+
+    const thrown = (async () => {
+      throw new Error("fetch failed");
+    }) as unknown as typeof fetch;
+    const r = await writeLimiterBudgetFlag(fakeCreds, flag, thrown);
+    assert.equal(r.ok, false);
+    assert.match(r.error ?? "", /fetch failed/);
+  });
+
+  it("a refused flag write records quota_exhausted with the write detail while the PINGs read healthy", async () => {
+    const hold = budgetFor(usageAt(499_774), 70);
+    const refused = flagFetch({ body: { error: QUOTA_ERROR } });
+    const write = await writeLimiterBudgetFlag(
+      fakeCreds,
+      limiterBudgetFlag(hold, 500_000, "2026-10-14T00:00:00.000Z"),
+      refused.impl,
+    );
+    assert.equal(write.ok, false);
+    const resolved = resolveLimiterState({ health: healthy, budget: hold, flagWrite: write });
+    assert.equal(resolved.state, "quota_exhausted");
+    assert.match(resolved.detail ?? "", /^write refused: .*max requests limit exceeded/);
   });
 });
