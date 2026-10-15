@@ -1,0 +1,91 @@
+{
+  "cc": "226",
+  "prompt": "cc-prompt-226-dispatcher-r1-landing-job-registry-gated-push.md",
+  "started_at": "2026-10-15T01:59:48Z",
+  "finished_at": "2026-10-15T02:16:09Z",
+  "head_before": "768bd964",
+  "head_after": "c911fde1",
+  "commits": [
+    {
+      "sha": "e0cb8ffe",
+      "subject": "feat(db): FIX-1307 — job_registry + platform_dials + dispatch_log, seeded from prod's cron.job/cron_job_budget/rollup_watch_overrides read 2026-10-12 (53 rows, every deadline_rule 'at …'; inert)"
+    },
+    {
+      "sha": "87522af4",
+      "subject": "feat(ci): FIX-1307 — check:job-registry (the ninth tests.yml check): every cron.job row in the newest receipts and every scheduled workflow has a registry row; unit_call names a routine; a band or a no-band declaration"
+    },
+    {
+      "sha": "18481c00",
+      "subject": "fix(db): FIX-1307 — the two refresh-derived-mvs seed notes name the second write family"
+    },
+    {
+      "sha": "a44e8984",
+      "subject": "docs(audits): FIX-1307 — the job-registry contract audit: 53 rows seeded, the nine-item matrix, the unitized fraction (6 of 21 CALL jobs resumable; 8.3 % of weekly wall), the D11 vacuum table"
+    },
+    {
+      "sha": "3aafb142",
+      "subject": "docs(playbook): FIX-1307 — D9 the pipeline contract (nine items; the receipt of each)"
+    },
+    {
+      "sha": "9ead2c8e",
+      "subject": "test(data): FIX-1307 — the retention test finds its scheduling migration by declaration, not by the bare job literal the registry seed also carries"
+    },
+    {
+      "sha": "7cef48e2",
+      "subject": "test(data): FIX-1307 — job-registry seed invariants (vocabularies, inert deadlines, caps = 2 × the body's work_mem, parity with the banked prod read)"
+    },
+    {
+      "sha": "fe15bd83",
+      "subject": "feat(ops): FIX-1312 — park vote-stats-refresh for the dispatcher cutover; rollback payload (cc-226)"
+    },
+    {
+      "sha": "b5c27209",
+      "subject": "chore(fixes): record FIX-1307 landed on prod — job_registry 53 rows all 'at …' + platform_dials defaults + dispatch_log empty (20261014230000 at 02:10:51Z under the FIX-950 claim; inert until FIX-1308)"
+    },
+    {
+      "sha": "f358c2ee",
+      "subject": "chore(fixes): record FIX-1312 landed on prod — vote-stats-refresh (jobid 27) parked at 02:10:51Z + one FIX-1059 hold row official_vote_stats_rebuild (20261014220000 under the FIX-950 claim)"
+    },
+    {
+      "sha": "ae441a73",
+      "subject": "chore(fixes): sync status after FIX-1307, FIX-1312 (cc-226)"
+    },
+    {
+      "sha": "c911fde1",
+      "subject": "docs(dispatcher): R1 landed — s1/s4 done; v1.3 note linked (cc-226)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1307",
+    "FIX-1312"
+  ],
+  "fixes_filed": [
+    "FIX-1312"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261014220000_fix1312_park_vote_stats_refresh.sql",
+    "supabase/migrations/20261014230000_fix1307_job_registry.sql"
+  ],
+  "prod_writes": "ONE gated push of TWO migration files under its own FIX-950 claim. Gate open 2026-10-15T02:10:46Z; census pass (0 renders / 0 events in 60 min; edge 0 of 285 = 0.00 %). The claim held 1 guarded pipeline (official_vote_stats_rebuild) and its release cleared 0. 20261014220000 ran cron.alter_job(active := false) BY NAME on vote-stats-refresh (jobid 27) and took the claim's session row over as one hold row (held_since 2026-10-15T02:10:51.152007Z, hold_reason 'parked for the dispatcher cutover (cc-226, FIX-1312); returns via job_registry'). 20261014230000 then created job_registry (53 rows), platform_dials (1 row) and dispatch_log (0 rows), seed updated_at 02:10:51.238266Z. A dry run under the same gate shape at 02:10:34Z listed exactly those two files (held 1, cleared 1). Every other prod contact was a READ ONLY db-query --prod or the gate's census.",
+  "ci": "green",
+  "stopped_items": [
+    "Read 5 premise number off by one: cron_job_budget read 20, and the prompt expected 21 (and 21 again in §9). Not a changed premise. The 20 jobnames are identical to cc-223's banked read (docs/audits/2026-10-12-cc223-cron-job-read.json, 2026-10-13T00:41Z, 20 rows with budget_seconds), and cc-232 made no budget change. Proceeded, and recorded 20 in the read-back.",
+    "Never force-push (PROMPT_TEMPLATE). The rebased branch diverges from origin/feature/fix-1307 (old head 75beb0b2), so it went to a NEW remote branch, feature/fix-1307-landing, where branch CI 38669296364 ran. main fast-forwarded from it. origin/feature/fix-1307 (stale pre-rebase shas) and origin/feature/fix-1307-landing are both LEFT on the remote. Deleting them is a deletion and needs Craig's approval; session:check will list the stale one as unmerged.",
+    "Item 0's fix-add ran inside the fix-1307 worktree after the rebase, not on the PRIMARY as the prompt said. A bullet appended on the primary could not have been committed there (agents never commit on the primary). In the worktree it rode the Item 0 commit. FIX-1312 was the next free id on main and on every branch (1308 and 1310 top out at FIX-1310).",
+    "supabase migration list on the PRIMARY was not run. The gated dry run is the authoritative pending list, and the bare command defaults to the linked login path (FIX-392).",
+    "Item 3's 'done: true' was written as dates (s1 2026-10-13, s4 2026-10-14). The board's planProblems() rejects a non-date. s4's ref moved from cc-226 to FIX-1307, because an op step derives done only from a FIX-id ref with a receipt row, so ref cc-226 would read 'planned' forever. pnpm board: dispatcher problems []. s4 reads 'FIX-1307 ✓ 2026-10-14'.",
+    "Item 0's '03:30Z Thu slot shows no firing' cannot be read inside this run: the slot is 2026-10-15T03:30Z and the run finished at 2026-10-15T02:16:09Z. Declared in owed rather than claimed. Interim evidence: zero firings of any of the 22 previously inactive jobs since FIX-1311's park (10-13 23:32:42Z), including ec-crawl */15 and fe-crawl */30.",
+    "The prompt said nothing else was in flight. cc-233 (FIX-1304, worktree fix-1304) wrote its .running marker at 02:03:10Z, after this run began. There was no collision: session:held read held=false live_writers=0 before the gate, and this run's claim acquired cleanly at 02:10:46Z and released at the push's end.",
+    "No permission prompt fired. External calls: gh workflow run tests.yml on feature/fix-1307-landing, the gate's Logs API census (twice), and GitHub pushes."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1312",
+      "what": "vote-stats-refresh (jobid 27) Thu 10-15 03:30Z slot shows NO firing in cron.job_run_details (last firing stays runid 122922, 2026-10-14 03:30:00Z)",
+      "after": "2026-10-15T03:31Z"
+    }
+  ]
+}
