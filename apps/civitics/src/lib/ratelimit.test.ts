@@ -18,8 +18,11 @@ import {
   __resetRateLimiterStateForTests,
   __setUpstashLimitFnForTests,
   __mapSizesForTests,
+  __setBudgetFlagReaderForTests,
+  BUDGET_FLAG_KEY,
   type RateLimitBucket,
 } from "./ratelimit";
+import { LIMITER_BUDGET_KEY } from "@civitics/db";
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
@@ -392,5 +395,180 @@ describe("public contract", () => {
     }
     assert.equal((await checkRateLimit("auth_send_email", "a@example.com")).allowed, false);
     assert.equal((await checkRateLimit("auth_send_email", "b@example.com")).allowed, true);
+  });
+});
+
+// ── FIX-1304: the budget flag ────────────────────────────────────────────────
+
+const HOLD_FLAG = {
+  state: "hold",
+  used: 360_000,
+  limit: 500_000,
+  budget: 350_000,
+  pct: 70,
+  at: "2026-10-14T00:00:00.000Z",
+};
+
+/** A stand-in for the flag GET. `value()` is the stored value; an Error is thrown. */
+function fakeBudgetFlag(value: () => unknown, events?: string[]) {
+  const reads = { n: 0 };
+  __setBudgetFlagReaderForTests(async () => {
+    reads.n += 1;
+    events?.push("GET");
+    const v = value();
+    if (v instanceof Error) throw v;
+    return v;
+  });
+  return reads;
+}
+
+/** An Upstash limiter that always allows, logging each call into `events`. */
+function allowingUpstash(events?: string[]) {
+  return fakeUpstash(() => {
+    events?.push("limit");
+    return { success: true, remaining: 44, reset: clock + 60_000 };
+  });
+}
+
+describe("budget flag (FIX-1304)", () => {
+  it("(a) while the flag holds, every call is a memory verdict and Upstash limit() is called ZERO times", async () => {
+    fakeBudgetFlag(() => HOLD_FLAG);
+    const calls = allowingUpstash();
+    for (let i = 0; i < 45; i += 1) {
+      const r = await checkRateLimit("entity_leaf", "203.0.113.7");
+      assert.equal(r.allowed, true);
+      assert.equal(r.source, "memory");
+    }
+    const over = await checkRateLimit("entity_leaf", "203.0.113.7");
+    assert.equal(over.allowed, false, "the hold is the memory LIMITER, never allow-all");
+    assert.equal(over.source, "memory");
+    assert.equal(calls.length, 0, "a held instance spends nothing on the limiter");
+
+    const health = getLimiterHealth();
+    assert.equal(health.mode, "memory");
+    assert.equal(health.budget_hold, true);
+    assert.equal(health.budget_detail, "360000/500000");
+    assert.match(health.reason ?? "", /^budget hold: 360000\/500000$/);
+  });
+
+  it("(b) with the flag absent the limiter is unchanged: Upstash verdicts, one cold read", async () => {
+    const reads = fakeBudgetFlag(() => null);
+    const calls = allowingUpstash();
+    for (let i = 0; i < 10; i += 1) {
+      assert.equal((await checkRateLimit("entity_leaf", "203.0.113.7")).source, "upstash");
+    }
+    assert.equal(calls.length, 10);
+    assert.equal(reads.n, 1);
+    assert.equal(getLimiterHealth().budget_hold, false);
+    assert.equal(getLimiterHealth().budget_checked_at, new Date(clock).toISOString());
+  });
+
+  it("(c) re-reads only after BOTH 200 calls AND 60 s: 199 at t+59 s none, the 200th at t+61 s one", async () => {
+    const reads = fakeBudgetFlag(() => null);
+    allowingUpstash();
+    await checkRateLimit("entity_leaf", "10.9.0.0");
+    assert.equal(reads.n, 1, "the cold read");
+
+    advance(59_000);
+    for (let i = 1; i <= 199; i += 1) await checkRateLimit("entity_leaf", `10.9.0.${i}`);
+    assert.equal(reads.n, 1, "199 calls at t+59 s: no second GET");
+    await checkRateLimit("entity_leaf", "10.9.1.0");
+    assert.equal(reads.n, 1, "the 200th call still inside 60 s: the time gate holds");
+
+    advance(2_000);
+    await checkRateLimit("entity_leaf", "10.9.1.1");
+    assert.equal(reads.n, 2, "past 200 calls and at t+61 s: exactly one GET");
+
+    advance(120_000);
+    for (let i = 0; i < 199; i += 1) await checkRateLimit("entity_leaf", `10.9.2.${i}`);
+    assert.equal(reads.n, 2, "two minutes later but 199 calls: the count gate holds");
+    await checkRateLimit("entity_leaf", "10.9.3.0");
+    assert.equal(reads.n, 3, "the 200th call: one GET");
+  });
+
+  it("(d) a flag read that fails for any other reason keeps the last state and the source", async () => {
+    let value: unknown = null;
+    const reads = fakeBudgetFlag(() => value);
+    const calls = allowingUpstash();
+    await checkRateLimit("entity_leaf", "10.8.0.0");
+    assert.equal(getLimiterHealth().budget_hold, false);
+
+    value = new Error("fetch failed");
+    advance(61_000);
+    for (let i = 0; i < 200; i += 1) {
+      const r = await checkRateLimit("entity_leaf", `10.8.1.${i % 250}`);
+      assert.equal(r.source, "upstash", "a failed read must not move a clear instance off Upstash");
+    }
+    assert.equal(reads.n, 2);
+    assert.equal(getLimiterHealth().budget_hold, false);
+    assert.equal(calls.length, 201);
+    assert.ok(warnings.some((w) => w.includes("budget flag read failed") && w.includes("fetch failed")));
+
+    // And a HELD instance stays held through the same failure.
+    __resetRateLimiterStateForTests();
+    value = HOLD_FLAG;
+    fakeBudgetFlag(() => value);
+    const heldCalls = allowingUpstash();
+    await checkRateLimit("entity_leaf", "10.8.2.0");
+    value = new Error("fetch failed");
+    advance(61_000);
+    for (let i = 0; i < 200; i += 1) {
+      assert.equal((await checkRateLimit("entity_leaf", `10.8.3.${i % 250}`)).source, "memory");
+    }
+    assert.equal(getLimiterHealth().budget_hold, true);
+    assert.equal(heldCalls.length, 0);
+  });
+
+  it("(e) a flag read refused for quota is the FIX-1038 fail-over: memory, and no limit() call", async () => {
+    fakeBudgetFlag(() => new Error("ERR max requests limit exceeded. Limit: 500000, Usage: 500001."));
+    const calls = allowingUpstash();
+    const r = await checkRateLimit("entity_leaf", "203.0.113.7");
+    assert.equal(r.source, "memory");
+    assert.equal(r.allowed, true);
+    assert.equal(calls.length, 0);
+    assert.equal(getLimiterHealth().mode, "memory");
+    assert.match(getLimiterHealth().reason ?? "", /max requests limit exceeded/);
+    assert.equal(getLimiterHealth().budget_hold, null, "a refusal is not a reading of the flag");
+  });
+
+  it("(f) a cold instance reads once before its first Upstash call, and a cold burst shares that read", async () => {
+    const events: string[] = [];
+    const reads = fakeBudgetFlag(() => null, events);
+    allowingUpstash(events);
+    await checkRateLimit("entity_leaf", "203.0.113.7");
+    assert.deepEqual(events, ["GET", "limit"]);
+    assert.equal(reads.n, 1);
+
+    __resetRateLimiterStateForTests();
+    const burst: string[] = [];
+    const burstReads = fakeBudgetFlag(() => null, burst);
+    allowingUpstash(burst);
+    await Promise.all(Array.from({ length: 20 }, (_, i) => checkRateLimit("entity_leaf", `10.7.0.${i}`)));
+    assert.equal(burstReads.n, 1, "20 concurrent cold calls: one GET");
+    assert.equal(burst[0], "GET", "and it lands before any limit()");
+    assert.equal(burst.filter((e) => e === "limit").length, 20);
+  });
+
+  it("(g) the overhead: GETs per 1,000 limiter calls is 5 at a steady trickle and 1 in a burst", async () => {
+    const trickle = fakeBudgetFlag(() => null);
+    allowingUpstash();
+    for (let i = 0; i < 1_000; i += 1) {
+      await checkRateLimit("entity_pages", `10.6.${Math.floor(i / 250)}.${i % 250}`);
+      advance(600); // 100 calls/min: the 200-call gate binds
+    }
+    assert.equal(trickle.n, 5, "1 cold + 1 per 200 calls = 0.5 % of the limiter's spend");
+
+    __resetRateLimiterStateForTests();
+    const burst = fakeBudgetFlag(() => null);
+    allowingUpstash();
+    for (let i = 0; i < 1_000; i += 1) {
+      await checkRateLimit("entity_pages", `10.5.${Math.floor(i / 250)}.${i % 250}`);
+      advance(10); // 6,000 calls/min: the 60 s gate binds
+    }
+    assert.equal(burst.n, 1, "1,000 calls inside 10 s: only the cold read");
+  });
+
+  it("the flag key matches the probe's", () => {
+    assert.equal(BUDGET_FLAG_KEY, LIMITER_BUDGET_KEY);
   });
 });

@@ -265,7 +265,7 @@ function evictTo<T>(
 // UNSAMPLED (the transition IS the signal) and exposed via getLimiterHealth().
 //
 // The durable, cross-instance half of this lives on the platform-snapshot side:
-// packages/db/src/upstash-usage.ts probes Upstash every 10 minutes from a Node
+// packages/db/src/upstash-usage.ts probes Upstash every 30 minutes from a Node
 // runtime that CAN write to the DB, and platform-snapshot.ts records the
 // transition in pipeline_state + the snapshot payload. An edge instance cannot
 // durably record anything cheaply or safely (no admin client at the edge), so
@@ -302,6 +302,13 @@ export function getLimiterHealth(): {
   transitions: number;
   deny_cache_size: number;
   memory_keys: number;
+  /** FIX-1304. null until this instance has read the flag once. */
+  budget_hold: boolean | null;
+  budget_checked_at: string | null;
+  /** "<used>/<limit>" from the flag while it holds; null otherwise. */
+  budget_detail: string | null;
+  /** Flag GETs this instance has issued — the overhead, as a count. */
+  budget_reads: number;
 } {
   return {
     mode,
@@ -310,6 +317,10 @@ export function getLimiterHealth(): {
     transitions: transitionCount,
     deny_cache_size: denyCache.size,
     memory_keys: memoryCounters.size,
+    budget_hold: budgetHold,
+    budget_checked_at: budgetCheckedAt === null ? null : new Date(budgetCheckedAt).toISOString(),
+    budget_detail: budgetDetail,
+    budget_reads: budgetReads,
   };
 }
 
@@ -328,6 +339,128 @@ let upstashErrorCount = 0;
 function shouldWarnForUpstashError(): boolean {
   upstashErrorCount += 1;
   return upstashErrorCount === 1 || upstashErrorCount % WARN_SAMPLE_RATE === 0;
+}
+
+// ── Budget flag (FIX-1304) ───────────────────────────────────────────────────
+//
+// THE LIMITER SHARES ITS DATABASE. The box-health ring and the front-door
+// restart arm live in the same Upstash database (the free tier allows one),
+// spend a flat ~68k commands a month between them, and went dark for the rest
+// of the billing period both times a crawl spent this limiter's share and
+// theirs (08-15, 10-12). This limiter is the only tenant whose spend scales
+// with traffic, so it is the one that gets a budget.
+//
+// The platform-snapshot probe (packages/db/src/upstash-usage.ts, every 30 min)
+// writes BUDGET_FLAG_KEY with a 2 h TTL once the month's usage reaches the
+// budget (default 70 % of the vendor's cap) and DELetes it below. While it is
+// set, checkRateLimit takes the memory path BEFORE the quota is gone.
+//
+// Reading the flag costs next to nothing: one GET when an instance first
+// reaches the Upstash step, then again only once BOTH 200 calls AND 60 s have
+// passed since the last read, so ≤ 0.5 % of the limiter's own spend and ≤ 1
+// GET/min per instance. Calls served from the hold count toward the 200 too, or
+// a held instance would never see the flag go. A cold burst shares one
+// in-flight read. A read never throws into the request: a quota refusal is the
+// FIX-1038 fail-over for that call, and any other failure keeps the last state.
+//
+// All of this is per instance and assumes module state survives between
+// requests on an edge isolate, as the deny-cache and memory counters already
+// do. Where it does not, every cold start costs one GET; `budget_reads` in
+// getLimiterHealth() is the count.
+
+/** Must equal LIMITER_BUDGET_KEY in packages/db/src/upstash-usage.ts. */
+export const BUDGET_FLAG_KEY = "civitics:limiter:budget";
+const BUDGET_REFRESH_CALLS = 200;
+const BUDGET_REFRESH_MS = 60_000;
+
+/** isQuotaExhaustedMessage's pattern (packages/db/src/upstash-usage.ts). Copied
+ *  rather than imported: this module is in the edge bundle, and @civitics/db's
+ *  index is not edge-safe. */
+const QUOTA_MESSAGE = /max\s+requests\s+limit\s+exceeded|max\s+daily\s+request\s+limit|quota\s+exceeded/i;
+
+type BudgetFlagReader = () => Promise<unknown>;
+let testBudgetReader: BudgetFlagReader | null = null;
+
+let budgetHold: boolean | null = null;
+let budgetCheckedAt: number | null = null;
+let budgetDetail: string | null = null;
+let spendSinceCheck = 0;
+let budgetReads = 0;
+let budgetErrorCount = 0;
+let budgetInFlight: Promise<string | null> | null = null;
+
+function resolveBudgetReader(): BudgetFlagReader | null {
+  if (testBudgetReader) return testBudgetReader;
+  // A faked limiter with no faked flag reads no flag — never the real Redis.
+  if (testLimitFn) return null;
+  const redis = getRedis();
+  return redis ? () => redis.get<unknown>(BUDGET_FLAG_KEY) : null;
+}
+
+/** Only `{state: "hold"}` holds. @upstash/redis parses JSON values itself;
+ *  a raw string is parsed here in case it ever does not. */
+function parseBudgetFlag(value: unknown): { hold: boolean; detail: string | null } {
+  let v = value;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return { hold: false, detail: null };
+    }
+  }
+  if (v && typeof v === "object" && (v as { state?: unknown }).state === "hold") {
+    const flag = v as { used?: unknown; limit?: unknown };
+    return { hold: true, detail: `${String(flag.used)}/${String(flag.limit)}` };
+  }
+  return { hold: false, detail: null };
+}
+
+async function readBudgetFlag(read: BudgetFlagReader): Promise<string | null> {
+  budgetReads += 1;
+  try {
+    const parsed = parseBudgetFlag(await read());
+    budgetHold = parsed.hold;
+    budgetDetail = parsed.detail;
+    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (QUOTA_MESSAGE.test(message)) return message;
+    budgetErrorCount += 1;
+    if (budgetErrorCount === 1 || budgetErrorCount % WARN_SAMPLE_RATE === 0) {
+      console.warn(
+        `[ratelimit] budget flag read failed — keeping the last state ` +
+          `(hold=${String(budgetHold)}; sampled 1-in-${WARN_SAMPLE_RATE}; ` +
+          `${budgetErrorCount} on this instance):`,
+        message,
+      );
+    }
+    return null;
+  } finally {
+    budgetCheckedAt = Date.now();
+    spendSinceCheck = 0;
+  }
+}
+
+/**
+ * Count this call and re-read the flag when it is due. Resolves to the quota
+ * message when the read was refused for quota (the caller fails over), else
+ * null. Never throws.
+ */
+function refreshBudgetIfDue(now: number): Promise<string | null> | null {
+  spendSinceCheck += 1;
+  if (budgetInFlight) return budgetInFlight;
+  const due =
+    budgetCheckedAt === null ||
+    (spendSinceCheck >= BUDGET_REFRESH_CALLS && now - budgetCheckedAt >= BUDGET_REFRESH_MS);
+  if (!due) return null;
+  const read = resolveBudgetReader();
+  if (!read) return null;
+  // `.finally` always runs a tick later, so the pointer is set before it clears.
+  const inFlight = readBudgetFlag(read).finally(() => {
+    budgetInFlight = null;
+  });
+  budgetInFlight = inFlight;
+  return inFlight;
 }
 
 // ── Fail-over limiter (per instance, fixed window) ───────────────────────────
@@ -373,8 +506,9 @@ function memoryLimit(bucket: RateLimitBucket, identifier: string): RateLimitResu
  * `auth_send_email`. Resolution order:
  *
  *   1. deny-cache — already over cap in this window → 429 for 0 Upstash commands
- *   2. Upstash    — the durable, cross-instance limiter
- *   3. memory     — per-instance fail-over on Upstash error or missing env
+ *   2. budget     — the FIX-1304 flag holds → memory, for 0 limiter commands
+ *   3. Upstash    — the durable, cross-instance limiter
+ *   4. memory     — per-instance fail-over on Upstash error or missing env
  *
  * A missing identifier is the one case that still allows unconditionally: there
  * is nothing to key a counter on.
@@ -404,13 +538,33 @@ export async function checkRateLimit(
     denyCache.delete(key);
   }
 
-  // 2. Upstash.
   const limit = resolveLimitFn(bucket);
   if (!limit) {
     noteMode("memory", "UPSTASH_REDIS_REST_URL/TOKEN absent");
     return memoryLimit(bucket, identifier);
   }
 
+  // 2. Budget hold (FIX-1304). The flag read is usually skipped (not due).
+  const refresh = refreshBudgetIfDue(now);
+  const refused = refresh ? await refresh : null;
+  if (refused !== null) {
+    noteMode("memory", refused);
+    if (shouldWarnForUpstashError()) {
+      console.warn(
+        `[ratelimit] Upstash refused the budget flag read on bucket=${bucket} — failing ` +
+          `over to the per-instance memory limiter (sampled 1-in-${WARN_SAMPLE_RATE}; ` +
+          `${upstashErrorCount} on this instance):`,
+        refused,
+      );
+    }
+    return memoryLimit(bucket, identifier);
+  }
+  if (budgetHold === true) {
+    noteMode("memory", `budget hold: ${budgetDetail ?? "flag set"}`);
+    return memoryLimit(bucket, identifier);
+  }
+
+  // 3. Upstash.
   try {
     const { success, remaining, reset } = await limit(identifier);
     noteMode("upstash", null);
@@ -431,7 +585,7 @@ export async function checkRateLimit(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // 3. Fail OVER, not open.
+    // 4. Fail OVER, not open.
     noteMode("memory", message);
     if (shouldWarnForUpstashError()) {
       console.warn(
@@ -460,6 +614,20 @@ export function __resetRateLimiterStateForTests(): void {
   modeReason = null;
   transitionCount = 0;
   upstashErrorCount = 0;
+  testBudgetReader = null;
+  budgetHold = null;
+  budgetCheckedAt = null;
+  budgetDetail = null;
+  spendSinceCheck = 0;
+  budgetReads = 0;
+  budgetErrorCount = 0;
+  budgetInFlight = null;
+}
+
+/** TEST-ONLY. Installs a stand-in for the budget flag GET (FIX-1304): resolves
+ *  to the stored value (null = absent) or throws. Null restores real Upstash. */
+export function __setBudgetFlagReaderForTests(fn: (() => Promise<unknown>) | null): void {
+  testBudgetReader = fn;
 }
 
 /** TEST-ONLY. Installs a stand-in for the durable limiter. Null restores real Upstash. */
