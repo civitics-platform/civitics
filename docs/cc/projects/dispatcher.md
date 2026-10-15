@@ -3,13 +3,13 @@ slug: dispatcher
 title: "Job registry + unit dispatcher — BY replaces AT"
 lanes: [ops, design]
 status: active
-plan: spec-job-registry-and-dispatcher-2026-10-11 (Cowork project; v1.1)
+plan: spec-job-registry-and-dispatcher-2026-10-11 (Cowork project; v1.1) + v1.3 cutover note (spec-dispatcher-v1.3-cutover-from-zero-2026-10-13)
 goal: "P1 · Infrastructure"
 steps:
-  - {id: s1, kind: cc, ref: "cc-223", title: "R1 — registry tables + seed + check:job-registry + playbook D9 + the contract audit (branch; lands Wed)"}
+  - {id: s1, kind: cc, ref: "cc-223", title: "R1 — registry tables + seed + check:job-registry + playbook D9 + the contract audit (branch; lands Wed)", done: 2026-10-13}
   - {id: s2, kind: cc, ref: "cc-225", title: "N1 — the nightly's fec_bulk writer takes the FIX-950 claim (branch; lands Thu)"}
   - {id: s3, kind: cc, ref: "cc-224", title: "R2 — dispatch_one_unit() + dispatch_tick() + the ARM/reap path + the route re-fire + the tile (branch; lands Thu)"}
-  - {id: s4, kind: op, ref: "cc-226", title: "R1 lands — one gated migration, inert for the s14 S1 ring", after: 2026-10-14T23:15Z}
+  - {id: s4, kind: op, ref: "FIX-1307", title: "R1 lands (cc-226) — one gated migration, inert for the s14 S1 ring; rode with FIX-1312's vote-stats-refresh park", after: 2026-10-14T23:15Z, done: 2026-10-14}
   - {id: s5, kind: op, ref: "cc-227", title: "R2 + N1 land — one gated migration + Vercel + the GHA step; ZERO eligible rows", after: 2026-10-15T23:15Z}
   - {id: s6, kind: receipt, ref: "FIX-1308", title: "proving Thu 23:15Z → Mon ~02:00Z (≈ 75 h, contains the Sun 10-18 drop night): tick cadence held on odd minutes, no unrecovered gap > 6 min, the re-fire exercised once (park the tick 10 min Sat), the tick's own cost from pgss, the Fri/Sat/Sun nightlies' claims visible in prod_session_state() and the guarded jobs skipped under them", after: 2026-10-19T02:00Z}
   - {id: s7, kind: op, ref: "", title: "RETURN M1 — donor-rollup-refresh → stale_after 12 h (its cron parked since s16; write the row's rule + flip it + read the first dispatched firing in band)", after: 2026-10-19T16:00Z}
@@ -129,6 +129,7 @@ pipeline, so 18 jobs make 16 rows.
 guarded, pipeline `official_vote_stats_rebuild`) is a derived-layer rollup.
 Under the decision's own logic it would have been parked. Whether to park it is
 Craig's call; it is still on.
+`vote-stats-refresh` parked by cc-226, FIX-1312 (2026-10-15 02:10:51Z, the same gated push as R1); 19 parked / 17 hold rows.
 
 **Already inactive and not touched:** `entity-connection-stats-rebuild`,
 `financial-entity-totals-incremental`, `rebuild-ec-incremental` and
