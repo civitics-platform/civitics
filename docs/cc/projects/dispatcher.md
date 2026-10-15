@@ -7,10 +7,10 @@ plan: spec-job-registry-and-dispatcher-2026-10-11 (Cowork project; v1.1) + v1.3 
 goal: "P1 · Infrastructure"
 steps:
   - {id: s1, kind: cc, ref: "cc-223", title: "R1 — registry tables + seed + check:job-registry + playbook D9 + the contract audit (branch; lands Wed)", done: 2026-10-13}
-  - {id: s2, kind: cc, ref: "cc-225", title: "N1 — the nightly's fec_bulk writer takes the FIX-950 claim (branch; lands Thu)"}
-  - {id: s3, kind: cc, ref: "cc-224", title: "R2 — dispatch_one_unit() + dispatch_tick() + the ARM/reap path + the route re-fire + the tile (branch; lands Thu)"}
+  - {id: s2, kind: cc, ref: "cc-225", title: "N1 — the nightly's fec_bulk writer takes the FIX-950 claim (branch; landed by cc-227)", done: 2026-10-14}
+  - {id: s3, kind: cc, ref: "cc-224", title: "R2 — dispatch_one_unit() + dispatch_tick() + the ARM/reap path + the route re-fire + the tile (branch; landed by cc-227)", done: 2026-10-14}
   - {id: s4, kind: op, ref: "FIX-1307", title: "R1 lands (cc-226) — one gated migration, inert for the s14 S1 ring; rode with FIX-1312's vote-stats-refresh park", after: 2026-10-14T23:15Z, done: 2026-10-14}
-  - {id: s5, kind: op, ref: "cc-227", title: "R2 + N1 land — one gated migration + Vercel + the GHA step; ZERO eligible rows", after: 2026-10-15T23:15Z}
+  - {id: s5, kind: op, ref: "FIX-1308", title: "R2 + N1 land (cc-227) — one gated migration + Vercel + the GHA step; ZERO eligible rows (landed 2026-10-15 03:12Z, Craig's call #2 (a))", done: 2026-10-14}
   - {id: s6, kind: receipt, ref: "FIX-1308", title: "proving Thu 23:15Z → Mon ~02:00Z (≈ 75 h, contains the Sun 10-18 drop night): tick cadence held on odd minutes, no unrecovered gap > 6 min, the re-fire exercised once (park the tick 10 min Sat), the tick's own cost from pgss, the Fri/Sat/Sun nightlies' claims visible in prod_session_state() and the guarded jobs skipped under them", after: 2026-10-19T02:00Z}
   - {id: s7, kind: op, ref: "", title: "RETURN M1 — donor-rollup-refresh → stale_after 12 h (its cron parked since s16; write the row's rule + flip it + read the first dispatched firing in band)", after: 2026-10-19T16:00Z}
   - {id: s8, kind: receipt, ref: "FIX-1308", title: "M1 72 h: watermark lag ≤ 13 h at every read; the R3 overlap with ec-crawl not re-created; band held → the dial to 6 h", after: 2026-10-22T16:00Z}
@@ -173,3 +173,40 @@ their jobs return.
 `db-query --prod --call --yes-i-mean-prod --file` under a FIX-950 claim. It
 flips the 18 back by name and deletes the 16 hold rows by their `hold_reason`.
 Once any job has returned, un-park the rest one at a time instead.
+
+## s6 — the proving ledger (opened by cc-227, 2026-10-15 03:13Z)
+
+R2 reached prod at 03:12Z: `20261015230000`, one gated push from the primary
+under the FIX-950 claim. The push log printed `[fix1308] scheduled
+dispatcher-tick (jobid 58) at 1-59/2 * * * *`, and the budget row is 120 s. The
+first tick fired at **03:13:00Z**. So the proving runs Thu 03:13Z → Mon 10-19
+~02:00Z, about 95 h rather than the ≈ 75 h the step title assumed from a Thu
+23:15Z landing. Every registry row is still `at …`, so until M1 every tick is
+`nothing_due` with reason `no eligible rows`. N1 (FIX-1310) is on main from
+`6b8f5bb3`, and `nightly.yml` reads it at the next 21:00Z start.
+
+The columns (D-g):
+
+- **ticks/60 min**: `pg_cron`-source `dispatch_log` rows in a trailing 60
+  min. Expect 30 ± 1, every one on an odd minute.
+- **longest gap**: the max `ticked_at − lag(ticked_at)`. Expect ≤ 6 min, or a
+  gap recovered by a `vercel`-source row.
+- **vercel rows**: `source = 'vercel'`. Expect 0 until cc-228's Sat park
+  exercise.
+- **tick pgss**: `calls · mean · max` of `CALL public.dispatch_tick()`.
+- **armed**: `decision = 'armed'`. Expect 0 all week.
+- **box-health ms**: the */2 route's own `elapsed_ms`, before → after.
+- **status ms**: `section_times.dispatcher` in the */30 status snapshot
+  (rolls at :01/:31).
+
+| window | owner | ticks/60 min | longest gap | vercel rows | tick pgss | armed | box-health ms | status ms | notes |
+|---|---|---|---|---|---|---|---|---|---|
+| Thu 10-15 03:13→04:13Z, the first hour | cc-227 | 30 in the trailing 60 min at 04:14:07Z (31 since 03:13:00Z), every one on an odd minute | 00:02:00.12 | 0 | 31 · 32.9 ms · 71.0 ms | 0 | before 469–908 (n=17, median 578) → after 452–1269 (n=30, median 570); no dispatcher line, so no re-fire | 144 (first roll 03:31:16Z; in-DB 3.6 ms direct / 17.8 ms via PostgREST) | one `live_units 1` / 128 MB at 03:53:00Z = `platform-counts-daily` (KEEP, 03:53:00→03:53:29Z, succeeded); runs 31/31 succeeded, avg 35 ms, max 76 ms; `cron.job` t 24 / f 23; `cron_job_budget` 21 |
+| Fri 10-16: the receipts' §9 `unit_dispatcher` line | Fri receipts | | | 0 | | 0 | | | the job-registry WARN on `dispatcher-tick` clears once a receipts file carries jobid 58 |
+| Sat 10-17: the park exercise (`dispatcher-tick` active := false for 10 min, pause = false) | cc-228 | | recovered by `vercel` rows | ≥ 1 `nothing_due` | | 0 | | | the re-fire exercised ONCE, then active := true |
+| Sun 10-18: the drop night (nightly ~21:00→23:00Z) | Mon prompt | held through the nightly | | | | 0 | | | N1's claim in `prod_session_state()`: reason `nightly fec_bulk weekly run <id> …`, `exempt_writers ['nightly_cron:fec']`, released in finally with no hold rows left; `live_units` 1 for the nightly (FIX-1310 owed) |
+| Mon 10-19 ~02:00Z: the close, plus Mon's receipts §9 line | Mon prompt | | | | | 0 all week | | | the s6 receipt (FIX-1308 owed) |
+
+**FIX-1137** stays open. It closes `closes-as-superseded` only once a `missed`
+→ re-arm row has moved on prod. No registry row is eligible before M1, so the
+re-arm path cannot fire until then.
