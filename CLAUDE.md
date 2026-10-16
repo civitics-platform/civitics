@@ -333,6 +333,9 @@ work should use the script.
      git history, dropping any whose commit is not an ancestor of trunk (FIX-461)
    - Appends new `(FIX-ID, sha, verified)` rows to `docs/done.log` (deduplicated)
    - **Does not touch `docs/FIXES.md`** — there is no checkbox to flip (FIX-1016)
+   - Dates each new row by the commit's **committer instant in UTC** (FIX-1319,
+     from cc-236 on), the same zone the board's step and owed floors compare in;
+     rows before 2026-10-16 carry the author's local day and are never re-dated.
 4. Commit the resulting done.log diff as its own status commit, e.g.
    `chore(fixes): sync status after FIX-027`. Keep status commits separate from
    code commits so reverts don't drag status with them.

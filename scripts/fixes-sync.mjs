@@ -409,6 +409,21 @@ export function doneLogKey(entry) {
   return `${entry.id}|reopen|${m ? m[1] : (entry.note ?? "")}`;
 }
 
+// FIX-1319: a new row's date is the COMMITTER instant (`%cI`, strict ISO with
+// its offset) rendered as the UTC day. It used to be `%ad --date=short`, the
+// AUTHOR's local day — so an evening-PDT landing after 00:00Z read a day early
+// against the board, whose step and owed floors are all UTC days (`isoDate` in
+// scripts/board.mjs), and a rebased branch kept the day it was first written.
+// Rows written before 2026-10-16 keep the author's local day; the date is not
+// part of `doneLogKey`, so this changes no existing row's identity. Throws on
+// an unparsable value: the sync is run by hand, and a wrong date in an
+// append-only file is not one anybody can quietly correct later.
+export function rowDateFromCommitterIso(iso) {
+  const ms = Date.parse(String(iso ?? "").trim());
+  if (Number.isNaN(ms)) throw new Error(`fixes:sync — unparsable committer date ${JSON.stringify(iso)}`);
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 function readDoneLog() {
   if (!existsSync(DONE_PATH)) {
     return { entries: [], keys: new Set(), completedIds: new Set(), reopenedIds: new Set() };
@@ -456,20 +471,21 @@ function readDoneLog() {
 
 function scanCommits() {
   // Delimiters: %x00 separates fields within a commit, %x1e between commits.
+  // %cI — the committer instant, not %ad (FIX-1319; see rowDateFromCommitterIso).
   const raw = execSync(
-    'git log --all --pretty=format:"%H%x00%ad%x00%s%x00%b%x1e" --date=short',
+    'git log --all --pretty=format:"%H%x00%cI%x00%s%x00%b%x1e"',
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
   );
   const blocks = raw.split("\x1e").map((b) => b.trim()).filter(Boolean);
   const completions = [];
   for (const block of blocks) {
-    const [sha = "", date = "", subject = "", body = ""] = block.split("\x00");
+    const [sha = "", committed = "", subject = "", body = ""] = block.split("\x00");
     const parsed = parseCommitTrailers(body);
     if (parsed.fixesIds.size === 0 && parsed.closesIds.size === 0 && parsed.reopensIds.size === 0)
       continue;
     const shortSha = sha.trim().slice(0, 8);
     const noteText = subject.trim();
-    const dateText = date.trim();
+    const dateText = rowDateFromCommitterIso(committed);
     for (const w of parsed.warnings) {
       console.warn(`warn: commit ${shortSha} ${w}`);
     }

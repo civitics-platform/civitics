@@ -280,6 +280,24 @@ assertEq(
   stepStatus({ id: "s2", kind: "op", ref: "FIX-40" }, stepCtx("2026-09-27 | FIX-40 | aaaaaaa1 | local-only | code")).status,
   "planned",
 );
+// FIX-1319: an instant `after:` that falls after 00:00Z on an evening-PDT
+// landing. With done.log rows dated the committer's UTC day the row and the
+// floor are one zone, and the step derives done. The second case is the row as
+// fixes:sync used to write it (the author's local day) — the dispatcher s7 shape.
+{
+  const s = { id: "s7", kind: "receipt", ref: "FIX-50", after: "2026-10-17T02:30Z" };
+  const ctx = (text) => ({ ...stepCtx(text), nowMs: Date.parse("2026-10-17T06:00:00Z") });
+  assertEq(
+    "FIX-1319: an instant after: 10-17T02:30Z + a UTC-dated 2026-10-17 prod-only row → done",
+    stepStatus(s, ctx("2026-10-17 | FIX-50 | bbbbbbb2 | prod-only | landed 19:37 PDT")).status,
+    "done",
+  );
+  assertEq(
+    "…the same landing dated by the author's local day (2026-10-16) never derives done",
+    stepStatus(s, ctx("2026-10-16 | FIX-50 | bbbbbbb2 | prod-only | landed 19:37 PDT")).status,
+    "planned",
+  );
+}
 assertEq("the plan file has no shape problems", demo?.problems, []);
 assertEq(
   "queue: plan steps not done and not already a card (an archived plan queues nothing)",

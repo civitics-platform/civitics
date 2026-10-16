@@ -10,8 +10,10 @@
 // Run:   pnpm fixes:test
 // Exit:  0 on pass, 1 on fail with a diff of expected vs actual.
 
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   parseCommitTrailers,
@@ -19,6 +21,7 @@ import {
   evaluateTrunkViolations,
   buildCompletingShasById,
   doneLogKey,
+  rowDateFromCommitterIso,
 } from "./fixes-sync.mjs";
 import {
   walkFixBullets,
@@ -347,6 +350,64 @@ assertEq(
   [...subjectFixNumbers("fix(officials): FIX-1187 set 2 — four Senators")],
   [1187],
 );
+
+// FIX-1319: a new row is dated by the committer instant in UTC, so an
+// evening-PDT landing reads the same day the board's UTC floors compare with.
+console.log("\nFIX-1319 row date (committer instant → UTC day):");
+assertEq(
+  "an evening-PDT commit after 00:00Z is the NEXT UTC day (26e74105's shape)",
+  rowDateFromCommitterIso("2026-10-15T20:37:13-07:00"),
+  "2026-10-16",
+);
+assertEq(
+  "a morning-PDT commit is the same day",
+  rowDateFromCommitterIso("2026-10-11T02:52:56-07:00"),
+  "2026-10-11",
+);
+assertEq("a Z instant is its own day", rowDateFromCommitterIso("2026-10-16T23:59:59Z"), "2026-10-16");
+{
+  let threw = null;
+  try {
+    rowDateFromCommitterIso("not a date");
+  } catch (e) {
+    threw = e.message;
+  }
+  assertTrue("an unparsable committer date THROWS rather than writing a row", threw !== null && /unparsable/.test(threw), `got ${threw}`);
+}
+
+// End to end: a throwaway repo whose one commit carries `Fixes: FIX-9999` and a
+// committer instant of 20:37 PDT on 10-15. The real script, dry run, from that
+// repo: the would-append row must read 2026-10-16.
+{
+  const tmp = mkdtempSync(join(tmpdir(), "fix1319-"));
+  const g = (args, env = {}) =>
+    execFileSync("git", args, { cwd: tmp, stdio: "pipe", encoding: "utf8", env: { ...process.env, ...env } });
+  try {
+    g(["init", "-q", "-b", "main"]);
+    g(["config", "user.email", "t@example.invalid"]);
+    g(["config", "user.name", "T"]);
+    g(["config", "commit.gpgsign", "false"]);
+    // A throwaway repo must not inherit the root `prepare` script's hooks.
+    g(["config", "core.hooksPath", join(tmp, "no-hooks")]);
+    mkdirSync(join(tmp, "docs"));
+    writeFileSync(join(tmp, "docs", "FIXES.md"), "# FIXES\n\n## TEST\n\n- **probe** — body <!--id:FIX-9999-->\n");
+    writeFileSync(join(tmp, "docs", "done.log"), "# date | id | sha | verified | note\n");
+    g(["add", "docs"]);
+    g(["commit", "-q", "-m", "fix(test): FIX-9999 — probe", "-m", "Verified: local\nFixes: FIX-9999"], {
+      GIT_AUTHOR_DATE: "2026-10-15T20:37:13-07:00",
+      GIT_COMMITTER_DATE: "2026-10-15T20:37:13-07:00",
+    });
+    const out = execFileSync(process.execPath, [join(HERE, "fixes-sync.mjs"), "--dry-run"], {
+      cwd: tmp,
+      stdio: "pipe",
+      encoding: "utf8",
+    });
+    const row = out.split("\n").find((l) => l.includes("| FIX-9999 |"))?.trim() ?? "(no row)";
+    assertTrue("the dry run's FIX-9999 row is dated 2026-10-16 (UTC), not 2026-10-15", row.startsWith("2026-10-16 | FIX-9999 |"), `got ${row}`);
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch {}
+  }
+}
 
 if (failures.length) {
   console.error("\nFAIL:\n" + failures.join("\n"));
