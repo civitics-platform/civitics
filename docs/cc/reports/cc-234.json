@@ -1,0 +1,85 @@
+{
+  "cc": "234",
+  "prompt": "cc-prompt-234-m1-return-donor-rollup-refresh-stale-after-12h-runid-floor-rearm-cooldown.md",
+  "started_at": "2026-10-16T02:33:33Z",
+  "finished_at": "2026-10-16T04:31:03Z",
+  "head_before": "40e22cbb",
+  "head_after": "affe0577",
+  "commits": [
+    {
+      "sha": "019173ac",
+      "subject": "docs(fixes): cc-234 files FIX-1316, FIX-1317, FIX-1318"
+    },
+    {
+      "sha": "61bb139d",
+      "subject": "feat(db): FIX-1316 — RETURN donor-rollup-refresh (stale_after 12 h) + runid floor + re-arm cooldown + the start window retired by a wrapper (cc-234)"
+    },
+    {
+      "sha": "fb3dcfba",
+      "subject": "chore(db): FIX-1316 — regenerate types (dispatch_log.runid_floor, platform_dials.rearm_cooldown_seconds)"
+    },
+    {
+      "sha": "bd9410f4",
+      "subject": "test(data): FIX-1316 — no-regex-spaces in dispatcher-m1's error-path anchor"
+    },
+    {
+      "sha": "d69bf827",
+      "subject": "docs(fixes): cc-234 appends to FIX-1297"
+    },
+    {
+      "sha": "26e74105",
+      "subject": "chore(fixes): record FIX-1316 landed on prod — donor-rollup-refresh RETURNED stale_after 12 h; first dispatched firing armed 03:23:00Z / ran 03:25:00.04→03:25:00.11Z (69 ms, 0 targets, band 0–400 in); runid floor 129436; cooldown dial 1800; the 13:00Z window retired by the wrapper (20261016230000 at 03:22:07Z under the FIX-950 claim)"
+    },
+    {
+      "sha": "0649c561",
+      "subject": "chore(fixes): sync status after FIX-1316 (cc-234)"
+    },
+    {
+      "sha": "2609c034",
+      "subject": "docs(fixes): cc-234 files FIX-1319"
+    },
+    {
+      "sha": "affe0577",
+      "subject": "docs(dispatcher): M1 landed — s7 ref + the s6 row (cc-234)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1316"
+  ],
+  "fixes_filed": [
+    "FIX-1316",
+    "FIX-1317",
+    "FIX-1318",
+    "FIX-1319"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261016230000_fix1316_return_donor_rollup_refresh.sql"
+  ],
+  "prod_writes": "ONE gated migration push under its own FIX-950 claim, run from the PRIMARY's packages/data at bd9410f4. The dry run of the same gate shape (gate open 03:21:54Z) listed exactly 20261016230000_fix1316_return_donor_rollup_refresh.sql. The real gate opened at 2026-10-16T03:22:07.222604Z (census pass: 0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 224 requests = 0.00 % <= 1 %, P99 floor 3 at p0 0.23 %), acquired the interlock (prod_supervised_session) and applied the file; interlock released and --then exited 0 by 03:22:11Z. Claim counts: neither claim printed a held or cleared line, and those print only when N > 0, so held 0 / cleared 0. Push log NOTICEs: '[fix1316] job_registry donor-rollup-refresh: at 0 9,12 * * * → stale_after 12 hours (1 row)'; '[fix1316] rollup_watch_overrides donor_rollup_refresh: cutover hold → cadence_hours 12 (1 row)'; '[fix1316] jobid 24 inactive — registry owns it'; '[fix1316] read-back ok: … dispatch_one_unit 98660b34c17c5c537fc3d2e03d021440 / get_dispatcher_status 4c9d0eb0cd85f9f46b38a9947cc94785'. The dispatcher's own writes that this run caused: dispatch_log 722 armed at 03:23:00.189Z (runid_floor 129436, armed_for 03:25:00Z); cron.schedule of jobid 59 disp-donor-rollup-refresh-1792120980 (postgres, '25 3 16 10 *', CALL public.donor_rollup_rebuild_bulk_dispatched();) with its 9,000 s cron_job_budget row; run 129442 03:25:00.041→03:25:00.110Z succeeded, whose bulk wrote one data_sync_log complete row (the caught-up exit, targets 0, 03:25:00.050→.104Z); dispatch_log 723 nothing_due live at 03:25:00.119Z; the reap at 03:27:00.049Z (dispatch_log 724 reaped, unit_ms 69, cron.unschedule of jobid 59, its budget row deleted); then nothing_due rows. One Vercel production deploy rode the :main push of bd9410f4: DKwHR5EMJZTcC9Z79uAcBXbPmgZL, success 03:23:07Z. Every other prod contact was a READ ONLY db-query --prod, the gate's census, or a Vercel runtime-log read. No pause write was made.",
+  "ci": "green",
+  "stopped_items": [
+    "D-d's statement `ALTER ROLE postgres SET civitics.donor_rollup_latest_start_hour = '24'` was NOT run. It cannot be. postgres is not a superuser on Supabase, `civitics.*` is not in `supautils.privileged_role_allowed_configs`, and prod reads `has_parameter_privilege('postgres', 'civitics.donor_rollup_latest_start_hour', 'SET') = f` (02:46Z). On the clone, ALTER ROLE / ALTER ROLE … IN DATABASE postgres / ALTER DATABASE … SET all fail `permission denied to set parameter`. Craig chose the replacement in-session: a non-atomic wrapper `donor_rollup_rebuild_bulk_dispatched()` that the registry unit_call names. So Part A's 'rolconfig gains the GUC' and D-f's RESET do not apply.",
+    "Item 5 STOP condition matched by the letter, then overruled by Craig in-session. `box_is_saturated()` (default args) read `saturated / watchdog_wall` from the 03:25:00.03Z probe, which spans the 69 ms run. The wall was a 1.580 s `cron-job-budget-watchdog` run at 03:24:00.125Z, 60 s BEFORE the run (148 of 5,026 runs exceeded 1 s over 7 d). The dispatcher's own read and `box_backoff_gate` exclude the wall by design (D2). `pause = true` was not written, and the box read `clear` again by 03:36Z.",
+    "D-a widened by one hunk, Craig's call in-session: get_dispatcher_status()'s live[] now selects the un-reaped armed rows first (a MATERIALIZED CTE) and runs the floored LATERAL over those. The prompt named two hunks there. Cause: the clone EXPLAIN showed the anti-join sitting above the LATERAL (loops = every armed row of the retention: 4,283 buffers floored, 6,301 unfloored). After the change it reads 11 buffers / 0.14 ms.",
+    "The conditional FIX-<window> was not filed: the wrapper retires the window, and nobody asked for it back.",
+    "Part C: no :01/:31 status roll fell inside the armed window (03:23:00–03:27:00Z), so 'section_times.dispatcher for a roll inside the run' could not be read. The 03:31 and 04:01 rolls are quoted instead. The 05:00Z canary_check runs after this report, so it is owed.",
+    "`pnpm --filter @civitics/db db:types` was not run as written: it generates from PROD (--project-id), which lacked both columns until the push. database.ts got the two columns spliced from a clone gen (`--db-url`, the packages/db/CLAUDE.md path), 6 lines and nothing else.",
+    "s7's `after` is 2026-10-15 (date-only), not the prompt's 2026-10-16T02:45Z. fixes:sync dated the FIX-1316 row 2026-10-15 (the commit's local date, 20:37 PDT), and the board floors at the UTC date of `after`, so 02:45Z never derives done; a stated `done:` reads as a problem. Filed as FIX-1319 (lane hygiene).",
+    "The branch's first tests.yml run (38844526578) failed Lint: no-regex-spaces in the new test's error-path anchor. Fixed in bd9410f4; the re-run (38844735561) and main's run (38845122671) are green."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1316",
+      "what": "the s8 72 h receipt: donor-rollup freshness at every read Fri→Mon incl. across the Sun 10-18 drop night (the Sun ~21:00–23:00Z ticks read gated: prod_session (donor-rollup-refresh) under N1's claim, then one armed row after the release and its reaped row in the drop-Monday class ≤ 9,000 s); every dispatched firing's unit_ms quoted vs the band; any cooldown: row named with its reap; no missed row; → the 6 h dial. Read 'lag' as the age of the newest complete row, not now − watermark: the watermark sits at the FIX-983 horizon (10-11 22:38:53Z) while no donation row lands, and a caught-up exit does not move it",
+      "after": "2026-10-19T23:15Z"
+    },
+    {
+      "fix": "FIX-1316",
+      "what": "the Fri 10-16 05:00Z canary_check pushes no orphan:donor_rollup_refresh and no rollup:donor_rollup_refresh (cadence row 12 h, fresh); AND the second dispatched firing (armed on the ~15:27Z tick, run ~15:29Z, after 13:00Z) RUNS through donor_rollup_rebuild_bulk_dispatched() instead of writing 'start window closed' — D-d's proof, as built",
+      "after": "2026-10-16T15:30Z"
+    }
+  ]
+}
