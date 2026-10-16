@@ -1761,6 +1761,7 @@ export type Database = {
           live_caps_mb: number | null
           live_units: number | null
           reason: string | null
+          runid_floor: number | null
           source: string
           ticked_at: string
           unit_ms: number | null
@@ -1777,6 +1778,7 @@ export type Database = {
           live_caps_mb?: number | null
           live_units?: number | null
           reason?: string | null
+          runid_floor?: number | null
           source?: string
           ticked_at?: string
           unit_ms?: number | null
@@ -1793,6 +1795,7 @@ export type Database = {
           live_caps_mb?: number | null
           live_units?: number | null
           reason?: string | null
+          runid_floor?: number | null
           source?: string
           ticked_at?: string
           unit_ms?: number | null
@@ -5130,6 +5133,7 @@ export type Database = {
           max_concurrent_units: number
           max_live_caps_mb: number
           pause: boolean
+          rearm_cooldown_seconds: number
           tick_seconds: number
           unit_target_seconds: number
           updated_at: string
@@ -5140,6 +5144,7 @@ export type Database = {
           max_concurrent_units?: number
           max_live_caps_mb?: number
           pause?: boolean
+          rearm_cooldown_seconds?: number
           tick_seconds?: number
           unit_target_seconds?: number
           updated_at?: string
@@ -5150,6 +5155,7 @@ export type Database = {
           max_concurrent_units?: number
           max_live_caps_mb?: number
           pause?: boolean
+          rearm_cooldown_seconds?: number
           tick_seconds?: number
           unit_target_seconds?: number
           updated_at?: string
