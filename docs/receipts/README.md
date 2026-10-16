@@ -64,7 +64,7 @@ never a claim without its instrument.
 | 6 | Interlock footprint | `prod_session_state()` now, and every `skipped` row in the last 24 h with its reason (FIX-950) |
 | 7 | Canary conditions | the last `canary_check` run's keyed conditions, tier and unchanged-run counter (FIX-1036) |
 | 8 | SLD linkage | total / linked / residual, and the residual by state and chamber (FIX-913 / FIX-859 / FIX-914) |
-| 9 | The forker (FIX-1194) | startup timeouts by hour and by day, who was running in each burst hour, budget cancels and which path acted, box health; **Peers** (FIX-1124): both crawls' skip counters as a 24 h delta, and crawl↔daily overlaps |
+| 9 | The forker (FIX-1194) | startup timeouts by hour and by day, who was running in each burst hour, budget cancels and which path acted, box health; **Peers** (FIX-1124): both crawls' skip counters as a 24 h delta, and crawl↔daily overlaps; the unit dispatcher line (FIX-1308); **Dispatched (24 h)** (FIX-1318): one line per reaped one-shot — registry job, armed-for time, `unit_ms` in seconds, verdict, band — plus the `missed` count, carried in the JSON as top-level `dispatched` (never in `cron_jobs[]`) |
 | 10 | FEC id divergence (FIX-1189 O2) | the latest `congress_legislator_ids_report` row: counts per class (reconciled to the population), the `double_claim` split, the top 20 `bindable` / `prior_office_live` (O1's targets), one line each for `unlisted_live_id` / `double_claim` / `cross_bioguide_claim`; **missing** when no row in 48 h |
 | 11 | Not capturable here | the named reads with **no SQL surface**, listed so their absence is never read as a clean check |
 
@@ -128,6 +128,10 @@ keeps the run-level conclusion.
 ```
 in-band | above | below | missing | inactive | skipped | no-band | failed | running
 ```
+
+A **dispatched** one-shot (§9, FIX-1318) is judged in the same vocabulary: its
+`dispatch_log.job`, the registry name, is the `bands.json` key, and `unit_ms / 1000`
+is the duration. A `failed:` reap is `failed`; a reap with no run row is `missing`.
 
 Precedence, and the reason for it:
 

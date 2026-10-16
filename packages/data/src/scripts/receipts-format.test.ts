@@ -51,6 +51,9 @@ import {
   parkedArmLines,
   unitDispatcherFromStatus,
   unitDispatcherLine,
+  dispatchedFirings,
+  dispatchedLines,
+  type DispatchLogReapedRow,
   crawlSkipsBaselineFrom,
   previousNominalDay,
   memoryWindow,
@@ -1577,4 +1580,99 @@ test("FIX-1308: §9 dispatcher line — paused is bold; a dispatcher that never 
   assert.ok(unitDispatcherLine(paused, AS_OF).includes("24 h: 0 armed / 0 reaped / 0 missed / 0 skipped"));
   const never = unitDispatcherFromStatus({ ...DISPATCHER_STATUS, last_tick_at: null, ticks_60m: 0 });
   assert.ok(unitDispatcherLine(never, AS_OF).startsWith("Dispatcher (FIX-1308): 0/30 ticks last 60 min (last never)"));
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1318 — dispatched one-shots, band-judged by registry job name
+// ---------------------------------------------------------------------------
+
+const DONOR_BAND: Bands = { "donor-rollup-refresh": { lo_s: 0, hi_s: 400, source: "cc-prompt-123 D3" } };
+
+/** A reaped dispatch_log row, shaped like cc-234's first dispatched firing on prod. */
+const reaped = (over: Partial<DispatchLogReapedRow> = {}): DispatchLogReapedRow => ({
+  job: "donor-rollup-refresh",
+  armed_jobname: "disp-donor-rollup-refresh-1792119519",
+  armed_for: "2026-10-16T03:23:00Z",
+  reaped_at: "2026-10-16T03:25:00Z",
+  unit_ms: 69,
+  reason: "succeeded: CALL",
+  ...over,
+});
+
+test("FIX-1318: a succeeded dispatched firing inside its band → in-band, no detail", () => {
+  const [f] = dispatchedFirings([reaped()], DONOR_BAND);
+  assert.equal(f!.status, "succeeded");
+  assert.equal(f!.verdict, "in-band");
+  assert.equal(f!.detail, null);
+  assert.deepEqual(f!.band, DONOR_BAND["donor-rollup-refresh"]);
+});
+
+test("FIX-1318: a dispatched firing past its ceiling → above, through the same compareToBand as §2", () => {
+  const [f] = dispatchedFirings([reaped({ unit_ms: 450_000 })], DONOR_BAND);
+  assert.equal(f!.verdict, "above");
+  assert.equal(f!.detail, "450.0 s (7m 30s) > 400 s");
+  assert.deepEqual(compareToBand(450, DONOR_BAND["donor-rollup-refresh"]!), { verdict: f!.verdict, detail: f!.detail });
+});
+
+test("FIX-1318: a registry job with no bands.json key → no-band (not a pass)", () => {
+  const [f] = dispatchedFirings([reaped({ job: "fr-vacuum-analyze", armed_jobname: "disp-fr-vacuum-analyze-1" })], DONOR_BAND);
+  assert.equal(f!.verdict, "no-band");
+  assert.equal(f!.band, null);
+});
+
+test("FIX-1318: a failed firing is failed whatever its duration", () => {
+  const [f] = dispatchedFirings(
+    [reaped({ job: "cc234-fail", unit_ms: 9, reason: "failed: ERROR:  cc234 deliberate failure\nCONTEXT:  PL/pgSQL" })],
+    DONOR_BAND,
+  );
+  assert.equal(f!.status, "failed");
+  assert.equal(f!.verdict, "failed");
+  assert.equal(f!.detail, "failed: ERROR: cc234 deliberate failure CONTEXT: PL/pgSQL");
+});
+
+test("FIX-1318: a job row gone before any run → status other, verdict missing, the reap's reason as detail", () => {
+  const [f] = dispatchedFirings(
+    [reaped({ unit_ms: null, reason: "job row gone — unscheduled by hand before any run row" })],
+    DONOR_BAND,
+  );
+  assert.equal(f!.status, "other");
+  assert.equal(f!.verdict, "missing");
+  assert.equal(f!.detail, "job row gone — unscheduled by hand before any run row");
+});
+
+test("FIX-1318: renderJson emits `dispatched` only when present; an older file without it still round-trips", () => {
+  const old = fixture();
+  assert.equal("dispatched" in JSON.parse(renderJson(old)), false);
+  assert.deepEqual(JSON.parse(renderJson(old)), JSON.parse(JSON.stringify(old)));
+  assert.ok(renderMarkdown(old).includes("Dispatched (24 h, FIX-1318): not read."));
+  const d = { ...fixture(), dispatched: { firings: dispatchedFirings([reaped()], DONOR_BAND), missed_24h: 0 } };
+  const back = JSON.parse(renderJson(d)) as typeof d;
+  assert.deepEqual(back.dispatched, d.dispatched);
+  // Never inside cron_jobs[] — the registry checker and the board iterate that.
+  assert.deepEqual(back.cron_jobs, JSON.parse(JSON.stringify(old.cron_jobs)));
+  assert.ok(renderMarkdown(d).includes("- `donor-rollup-refresh` 03:23Z 0.069 s in-band (0–400 s)"));
+});
+
+test("FIX-1318: §9 dispatched lines — none, one, missed, and not capturable", () => {
+  assert.deepEqual(dispatchedLines({ firings: [], missed_24h: 0 }), ["Dispatched (24 h, FIX-1318): none."]);
+  assert.deepEqual(dispatchedLines({ firings: [], missed_24h: 2 }), ["Dispatched (24 h, FIX-1318): none; **missed 2**."]);
+  assert.deepEqual(
+    dispatchedLines({
+      firings: dispatchedFirings(
+        [reaped(), reaped({ job: "cc234-fail", armed_for: "2026-10-16T03:05:00Z", unit_ms: 9, reason: "failed: ERROR:  boom" })],
+        DONOR_BAND,
+      ),
+      missed_24h: 2,
+    }),
+    [
+      "Dispatched (24 h, FIX-1318): 2 reaped, band-judged by registry job name; **missed 2**.",
+      "",
+      "- `donor-rollup-refresh` 03:23Z 0.069 s in-band (0–400 s)",
+      "- `cc234-fail` 03:05Z 0.009 s **failed** (no band) — failed: ERROR: boom",
+    ],
+  );
+  assert.deepEqual(dispatchedLines({ not_capturable: "dispatcher not landed" }), [
+    "Dispatched (24 h, FIX-1318): not capturable — dispatcher not landed.",
+  ]);
+  assert.deepEqual(dispatchedLines(undefined), ["Dispatched (24 h, FIX-1318): not read."]);
 });

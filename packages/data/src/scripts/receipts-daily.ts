@@ -74,10 +74,12 @@ import {
   type MemoryBankedBy,
   type MemoryWindow,
   type UnitDispatcherReceipt,
+  type DispatchedReceipt,
   BURST_THRESHOLD,
   bankMemoryWindow,
   compareToBand,
   crawlSkipsBaselineFrom,
+  dispatchedFirings,
   keptMemoryDay,
   memoryWindow,
   nominalDate,
@@ -775,6 +777,22 @@ SELECT to_regprocedure('public.get_dispatcher_status()') IS NOT NULL AS landed`;
 const Q_DISPATCHER_STATUS = `
 SELECT public.get_dispatcher_status() AS s`;
 
+// FIX-1318 — the last 24 h's dispatched one-shots, as the reap recorded them.
+// `job` is the registry name, which is the bands.json key; `reason` carries the
+// run status as its prefix. Read only once the dispatcher has landed.
+const Q_DISPATCHED = `
+SELECT job, armed_jobname, armed_for, ticked_at AS reaped_at, unit_ms, reason
+FROM public.dispatch_log
+WHERE decision = 'reaped'
+  AND ticked_at >= now() - interval '24 hours'
+ORDER BY ticked_at, id`;
+
+const Q_DISPATCH_MISSED = `
+SELECT count(*)::int AS n
+FROM public.dispatch_log
+WHERE decision = 'missed'
+  AND ticked_at >= now() - interval '24 hours'`;
+
 const Q_EC_ARM_PARKED = `
 SELECT value
 FROM public.pipeline_state
@@ -1321,13 +1339,39 @@ async function main(): Promise<void> {
     // FIX-1308 — §9, the unit dispatcher.
     const dispLanded = await r.run<{ landed: boolean }>("dispatcher_landed", Q_DISPATCHER_LANDED);
     let unitDispatcher: UnitDispatcherReceipt;
+    let dispatched: DispatchedReceipt;
     if (dispLanded.length === 0) {
       unitDispatcher = { not_capturable: "the landed check failed" };
+      dispatched = unitDispatcher;
     } else if (dispLanded[0]?.landed !== true) {
       unitDispatcher = { not_capturable: "dispatcher not landed" };
+      dispatched = unitDispatcher;
     } else {
       const dispRows = await r.run<{ s: Record<string, unknown> | null }>("dispatcher_status", Q_DISPATCHER_STATUS);
       unitDispatcher = unitDispatcherFromStatus(dispRows[0]?.s ?? null);
+      // FIX-1318 — a failed read is not "none": the Reader degrades to [] on
+      // error, so ask its record whether the statement threw.
+      const reapedRows = await r.run<Record<string, unknown>>("dispatched_24h", Q_DISPATCHED);
+      const reapedErr = r.queries.at(-1)?.error ?? null;
+      const missedRows = await r.run<{ n: number }>("dispatch_missed_24h", Q_DISPATCH_MISSED);
+      const missedErr = r.queries.at(-1)?.error ?? null;
+      dispatched =
+        reapedErr !== null || missedErr !== null
+          ? { not_capturable: "dispatch_log read failed: " + (reapedErr ?? missedErr) }
+          : {
+              firings: dispatchedFirings(
+                reapedRows.map((row) => ({
+                  job: str(row["job"]) ?? "(unnamed)",
+                  armed_jobname: str(row["armed_jobname"]),
+                  armed_for: iso(row["armed_for"]),
+                  reaped_at: iso(row["reaped_at"]),
+                  unit_ms: num(row["unit_ms"]),
+                  reason: str(row["reason"]),
+                })),
+                bands,
+              ),
+              missed_24h: num(missedRows[0]?.n) ?? 0,
+            };
     }
 
     // FIX-1189 O2 — §10.
@@ -1472,6 +1516,7 @@ async function main(): Promise<void> {
       },
       legislator_ids: { latest: legRun("latest"), complete: legRun("complete"), bind: legRun("bind") },
       unit_dispatcher: unitDispatcher,
+      dispatched,
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
     };

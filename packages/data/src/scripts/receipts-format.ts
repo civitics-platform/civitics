@@ -1236,6 +1236,95 @@ export function unitDispatcherLine(d: UnitDispatcherReceipt | undefined, asOf: s
 }
 
 /**
+ * FIX-1318 — one `dispatch_log` row with `decision = 'reaped'`, as read. `job`
+ * is the REGISTRY name (`job_registry.job`), which is also the bands.json key —
+ * never the one-shot's `disp-<job>-<epoch>` jobname, which no band names.
+ */
+export interface DispatchLogReapedRow {
+  job: string;
+  armed_jobname: string | null;
+  armed_for: string | null;
+  reaped_at: string | null;
+  unit_ms: number | null;
+  reason: string | null;
+}
+
+/**
+ * FIX-1318 — a dispatched one-shot's firing, band-judged. `status` is the
+ * reap's `run_status` prefix (`succeeded: …` / `failed: …`); `other` is the
+ * reap of a job row unscheduled before it ran, which has no `unit_ms`. A
+ * failed firing is `failed` whatever its duration, the same rule `verdictFor`
+ * applies to a pg_cron firing; otherwise `unit_ms / 1000` goes through
+ * `compareToBand`, so `above` means the same thing in §2 and here.
+ */
+export interface DispatchedFiring extends DispatchLogReapedRow {
+  status: "succeeded" | "failed" | "other";
+  band: Band | null;
+  verdict: Verdict;
+  detail: string | null;
+}
+
+/**
+ * FIX-1318 — the receipt's top-level `dispatched`. A TOP-LEVEL key, never rows
+ * in `cron_jobs[]`: check-job-registry and the board iterate that array, and
+ * these are not pg_cron jobs the registry lists.
+ */
+export type DispatchedReceipt =
+  | { not_capturable: string }
+  | { firings: DispatchedFiring[]; missed_24h: number };
+
+const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
+const trimDetail = (s: string): string => (s.length > 120 ? s.slice(0, 119).trimEnd() + "…" : s);
+
+/** Rows → band-judged firings. Pure. */
+export function dispatchedFirings(rows: readonly DispatchLogReapedRow[], bands: Bands): DispatchedFiring[] {
+  return rows.map((row) => {
+    const reason = row.reason ?? "";
+    const status: DispatchedFiring["status"] = /^succeeded:/.test(reason)
+      ? "succeeded"
+      : /^failed:/.test(reason)
+        ? "failed"
+        : "other";
+    const band = bands[row.job] ?? null;
+    if (status === "failed") return { ...row, status, band, verdict: "failed", detail: oneLine(reason) };
+    const v = compareToBand(row.unit_ms === null ? null : row.unit_ms / 1000, band);
+    // `other` has no measurement; the reap's own reason says why, and is the better detail.
+    const detail = status === "other" && v.verdict === "missing" && reason !== "" ? oneLine(reason) : v.detail;
+    return { ...row, status, band, verdict: v.verdict, detail };
+  });
+}
+
+/**
+ * FIX-1318 — the §9 sub-list under the dispatcher line. Pure. `undefined` is a
+ * file written before the reader existed. One bullet per reaped one-shot:
+ * registry job, armed-for time, the unit's wall in seconds, the verdict, and
+ * the band it was judged against.
+ */
+export function dispatchedLines(d: DispatchedReceipt | undefined): string[] {
+  if (d === undefined) return ["Dispatched (24 h, FIX-1318): not read."];
+  if ("not_capturable" in d) return ["Dispatched (24 h, FIX-1318): not capturable — " + d.not_capturable + "."];
+  const missed = d.missed_24h > 0 ? "; **missed " + d.missed_24h + "**" : "";
+  if (d.firings.length === 0) return ["Dispatched (24 h, FIX-1318): none" + missed + "."];
+  const hhmm = (v: string | null): string => {
+    const t = v === null ? NaN : Date.parse(v);
+    return Number.isNaN(t) ? "—" : new Date(t).toISOString().slice(11, 16) + "Z";
+  };
+  const out = [
+    "Dispatched (24 h, FIX-1318): " + d.firings.length + " reaped, band-judged by registry job name" + missed + ".",
+    "",
+  ];
+  for (const f of d.firings) {
+    const secs = f.unit_ms === null ? "—" : (f.unit_ms / 1000).toFixed(3) + " s";
+    // `no-band` already says there is no band; any other verdict names what it was judged against.
+    const band = f.band !== null ? " (" + f.band.lo_s + "–" + f.band.hi_s + " s)" : f.verdict === "no-band" ? "" : " (no band)";
+    const verdict = f.verdict === "in-band" || f.verdict === "no-band" ? f.verdict : "**" + f.verdict + "**";
+    const why = f.detail !== null && f.verdict !== "in-band" && f.verdict !== "no-band" ? " — " + trimDetail(f.detail) : "";
+    out.push("- `" + f.job + "` " + hhmm(f.armed_for) + " " + secs + " " + verdict + band + why);
+  }
+  return out;
+}
+
+/**
  * FIX-1208 — how stale the Vercel watchdog stamp may be before it is `missing`.
  *
  * The route fires every 2 minutes, so ten minutes is five missed firings. Two
@@ -1566,6 +1655,12 @@ export interface ReceiptsData {
    * dispatcher's stamp (FIX-1218), a different machine.
    */
   unit_dispatcher?: UnitDispatcherReceipt;
+  /**
+   * FIX-1318 — §9, the last 24 h's dispatched one-shots band-judged by registry
+   * job name. Optional so an older JSON still renders. Top-level on purpose:
+   * not inside `cron_jobs[]`, which the registry checker and the board iterate.
+   */
+  dispatched?: DispatchedReceipt;
   not_capturable: string[];
   queries: QueryRecord[];
 }
@@ -2092,6 +2187,9 @@ export function renderMarkdown(d: ReceiptsData): string {
   for (const line of parkedArmLines(d.forker)) p(line);
   p("");
   p(unitDispatcherLine(d.unit_dispatcher, d.generated_at));
+  p("");
+  for (const line of dispatchedLines(d.dispatched)) p(line);
+  p("");
   p(
     queryBlock(d.queries, [
       "forker_24h",
@@ -2105,6 +2203,8 @@ export function renderMarkdown(d: ReceiptsData): string {
       "ec_arm_parked",
       "dispatcher_landed",
       "dispatcher_status",
+      "dispatched_24h",
+      "dispatch_missed_24h",
     ]),
   );
 
