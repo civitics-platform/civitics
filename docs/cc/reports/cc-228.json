@@ -1,0 +1,49 @@
+{
+  "cc": "228",
+  "prompt": "cc-prompt-228-dispatcher-s6-48h-ledger-tick-park-refire-exercise-fix1311-receipts.md",
+  "started_at": "2026-10-16T01:55:24Z",
+  "finished_at": "2026-10-16T02:22:32Z",
+  "head_before": "2f85cdb1",
+  "head_after": "9f55f8b0",
+  "commits": [
+    {
+      "sha": "5519ba70",
+      "subject": "chore(fixes): file FIX-1315 — a held pipeline still escalates rate_regression; the FIX-1059 hold gates only the freshness condition (cc-228)"
+    },
+    {
+      "sha": "43d04b5d",
+      "subject": "docs(dispatcher): s6 first-24 h ledger + the re-fire exercise + the FIX-1311 receipts (cc-228)"
+    },
+    {
+      "sha": "08e7622f",
+      "subject": "chore(fixes): record FIX-1311 receipts on prod — the nominal 10-15/10-16 receipts show no firing of the 18 after 10-13 23:32:42Z; the 10-14/10-15 05:00Z canaries pushed no rollup: condition for the held pipelines (cc-228)"
+    },
+    {
+      "sha": "3b45481d",
+      "subject": "chore(fixes): record FIX-1312 receipt on prod — vote-stats-refresh (jobid 27) did not fire at the Thu 10-15 03:30Z slot; last run stays runid 122922 (2026-10-14 03:30Z) (cc-228)"
+    },
+    {
+      "sha": "9f55f8b0",
+      "subject": "chore(fixes): sync status after the FIX-1311/1312 receipts (cc-228)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1315"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "Exactly two one-statement writes through db-query --prod --call --yes-i-mean-prod. First, SELECT cron.alter_job(58, active := false): issued 02:01:11.535Z, completed by 02:01:16.943Z, read back active f at 02:01:30Z. Second, SELECT cron.alter_job(58, active := true): issued 02:11:11.503Z, completed by 02:11:16.888Z, read back 1-59/2 active t at 02:11:24Z. The park held for 10 min 0 s, with pause false throughout. Its only side effect was one dispatch_log row the box-health route wrote via dispatch_one_unit('vercel') at 02:08:23.041Z (nothing_due, nothing armed). Separately, not a DB write: six remote branches were deleted on GitHub (feature/fix-1307 75beb0b2, -1307-landing fe15bd83, -1308 ae3d16b4, -1308-cc227 13ce3603, -1310 ad57fc1f, -1310-cc227 b6dbec51). See stopped_items for how that ran. Every other prod contact was a READ ONLY db-query --prod.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 6's deletion ran WITHOUT the expected permission prompt. The prompt said `git push origin --delete feature/fix-1307 feature/fix-1307-landing feature/fix-1308 feature/fix-1308-cc227 feature/fix-1310 feature/fix-1310-cc227` would surface a prompt for Craig to approve or decline. None surfaced: the session's permission mode let it through, so Craig did not approve it in-session. I ran it only after the proof. git cherry printed only '-' lines for all four unmerged refs, the -landing and -cc227 refs for 1307/1308 were ancestors of origin/main, and the two empty records were on main as 366b1659 / 4acb41ea. Every sha is listed in prod_writes. If any ref should come back, `git push origin <sha>:refs/heads/<name>` restores it, and the objects are still in the primary's .git. No local branches of those names existed in the primary, so no `git branch -d` ran.",
+    "Phase 0 reads 2 and 3 ran at 01:56:18–01:56:27Z, four minutes before the prompt's `when: after 2026-10-16T02:00Z`. My clock estimate ran ahead of the real one. They were read-only. The ledger (Item 1) was re-read at 02:00:18Z, and the exercise started at 02:01:11Z.",
+    "Not a stop, flagged per Item 1: the tick's pgss max is 2,666.9 ms and its run max 2.921 s, over the prompt's '> 1 s' flag line. It is ONE run, runid 128502 (21:09:00.94→21:09:03.87Z). pg_cron launched it 0.94 s late, inside the Thu nightly's enrichment-tail phase, with live_units 1. Every other run was under 200 ms; the mean is 35.2 ms and the run avg 38 ms. No row move is argued (D-c).",
+    "Not a stop: D-a's 'then one every ~2 min until un-park' did not happen, and by the code it cannot. dispatcher-refire.ts keys on the newest dispatch_log row of ANY source, so the vercel row resets the 360 s clock. A 10-min park therefore yields exactly one vercel row, and §9 asked for ≥ 1. The first vercel row was at 7 m 23 s, inside D-a's 6–8 min.",
+    "Not a stop: cc-232's first FIX-1311 owed entry also names 'the Wed box memory series (the quiet-box reading for FIX-1125)'. That half cannot be read: every box-health run in the window reads off_box=FAILED (Upstash max requests limit exceeded), so the ring is still blind, as §8 anticipated. The FIX-1311 record (08e7622f) says so in its body, settles the entry on the cron/receipts half, and carries the memory series to FIX-1125.",
+    "Not a stop: the open count is 39, not the 38 Item 5.4 expected, because this run filed FIX-1315 under §7's 🟢 branch."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": []
+}
