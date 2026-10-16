@@ -22,6 +22,7 @@ steps:
   - {id: s14, kind: design, ref: "", title: "s7 contract-flow chunking design (Cowork, Thu/Fri after the Thu 14:00Z M3 reading)"}
   - {id: s15, kind: cc, ref: "FIX-1125", title: "FIX-1125 sensor + D8 headroom + the controller", after: 2026-10-19T16:00Z}
   - {id: s16, kind: cc, ref: "cc-232", title: "park-derived-layer — the 18 derived-layer pg_cron jobs active := false by name + 16 FIX-1059 hold rows (FIX-1311); the 20 plumbing jobs stay on; each parked job returns only through the registry"}
+  - {id: s18, kind: cc, ref: "cc-236", title: "readers: receipts band-judge dispatched firings (1318) + the canary's held-aware rate check (1315) + UTC done.log dates (1319)", done: 2026-10-16}
 ---
 
 # Job registry + unit dispatcher

@@ -1,0 +1,58 @@
+{
+  "cc": "236",
+  "prompt": "cc-prompt-236-fix1319-utc-done-log-dates-fix1315-held-aware-rate-check-fix1318-receipts-dispatched-band.md",
+  "started_at": "2026-10-16T22:27:32Z",
+  "finished_at": "2026-10-16T22:43:00Z",
+  "head_before": "5bf1684f",
+  "head_after": "be4efabe",
+  "commits": [
+    {
+      "sha": "c1c4cc95",
+      "subject": "fix(fixes): FIX-1319 — fixes:sync dates done.log rows by the committer instant in UTC (new rows only; the board already compares in UTC)"
+    },
+    {
+      "sha": "b01519cf",
+      "subject": "fix(data): FIX-1315 — canary-check demotes rate_regression to report for a held or retired pipeline (the hold names it)"
+    },
+    {
+      "sha": "1a80a87c",
+      "subject": "feat(data): FIX-1318 — the receipts band-judge dispatched firings (dispatch_log reaped rows → bands.json by registry job name; §9 sub-list; top-level dispatched[])"
+    },
+    {
+      "sha": "be4efabe",
+      "subject": "chore(fixes): sync status after FIX-1319, FIX-1315, FIX-1318 (cc-236)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1319",
+    "FIX-1315",
+    "FIX-1318"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "An optional extra probe for Item 1 was DENIED at the permission prompt and not retried: `git show HEAD:scripts/fixes-sync.mjs > scripts/_old_fixes_sync_probe.mjs && T=$(mktemp -d) && … node …/_old_fixes_sync_probe.mjs --dry-run …; rm -f …/_old_fixes_sync_probe.mjs; rm -rf \\\"$T\\\"`. It would have run the PRE-change script on a throwaway repo to show the old row date (2026-10-15). It was not in the prompt, and nothing ran (`git status` showed only the two intended edits). The item completed without it, because the committed end-to-end test covers the new behaviour."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1315",
+      "what": "the next sync-canary-check run after the deploy lists rate_regression:run_rule_taggers as REPORT (detail names 'held: parked for the dispatcher cutover …'), not escalate; the meta row still carries it; no other condition changes",
+      "after": "2026-10-17T05:30Z"
+    },
+    {
+      "fix": "FIX-1318",
+      "what": "the first receipts file generated after this lands (nominal 10-18, 00:01Z) carries dispatched[] with the day's reaped one-shots (donor-rollup-refresh in-band 0–400; fr-vacuum-analyze / fe-inbound / vote-stats no-band if cc-235 landed) and the §9 'Dispatched (24 h)' sub-list; check:job-registry still 0/0 against it",
+      "after": "2026-10-18T00:30Z"
+    },
+    {
+      "fix": "FIX-1319",
+      "what": "the first evening-PDT landing after this (cc-235's records, Fri ~19:xx PDT) writes done.log rows dated the UTC day (2026-10-17) and its plan step with an instant after: derives done on the board without a date-only workaround",
+      "after": "2026-10-17T03:00Z"
+    }
+  ]
+}
