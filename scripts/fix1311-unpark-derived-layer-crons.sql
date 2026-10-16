@@ -13,6 +13,8 @@
 -- It is the WHOLE-CUTOVER rollback and is valid only before the first return.
 -- Once a job has come back through job_registry, un-parking all 18 by cron
 -- would make that job dual-owned — return the remainder one at a time instead.
+-- donor-rollup-refresh RETURNED 2026-10-16 (FIX-1316, cc-234): this file is
+-- valid ONLY after scripts/fix1316-revert-donor-rollup-return.sql has run.
 --
 -- It mirrors PROD: all 18 read active there before the park (2026-10-13 23:14Z).
 -- The local clone's cron.job is local history (FIX-946) and several of these

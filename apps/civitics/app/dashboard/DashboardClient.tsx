@@ -2550,6 +2550,7 @@ function DispatcherSection({ dispatcher }: { dispatcher: DispatcherStatus | null
               {paused ? <span className="font-medium text-accent">PAUSED · </span> : null}
               tick {d.dials.tick_seconds} s · {d.dials.max_concurrent_units} units · {d.dials.max_live_caps_mb} MB caps ·
               headroom {d.dials.headroom_target_mb} MB · unit target {d.dials.unit_target_seconds} s
+              {d.dials.rearm_cooldown_seconds != null ? <> · re-arm cooldown {d.dials.rearm_cooldown_seconds} s</> : null}
             </p>
           ) : (
             <p className="mt-1 text-accent">platform_dials has no row</p>

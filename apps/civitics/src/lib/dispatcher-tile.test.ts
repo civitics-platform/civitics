@@ -50,6 +50,11 @@ test("FIX-1308: /core, the SSR seed and the client refresh all carry it, and the
   assert.match(client, /<DispatcherSection\s+dispatcher=\{/);
 });
 
+test("FIX-1316: the dials type and the tile carry rearm_cooldown_seconds (optional — older snapshots lack it)", () => {
+  assert.match(src("app", "dashboard", "useDashboardData.ts"), /rearm_cooldown_seconds\?: number;/);
+  assert.match(src("app", "dashboard", "DashboardClient.tsx"), /re-arm cooldown \{d\.dials\.rearm_cooldown_seconds\} s/);
+});
+
 test("FIX-1308: the tile is read-only — no fetch, no rpc, no mutation inside the section", () => {
   const client = src("app", "dashboard", "DashboardClient.tsx");
   const i = client.indexOf("function DispatcherSection(");

@@ -186,6 +186,8 @@ export type DispatcherStatus = {
     max_concurrent_units: number;
     max_live_caps_mb: number;
     headroom_target_mb: number;
+    // FIX-1316 (I6) — optional: snapshots taken before 20261016230000 lack it.
+    rearm_cooldown_seconds?: number;
     updated_at: string;
   } | null;
   registry: { rows: number; eligible: number; by_runner: Record<string, number> } | null;
