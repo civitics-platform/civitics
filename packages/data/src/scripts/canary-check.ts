@@ -69,6 +69,7 @@ import {
 } from "./canary-prod-session";
 import { SESSION_HOLD_PREFIX, readProdSessionState, withClient } from "../lib/prod-session";
 import { KEY_MEM_STALE, KEY_PROBE_STALE, type BoxHealthCanary, classifyBoxHealth } from "./canary-box-health";
+import { classifyRateRegressions } from "./canary-rate";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 
 /** FIX-1224 — a direct-pg read's status, with the error text when it threw. */
@@ -1746,6 +1747,9 @@ async function main(): Promise<number> {
   // FIX-978 — is anything getting SLOWER while still landing inside its window?
   const rateHealth = await fetchRateRegression();
   const rateRegressions = rateHealth?.regressions ?? [];
+  // FIX-1315 — a held or retired pipeline's frozen window is not a trend; the
+  // registry's hold demotes it to report (see canary-rate.ts).
+  const rateTiers = classifyRateRegressions(rateRegressions, rollups);
   // FIX-959 — point-in-time: is a donor industry-tag change stranded
   // un-incorporated in official_sector_affinity_rollup past one nightly cycle?
   const sectorAffinity = await fetchSectorAffinityStaleness();
@@ -1895,8 +1899,15 @@ async function main(): Promise<number> {
         `(${cl.last_started_at ?? "never"}), threshold ${cl.threshold_hours}h`,
     );
   }
-  for (const f of rateRegressions) {
+  for (const f of rateTiers.escalate) {
     push(`rate_regression:${f.pipeline}`, "escalate", f.worst_case_ratio ?? 1, `pipeline throughput regressed (sustained): ${describeRate(f)}`);
+  }
+  // FIX-1315 — same key, so the hold lifting reads as a tier change.
+  for (const { f, why } of rateTiers.report) {
+    push(
+      `rate_regression:${f.pipeline}`, "report", f.worst_case_ratio ?? 1,
+      `pipeline throughput regressed (sustained) but the pipeline is ${why} — rate check demoted (FIX-1315): ${describeRate(f)}`,
+    );
   }
   if (sectorAffinity?.stale) {
     push(
@@ -2066,7 +2077,10 @@ async function main(): Promise<number> {
     if (declared.length > 0) {
       console.info(
         `[canary-check] declared in rollup_watch_overrides (listed, never alerted): ` +
-          declared.map((r) => `${r.pipeline}=${r.retired ? "retired" : "held"}`).join(", "),
+          declared.map((r) => `${r.pipeline}=${r.retired ? "retired" : "held"}`).join(", ") +
+          (rateTiers.report.length > 0
+            ? `; rate demoted: ${rateTiers.report.map(({ f, why }) => `${f.pipeline}=${why}`).join(", ")}`
+            : ""),
       );
     }
   }
