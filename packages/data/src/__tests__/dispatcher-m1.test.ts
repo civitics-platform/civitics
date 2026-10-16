@@ -189,7 +189,7 @@ test("I2: the arm reads max(runid) before cron.schedule and writes it on the row
   const sched = b.indexOf("v_armed_id := cron.schedule(v_armed_name, v_sched, v_pick_call);");
   assert.ok(floor > 0 && sched > floor, "the floor is read before the one-shot exists");
   assert.match(b, /armed_jobid, armed_jobname, armed_for, runid_floor\)\s+VALUES\s+\([^;]*v_armed_id, v_armed_name, v_armed_for, v_floor\)/);
-  assert.match(b, /v_armed_for  := NULL;\s+v_floor      := NULL;/, "the error path logs no floor");
+  assert.match(b, /v_armed_for {2}:= NULL;\s+v_floor {6}:= NULL;/, "the error path logs no floor");
 });
 
 test("I2: the reap's runs CTE and the status LATERAL read above the floor", () => {
