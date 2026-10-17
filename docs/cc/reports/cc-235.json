@@ -1,0 +1,96 @@
+{
+  "cc": "235",
+  "prompt": "cc-prompt-235-v1-move-fr-vacuum-analyze-dead-tuples-floor-24h-return-by-dailies-fe-inbound-vote-stats.md",
+  "started_at": "2026-10-17T01:11:15Z",
+  "finished_at": "2026-10-17T04:16:00Z",
+  "head_before": "a21ef691",
+  "head_after": "2f277d84",
+  "commits": [
+    {
+      "sha": "194e1174",
+      "subject": "docs(fixes): cc-235 files FIX-1320, FIX-1321, FIX-1322, FIX-1323, FIX-1324, FIX-1325"
+    },
+    {
+      "sha": "7c239451",
+      "subject": "feat(db): FIX-1320 — MOVE fr-vacuum-analyze to dead_tuples > 60% of trigger + floor 24 hours, gates {prod_session}; the 03:00Z cron parked at the move (cc-235)"
+    },
+    {
+      "sha": "f1deab74",
+      "subject": "feat(db): FIX-1321 — RETURN fe-inbound-rollup-refresh (by 13 2 * * *) + vote-stats-refresh (by 30 3 * * *) via job_registry; cutover holds → cadence_hours 24 (cc-235)"
+    },
+    {
+      "sha": "5fbcd605",
+      "subject": "docs(fixes): cc-235 files FIX-1326"
+    },
+    {
+      "sha": "475200b2",
+      "subject": "chore(fixes): record FIX-1320 landed on prod — fr-vacuum-analyze MOVED to dead_tuples > 60% of trigger + floor 24 hours, gates {prod_session}, cron jobid 38 parked; first dispatched VACUUM armed 03:01:00Z / ran 03:03:00.03→03:03:09.54Z (9508 ms, 30-d cron p50/max 10.1/234.7 s), last_vacuum moved (20261017020000 at 02:12:28Z under the FIX-950 claim)"
+    },
+    {
+      "sha": "7e3f3432",
+      "subject": "chore(fixes): record FIX-1316 receipt — the Fri 10-16 05:00Z canary pushed no orphan/rollup for donor_rollup_refresh; the second dispatched firing 15:29:00Z ran through donor_rollup_rebuild_bulk_dispatched() (complete, 53 ms), no start-window skip (cc-235)"
+    },
+    {
+      "sha": "99f4b6b2",
+      "subject": "chore(fixes): record FIX-1321 landed on prod — fe-inbound-rollup-refresh + vote-stats-refresh RETURNED by 13 2 * * * / by 30 3 * * *; first dispatched firings 02:17:00Z/02:17:00Z (58/16388 ms), the 03:30Z slot firing 03:35:00Z (16727 ms); holds → cadence 24 (20261017021000 at 02:12:28Z under the FIX-950 claim)"
+    },
+    {
+      "sha": "6075b3e6",
+      "subject": "docs(fixes): cc-235 appends to FIX-1318"
+    },
+    {
+      "sha": "99d0d206",
+      "subject": "docs(dispatcher): V1 + the by dailies landed — s9 ref + s17 + the s6 row (cc-235)"
+    },
+    {
+      "sha": "2f277d84",
+      "subject": "chore(fixes): sync status after FIX-1320, FIX-1321 (cc-235)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1320",
+    "FIX-1321",
+    "FIX-1316"
+  ],
+  "fixes_filed": [
+    "FIX-1320",
+    "FIX-1321",
+    "FIX-1322",
+    "FIX-1323",
+    "FIX-1324",
+    "FIX-1325",
+    "FIX-1326"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261017020000_fix1320_move_fr_vacuum_analyze.sql",
+    "supabase/migrations/20261017021000_fix1321_return_by_dailies.sql"
+  ],
+  "prod_writes": "ONE gated migration push of exactly two files under its own FIX-950 claim, from the PRIMARY's packages/data at f1deab74. The dry run through the same gate (gate open 02:12:10.66Z; census pass 0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 133 = 0.00 %, P99 floor 2 at p0 0.23 %) listed exactly 20261017020000_fix1320_move_fr_vacuum_analyze.sql and 20261017021000_fix1321_return_by_dailies.sql. The real gate opened at 2026-10-17T02:12:28.04199Z (same census pass), acquired the interlock (prod_supervised_session), printed `held 1 guarded pipeline(s)` (donor_rollup_refresh's M1 cadence row, see below), applied both files, printed `cleared 1 hold(s)`, released, and --then exited 0 by 02:12:32Z. Push NOTICEs verbatim: '[fix1320] job_registry fr-vacuum-analyze: at 0 3 * * * → dead_tuples > 60% of trigger + floor 24 hours, gates {prod_session} (1 row)'; '[fix1320] cron fr-vacuum-analyze (jobid 38) parked — the registry owns it'; '[fix1320] read-back ok: … (pct 60, floor 24:00:00), gates {prod_session}, target financial_relationships, cron jobid 38 inactive; dispatch_one_unit 98660b34c17c5c537fc3d2e03d021440 / get_dispatcher_status 4c9d0eb0cd85f9f46b38a9947cc94785'; '[fix1321] job_registry fe-inbound-rollup-refresh: at 13 2 * * * → by 13 2 * * * (1 row)'; '[fix1321] job_registry vote-stats-refresh: at 30 3 * * * → by 30 3 * * * (1 row)'; '[fix1321] rollup_watch_overrides financial_entity_inbound_rollup: cutover hold → cadence_hours 24 (1 row)'; '[fix1321] rollup_watch_overrides official_vote_stats_rebuild: cutover hold → cadence_hours 24 (1 row)'; '[fix1321] cron fe-inbound-rollup-refresh (jobid 55) inactive — registry owns it'; '[fix1321] cron vote-stats-refresh (jobid 27) inactive — registry owns it'; '[fix1321] read-back ok: … (next slot 2026-10-17 02:13:00+00), … (next slot 2026-10-17 03:30:00+00); both overrides cadence 24; both crons inactive; …'. The dispatcher's consequent writes: dispatch_log rows 1409–1455 (5 armed, 5 reaped, the rest nothing_due); five one-shots cron.schedule'd and cron.unschedule'd by the dispatcher (jobids 61 vote-stats, 62 fe-inbound with its 1800 s cron_job_budget row, 63 fr-vacuum-analyze — no budget row, 64 donor-rollup with its 9000 s row, 65 vote-stats); their runs and the rows they wrote — data_sync_log official_vote_stats_rebuild complete ×2 (560 rows each), financial_entity_inbound_rollup complete ×1 (caught up, 0 recipients), donor_rollup_refresh complete ×1 (caught up, 0 targets); THE VACUUM (ANALYZE) of public.financial_relationships 03:03:00.035→03:03:09.543Z. Three Vercel production deploys rode the :main pushes (no app files changed). Every other prod contact was a READ ONLY db-query --prod, the gate's census, a cancellation census, or a Vercel runtime-log read. No pause write was made; no revert payload was run.",
+  "ci": "green",
+  "stopped_items": [
+    "Phase 0 read 1's STOP was NOT taken, deliberately. The prompt expected 42 open with FIX-1315/1318/1319 open at e9a472e; the tree read 39 open at 2c45be58 (cc-236's report) + a21ef691 (GHA receipts), with those three CLOSED local-only by cc-236. cc-236's own report says it ran 15:27–15:43 PDT 'before cc-235's 18:00 PDT start', its prod_writes is none, and it touched no dispatcher migration or body — the 42 → 39 gap is exactly its three closes. Read as 'the tree moved by a sequenced, docs/readers-only run', not as an unknown change. Consequences carried: expected open 39 → 44 (got 44, with FIX-1326 extra and FIX-1325 the conditional); Item 7's FIX-1318 append rewritten for a reader that now exists; s9/s17 `after` written as an instant because FIX-1319 landed.",
+    "Item 3(d)'s fallback read could not be taken. The clone's financial_relationships has last_vacuum AND last_autovacuum NULL and no reaped dispatch_log row, so the floor term is NULL, pct is 0, ttd is NULL, and the pick CONTINUEs: no armed row and no `next: fr-vacuum-analyze in <iv>` line exists to check the arithmetic of. The floor arithmetic was verified on PROD instead (the 02:17 tick read `next: fr-vacuum-analyze in 00:43:00` = 03:00:00.26Z + 24 h − 02:17:00.09Z; it armed at 03:01:00.083Z with `→ -00:00:59`). Filed FIX-1326.",
+    "s9 / s17 `after` is 2026-10-17T02:12Z, not the prompt's DATE-ONLY 2026-10-16. FIX-1319 (cc-236) now dates done.log rows by the committer's UTC day, so the records are dated 2026-10-17 and the instant derives on the board without the workaround — which is also cc-236's owed FIX-1319 receipt.",
+    "Item 6 read 3's 'live_units 2 on at least one tick' in the 03:3x pair was not observed (it WAS observed at 02:17, 2 / 256 MB). Not a stop: each arm row carries the census taken BEFORE its own arm, and donor-rollup (49 ms) was reaped on the same 03:35 tick that first counted vote-stats live."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1320",
+      "what": "the Sun 10-18 drop night: nothing_due · gated: prod_session (fr-vacuum-analyze) and/or group busy: fr-table rows during the fec_bulk claim (~21:00→23:00Z); after the release the pct term fires it (n_dead_tup ≥ 60 % of the 312,158 trigger → armed → one-shot → reaped, unit_ms vs the cron's 234.7 s max, last_vacuum moved) — the vacuum CHASES the landing; no VACUUM overlapping it (pg_stat_progress_vacuum / the 04:30 ec and 04:50 fe cron vacuums, FIX-1322); the 57014 census around it; the floor firings Sat/Sun/Mon with the drift quoted (Sun's anchor is the 03:05:00.06Z reap tick → run 03:07 or 03:09Z; FIX-1323)",
+      "after": "2026-10-19T04:00Z"
+    },
+    {
+      "fix": "FIX-1320",
+      "what": "72 h: every dispatched FR vacuum's unit_ms against the 30-d cron p50/max 10.1/234.7 s; n_dead_tup before/after each; no missed row; FR pct_all_visible from the vm_probe:pre-fr series not worse than the cron era's (100.0 % at 10-17 02:55Z)",
+      "after": "2026-10-20T03:30Z"
+    },
+    {
+      "fix": "FIX-1321",
+      "what": "one dispatched firing per slot per day for each (Sun/Mon 02:13Z and 03:30Z), nothing early, nothing double; the Sun drop night: fe-inbound's deferred/skipped rows under the claim or the interlock and the cooldown: rows that follow, named with their reaps; the Mon 02:13Z firing completes after the interlock clears; the Sat 10-17 05:00Z canary pushes no orphan:/rollup: for financial_entity_inbound_rollup or official_vote_stats_rebuild (cadence 24)",
+      "after": "2026-10-19T04:00Z"
+    }
+  ]
+}
