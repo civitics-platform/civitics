@@ -157,6 +157,13 @@ Precedence, and the reason for it:
    a parked job keeps showing its last pre-park firings, still band-compared,
    until those firings age out. Only after that does it read `inactive`. A
    firing dated *after* the park is the fault.
+   `fr-vacuum-analyze` joins them from 2026-10-17 for a different reason: it
+   MOVED to the dispatcher (FIX-1320, cc-235) rather than being parked, so its
+   firings are now `disp-fr-vacuum-analyze-<epoch>` one-shots, judged in
+   `dispatched[]` by registry job name (FIX-1318; `no-band` until bands.json
+   carries an entry), and `vm-probe-pre-fr` (02:55Z) no longer necessarily
+   precedes it — the floor firing drifts later each cycle (FIX-1323), so "what
+   the vacuum FOUND" pairs with it for a day or two, then drifts apart.
 5. **`missing`** — an **active** job with no firing in the lookback window.
    Reserved for that: four prod jobs are permanently disabled
    (`entity-connection-stats-rebuild`, `financial-entity-totals-incremental`,
