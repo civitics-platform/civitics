@@ -104,3 +104,49 @@ test("the crawls revert pairs the return: both at literals, the cutover hold ver
   assert.doesNotMatch(sql, /platform_dials/, "pause is the operator's, not the payload's");
 });
 
+// ── FIX-1328 — rule-taggers-weekly on a `stale_after 7 days` BRIDGE (D-e) ──
+
+const WK = () => one("_fix1328_return_rule_taggers_weekly_bridge.sql");
+const WK_REVERT = () => read(path.join(ROOT, "scripts", "fix1328-revert-weekly-bridge.sql"));
+
+test("the weekly bridge is a 7-day interval literal, matched on the parked at 0 16 * * 2", () => {
+  const sql = stripComments(WK());
+  assert.ok(sql.includes("SET deadline_rule = 'stale_after 7 days'"));
+  const m = IV.exec("stale_after 7 days".replace(/^stale_after\s+/, ""));
+  assert.ok(m && m[2] === "days" && Number(m[1]) === 7);
+  assert.ok(sql.includes("WHERE job = 'rule-taggers-weekly'\n     AND deadline_rule = 'at 0 16 * * 2'"));
+  assert.ok(sql.includes("IS DISTINCT FROM interval '7 days'"));
+  // not the unsupported by-weekly form (cron_next_daily reads M H * * * only — FIX-1329)
+  assert.doesNotMatch(sql, /deadline_rule = 'by /);
+});
+
+test("D-e: the bridge never writes rollup_watch_overrides — run_rule_taggers stays held, asserted", () => {
+  const sql = stripComments(WK());
+  assert.doesNotMatch(sql, /UPDATE public\.rollup_watch_overrides/);
+  assert.doesNotMatch(sql, /(INSERT INTO|DELETE FROM) public\.rollup_watch_overrides/);
+  assert.ok(sql.includes("WHERE pipeline = 'run_rule_taggers' AND held_since IS NOT NULL"));
+  assert.ok(sql.includes(`AND hold_reason = '${HOLD_1311}'`));
+});
+
+test("the bridge asserts both rule-tagger crons inactive by NAME and guards its own first-due instant", () => {
+  const sql = stripComments(WK());
+  assert.ok(sql.includes("ARRAY['rule-taggers-weekly', 'rule-taggers-daily']"));
+  assert.ok(sql.includes("FROM cron.job WHERE jobname = v_name"));
+  assert.doesNotMatch(sql, /cron\.(alter_job|schedule|unschedule)\s*\(/);
+  assert.doesNotMatch(sql, /active\s*:=\s*true/);
+  assert.doesNotMatch(sql, /jobid\s*=\s*\d+/);
+  // < now + 24 h under a live tick is a RAISE, not a surprise firing tonight
+  assert.match(sql, /v_due < now\(\) \+ interval '24 hours'/);
+  assert.ok(sql.includes("jobname = 'dispatcher-tick' AND active"));
+  assert.doesNotMatch(sql, /CREATE OR REPLACE/i);
+  assert.doesNotMatch(sql, /ILIKE '%vacuum%'/i);
+});
+
+test("the weekly revert pairs the bridge and leaves the cron parked", () => {
+  const sql = stripComments(WK_REVERT());
+  assert.ok(sql.includes("SET deadline_rule = 'at 0 16 * * 2'"));
+  assert.ok(sql.includes("AND deadline_rule = 'stale_after 7 days'"));
+  assert.doesNotMatch(sql, /rollup_watch_overrides/);
+  assert.doesNotMatch(sql, /cron\.(alter_job|schedule|unschedule)\s*\(/);
+  assert.doesNotMatch(sql, /platform_dials/);
+});
