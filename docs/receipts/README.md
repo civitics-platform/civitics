@@ -164,6 +164,11 @@ Precedence, and the reason for it:
    carries an entry), and `vm-probe-pre-fr` (02:55Z) no longer necessarily
    precedes it — the floor firing drifts later each cycle (FIX-1323), so "what
    the vacuum FOUND" pairs with it for a day or two, then drifts apart.
+   `ec-crawl`, `fe-crawl` and `rule-taggers-weekly` keep their parked cron
+   rows' verdicts from 2026-10-18 (their pre-park firings until those age out,
+   then `inactive`) because they RETURNED through the registry (FIX-1327,
+   FIX-1328, cc-237) and the cron rows stay parked; their dispatched firings
+   appear in §9's Dispatched list as `disp-<job>-<epoch>` one-shots, `no-band`.
 5. **`missing`** — an **active** job with no firing in the lookback window.
    Reserved for that: four prod jobs are permanently disabled
    (`entity-connection-stats-rebuild`, `financial-entity-totals-incremental`,
