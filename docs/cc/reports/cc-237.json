@@ -1,0 +1,98 @@
+{
+  "cc": "237",
+  "prompt": "cc-prompt-237-e1-return-ec-crawl-fe-crawl-stale-after-rule-taggers-weekly-bridge.md",
+  "started_at": "2026-10-17T23:55:39Z",
+  "finished_at": "2026-10-18T04:03:00Z",
+  "head_before": "6651ce94",
+  "head_after": "a44b9cbb",
+  "commits": [
+    {
+      "sha": "a7c67a95",
+      "subject": "docs(fixes): cc-237 files FIX-1327, FIX-1328, FIX-1329, FIX-1330, FIX-1331"
+    },
+    {
+      "sha": "71e11a83",
+      "subject": "feat(db): FIX-1327 — RETURN ec-crawl (stale_after 10 minutes) + fe-crawl (stale_after 25 minutes) via job_registry; cutover holds → cadence_hours 24 (cc-237)"
+    },
+    {
+      "sha": "2c86cdbf",
+      "subject": "feat(db): FIX-1328 — RETURN rule-taggers-weekly on a stale_after 7 days bridge (the by-weekly form is FIX-1329); hold row stays held (cc-237)"
+    },
+    {
+      "sha": "5a919707",
+      "subject": "chore(fixes): record FIX-1327 landed on prod — ec-crawl + fe-crawl RETURNED stale_after 10 min / 25 min; first dispatched units 00:37:00Z (donations window 1/16, 18770 ms) / 00:39:00Z (2172 ms); cadence 13:41–15:55 / 27:58–30:00 min; first cooldown row 03:05:00Z (fe-crawl); holds → cadence 24 (20261018000000 at 00:33:10Z under the FIX-950 claim)"
+    },
+    {
+      "sha": "723f4ea6",
+      "subject": "chore(fixes): record FIX-1328 landed on prod — rule-taggers-weekly RETURNED on a stale_after 7 days bridge (cron jobid 12 stays parked; hold row stays held); first dispatched firing OWED ~2026-10-20T16:15Z (20261018001000 at 00:33:10Z)"
+    },
+    {
+      "sha": "20105c57",
+      "subject": "chore(fixes): record FIX-1315 receipt — the Sat 10-17 05:00Z canary lists rate_regression:run_rule_taggers at tier report (held: parked for the dispatcher cutover …), not escalate (cc-237)"
+    },
+    {
+      "sha": "24d7a707",
+      "subject": "chore(fixes): record FIX-1318 receipt — the nominal-10-18 receipts carry dispatched[] (6 firings: donor-rollup in-band, fr / fe-inbound / vote-stats no-band) and the §9 Dispatched list; check:job-registry 0/0 (cc-237)"
+    },
+    {
+      "sha": "e5ccc3fe",
+      "subject": "chore(fixes): record FIX-1297 receipt — ec-crawl's first dispatched _donations unit 17.9 s incl. its prepare on the partial index (MAX probe 0.082 ms, 5 buffers) (cc-237); donor-rollup's caught-up exit 54 ms (cc-234)"
+    },
+    {
+      "sha": "03560be8",
+      "subject": "chore(fixes): sync status after FIX-1327, FIX-1328 (cc-237)"
+    },
+    {
+      "sha": "a44b9cbb",
+      "subject": "docs(dispatcher): E1 landed — s10 ref + the bridge step + B1 planned + the s6 row (cc-237)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1327",
+    "FIX-1328",
+    "FIX-1315",
+    "FIX-1318",
+    "FIX-1297"
+  ],
+  "fixes_filed": [
+    "FIX-1327",
+    "FIX-1328",
+    "FIX-1329",
+    "FIX-1330",
+    "FIX-1331"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261018000000_fix1327_return_crawls.sql",
+    "supabase/migrations/20261018001000_fix1328_return_rule_taggers_weekly_bridge.sql"
+  ],
+  "prod_writes": "ONE gated migration push of exactly two files under its own FIX-950 claim, from the PRIMARY's packages/data at 2c86cdbf. The dry run through the same gate (gate open 2026-10-18T00:19:51.18Z; census pass 0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 398 = 0.00 %, P99 floor 4) listed exactly 20261018000000_fix1327_return_crawls.sql and 20261018001000_fix1328_return_rule_taggers_weekly_bridge.sql, held 3 / cleared 3. The real gate opened at 2026-10-18T00:33:05.923862Z (census pass 0 / 0, edge 0 of 89, P99 floor 2), acquired the interlock (prod_supervised_session), printed `held 3 guarded pipeline(s)` (donor_rollup_refresh 12, financial_entity_inbound_rollup 24, official_vote_stats_rebuild 24 — the three cadence rows with held_since NULL), applied both files, printed `cleared 3 hold(s)`, released, and --then exited 0 by 00:33:11Z (row updated_at 00:33:10.17Z). Push NOTICEs verbatim: '[fix1327] job_registry ec-crawl: at */15 * * * * → stale_after 10 minutes (1 row)'; '[fix1327] job_registry fe-crawl: at */30 * * * * → stale_after 25 minutes (1 row)'; '[fix1327] rollup_watch_overrides entity_connections_rebuild: cutover hold → cadence_hours 24 (1 row)'; '[fix1327] rollup_watch_overrides financial_entity_totals_refresh: cutover hold → cadence_hours 24 (1 row)'; '[fix1327] cron ec-crawl (jobid 45) inactive — registry owns it'; '[fix1327] cron fe-crawl (jobid 46) inactive — registry owns it'; '[fix1327] read-back ok: ec-crawl stale_after 10 minutes (00:10:00), fe-crawl stale_after 25 minutes (00:25:00); gates {prod_session,blackout}, groups ec / fe-totals, budget 1800 both; both overrides cadence 24; both crons inactive; run_rule_taggers still held; dispatch_one_unit 98660b34c17c5c537fc3d2e03d021440 / get_dispatcher_status 4c9d0eb0cd85f9f46b38a9947cc94785'; '[fix1328] job_registry rule-taggers-weekly: at 0 16 * * 2 → stale_after 7 days (1 row)'; '[fix1328] cron rule-taggers-weekly (jobid 12) inactive'; '[fix1328] cron rule-taggers-daily (jobid 11) inactive'; '[fix1328] read-back ok: rule-taggers-weekly stale_after 7 days (7 days), budget 7200, gates {prod_session}; run_rule_taggers still held; last complete|partial 2026-10-13 16:15:02.706463+00, first due 2026-10-20 16:15:02.706463+00 (dispatcher-tick active); dispatch_one_unit … / get_dispatcher_status …'. The dispatcher's consequent writes: dispatch_log rows 2086–2210 (24 armed, 23 reaped, the rest nothing_due); 24 one-shots cron.schedule'd by the dispatcher (jobids 67–90; 23 unscheduled at their reap, jobid 89 donor-rollup still live at the close) with their cron_job_budget rows (1800 for the crawls and fe-inbound, 9000 for donor-rollup; none for fr and vote-stats, by design); the rows those units wrote — entity_connections_rebuild partial ×11 (donations windows 1–11/16) and skipped ×2 (backoff), financial_entity_totals_refresh complete ×5 and skipped ×2 (peer_backoff), financial_entity_inbound_rollup complete ×1, official_vote_stats_rebuild complete ×1, donor_rollup_refresh running ×1 (dirty, 662 targets); pipeline_state.ec_crawl.backoff_until set by ec-crawl's own sensor to 05:01:31Z; pipeline_state.entity_connections_donations cycle staged; THE VACUUM (ANALYZE) of public.financial_relationships 03:09:00.030→03:09:13.245Z. Four Vercel production deploys rode the :main pushes (no app files changed). Every other prod contact was a READ ONLY db-query --prod (including one EXPLAIN ANALYZE of a MAX probe), the gate's census, a cancellation census, a Vercel runtime-log read or a gh read. No pause write; no revert payload run.",
+  "ci": "green",
+  "stopped_items": [
+    "STOP-table row 'a cooldown: row for fe-crawl, or for ec-crawl with a WRITTEN skipped … behind it — a second for the same job tonight → STOP (no pause — the cooldown IS the net)' FIRED for both crawls. fe-crawl: 2201 03:41:00.080Z `cooldown: fe-crawl (2 non-advancing reap(s), last 'succeeded: CALL' at 2026-10-18 03:41:00+00; re-arm at 2026-10-18 04:41:00+00)`, behind two WRITTEN skipped rows (03:03Z, 03:39Z) reading `peer crawl ec_crawl is backed off until 2026-10-18 05:01:31.033112+00 — the box is throttled for both of us`. ec-crawl: its second non-advancing reap at 03:53:00.148Z (behind WRITTEN skipped rows 03:17Z / 03:51Z, `backing off until 2026-10-18 05:01:31.033112+00 (… s remaining) — a unit ran far over its rolling median`) — by the I6 formula re-arm 04:53Z; its cooldown never appears as a reason (see Contradictions). The cause is ec-crawl's own FIX-1111 backoff sensor tripping at 03:01:31Z on donations window 11/16 (16.104 s/krow vs median 7.191 over 5 samples, iops_class degraded). No pause (as the row says), no config write, no hand action; Item 5 ended at ~03:55Z as planned and the rest of the run continued. The ladder continues unattended overnight — see owed.",
+    "D-g's predicted in-session ladder (ec cycle_cooldown after the first cycle closes) did not happen and could not: the first dispatched unit opened a real donations cycle (368 dirty donors, 16 windows) after the Sat 10-17 nightly's FR rows moved the target to 2026-10-17 21:08:59Z, so the cycle was at window 11/16 when the backoff tripped. No cycle_cooldown exit occurred tonight (pipeline_state.ec_crawl.skips.cycle_cooldown still 2302; only backoff moved, 195 → 197).",
+    "Item 3 (d), the clone ladder rung, was not reached and not forced: the clone's ec cycle did not close in two units (donations windows 13/16 → 14/16 → next 15/16, 11.2 s / 8.6 s).",
+    "FIX-1297's prepare wall is bounded, not isolated: staged_at is now() (the prepare transaction's START) and pg_stat_statements.track = top, so the whole first unit (17.9 s incl. window 1/16's 2,200 edges) is the upper bound; the MAX probe itself was read by hand at 0.082 ms. The record says so.",
+    "The weekly bridge's first due is 2026-10-20 16:15:02Z (the 10-13 weekly ended 16:15:02.71Z, 903 s), not the prompt's ~17:15Z; FIX-1328's title, the owed entry and s19 carry 16:15Z.",
+    "My own 2-minute prod poller failed one read at 02:25:20Z (a db-query connection error, not a prod or dispatcher fault); the next poll at 02:27:20Z succeeded and its id-watermark caught up every row, so nothing was missed. Twice the poller's 30-min Monitor window lapsed between re-arms (02:12–02:19Z, 03:49–03:53Z); those rows were read by hand."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1327",
+      "what": "the overnight ladder after tonight's backoff trip (backoff_until 05:01:31Z): fe-crawl's 3rd rung (re-arm 04:41Z → skipped peer_backoff → cooldown +120 min) and ec-crawl's 3rd (re-arm 04:53Z → skipped backoff → +120), both then gated by the dispatcher's blackout (in_blackout('ec_crawl') 05:45–09:00Z, which gates fe-crawl too although fe_crawl.blackout is []) and re-due at 09:00Z; the 04:30Z ec-vacuum-analyze → group busy: ec only if ec-crawl is otherwise eligible; the first post-backoff ec unit resumes donations window 12/16 and the cycle closes, then the 360-min cycle_cooldown ladder (FIX-1330) appears; the Sun drop night: gated: prod_session (ec-crawl / fe-crawl) under N1's claim ~21:00→23:00Z, then fe-crawl's slices and ec's next _donations cycle against the new FR rows, no deferred rows unless fec_bulk_run_state was left behind",
+      "after": "2026-10-19T04:00Z"
+    },
+    {
+      "fix": "FIX-1327",
+      "what": "72 h: every dispatched crawl unit's unit_ms against the pre-park 30-d cron p50/max (ec jobid 45 0.2 / 6,952.2 s, fe jobid 46 0.2 / 1,953.0 s); cadence inside a cycle 13:41–15:55 / 27:58–30:00 min; each ladder episode counted (cooldown rows, late-restart minutes) and attributed (backoff / peer_backoff / cycle_cooldown); no missed row; the Mon 05:00Z canary pushes no orphan:/rollup: for entity_connections_rebuild or financial_entity_totals_refresh (cadence 24) and keeps run_rule_taggers held",
+      "after": "2026-10-21T04:00Z"
+    },
+    {
+      "fix": "FIX-1328",
+      "what": "the first dispatched rule-taggers-weekly: armed ~Tue 10-20 16:15–16:17Z at priority 3, one-shot `CALL public.run_rule_taggers('weekly');` with a 7200 s budget row, box_backoff_gate clear, run → complete with unit_ms vs the 10-13 reading 902.6 s (FIX-1284 2nd reading / FIX-1248 close → FIX-1258); both crawls yield silently during its wall (peer_running, a ladder row each, named); rule-taggers-daily NOT returned before it",
+      "after": "2026-10-20T18:00Z"
+    }
+  ]
+}
