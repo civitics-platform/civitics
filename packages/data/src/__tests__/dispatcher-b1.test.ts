@@ -410,3 +410,77 @@ test("clone: the slot functions on fixed instants, and NULL for refused forms", 
     await c.end();
   }
 });
+
+// ---------------------------------------------------------------------------
+// (9) the rows file — FIX-1334; (10) its revert
+// ---------------------------------------------------------------------------
+
+const ROWS = () => one("_fix1334_return_rule_taggers_daily_switch_weekly_by.sql");
+const REVERT_ROWS = () => read(path.join(ROOT, "scripts", "fix1334-revert-rule-taggers-by.sql"));
+const HOLD_1311 = "parked for the dispatcher cutover (cc-232, FIX-1311); returns via job_registry";
+
+test("(9) the rows file: the weekly bridge → by 0 16 * * 2 and the daily at → by 30 6 * * *, each matched on its old literal", () => {
+  const sql = stripComments(ROWS());
+  assert.match(sql, /SET deadline_rule = 'by 0 16 \* \* 2',[\s\S]*?WHERE job = 'rule-taggers-weekly'\s+AND deadline_rule = 'stale_after 7 days';/);
+  assert.match(sql, /SET deadline_rule = 'by 30 6 \* \* \*',[\s\S]*?WHERE job = 'rule-taggers-daily'\s+AND deadline_rule = 'at 30 6 \* \* \*';/);
+  assert.match(sql, /IF v_rule = 'by 0 16 \* \* 2' THEN\s+RAISE NOTICE '\[fix1334\] job_registry rule-taggers-weekly already/);
+  assert.match(sql, /IF v_rule = 'by 30 6 \* \* \*' THEN\s+RAISE NOTICE '\[fix1334\] job_registry rule-taggers-daily already returned/);
+  // both by schedules are forms cron_next_slot reads (the B1 regexes)
+  for (const s of ["0 16 * * 2", "30 6 * * *"]) {
+    assert.ok([RE_DAILY, RE_WEEKLY, RE_MONTHLY].some((r) => new RegExp(r.slice(1, -1)).test(s)), `${s} is a supported form`);
+  }
+  // the daily's other columns = its seed row (20261014230000:210), asserted in the read-back
+  assert.match(sql, /unit_call = 'CALL public\.run_rule_taggers\(''daily''\);'\s+AND priority = 2 AND cost_class = 'io' AND cap_mb = 128 AND exclusion_group = 'tags'\s+AND budget_seconds = 7200 AND gates = '\{prod_session\}' AND NOT idempotent_refire;/);
+  assert.ok(one("_fix1307_job_registry.sql").includes(
+    "('rule-taggers-daily', 'pg_cron', 'run_rule_taggers', 'atomic', 'CALL public.run_rule_taggers(''daily'');', 2, 'at 30 6 * * *', 'io', 128, 'tags', 7200, '{prod_session}', false,"),
+    "the seed row the read-back mirrors");
+});
+
+test("(9) the rows file: phase_lock = true exactly twice, on donor-rollup-refresh and fr-vacuum-analyze, each on its current rule", () => {
+  const sql = stripComments(ROWS());
+  assert.equal((sql.match(/SET phase_lock = true/g) ?? []).length, 2);
+  assert.match(sql, /SET phase_lock = true\s+WHERE job = 'donor-rollup-refresh'\s+AND deadline_rule = 'stale_after 12 hours'\s+AND NOT phase_lock;/);
+  assert.match(sql, /SET phase_lock = true\s+WHERE job = 'fr-vacuum-analyze'\s+AND deadline_rule = 'dead_tuples > 60% of trigger \+ floor 24 hours'\s+AND NOT phase_lock;/);
+  assert.doesNotMatch(sql, /phase_due_at\s*=/, "phase_due_at is the pick's to write");
+});
+
+test("(9) the rows file: the hold row stays held — no write to rollup_watch_overrides, asserted in the read-back", () => {
+  const sql = stripComments(ROWS());
+  assert.doesNotMatch(sql, /(UPDATE|DELETE FROM|INSERT INTO)\s+public\.rollup_watch_overrides/);
+  assert.ok(sql.includes(`AND hold_reason = '${HOLD_1311}'`));
+  assert.match(sql, /WHERE pipeline = 'run_rule_taggers' AND held_since IS NOT NULL AND retired_at IS NULL\s+AND cadence_hours IS NULL/);
+});
+
+test("(9) the rows file: both rule-tagger crons inactive by NAME, no bare jobid, nothing redefined or scheduled", () => {
+  const sql = stripComments(ROWS());
+  assert.ok(sql.includes("ARRAY['rule-taggers-daily', 'rule-taggers-weekly']"));
+  assert.match(sql, /SELECT jobid, active INTO v_jobid, v_active FROM cron\.job WHERE jobname = v_name;/);
+  assert.match(sql, /IF v_active IS DISTINCT FROM false THEN\s+RAISE EXCEPTION/);
+  assert.doesNotMatch(sql, /jobid\s*(=|IN)\s*\(?\d/, "never a bare jobid");
+  assert.doesNotMatch(sql, /cron\.(alter_job|schedule|unschedule)\s*\(/);
+  assert.doesNotMatch(sql, /CREATE OR REPLACE/i);
+  assert.doesNotMatch(sql, /ILIKE '%vacuum%'/i);
+});
+
+test("(9) the rows read-back: the weekly's first slot RAISEs only with a live tick; the B1 body must be in place", () => {
+  const sql = stripComments(ROWS());
+  assert.match(sql, /v_live := EXISTS \(SELECT 1 FROM cron\.job WHERE jobname = 'dispatcher-tick' AND active\);/);
+  assert.match(sql, /IF v_live AND v_wk_next IS DISTINCT FROM '2026-10-20 16:00:00\+00'::timestamptz THEN/);
+  assert.match(sql, /IF v_live AND \(v_last IS NULL OR v_last < v_wk_prev\) THEN/, "the weekly must not read due tonight");
+  assert.match(sql, /v_src NOT LIKE '%public\.cron_prev_slot\(%' OR v_md5_d = '98660b34c17c5c537fc3d2e03d021440'/);
+  assert.match(sql, /RAISE EXCEPTION '\[fix1334\] read-back failed: %'/);
+  assert.match(sql, /RAISE NOTICE '\[fix1334\] md5 dispatch_one_unit % \/ get_dispatcher_status %'/);
+  assert.ok(fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith("_fix1329_dispatcher_b1.sql"))[0]! <
+    fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith("_fix1334_return_rule_taggers_daily_switch_weekly_by.sql"))[0]!,
+    "the body sorts (and applies) before the rows");
+});
+
+test("(10) the rows revert pairs the migration: all four rule literals, phase_lock false on the two, crons left parked", () => {
+  const sql = stripComments(REVERT_ROWS());
+  assert.match(sql, /SET deadline_rule = 'stale_after 7 days',[\s\S]*?WHERE job = 'rule-taggers-weekly'\s+AND deadline_rule = 'by 0 16 \* \* 2';/);
+  assert.match(sql, /SET deadline_rule = 'at 30 6 \* \* \*',[\s\S]*?WHERE job = 'rule-taggers-daily'\s+AND deadline_rule = 'by 30 6 \* \* \*';/);
+  assert.match(sql, /SET phase_lock = false,\s+phase_due_at = NULL\s+WHERE job IN \('donor-rollup-refresh', 'fr-vacuum-analyze'\)/);
+  assert.doesNotMatch(sql, /cron\.(alter_job|schedule|unschedule)\s*\(/);
+  assert.doesNotMatch(sql, /rollup_watch_overrides/);
+  assert.doesNotMatch(sql, /platform_dials/, "pause is the operator's, not the payload's");
+});
