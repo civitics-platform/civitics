@@ -1,0 +1,77 @@
+{
+  "cc": "238",
+  "prompt": "cc-prompt-238-mon-drop-night-read-overnight-ladder-n1-claim-fr-chase-s6-close-records.md",
+  "started_at": "2026-10-19T19:55:19Z",
+  "finished_at": "2026-10-19T20:24:00Z",
+  "head_before": "cfb29bb8",
+  "head_after": "e5eb2d10",
+  "commits": [
+    {
+      "sha": "87e2ea51",
+      "subject": "docs(fixes): cc-238 files FIX-1332"
+    },
+    {
+      "sha": "8e1995bd",
+      "subject": "chore(fixes): record FIX-1308 receipt — the s6 proving closed Mon 02:00Z: 94.8 h, 30 ± 1 ticks every hour on odd minutes, longest gap 7 m 23 s (the Fri 10-16 02:01Z exercise), 1 vercel row, tick runs 2,839 · 91.2 · 7,879 ms, 0 missed, the Sun drop night held under N1's claim (cc-238)"
+    },
+    {
+      "sha": "1054cc40",
+      "subject": "chore(fixes): record FIX-1310 receipt — the first fec_bulk nightly under the claim: run 39165849274 21:04:35→22:35:21Z, held 5 / cleared 5, exempt nightly_cron:fec, released in finally, 0 gated: prod_session rows (ec's cooldown is logged first), live_units 1 (cc-238)"
+    },
+    {
+      "sha": "ce95f26f",
+      "subject": "chore(fixes): record FIX-1321 receipt — one firing per slot Sun/Mon: fe-inbound 02:17Z ×2 (750 / 34,275 ms), vote-stats 03:33Z ×2 (17,413 / 17,342 ms); nothing under the claim, no deferred rows; the Sat/Mon canaries push no orphan:/rollup: for either (cc-238)"
+    },
+    {
+      "sha": "b206c80c",
+      "subject": "chore(fixes): record FIX-1327 receipt — the overnight ladder (3rd rungs 06:49/06:59Z, first gated: blackout 06:51Z, restart 09:01/09:03Z, cycle closed 14:47Z, FIX-1330 ladder 4 one-shots / 126 min late) and the drop night (gated: prod_session never logged — ec's cooldown first; fe slices 25,062 rows to 23:40Z, ec's cycle 22:53Z) (cc-238)"
+    },
+    {
+      "sha": "340e6fc9",
+      "subject": "chore(fixes): sync status after cc-238's records (cc-238)"
+    },
+    {
+      "sha": "e5eb2d10",
+      "subject": "docs(dispatcher): the s6 close + the drop night rows (cc-238)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1308",
+    "FIX-1310",
+    "FIX-1321",
+    "FIX-1327"
+  ],
+  "fixes_filed": [
+    "FIX-1332"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none — read-only; git records only. Every prod contact was a READ ONLY db-query --prod (including ONE EXPLAIN (ANALYZE, BUFFERS) of get_ec_crawl_health's dirty-set count, 14.3 s, under SET LOCAL statement_timeout 60s), a gh read (nightly, canary, tests), a Vercel runtime-log read, or the cancellation census (two reads). Two :main pushes (docs-only) rode Vercel's deploy hook.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1320's drop-night entry (cc-235, after 10-19T04:00Z) — NOT MET, no record (§5 row 'the fr pct term never fired'). The landing left n_dead_tup far under the 187,295 pct line: 15,224 at the Mon 02:55Z vm-probe, ≤ 15,611 by n_tup_upd since the 10-13 restart, and 0 now. The fec_bulk summary says ~2.37 M upserts, but only ~25 k FR rows changed (n_tup_ins 9,642 + n_tup_upd 15,611; fe-crawl's slices took 25,062). No pct arm happened. fr fired on its FLOOR instead: Mon 03:17Z, VACUUM 137.9 s. The owed entry stays on cc-235.",
+    "FIX-1293 — NOT MET, stays open (§5 row 'fewer than two sub-second tile ticks'). get_ec_crawl_health's tile read null on EVERY */30 roll from Sun 21:31Z to Mon 20:01Z (45 rolls, section_times.ec_crawl_health 8,177–17,018 ms); the last good roll was 21:01Z at 342 ms with 0 dirty rows. One EXPLAIN (ANALYZE, BUFFERS) of the dirty-set count against the current watermark (21:53:00.18Z) read 17,462 rows, an Index Scan on the partial index, shared hit 2,851 / read 14,185, 14,293 ms. cc-220's partial index bounds the ROWS but not the HEAP FETCHES: from_id is not in the index. Owed entry below, reworded.",
+    "FIX-1310's 'reason nightly fec_bulk weekly run <id>' line — NOT READ, recorded with the caveat. The log does not print the reason, and pipeline_state.prod_session is gone. fec_bulk ran on the FIX-903 DROP trigger ('weekly stages: skipped (weekday)', nominal slot day 10-19), so by nightly-hold.ts:182 the string was 'nightly fec_bulk drop run 39165849274 …'. exempt_writers was read off the log line, not off the pipeline_state value.",
+    "FIX-1327's 'gated: prod_session (ec-crawl / fe-crawl)' clause — no such row exists; recorded with the caveat. ec was on FIX-1330 rung 4, and cooldown is the pick's FIRST exclusion, so every tick in the claim logged 'cooldown: ec-crawl …'. fe was excluded by the prod_session gate by elimination (not live, group clear, units 1 of 2, caps 256 of 1024). It armed at 22:37:02.74Z, the first tick after the 22:35:21Z release. The other clauses of the entry were read.",
+    "The precondition read 1 expected only docs(receipts) commits after cc-237's report. main also carried cfb29bb8 'chore(audit): weekly integrity report 2026-10-19' (github-actions, docs/audits/ only). It is docs-only and was not treated as a STOP."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1320",
+      "what": "72 h (cc-235's second entry stands): every dispatched FR vacuum's unit_ms vs 10.1/234.7 s, n_dead_tup before/after each, no missed row, pct_all_visible not worse than 100.0 % — incl. the Mon 03:17Z floor (137.9 s, n_dead_tup 15,224 → 0, 99.8 % → 100.0 %) and the Tue ~03:2xZ floor (anchor = the 03:21:00.12Z reap tick)",
+      "after": "2026-10-20T03:30Z"
+    },
+    {
+      "fix": "FIX-1327",
+      "what": "72 h (cc-237's second entry stands) — with the 10-18 night's ladder episodes counted (backoff / peer_backoff / cycle_cooldown) and the drop night's rows; to date: backoff 1 + peer_backoff 1 rungs Sun 04:4x–04:5xZ, cycle_cooldown 4 + 4 one-shots (Sun 15:01–18:47Z, Mon 10:01–13:47Z, each 125.6 min late), 1 blackout silent exit Mon 05:47Z; longest unit external 1,070.7 s (Sun 10:31Z)",
+      "after": "2026-10-21T04:00Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "two sub-second get_ec_crawl_health status ticks with a landing above the EC watermark — NOT met on the 10-18 landing (null on all 45 rolls Sun 21:31Z → Mon 20:01Z at 8.2–17.0 s; the count is 17,462 heap fetches, 14,185 cold reads, 14.3 s); needs a covering fix (from_id in the partial index, or a heap-free bound) before a landing can settle it — the next is Mon's nightly ~21:00Z or the Thu 10-22 drop-class landing",
+      "after": "2026-10-20T00:30Z"
+    }
+  ]
+}
