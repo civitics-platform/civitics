@@ -221,7 +221,7 @@ test("(4) D-b: ARM writes phase_due_at only for a locked stale_after / floor arm
   assert.ok(sched > 0 && upd > sched);
   assert.match(b, /SET phase_due_at = CASE WHEN v_pick_lock AND v_pick_term IN \('stale_after', 'floor'\)\s+THEN v_now \+ v_pick_ttd END\s+WHERE job = v_pick_job\s+AND phase_due_at IS DISTINCT FROM \(CASE WHEN v_pick_lock AND v_pick_term IN \('stale_after', 'floor'\)\s+THEN v_now \+ v_pick_ttd END\);/);
   assert.equal((b.match(/UPDATE public\.job_registry/g) ?? []).length, 1, "the only registry write in the body");
-  assert.match(b, /v_pick_term   := v_term;\s+v_pick_lock   := r\.phase_lock;/);
+  assert.match(b, /v_pick_term {3}:= v_term;\s+v_pick_lock {3}:= r\.phase_lock;/);
   // the terms: by and pct never lock
   assert.match(b, /v_term := CASE WHEN v_last IS NULL THEN 'null_anchor' ELSE 'stale_after' END;/);
   assert.match(b, /v_term := 'by';/);
@@ -295,15 +295,15 @@ test("(6) D-d: the by branch reads cron_prev_slot / cron_next_slot and names the
 test("(7) D-e: every due row not armed lands in v_excluded; the final INSERT writes it; the status JSON carries last_excluded", () => {
   const src = B1();
   const b = bodyOf(src, "dispatch_one_unit");
-  assert.match(b, /v_excluded    text\[\] := '\{\}';/);
-  assert.match(b, /IF v_pick_job IS NOT NULL THEN\s+v_excluded := v_excluded \|\| \('queued \(' \|\| v_pick_job \|\| '\)'\);\s+END IF;\s+v_pick_job    := r\.job;/,
+  assert.match(b, /v_excluded {4}text\[\] := '\{\}';/);
+  assert.match(b, /IF v_pick_job IS NOT NULL THEN\s+v_excluded := v_excluded \|\| \('queued \(' \|\| v_pick_job \|\| '\)'\);\s+END IF;\s+v_pick_job {4}:= r\.job;/,
     "the row a better one displaces is queued");
   assert.match(b, /ELSE\s+v_excluded := v_excluded \|\| \('queued \(' \|\| r\.job \|\| '\)'\);\s+END IF;/, "an outranked row is queued");
   assert.match(b, /ELSE\s+v_excluded := v_excluded \|\| \(v_why \|\| ' \(' \|\| r\.job \|\| '\)'\);\s+IF v_blk_job IS NULL THEN/, "a blocked row keeps its reason");
   assert.match(b, /armed_jobid, armed_jobname, armed_for, runid_floor, excluded\)\s+VALUES\s+\([^;]*v_armed_id, v_armed_name, v_armed_for, v_floor, NULLIF\(v_excluded, '\{\}'\)\)/);
-  assert.match(b, /v_floor      := NULL;\s+v_excluded   := '\{\}';/, "an error row logs no excluded");
-  assert.match(b, /v_reason   := concat_ws\('; ',\s+CASE WHEN v_blk_job IS NOT NULL THEN v_blk_why \|\| ' \(' \|\| v_blk_job \|\| '\)' END,/, "reason keeps the single best-ranked blocker");
-  assert.match(bodyOf(src, "get_dispatcher_status"), /'last_excluded',      v_last\.excluded,/);
+  assert.match(b, /v_floor {6}:= NULL;\s+v_excluded {3}:= '\{\}';/, "an error row logs no excluded");
+  assert.match(b, /v_reason {3}:= concat_ws\('; ',\s+CASE WHEN v_blk_job IS NOT NULL THEN v_blk_why \|\| ' \(' \|\| v_blk_job \|\| '\)' END,/, "reason keeps the single best-ranked blocker");
+  assert.match(bodyOf(src, "get_dispatcher_status"), /'last_excluded', {6}v_last\.excluded,/);
   assert.match(stripComments(src), /ALTER TABLE public\.dispatch_log\s+ADD COLUMN IF NOT EXISTS excluded text\[\];/);
   const code = stripComments(src);
   assert.ok(code.indexOf("ALTER TABLE public.dispatch_log") < code.indexOf("ALTER TABLE public.job_registry"), "dispatch_log before job_registry — the tick's lock order");
