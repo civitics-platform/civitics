@@ -1756,6 +1756,7 @@ export type Database = {
           armed_jobname: string | null
           box: Json | null
           decision: string
+          excluded: string[] | null
           id: number
           job: string | null
           live_caps_mb: number | null
@@ -1773,6 +1774,7 @@ export type Database = {
           armed_jobname?: string | null
           box?: Json | null
           decision: string
+          excluded?: string[] | null
           id?: never
           job?: string | null
           live_caps_mb?: number | null
@@ -1790,6 +1792,7 @@ export type Database = {
           armed_jobname?: string | null
           box?: Json | null
           decision?: string
+          excluded?: string[] | null
           id?: never
           job?: string | null
           live_caps_mb?: number | null
@@ -4002,6 +4005,8 @@ export type Database = {
           idempotent_refire: boolean
           job: string
           note: string
+          phase_due_at: string | null
+          phase_lock: boolean
           pipeline: string | null
           priority: number
           runner: string
@@ -4019,6 +4024,8 @@ export type Database = {
           idempotent_refire?: boolean
           job: string
           note: string
+          phase_due_at?: string | null
+          phase_lock?: boolean
           pipeline?: string | null
           priority: number
           runner: string
@@ -4036,6 +4043,8 @@ export type Database = {
           idempotent_refire?: boolean
           job?: string
           note?: string
+          phase_due_at?: string | null
+          phase_lock?: boolean
           pipeline?: string | null
           priority?: number
           runner?: string
@@ -6926,6 +6935,14 @@ export type Database = {
       cron_cadence_hours: { Args: { p_schedule: string }; Returns: number }
       cron_next_daily: {
         Args: { p_now?: string; p_schedule: string }
+        Returns: string
+      }
+      cron_next_slot: {
+        Args: { p_now: string; p_schedule: string }
+        Returns: string
+      }
+      cron_prev_slot: {
+        Args: { p_now: string; p_schedule: string }
         Returns: string
       }
       derive_nh_floterials: { Args: never; Returns: number }
