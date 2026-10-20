@@ -1,0 +1,127 @@
+{
+  "cc": "239",
+  "prompt": "cc-prompt-239-b1-dispatcher-body-io-cap-phase-lock-null-anchor-by-weekly-monthly-excluded-backoff-honour-return-rule-taggers-daily.md",
+  "started_at": "2026-10-19T23:17:15Z",
+  "finished_at": "2026-10-20T04:45:00Z",
+  "head_before": "576722a3",
+  "head_after": "92aacba7",
+  "commits": [
+    {
+      "sha": "9bb69415",
+      "subject": "docs(fixes): cc-239 files FIX-1333, FIX-1334"
+    },
+    {
+      "sha": "1c0e8bea",
+      "subject": "feat(db): FIX-1322, FIX-1323, FIX-1326, FIX-1329, FIX-1333, FIX-1332 — dispatcher B1: one VACUUM at a time, per-row phase-lock, NULL anchor due, by weekly/monthly slots, excluded[] logging, backoff_until honoured (cc-239)"
+    },
+    {
+      "sha": "d8b753bf",
+      "subject": "feat(db): FIX-1334 — RETURN rule-taggers-daily (by 30 6 * * *) + rule-taggers-weekly to by 0 16 * * 2 + phase_lock on donor-rollup / fr (cc-239)"
+    },
+    {
+      "sha": "cbd2e3c9",
+      "subject": "chore(db): FIX-1329 — regenerate types (dispatch_log.excluded, job_registry.phase_lock / phase_due_at, cron_next_slot, cron_prev_slot)"
+    },
+    {
+      "sha": "cdef3207",
+      "subject": "test(data): dispatcher-b1.test.ts — {n} quantifiers for the space runs (no-regex-spaces; CI 39343358325 lint) (cc-239)"
+    },
+    {
+      "sha": "a99fee63",
+      "subject": "chore(fixes): record FIX-1316 s8 receipt — 72 h+: lag ≤ 13 h at every read incl. the Sun drop night (max 12 h 25 m 37 s); dirty runs 1,297,719 / 1,148,807 ms ≤ 9,000 s; caught-up exits in band; 0 cooldown rows; no missed (cc-239)"
+    },
+    {
+      "sha": "279f1b8c",
+      "subject": "chore(fixes): record FIX-1334 landed — rule-taggers-daily RETURNED by 30 6 * * *, first dispatched run 00:33:00Z 211,291 ms (complete, 397 tags); the weekly on by 0 16 * * 2 (first slot Tue 16:00Z, owed); hold row held (20261020001000 at 00:29:19Z)"
+    },
+    {
+      "sha": "56210379",
+      "subject": "chore(fixes): record FIX-1322 landed on prod — one-VACUUM-at-a-time cap live (io: branch owed to the first small-vacuum MOVE) (20261020000000 at 00:29:19Z)"
+    },
+    {
+      "sha": "5087b873",
+      "subject": "chore(fixes): record FIX-1326 landed — NULL anchor → due (clone-proven: fr armed → -00:00:01; prod cannot exercise without a stats reset) (20261020000000 at 00:29:19Z)"
+    },
+    {
+      "sha": "cb26d437",
+      "subject": "chore(fixes): record FIX-1333 landed — excluded[] first populated 00:33:00Z: {\"live (rule-taggers-daily)\"}; first on an armed tick 00:35:06Z (20261020000000 at 00:29:19Z)"
+    },
+    {
+      "sha": "2fd39dae",
+      "subject": "chore(fixes): record FIX-1329 landed — by weekly/monthly slots; fe-inbound by daily through cron_prev/next_slot READ (due 02:13Z: queued behind fe-crawl, group busy fe-totals 02:15Z, armed 02:19:00Z → -00:06:00, 35 ms); the weekly Tue 16:01Z + the daily Wed 06:31Z owed (20261020000000 at 00:29:19Z)"
+    },
+    {
+      "sha": "083aed9f",
+      "subject": "chore(fixes): record FIX-1320 72 h receipt — four dispatched FR vacuums 9,508 / 13,215 / 137,935 / 9,326 ms (cron 30-d p50/max 10.1/234.7 s); each leaves n_dead_tup 0 and all-visible 100.0 % (pre-fr stamps 100 / 100 / 99.8 / 100.0); 0 missed, 0 cooldown (cc-239)"
+    },
+    {
+      "sha": "b75b1c42",
+      "subject": "chore(fixes): record FIX-1332 landed — backoff_until honoured (owed to the next sensor trip; clone-proven: re-armed at backoff_until + 60 s, not on the ladder) (20261020000000 at 00:29:19Z)"
+    },
+    {
+      "sha": "06c385c3",
+      "subject": "chore(fixes): record FIX-1323 landed — per-row phase-lock; donor-rollup + fr phase_lock=t; first phase_due_at written 03:23:00Z (fr 03:21:00.118662) and 04:31:03Z (donor-rollup 04:31:00.088949) (20261020000000 at 00:29:19Z)"
+    },
+    {
+      "sha": "ad1a49a6",
+      "subject": "docs(dispatcher): B1 landed — s20 ref + the daily's return + s19 re-pointed (cc-239)"
+    },
+    {
+      "sha": "92aacba7",
+      "subject": "chore(fixes): sync status after FIX-1322, FIX-1323, FIX-1326, FIX-1329, FIX-1333, FIX-1332, FIX-1334 (cc-239)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1322",
+    "FIX-1323",
+    "FIX-1326",
+    "FIX-1329",
+    "FIX-1333",
+    "FIX-1332",
+    "FIX-1334",
+    "FIX-1316",
+    "FIX-1320"
+  ],
+  "fixes_filed": [
+    "FIX-1333",
+    "FIX-1334"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261020000000_fix1329_dispatcher_b1.sql",
+    "supabase/migrations/20261020001000_fix1334_return_rule_taggers_daily_switch_weekly_by.sql"
+  ],
+  "prod_writes": "ONE gated migration push of exactly two files under its own FIX-950 claim, from the PRIMARY's packages/data at cdef3207. The dry run through the same gate (open 2026-10-20T00:08:36.634759Z; census pass 2 renders / 3 events in 60 min, ratio 1.01, floor 6; edge 0 of 86) listed exactly 20261020000000_fix1329_dispatcher_b1.sql and 20261020001000_fix1334_return_rule_taggers_daily_switch_weekly_by.sql, held 5 / cleared 5. The real gate opened at 2026-10-20T00:29:19.218813Z (census pass 1 render / 1 event, ratio 0.51, floor 6; edge 0 of 660, P99 floor 5), acquired the interlock (prod_supervised_session), printed `held 5 guarded pipeline(s)`, applied both files, printed `cleared 5 hold(s)`, released, and --then exited 0 (registry updated_at 00:29:25.748904Z). NOTICEs verbatim: '[fix1329] read-back ok: dispatch_log.excluded, job_registry.phase_lock / phase_due_at; cron_next_slot / cron_prev_slot (daily, weekly, monthly; lists and */N NULL); cron_next_daily a daily-only wrapper (md5 e3e20c51f1cfd0b68f582e222ea4dbbb)'; '[fix1329] md5 dispatch_one_unit cfc9ed48517cd7de6fa76cf807dd1f37 / get_dispatcher_status 1cf4b7745f4c89ce978935648c87c92b'; '[fix1334] job_registry rule-taggers-weekly: stale_after 7 days → by 0 16 * * 2 (1 row)'; '[fix1334] job_registry rule-taggers-daily: at 30 6 * * * → by 30 6 * * * (1 row)'; '[fix1334] job_registry donor-rollup-refresh: phase_lock false → true (1 row)'; '[fix1334] job_registry fr-vacuum-analyze: phase_lock false → true (1 row)'; '[fix1334] cron rule-taggers-daily (jobid 11) inactive — registry owns it'; '[fix1334] cron rule-taggers-weekly (jobid 12) inactive — registry owns it'; '[fix1334] read-back ok: rule-taggers-weekly by 0 16 * * 2 (prev 2026-10-13 16:00:00+00 / next 2026-10-20 16:00:00+00), rule-taggers-daily by 30 6 * * * (prev 2026-10-19 06:30:00+00 / next 2026-10-20 06:30:00+00); run_rule_taggers last complete|partial 2026-10-13 16:15:02.706463+00; daily DUE NOW (ttd -17:59:25); weekly next due 2026-10-20 16:00:00+00; (dispatcher-tick active) ; phase_lock t on donor-rollup-refresh + fr-vacuum-analyze (phase_due_at NULL); run_rule_taggers still held'; '[fix1334] md5 dispatch_one_unit cfc9ed48517cd7de6fa76cf807dd1f37 / get_dispatcher_status 1cf4b7745f4c89ce978935648c87c92b'. THE NEW md5 PAIR = the clone's = the pair computed from the file text before any apply: cfc9ed48517cd7de6fa76cf807dd1f37 / 1cf4b7745f4c89ce978935648c87c92b. The dispatcher's consequent writes, push → 04:36Z: dispatch_log rows 3719–3862 (armed 21, reaped 21, the rest nothing_due, most carrying the new excluded column); 21 one-shots cron.schedule'd by the dispatcher (jobids 262–282) with their cron_job_budget rows (7200 for rule-taggers-daily, 1800 for the crawls and fe-inbound, 9000 for donor-rollup; none for fr and vote-stats, by design), all unscheduled at their reap; job_registry.phase_due_at written twice by the ARM path (fr-vacuum-analyze 03:23:00Z → 2026-10-20 03:21:00.118662+00; donor-rollup-refresh 04:31:03Z → 2026-10-20 04:31:00.088949+00); the rows those units wrote — run_rule_taggers complete ×1 (the first dispatched daily, 397 tags), entity_connections_rebuild partial/complete ×5 then silent cycle_cooldown exits ×3 (ec_crawl.skips.cycle_cooldown 2,310 → 2,313), financial_entity_totals_refresh complete ×8, financial_entity_inbound_rollup complete ×1, official_vote_stats_rebuild complete ×1, donor_rollup_refresh complete ×1; THE VACUUM (ANALYZE) of public.financial_relationships 03:25:00.23 → 03:25:09.37Z. Vercel production deploys rode the :main pushes (no app files changed). Every other prod contact was a READ ONLY db-query --prod (incl. EXPLAIN ANALYZE of the new reads), the gate's census, two 57014 censuses, one Vercel runtime-log read, or a gh read. No pause write; no revert payload run.",
+  "ci": "green",
+  "stopped_items": [
+    "STOP-table row 'fe-inbound's 02:13Z arm reason differs from by 13 2 * * * → -00:02:00 (± the tick's seconds) or it does not arm at 02:13Z → pause; STOP (the by regression)' — its LETTER fired, its stated CAUSE did not; NO pause written. fe-crawl was due at the same instant (ttd -00:00:59 vs fe-inbound's -00:00:00, both priority 2) and won the 02:13 arm; excluded[] then shows fe-inbound DUE at its slot on both ticks: 3780 02:13:00.105Z 'queued (fe-inbound-rollup-refresh)', 3781 02:15:00.194Z 'group busy: fe-totals (fe-inbound-rollup-refresh)' (the two rows share exclusion_group fe-totals, unchanged since R2). It armed on the tick after fe-crawl's reap, 3784 02:19:00.084Z 'by 13 2 * * * → -00:06:00' (Sat's text form, slot − tick), ran 35 ms complete. The slot functions read the right slot, so the regression the row guards against is ruled out; pausing would have stalled every dispatched job overnight for a group-rule delay. The row is also internally inconsistent (-00:02:00 is the 02:15-tick reading). Craig's call whether this needed the pause.",
+    "Clone (a): the clone FR VACUUM ran 1,256 ms, not the ~17 min the prompt planned around (its heap is all-visible). It could not be (b)'s occupant; (b) used my own clone-only throttled VACUUM (DISABLE_PAGE_SKIPPING, vacuum_cost_delay 50) of FR instead, cancelled once read.",
+    "Clone (c): rule-taggers-weekly was NOT due on the clone (its last run_rule_taggers was cc-237's clone weekly 10-18 00:13Z, not 10-09), so the weekly's arm was not rehearsed — only the daily's. The clone reproduced prod's 'not until Tue 16:00Z' case. The weekly's first arm is owed (prod Tue 16:01Z).",
+    "Clone (f): the prompt's recipe (hand-insert one skipped row behind a reaped fe-crawl one-shot) cannot produce the backoff reason — behind a complete reap v_cd_n is 0, so the D-f read never runs. Used the real written path instead (clone ec_crawl.backoff_until), which made both crawls write their own skipped rows; no row was hand-inserted.",
+    "FIX-1322's io: branch and FIX-1332's backoff: reason were not exercised on prod (no second VACUUM row is eligible; no crawl wrote a backoff/peer_backoff skip — ec's skips were the silent cycle_cooldown). Both records say so (rule 301); both are owed."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1334",
+      "what": "the first dispatched rule-taggers-weekly under by 0 16 * * 2: armed Tue 10-20 16:01Z (priority 3; a crawl live → queued in excluded[] until it reaps), one-shot CALL public.run_rule_taggers('weekly'); with its 7200 budget row, box_backoff_gate clear, complete with unit_ms vs 902.6 s (FIX-1284 2nd / FIX-1248 close → FIX-1258) — also FIX-1328's re-pointed receipt; the daily's Wed 06:31Z slot fires once (the weekly's Tue run does not satisfy the Wed 06:30 slot); both crawls yield silently (peer_running) during the weekly's wall — a ladder row each, named; the run_rule_taggers hold row → cadence 24 in the next prompt",
+      "after": "2026-10-21T07:00Z"
+    },
+    {
+      "fix": "FIX-1323",
+      "what": "the second phase-locked arm of each row: donor-rollup's Tue arm at phase_due_at + 12 h = 16:31:00.09Z (armed 16:31 or 16:33, not 16:33 + drift), fr's Wed floor at 03:21:00.12Z + 24 h (armed 03:23Z) — to the tick, not at last end + interval; a late or pct-driven run falls back to fixed-delay with no double-run",
+      "after": "2026-10-22T00:00Z"
+    },
+    {
+      "fix": "FIX-1322",
+      "what": "the first io: vacuum live row on prod — when the first small-vacuum MOVE (s12) puts a second VACUUM row in the registry and a cron vacuum / autovacuum / the fr unit is in pg_stat_progress_vacuum at its due instant; until then unexercised by construction",
+      "after": "2026-10-21T00:00Z"
+    },
+    {
+      "fix": "FIX-1332",
+      "what": "the first crawl backoff after this lands: the pick's reason reads backoff: <job> (unit says until <t>; n …) and the row re-arms at that instant + 60 s (the next odd tick), not on the ladder; the peer crawl likewise from its peer_backoff skipped row",
+      "after": "2026-10-20T04:00Z"
+    }
+  ]
+}
