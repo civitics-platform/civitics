@@ -169,6 +169,12 @@ Precedence, and the reason for it:
    then `inactive`) because they RETURNED through the registry (FIX-1327,
    FIX-1328, cc-237) and the cron rows stay parked; their dispatched firings
    appear in §9's Dispatched list as `disp-<job>-<epoch>` one-shots, `no-band`.
+   `rule-taggers-daily` joins them from 2026-10-20: it RETURNED as `by 30 6 * *
+   *` (FIX-1334, cc-239) with its cron row still parked, so the cron row reads
+   `inactive` once its pre-park firings age out, and its dispatched firings
+   appear in §9's Dispatched list — **band-judged, not `no-band`**:
+   `dispatchedFirings()` keys `bands.json` on the registry job name, and
+   `rule-taggers-daily` has a band (183–260 s, the merge regime).
 5. **`missing`** — an **active** job with no firing in the lookback window.
    Reserved for that: four prod jobs are permanently disabled
    (`entity-connection-stats-rebuild`, `financial-entity-totals-incremental`,

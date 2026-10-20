@@ -210,6 +210,12 @@ CC reads this before starting. Each line is a rule that has cost a real session.
 - Ad-hoc SQL: `node scripts/db-query.mjs --local|--prod "…"`. `--prod` is
   read-only by construction.
 - Never destructive SQL against Pro without explicit confirmation in the prompt.
+- **The dispatcher's body pair** — what a dispatcher prompt's read 3 pins, from
+  cc-240 on (2026-10-20, B1 `20261020000000`, cc-239): `md5(prosrc)` of
+  `dispatch_one_unit` **`cfc9ed48517cd7de6fa76cf807dd1f37`** /
+  `get_dispatcher_status` **`1cf4b7745f4c89ce978935648c87c92b`**. The M1 pair
+  `98660b34c17c5c537fc3d2e03d021440` / `4c9d0eb0cd85f9f46b38a9947cc94785` is
+  now only the body revert's target (`scripts/fix1329-revert-dispatcher-b1.sql`).
 - A script that bulk-rewrites a table ends with `VACUUM (ANALYZE)` on what it
   rewrote.
 - No heavy prod rebuilds or MV refreshes during Craig's active hours.
