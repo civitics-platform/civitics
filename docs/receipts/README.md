@@ -175,6 +175,14 @@ Precedence, and the reason for it:
    appear in §9's Dispatched list — **band-judged, not `no-band`**:
    `dispatchedFirings()` keys `bands.json` on the registry job name, and
    `rule-taggers-daily` has a band (183–260 s, the merge regime).
+   `votes-vacuum-analyze` and `xsr-vacuum-analyze` join the MOVED group from
+   2026-10-21 (FIX-1335, cc-240), the same way fr did. Their weekly cron rows
+   are parked and read `**no**`, still band-comparing their pre-park firings
+   for 14 days. Their firings become `disp-<job>-<epoch>` one-shots in
+   §9's Dispatched list. **votes is band-judged** (bands.json has
+   `votes-vacuum-analyze`, 0–29 s). **xsr is `no-band`** until a first
+   dispatched wall seeds one. `officials-vacuum-analyze` was NOT moved (its
+   1,000-tuple trigger, cc-240) and keeps its Mon cron row.
 5. **`missing`** — an **active** job with no firing in the lookback window.
    Reserved for that: four prod jobs are permanently disabled
    (`entity-connection-stats-rebuild`, `financial-entity-totals-incremental`,
