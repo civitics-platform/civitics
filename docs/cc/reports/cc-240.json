@@ -1,0 +1,92 @@
+{
+  "cc": "240",
+  "prompt": "cc-prompt-240-v2-move-votes-officials-xsr-vacuums-dead-tuples-floor-7d-weekly-receipt-1248-close-run-rule-taggers-hold-to-cadence.md",
+  "started_at": "2026-10-20T23:18:28Z",
+  "finished_at": "2026-10-21T04:10:00Z",
+  "head_before": "bd65104d",
+  "head_after": "44dc0ed0",
+  "commits": [
+    {
+      "sha": "ead68d5b",
+      "subject": "docs(fixes): cc-240 files FIX-1335"
+    },
+    {
+      "sha": "3002a3e7",
+      "subject": "feat(db): FIX-1335 — V2: MOVE votes/xsr vacuums to dead_tuples > 60% of trigger + floor 7 days; crons parked by name (cc-240)"
+    },
+    {
+      "sha": "479dbc32",
+      "subject": "chore(fixes): record FIX-1335 landed on prod — votes / xsr vacuums MOVED to dead_tuples > 60% of trigger + floor 7 days; crons 56 / 57 parked by name; first dispatched firings expected Sat 10-24 02:39→02:41Z and Tue 10-27 01:43→01:47Z (20261021000000 at 00:33:29Z)"
+    },
+    {
+      "sha": "c3011ff3",
+      "subject": "chore(fixes): record FIX-1328 receipt — the first dispatched rule-taggers-weekly under by 0 16 * * 2: armed 16:01:00.095Z (jobid 308) / unit 16:03:00Z 493,429 ms complete (size_tags scan 63.4 / delete 55.7 / insert 114.8 s), budget 7200, box clear; the bridge never fired (cc-240)"
+    },
+    {
+      "sha": "15ac0acd",
+      "subject": "chore(fixes): record FIX-1248 closed on the second in-band weekly size merge at work_mem 64MB — 10-13 902.6 s / 10-20 493.4 s, size_tags phase_seconds 76.0/57.0/519.5 → 63.4/55.7/114.8, box clear both Tuesdays; FIX-1258's pg_repack is now actionable (cc-240)"
+    },
+    {
+      "sha": "f5a18cd6",
+      "subject": "chore(fixes): record FIX-1284 second receipt — jobid 12's successor, the dispatched weekly 10-20 16:03Z 493.4 s at 64MB, no wedge, no swap storm (box-health-probe 17/17 at 15:58–16:15Z, watchdogs 9/9, 0 startup timeouts) (cc-240)"
+    },
+    {
+      "sha": "82aef29d",
+      "subject": "chore(fixes): record FIX-1327 72 h receipt — 128 ec / 130 fe dispatched units since 10-18 00:33Z, 0 not succeeded, 0 missed / error; unit_ms p50/max ec 30.6 / 1,070.7 s (cron 0.2 / 6,952.2), fe 0.10 / 153.0 s (cron 0.2 / 1,953.0); ladder rungs ec 24 (3 backoff on 10-18, the rest the silent cycle_cooldown — FIX-1330), fe 3 (peer_backoff on 10-18) (cc-240)"
+    },
+    {
+      "sha": "c26195c4",
+      "subject": "chore(fixes): sync status after FIX-1335, FIX-1248 (cc-240)"
+    },
+    {
+      "sha": "44dc0ed0",
+      "subject": "docs(dispatcher): V2 landed — s12 split (s12a the two MOVEs ref FIX-1335, s12b officials + dpr + the dailies/weeklies/sweeps + R1b), s21's hold row NOT converted, the s6 row for tonight (cc-240)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1335",
+    "FIX-1328",
+    "FIX-1248",
+    "FIX-1284",
+    "FIX-1327"
+  ],
+  "fixes_filed": [
+    "FIX-1335"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261021000000_fix1335_move_votes_xsr_vacuums.sql"
+  ],
+  "prod_writes": "ONE gated migration push of exactly ONE file under its own FIX-950 claim, from the PRIMARY's packages/data at 3002a3e7. The dry run through the same gate (open 2026-10-21T00:17:09.090693Z; census pass 0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 247, P99 floor 3) listed exactly 20261021000000_fix1335_move_votes_xsr_vacuums.sql, held 5 / cleared 5. The real gate opened at 2026-10-21T00:33:28.986562Z (census pass 0 renders / 0 events, ratio 0.00, floor 6; edge 0 of 1802 = 0.00 %, P99 floor 10 at p0 0.23 %), acquired the interlock (prod_supervised_session), printed held 5 guarded pipeline(s), applied the file, printed cleared 5 hold(s), released, and --then exited 0 (registry updated_at 00:33:33.905633Z). NOTICEs verbatim: '[fix1335] job_registry votes-vacuum-analyze: at 37 2 * * 6 → dead_tuples > 60% of trigger + floor 7 days, gates {prod_session} (1 row)'; '[fix1335] job_registry xsr-vacuum-analyze: at 41 1 * * 2 → dead_tuples > 60% of trigger + floor 7 days, gates {prod_session} (1 row)'; '[fix1335] cron votes-vacuum-analyze (jobid 56) parked — the registry owns it'; '[fix1335] cron xsr-vacuum-analyze (jobid 57) parked — the registry owns it'; '[fix1335] read-back ok: votes-vacuum-analyze + xsr-vacuum-analyze dead_tuples > 60% of trigger + floor 7 days (pct 60, floor 7 days), gates {prod_session}, targets public.votes / public.external_source_refs, both crons inactive; officials + dpr unmoved; votes-vacuum-analyze: trigger 49266.8, 60% line 29560, n_dead_tup 0 → floor due 2026-10-24 02:37:00.08063+00; xsr-vacuum-analyze: trigger 30596.6, 60% line 18358, n_dead_tup 651 → floor due 2026-10-27 01:41:01.774633+00'; '[fix1335] md5 dispatch_one_unit cfc9ed48517cd7de6fa76cf807dd1f37 / get_dispatcher_status 1cf4b7745f4c89ce978935648c87c92b'. The dispatcher's consequent writes, push → 04:02Z: dispatch_log rows 4511–4628 (armed 14, reaped 14, nothing_due 90); 14 one-shots cron.schedule'd by the dispatcher (jobids 332–345) with cron_job_budget rows for the CALL units (none for fr), all unscheduled at their reap; job_registry.phase_due_at written once by the ARM path (fr-vacuum-analyze 03:23:00Z → 2026-10-21 03:21:00.118662+00); the rows those units wrote — financial_entity_totals_refresh complete ×7, entity_connections_rebuild complete ×1 plus three silent cycle_cooldown exits (ec_crawl.skips.cycle_cooldown 2,322 → 2,325), financial_entity_inbound_rollup complete ×1, official_vote_stats_rebuild complete ×1; THE VACUUM (ANALYZE) of public.financial_relationships 03:25:00.23Z, 9,362 ms. Vercel production deploys rode the :main pushes (no app files changed). Every other prod contact was a READ ONLY db-query --prod (incl. one EXPLAIN ANALYZE), the gate's census, two 57014 censuses, one Vercel runtime-log read, or a gh read. No pause write; no revert payload run; no hand VACUUM on prod.",
+  "ci": "green",
+  "stopped_items": [
+    "officials-vacuum-analyze NOT moved (Phase 0 read 5; the tree contradicted the prompt, and Craig chose 'move votes + xsr only' when asked). Its reloptions are autovacuum_vacuum_threshold=1000, autovacuum_vacuum_scale_factor=0.0, so the pick's trigger is 1,000 and the 60 % line is 600 dead tuples. Every nightly crosses it on routine traffic: congress_officials 539 + openstates_bulk_people 7,417 updates at 21:01–21:04Z on 10-20; 75,145 updates and 26 autovacuums in the 7.92 d since the stats epoch; last_autovacuum 21:05:00Z. Under the prompt's rule the dispatcher would VACUUM officials at ~21:07Z every night, just after autovacuum: the 'second pass on top of autovacuum' D-a says the dispatched VACUUM is not. Its cron (jobid 39, Mon 01:30Z) stays active. Its rule needs its own design.",
+    "Item 2 (the run_rule_taggers hold row → cadence_hours 24) NOT written: read 7's STOP fired. check_pipeline_rate_regression() on prod at 23:2xZ: recent_min 6.6502 s/1k vs threshold 4.4318 (P90 2.2159 × 2), worst_case_ratio 3.00, sustained_regression, escalates true. The prompt's premise that the canary's last 3 runs are all post-park does not hold. The 06:33Z daily wrote 0 rows and the RPC drops zero-work runs, so the window is {10-20 16:03 weekly 23.53, 10-20 00:33 daily 532.12, 10-13 16:00 PRE-PARK weekly 6.65} s/1k. Once the pre-park run rolls off, the post-merge runs alone read far above the threshold, so converting the hold would re-escalate rate_regression:run_rule_taggers. The push carried one file.",
+    "Clone (a): the moved rows did not arm on consecutive calls as the prompt planned. The clone's higher-priority rows were all overdue (fr's floor, both crawls, donor-rollup, fe-inbound, vote-stats, both rule-taggers), so votes (00:00:40Z) and xsr (00:04:21Z) armed after them, through a 1-minute manual loop. The prompt's expected first arm (officials, by name order) is moot.",
+    "Read 4's column list names source / memory_mb / eligible, which job_registry does not have (it has runner / cap_mb / idempotent_refire; eligibility is computed by get_dispatcher_status). Read with SELECT *; no effect."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1335",
+      "what": "the first dispatched firing of each moved row in band and alone: votes-vacuum-analyze due 2026-10-24 02:37:00.08Z → armed 02:39, VACUUM 02:41Z (band 0–29 s; cron walls 24.80 / 2.90 / 2.71 s), xsr-vacuum-analyze due 2026-10-27 01:41:01.77Z → armed 01:43, VACUUM 01:47Z (no band; cron 2.50 s) — or earlier on a pct trip after a landing — each succeeded: VACUUM, unit_ms vs its cron history, last_vacuum moved, no other VACUUM in pg_stat_progress_vacuum at its start, the floor re-anchored to the reap tick",
+      "after": "2026-10-24T03:00Z"
+    },
+    {
+      "fix": "FIX-1322",
+      "what": "the first io: vacuum live (…) row on prod — possible by construction now (three bare dead_tuples rows: fr, votes, xsr): a moved row due while fr's 03:2xZ VACUUM, a cron vacuum (dpr 02:00 Sun/Wed, officials Mon 01:30, ec 04:30, fe 04:50, the 11/17 series) or an autovacuum is in pg_stat_progress_vacuum; read the row, the reason text and that the excluded row armed on the next free tick (clone-proven both ways tonight)",
+      "after": "2026-10-21T04:00Z"
+    },
+    {
+      "fix": "FIX-1334",
+      "what": "unchanged from cc-239: the Wed 06:31Z daily slot after the weekly fires once (by 30 6 * * *), both crawls' peer_running yields named; Item 2 did NOT ship, so the run_rule_taggers hold row stays held and the Wed 05:00Z canary keeps rate_regression:run_rule_taggers at report tier",
+      "after": "2026-10-21T07:00Z"
+    },
+    {
+      "fix": "FIX-1323",
+      "what": "both second locked arms, READ tonight and not recorded (its floor is 10-22): donor-rollup Tue 16:33:00.165Z with phase_due_at 2026-10-20 16:31:00.088949 (old due + 12 h exactly); fr Wed 03:23:00.091Z → -00:01:59 with phase_due_at 2026-10-21 03:21:00.118662 (old due + 24 h exactly; the 03:21:00.080Z tick read next: fr-vacuum-analyze in 00:00:00); the record rides the next prompt",
+      "after": "2026-10-22T00:00Z"
+    }
+  ]
+}
