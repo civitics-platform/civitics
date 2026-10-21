@@ -795,6 +795,9 @@ test("local (M2/M3/FIX-1293/FIX-1296): each live body is its file's; proconfig N
   if (!c) return;
   try {
     for (const b of BODIES2) {
+      // 20261022000000 (cc-241) replaced this body; its live pin is
+      // ec-crawl-health-1293.test.ts. The text checks above still read this file.
+      if (b.name === "get_ec_crawl_health") continue;
       type Row = { s: string; cfg: string[] | null };
       const res = await c.query<Row>(
         `SELECT prosrc AS s, proconfig AS cfg FROM pg_proc WHERE oid = '${b.regproc}'::regprocedure`);
