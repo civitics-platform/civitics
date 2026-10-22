@@ -1,0 +1,57 @@
+{
+  "cc": "241",
+  "prompt": "cc-prompt-241-fix1293-ec-crawl-health-tile-reads-the-crawls-staged-cycle-no-fr-count-wed-records-1334-1323.md",
+  "started_at": "2026-10-21T23:47:21Z",
+  "finished_at": "2026-10-22T03:30:08Z",
+  "head_before": "4bd1fba9",
+  "head_after": "9a1ee2ed",
+  "commits": [
+    {
+      "sha": "c59d36d3",
+      "subject": "fix(db): FIX-1293 — get_ec_crawl_health reads the crawl's staged cycle (pipeline_state entity_connections_donations.cycle) instead of counting financial_relationships on every status roll (cc-241)"
+    },
+    {
+      "sha": "3f01e4e6",
+      "subject": "chore(fixes): record FIX-1323 receipt — both second locked arms to the microsecond: donor-rollup Tue 16:33Z (phase_due_at 16:31:00.088949 = +12 h), fr Wed 03:23Z (phase_due_at 2026-10-21 03:21:00.118662 = +24 h); no drift, no double-run (cc-241)"
+    },
+    {
+      "sha": "ac86e680",
+      "subject": "chore(fixes): sync status after FIX-1293, FIX-1323 (cc-241)"
+    },
+    {
+      "sha": "9a1ee2ed",
+      "subject": "docs(dispatcher): FIX-1293 landed — the tile reads the staged cycle; the s6 row for tonight (cc-241)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1293",
+    "FIX-1323"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261022000000_fix1293_ec_crawl_health_reads_staged_cycle.sql"
+  ],
+  "prod_writes": "ONE gated migration push of exactly ONE file under its own FIX-950 claim, from the PRIMARY's packages/data at c59d36d3. The dry run through the same gate (open 2026-10-22T00:03:05.009754Z; census pass 0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 398, P99 floor 4) listed exactly 20261022000000_fix1293_ec_crawl_health_reads_staged_cycle.sql, held 5 / cleared 5. The real gate opened at 2026-10-22T00:32:00.646935Z (census pass 0 renders / 0 events, ratio 0.00, floor 6; edge 0 of 166 = 0.00 %, P99 floor 2 at p0 0.23 %), acquired the interlock (prod_supervised_session), printed held 5 guarded pipeline(s), applied the file, printed cleared 5 hold(s), released, and --then exited 0 (00:32:07Z). NOTICEs verbatim: '[fix1293] read-back ok: dirty_set {\\\"rows\\\": null, \\\"capped\\\": false, \\\"donors\\\": 0, \\\"source\\\": \\\"caught_up\\\", \\\"since_at\\\": null, \\\"staged_at\\\": null, \\\"target_at\\\": null}'; '[fix1293] watermark {\\\"age_days\\\": 3.08, \\\"last_indexed_at\\\": \\\"2026-10-18T22:31:59.419827+00:00\\\"} signal ok'; '[fix1293] md5 get_ec_crawl_health e6741c018c5b771343f2fb11e015a341'. The function is a plain SELECT: the read-back's call wrote nothing. No index built or dropped, no --call, the revert payload not run. Vercel production deploys rode the :main pushes (no app files changed). Every other prod contact was a READ ONLY db-query --prod (incl. two EXPLAIN (ANALYZE, BUFFERS) under SET LOCAL statement_timeout = '60s'), the gate's census, two 57014 censuses, one Vercel runtime-log read, or a gh read.",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1334 NOT recorded (D-e): read 7b is not met. The run_rule_taggers hold row is still held (held true, jobid 11 inactive, hold_reason 'parked for the dispatcher cutover (cc-232, FIX-1311); returns via job_registry'), because cc-240 skipped its Item 2. Read 7a is met (the Wed 06:31Z daily). The canary half stays owed.",
+    "FIX-1293 prod record NOT written: Item 4's landing condition does not hold. FR's donation MAX(updated_at) = 2026-10-18 22:31:59.419827 = the EC watermark exactly (FIX-1297 MAX probe, 4 hits, Index Only Scan Backward, 0 heap fetches). The Tue and Wed nightlies wrote no donation rows, so tonight's two rolls are caught-up rolls, not the receipt. FIX-1293 is closed local-only and the prod receipt stays owed.",
+    "Item 4's '< 1 s' expectation is not met by the 'next two rolls' as a pair: 01:01:40Z 393 ms, then 01:31:21Z 1,293 ms. The later rolls read 244 / 344 / 411 ms, and all five are non-null with source caught_up. Part A's STOP keys on the FIRST roll, so it did not fire and the revert was not run. The 01:31Z call took 933 ms in-DB (pgss delta: 6,021 hits, 0 reads). The residual is the firings joins' two scans of cron.job_run_details (103k rows, 2,178 pages, pkey index only), not FR.",
+    "Clone rehearsal (c): LOAD 'auto_explain' is refused on the clone ('access to library \\\"auto_explain\\\" is not allowed'), so the nested plans are not printed. 'No scan of financial_relationships' is proven with pg_stat_xact_user_tables in the same transaction instead: 0 seq / 0 idx scans for the new body, against 6 idx scans / 44,916 tuple fetches for the old one."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1293",
+      "what": "two consecutive status rolls with dirty_set non-null, source crawl_cycle and its staged_at, WHILE a landing sits above the EC watermark (MAX(updated_at) on the FIX-1297 partial > entity_connections_donations.last_indexed_at), section_times.ec_crawl_health under service_role's 8 s on both (the prompt's < 1 s bar: tonight's caught-up 01:31Z roll read 1,293 ms on the cron.job_run_details residual). Tonight the condition did not hold: FR's donation MAX = the watermark. The Tue/Wed nightlies wrote no donation rows; the last landing was the Sun 10-18 drop night. So the Thu 21:00Z nightly's 21:31Z / 22:01Z rolls carry it only if Thu lands donation rows, else the next FEC landing does",
+      "after": "2026-10-22T22:30Z"
+    },
+    {
+      "fix": "FIX-1334",
+      "what": "read 7b found the hold row still held (cc-240 skipped Item 2): the first 05:00Z canary after the run_rule_taggers hold row converts to cadence 24 — rollup registry 0 orphaned, no orphan:/rollup:/escalate line for run_rule_taggers. The conversion itself waits on a rate metric that fits the merge (cc-240: FIX-1317 or its own FIX)",
+      "after": "2026-10-23T05:30Z"
+    }
+  ]
+}
