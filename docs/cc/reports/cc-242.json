@@ -2,9 +2,9 @@
   "cc": "242",
   "prompt": "cc-prompt-242-context-load-and-io-budget-census-read-only.md",
   "started_at": "2026-10-23T00:44:18Z",
-  "finished_at": "2026-10-23T01:25:00Z",
+  "finished_at": "2026-10-23T01:20:00Z",
   "head_before": "2ba45100",
-  "head_after": "7aa138ce",
+  "head_after": "b12806eb",
   "commits": [
     {
       "sha": "f3ec1746",
@@ -17,6 +17,10 @@
     {
       "sha": "7aa138ce",
       "subject": "[skip vercel] docs(audit): cc-242 census run window (00:44Z to 01:15Z)"
+    },
+    {
+      "sha": "b12806eb",
+      "subject": "[skip vercel] docs(audit): cc-242 — FIX-1341's premise superseded by cc-243's N2 migration"
     }
   ],
   "fixes_closed": [],
