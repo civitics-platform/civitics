@@ -55,6 +55,7 @@
     "db-query:test": "node scripts/test-db-query.mjs",
     "rederive:budget:test": "node scripts/test-rederive-budget.mjs",
     "hook:test": "node scripts/test-pre-push-hook.mjs",
+    "fix1258:test": "node scripts/test-fix1258-repack.mjs",
     "check:hit-test": "node scripts/hit-test-probe.mjs",
     "db:push:prod": "node scripts/db-push-prod.mjs",
     "db:clone:prod": "node scripts/db-clone-prod.mjs"

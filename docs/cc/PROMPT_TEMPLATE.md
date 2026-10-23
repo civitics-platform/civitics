@@ -333,7 +333,7 @@ passing, and both failures the clock rather than the data.
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `board:test`,
   `session:worktree:test`, `drain:test`, `check:proconfig:test`,
   `check:no-store-routes:test`, `check:render-timeouts:test`, `check:job-registry:test`,
-  `check:doc-links:test`, `session:held:test`, `hook:test`). `cc:verify:test`
+  `check:doc-links:test`, `session:held:test`, `hook:test`, `fix1258:test`). `cc:verify:test`
   also covers `cc:prompt`; `fixes:test` also runs `session:held:test`.
   `board:test` (which also runs the phase-goals pin) and `pnpm check:doc-links`
   run in `fixes-integrity.yml` on every push (FIX-1243), as do

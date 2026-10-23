@@ -262,6 +262,21 @@ The first re-base was `rule-taggers-daily` in cc-169 (FIX-1178). The daily's
 DELETE-all + INSERT-all rewrite (713–858 s) became a scan/delete/insert merge on
 2026-09-23. Seven merge runs at 203–226 s gave a band of 183–260 s.
 
+**`entity_tags` was compacted on 2026-10-24 UTC** (FIX-1258, cc-244). It was
+repacked once with pg_repack, inside the Sat 00:30–02:20Z claim, and it was a
+physical rewrite, not a mechanism change. The heap had been about 1.72× its
+packed size, the residue of the weekly DELETE-all + INSERT-all that FIX-1248's
+merge retired. The exact instants and the before → after sizes are in
+FIX-1258's prod record in `done.log`. Every `entity_tags` scan gets cheaper
+after it, so a `rule-taggers-daily` / `rule-taggers-weekly` run (their `scan`
+phase above all) or any `entity_tags`-bound wall measured across that date
+straddles it. A later band re-cut for either tagger cites this date and takes
+its runs from after it only. The last pre-compaction readings were
+`rule-taggers-daily` on 10-23 (`scan` 173.7 s of 209.3 s, `data_sync_log`) and
+`rule-taggers-weekly` on 10-20 (`scan` 63.4 s of 493.4 s). §2 shows both
+taggers' last *pg_cron* firings (10-13), because they are dispatched now. Read
+the dispatched runs from §9 or `data_sync_log`, not §2.
+
 ---
 
 ## Running it by hand
