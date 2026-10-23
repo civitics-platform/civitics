@@ -13,6 +13,10 @@
       "schedule": "0 21 * * *"
     },
     {
+      "path": "/api/cron/gha-dispatch/nightly-request",
+      "schedule": "*/5 21-23 * * *"
+    },
+    {
       "path": "/api/cron/gha-dispatch/sync-canary-check",
       "schedule": "0 5 * * *"
     },

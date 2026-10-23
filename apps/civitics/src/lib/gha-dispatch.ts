@@ -39,6 +39,16 @@ export interface DispatchTarget {
   stem: string;
   /** Exactly what the workflow's `workflow_dispatch.inputs` declares. */
   inputs: Record<string, string>;
+  /**
+   * N2 (FIX-1336, cc-243) — when the route may fire. Absent: every call (the
+   * FIX-1218 behaviour). `legacy-registry`: only while the stem's job_registry
+   * row still reads `at …` — once the dispatcher owns the START the legacy
+   * slot answers `legacy_off` and stamps nothing (the DB is the switch; an
+   * unreadable row fails OPEN, because the preflight de-duplicates).
+   * `request`: only on the dispatcher's unconsumed request stamp
+   * (`pipeline_state.gha_dispatch_request_<stem>`), which it then consumes.
+   */
+  gate?: "legacy-registry" | "request";
 }
 
 /**
@@ -57,6 +67,13 @@ export interface DispatchTarget {
  * the NEXT UTC day, exactly as a schedule event does (FIX-1163), and
  * `dispatched_by: "vercel-cron"` so its preflight de-duplicates against the
  * late scheduled fallback. The other two declare no inputs and read none.
+ *
+ * N2 (FIX-1336, cc-243): the nightly's START is a dispatcher unit. Its
+ * registry row reads `by 0 21 * * *` (window 120 min); the dispatcher's ARM
+ * writes a request stamp and `nightly-request` (Vercel, every 5 min 21-23 UTC)
+ * fires on it with `dispatched_by: "dispatcher"` — same workflow, same
+ * `gha_dispatch_nightly` stamp. The legacy `nightly` slot stays in vercel.json
+ * until the first dispatched nightly has run, and goes quiet on its own.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
@@ -65,6 +82,16 @@ export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new M
       workflow: "nightly.yml",
       stem: "nightly",
       inputs: { slot_offset_hours: "3", dispatched_by: "vercel-cron" },
+      gate: "legacy-registry",
+    },
+  ],
+  [
+    "nightly-request",
+    {
+      workflow: "nightly.yml",
+      stem: "nightly",
+      inputs: { slot_offset_hours: "3", dispatched_by: "dispatcher" },
+      gate: "request",
     },
   ],
   ["sync-canary-check", { workflow: "sync-canary-check.yml", stem: "sync-canary-check", inputs: {} }],
@@ -189,6 +216,116 @@ export async function dispatchWorkflow(
       elapsed_ms: Date.now() - t0,
     };
   }
+}
+
+// ── N2 (FIX-1336) — the gated call, end to end ──────────────────────────────
+
+/** `pipeline_state.gha_dispatch_request_<stem>`, as the dispatcher's ARM writes it. */
+export interface GhaDispatchRequest {
+  job?: string;
+  requested_at?: string | null;
+  consumed_at?: string | null;
+  reaped_at?: string | null;
+  dispatch_log_id?: number | null;
+}
+
+/** A request older than this is never fired: the dispatcher reaps a missed one at +20 min. */
+export const REQUEST_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+/** Everything the route reaches outside this module, injected so the tests mock it. */
+export interface GhaDispatchDeps {
+  /** `job_registry.deadline_rule` for the stem's row; `rule: null` when the row is absent. */
+  readDeadlineRule: (job: string) => Promise<{ rule: string | null; error: string | null }>;
+  /** The stem's request stamp; `value: null` when there is none. */
+  readRequest: (stem: string) => Promise<{ value: GhaDispatchRequest | null; error: string | null }>;
+  /** record_gha_dispatch(); `at` is the DB clock it stamped. */
+  recordDispatch: (p: { [k: string]: string | number | null }) => Promise<{ at: string | null; error: string | null }>;
+  /** consume_gha_dispatch_request(). */
+  consumeRequest: (stem: string, outcome: DispatchStatus, http: number | null) => Promise<{ error: string | null }>;
+  dispatch: (target: DispatchTarget) => Promise<DispatchOutcome>;
+  now?: () => number;
+}
+
+export interface GhaDispatchResult {
+  body: Record<string, unknown>;
+  /** The one log line, and whether it is an error line. */
+  line: string;
+  error: boolean;
+}
+
+/**
+ * One call of /api/cron/gha-dispatch/<stem>: the gate, the dispatch, the
+ * stamp, and (request gate) the consume. Never throws for a dependency that
+ * reports an error; the route still answers 200 (FIX-1218).
+ */
+export async function runGhaDispatch(target: DispatchTarget, deps: GhaDispatchDeps): Promise<GhaDispatchResult> {
+  const now = deps.now ?? Date.now;
+  const t0 = now();
+  let registryError: string | null = null;
+
+  if (target.gate === "legacy-registry") {
+    const { rule, error } = await deps.readDeadlineRule(target.stem);
+    if (error === null && rule !== null && !rule.startsWith("at ")) {
+      const line = `[cron/gha-dispatch] workflow=${target.workflow} outcome=legacy_off deadline_rule=${JSON.stringify(rule)} (the dispatcher owns the start; no dispatch, no stamp)`;
+      return { body: { ok: true, outcome: "legacy_off", workflow: target.workflow, deadline_rule: rule }, line, error: false };
+    }
+    registryError = error; // unreadable → fail OPEN: the legacy slot fires, the preflight de-duplicates
+  }
+
+  if (target.gate === "request") {
+    const { value, error } = await deps.readRequest(target.stem);
+    if (error !== null) {
+      const line = `[cron/gha-dispatch] workflow=${target.workflow} outcome=request_unreadable error=${JSON.stringify(error)} (no dispatch; the next 5-minute call retries)`;
+      return { body: { ok: false, outcome: "request_unreadable", workflow: target.workflow, error }, line, error: true };
+    }
+    const requestedAt = value?.requested_at ? Date.parse(value.requested_at) : NaN;
+    if (value === null || value.consumed_at || value.reaped_at || Number.isNaN(requestedAt)) {
+      const line = `[cron/gha-dispatch] workflow=${target.workflow} outcome=no_request`;
+      return { body: { ok: true, outcome: "no_request", workflow: target.workflow }, line, error: false };
+    }
+    if (now() - requestedAt > REQUEST_MAX_AGE_MS) {
+      const line = `[cron/gha-dispatch] workflow=${target.workflow} outcome=stale_request requested_at=${value.requested_at}`;
+      return { body: { ok: true, outcome: "stale_request", workflow: target.workflow, requested_at: value.requested_at }, line, error: false };
+    }
+  }
+
+  const outcome = await deps.dispatch(target);
+  const stamp = await deps.recordDispatch({
+    workflow_stem: target.stem,
+    workflow: target.workflow,
+    status: outcome.status,
+    http_status: outcome.http_status,
+    run_id: outcome.run_id,
+    detail: outcome.detail,
+    elapsed_ms: outcome.elapsed_ms,
+  });
+  let consumeError: string | null = null;
+  if (target.gate === "request") {
+    consumeError = (await deps.consumeRequest(target.stem, outcome.status, outcome.http_status)).error;
+  }
+
+  let line = dispatchLogLine(target, outcome, stamp.at);
+  if (stamp.error !== null) line += ` stamp_error=${JSON.stringify(stamp.error)}`;
+  if (consumeError !== null) line += ` consume_error=${JSON.stringify(consumeError)}`;
+  if (registryError !== null) line += ` registry_error=${JSON.stringify(registryError)}`;
+  return {
+    body: {
+      ok: outcome.status === "dispatched",
+      outcome: outcome.status,
+      workflow: target.workflow,
+      status: outcome.status,
+      http_status: outcome.http_status,
+      run_id: outcome.run_id,
+      detail: outcome.detail,
+      at: stamp.at,
+      ...(stamp.error === null ? {} : { stamp_error: stamp.error }),
+      ...(consumeError === null ? {} : { consume_error: consumeError }),
+      ...(registryError === null ? {} : { registry_error: registryError }),
+      elapsed_ms: now() - t0,
+    },
+    line,
+    error: outcome.status !== "dispatched" || stamp.error !== null || consumeError !== null,
+  };
 }
 
 /** The one log line per call, in the cron-watchdog route's shape. */

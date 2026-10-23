@@ -3997,6 +3997,7 @@ export type Database = {
       job_registry: {
         Row: {
           budget_seconds: number | null
+          by_window_minutes: number | null
           cap_mb: number | null
           cost_class: string
           deadline_rule: string
@@ -4013,9 +4014,12 @@ export type Database = {
           unit_call: string | null
           unit_shape: string
           updated_at: string
+          yield_lead_seconds: number
+          yield_to: string[]
         }
         Insert: {
           budget_seconds?: number | null
+          by_window_minutes?: number | null
           cap_mb?: number | null
           cost_class: string
           deadline_rule: string
@@ -4032,9 +4036,12 @@ export type Database = {
           unit_call?: string | null
           unit_shape: string
           updated_at?: string
+          yield_lead_seconds?: number
+          yield_to?: string[]
         }
         Update: {
           budget_seconds?: number | null
+          by_window_minutes?: number | null
           cap_mb?: number | null
           cost_class?: string
           deadline_rule?: string
@@ -4051,6 +4058,8 @@ export type Database = {
           unit_call?: string | null
           unit_shape?: string
           updated_at?: string
+          yield_lead_seconds?: number
+          yield_to?: string[]
         }
         Relationships: []
       }
@@ -6864,6 +6873,10 @@ export type Database = {
         }[]
       }
       compute_fe_industry_tag_signature: { Args: never; Returns: string }
+      consume_gha_dispatch_request: {
+        Args: { p_http?: number; p_outcome: string; p_stem: string }
+        Returns: Json
+      }
       count_independent_corroborations: {
         Args: { p_card_id: string }
         Returns: number

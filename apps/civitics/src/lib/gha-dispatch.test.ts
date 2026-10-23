@@ -14,7 +14,10 @@ import {
   dispatchLogLine,
   dispatchWorkflow,
   resolveDispatchTarget,
+  runGhaDispatch,
   type DispatchTarget,
+  type GhaDispatchDeps,
+  type GhaDispatchRequest,
 } from "./gha-dispatch";
 
 type Call = { url: string; init: RequestInit };
@@ -29,15 +32,17 @@ function fakeFetch(status: number, body: string, calls: Call[] = []): typeof fet
 const nightly = resolveDispatchTarget("nightly") as DispatchTarget;
 
 describe("resolveDispatchTarget — the allowlist", () => {
-  it("knows exactly the three dispatched workflows, keyed by stem", () => {
+  it("knows exactly the three dispatched workflows (+ the nightly's request target), keyed by path segment", () => {
     assert.deepEqual([...GHA_DISPATCH_WORKFLOWS.keys()].sort(), [
       "nightly",
+      "nightly-request",
       "platform-snapshot",
       "sync-canary-check",
     ]);
-    for (const [stem, t] of GHA_DISPATCH_WORKFLOWS) {
-      assert.equal(t.stem, stem);
-      assert.equal(t.workflow, `${stem}.yml`, "the file is always <stem>.yml — never caller input");
+    for (const [key, t] of GHA_DISPATCH_WORKFLOWS) {
+      // N2 (FIX-1336): nightly-request is a second door to the same workflow and stamp.
+      assert.equal(t.stem, key === "nightly-request" ? "nightly" : key);
+      assert.equal(t.workflow, `${t.stem}.yml`, "the file is always <stem>.yml — never caller input");
     }
   });
 
@@ -62,8 +67,138 @@ describe("resolveDispatchTarget — the allowlist", () => {
   it("the nightly carries the slot rule and the trigger name; the others carry nothing", () => {
     assert.deepEqual(nightly.inputs, { slot_offset_hours: "3", dispatched_by: "vercel-cron" });
     assert.equal(nightly.workflow, "nightly.yml");
+    assert.equal(nightly.gate, "legacy-registry");
+    const req = resolveDispatchTarget("nightly-request");
+    assert.deepEqual(req?.inputs, { slot_offset_hours: "3", dispatched_by: "dispatcher" });
+    assert.equal(req?.gate, "request");
     assert.deepEqual(resolveDispatchTarget("sync-canary-check")?.inputs, {});
     assert.deepEqual(resolveDispatchTarget("platform-snapshot")?.inputs, {});
+    assert.equal(resolveDispatchTarget("sync-canary-check")?.gate, undefined, "ungated: fires on every call");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N2 (FIX-1336, cc-243) — runGhaDispatch: the gates, end to end
+// ---------------------------------------------------------------------------
+
+type Log = string[];
+const NOW = Date.parse("2026-10-23T21:01:30Z");
+
+function mockDeps(opts: {
+  rule?: string | null;
+  ruleError?: string;
+  request?: GhaDispatchRequest | null;
+  requestError?: string;
+  status?: number;
+}): { deps: GhaDispatchDeps; log: Log; fetches: Call[] } {
+  const log: Log = [];
+  const fetches: Call[] = [];
+  const deps: GhaDispatchDeps = {
+    readDeadlineRule: async (job) => {
+      log.push(`readDeadlineRule ${job}`);
+      return { rule: opts.rule ?? null, error: opts.ruleError ?? null };
+    },
+    readRequest: async (stem) => {
+      log.push(`readRequest ${stem}`);
+      return { value: opts.request ?? null, error: opts.requestError ?? null };
+    },
+    recordDispatch: async (p) => {
+      log.push(`record ${String(p["workflow_stem"])} ${String(p["status"])}`);
+      return { at: "2026-10-23T21:01:31Z", error: null };
+    },
+    consumeRequest: async (stem, outcome, http) => {
+      log.push(`consume ${stem} ${outcome} ${String(http)}`);
+      return { error: null };
+    },
+    dispatch: (t) => dispatchWorkflow(t, "tok", fakeFetch(opts.status ?? 204, "", fetches)),
+    now: () => NOW,
+  };
+  return { deps, log, fetches };
+}
+
+describe("runGhaDispatch — nightly-request fires only on the dispatcher's stamp", () => {
+  const req = resolveDispatchTarget("nightly-request") as DispatchTarget;
+
+  it("a pending request → dispatched with dispatched_by=dispatcher, stamped, then consumed", async () => {
+    const { deps, log, fetches } = mockDeps({ request: { job: "nightly", requested_at: "2026-10-23T21:01:00Z", consumed_at: null, reaped_at: null } });
+    const r = await runGhaDispatch(req, deps);
+    assert.equal(r.body["outcome"], "dispatched");
+    assert.equal(r.body["ok"], true);
+    assert.equal(fetches.length, 1);
+    assert.match(String(fetches[0]?.init.body), /"dispatched_by":"dispatcher"/);
+    assert.deepEqual(log, ["readRequest nightly", "record nightly dispatched", "consume nightly dispatched 204"]);
+  });
+
+  it("no request → no_request: no dispatch, NO record_gha_dispatch call, no consume", async () => {
+    const { deps, log, fetches } = mockDeps({ request: null });
+    const r = await runGhaDispatch(req, deps);
+    assert.equal(r.body["outcome"], "no_request");
+    assert.equal(fetches.length, 0);
+    assert.deepEqual(log, ["readRequest nightly"]);
+  });
+
+  it("a consumed or reaped request → no_request", async () => {
+    for (const request of [
+      { requested_at: "2026-10-23T21:01:00Z", consumed_at: "2026-10-23T21:05:00Z" },
+      { requested_at: "2026-10-23T21:01:00Z", consumed_at: null, reaped_at: "2026-10-23T21:21:00Z" },
+    ]) {
+      const { deps, log } = mockDeps({ request });
+      assert.equal((await runGhaDispatch(req, deps)).body["outcome"], "no_request");
+      assert.deepEqual(log, ["readRequest nightly"]);
+    }
+  });
+
+  it("a request older than 2 h → stale_request, never fired", async () => {
+    const { deps, fetches } = mockDeps({ request: { requested_at: "2026-10-23T18:00:00Z", consumed_at: null } });
+    assert.equal((await runGhaDispatch(req, deps)).body["outcome"], "stale_request");
+    assert.equal(fetches.length, 0);
+  });
+
+  it("an unreadable request → request_unreadable (an error line), no dispatch", async () => {
+    const { deps, fetches } = mockDeps({ requestError: "timeout" });
+    const r = await runGhaDispatch(req, deps);
+    assert.equal(r.body["outcome"], "request_unreadable");
+    assert.equal(r.error, true);
+    assert.equal(fetches.length, 0);
+  });
+
+  it("a refused dispatch is still stamped AND consumed with its outcome (the reap reads it)", async () => {
+    const { deps, log } = mockDeps({ request: { requested_at: "2026-10-23T21:01:00Z", consumed_at: null }, status: 401 });
+    const r = await runGhaDispatch(req, deps);
+    assert.equal(r.body["outcome"], "refused");
+    assert.deepEqual(log.slice(1), ["record nightly refused", "consume nightly refused 401"]);
+  });
+});
+
+describe("runGhaDispatch — the legacy nightly slot reads the registry row", () => {
+  it("an `at …` row → dispatched as today (vercel-cron), no consume", async () => {
+    const { deps, log, fetches } = mockDeps({ rule: "at 0 21 * * *" });
+    const r = await runGhaDispatch(nightly, deps);
+    assert.equal(r.body["outcome"], "dispatched");
+    assert.match(String(fetches[0]?.init.body), /"dispatched_by":"vercel-cron"/);
+    assert.deepEqual(log, ["readDeadlineRule nightly", "record nightly dispatched"]);
+  });
+
+  it("a `by …` row → legacy_off: no dispatch, no stamp", async () => {
+    const { deps, log, fetches } = mockDeps({ rule: "by 0 21 * * *" });
+    const r = await runGhaDispatch(nightly, deps);
+    assert.equal(r.body["outcome"], "legacy_off");
+    assert.equal(fetches.length, 0);
+    assert.deepEqual(log, ["readDeadlineRule nightly"]);
+  });
+
+  it("an unreadable registry fails OPEN — the slot fires, the preflight de-duplicates", async () => {
+    const { deps, fetches } = mockDeps({ ruleError: "timeout" });
+    const r = await runGhaDispatch(nightly, deps);
+    assert.equal(r.body["outcome"], "dispatched");
+    assert.equal(r.body["registry_error"], "timeout");
+    assert.equal(fetches.length, 1);
+  });
+
+  it("an ungated target never reads the registry or a request", async () => {
+    const { deps, log } = mockDeps({});
+    await runGhaDispatch(resolveDispatchTarget("platform-snapshot") as DispatchTarget, deps);
+    assert.deepEqual(log, ["record platform-snapshot dispatched"]);
   });
 });
 

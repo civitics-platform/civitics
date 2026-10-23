@@ -257,22 +257,28 @@ test("FIX-1215: prod_op_gate() branches on the clone (p_now injected, rolled bac
       assert.ok(g1.blocked_by.some((b) => b.check === "d" && /max wall 1\.500/.test(b.detail)), JSON.stringify(g1.blocked_by));
     });
 
-    tx("(c) 06:00 UTC is inside the blackout", async () => {
+    // FIX-1124 part 2 (cc-243): the 05:45–09:00 blackout is retired — an empty
+    // ec_crawl.blackout is NO window; the key stays as an operator override.
+    tx("(c) 06:00 UTC is clear once the blackout is retired; an operator window brings (c) back", async () => {
+      await c.query(`UPDATE public.pipeline_state SET value = jsonb_set(value, '{blackout}', '[]'::jsonb) WHERE key = 'ec_crawl'`);
       const now = "2030-03-12 06:00:00+00";
       await watchdogs(now);
+      const g0 = await gate(c, now);
+      assert.ok(!has(g0, "c"), JSON.stringify(g0.blocked_by));
+      await c.query(`UPDATE public.pipeline_state SET value = jsonb_set(value, '{blackout}', '[{"from":"05:45","to":"09:00"}]'::jsonb) WHERE key = 'ec_crawl'`);
       const g = await gate(c, now);
       const b = g.blocked_by.find((x) => x.check === "c");
       assert.ok(b, JSON.stringify(g.blocked_by));
       assert.match(b!.detail, /is open now/);
       assert.equal(new Date(b!.retry_after!).toISOString(), "2030-03-12T09:00:00.000Z");
     });
-    tx("(c) an ec_crawl.blackout of [] falls back to the constant", async () => {
+    tx("(c) an ec_crawl.blackout of [] is NO window — the constants are gone (FIX-1124 part 2)", async () => {
       await c.query(`UPDATE public.pipeline_state SET value = jsonb_set(value, '{blackout}', '[]'::jsonb) WHERE key = 'ec_crawl'`);
       const now = "2030-03-12 04:00:00+00";
       await watchdogs(now);
-      const g = await gate(c, now, 3600);   // span to 06:00 → crosses 05:45
-      assert.match(g.readings["blackout"].source, /^constant/);
-      assert.ok(has(g, "c"), JSON.stringify(g.blocked_by));
+      const g = await gate(c, now, 3600);   // span to 06:00 → would have crossed 05:45
+      assert.equal(g.readings["blackout"].source, "none (FIX-1124 part 2)");
+      assert.ok(!has(g, "c"), JSON.stringify(g.blocked_by));
     });
     tx("(c) the pipeline_state window is the one used, span-bounded, wrap-midnight included", async () => {
       await c.query(`

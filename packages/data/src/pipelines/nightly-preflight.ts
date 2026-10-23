@@ -36,7 +36,7 @@
  * and the orchestrator's `all` count for every phase, and its `enrichment`
  * counts for the three enrichment sub-phases (index.ts, runNightlySync).
  *
- * WHO IT GUARDS. Only the two AUTOMATED triggers, `schedule` and `vercel-cron`.
+ * WHO IT GUARDS. Only the AUTOMATED triggers, `schedule`, `vercel-cron` and (N2) `dispatcher`.
  * A human `gh workflow run nightly.yml` (dispatched_by defaults to `manual`)
  * always runs: its offset defaults to 0, so it names the current UTC day, which
  * the previous evening's slot has always already claimed — guarding it would
@@ -87,7 +87,8 @@ export const PREFLIGHT_OUTPUT: Readonly<Record<PreflightPhase, string>> = {
 export const DISPATCHED_BY_ENV = "NIGHTLY_DISPATCHED_BY";
 
 /** The automated firing paths the preflight de-duplicates between. */
-export const GUARDED_TRIGGERS: readonly string[] = ["schedule", "vercel-cron"];
+// N2 (FIX-1336, cc-243): `dispatcher` — the nightly-request route firing the dispatcher's stamp.
+export const GUARDED_TRIGGERS: readonly string[] = ["schedule", "vercel-cron", "dispatcher"];
 
 /** The one status that means the phase did not run (a FIX-950 hold). */
 export const NOT_RAN_STATUS = "skipped";

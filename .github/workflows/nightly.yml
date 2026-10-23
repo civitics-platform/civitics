@@ -96,14 +96,19 @@ on:
         type: string
         required: false
         default: "0"
+      # N2 (FIX-1336, cc-243): `dispatcher` is the dispatcher's request stamp
+      # fired by /api/cron/gha-dispatch/nightly-request (the registry row reads
+      # `by 0 21 * * *`); `vercel-cron` is the legacy 0 21 slot, which goes
+      # quiet once the row is dispatched. Both are de-duplicated by the preflight.
       dispatched_by:
-        description: "FIX-1218: which trigger fired this run. vercel-cron is the dispatcher and is de-duplicated by the preflight; manual always runs"
+        description: "FIX-1218/FIX-1336: which trigger fired this run. dispatcher (the request stamp) and vercel-cron (the legacy slot) are de-duplicated by the preflight; manual always runs"
         type: choice
         required: false
         default: manual
         options:
           - manual
           - vercel-cron
+          - dispatcher
 
 permissions:
   contents: read
@@ -177,7 +182,7 @@ jobs:
     # FIX-1218 / FIX-1281: one verdict PER PHASE, and each phase gates on its
     # own. `already_ran` is the FEC phase's (this job's FEC step and mark-killed
     # read it); each enrichment job reads its `already_ran_enrichment_*`. A
-    # verdict is `true` only when an automated trigger (schedule / vercel-cron)
+    # verdict is `true` only when an automated trigger (schedule / vercel-cron / dispatcher)
     # found another run's nightly_cron row for THAT phase on its nominal day —
     # so a fallback after a runnerless fec-phase runs FEC while the enrichment
     # jobs stand down on their own rows. Unset (a preflight crash) reads as
@@ -213,7 +218,7 @@ jobs:
       NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
       # FIX-1218: which trigger fired this run — stamped into every nightly_cron
       # row and read by the fec-phase preflight, which guards only the two
-      # automated triggers (schedule, vercel-cron).
+      # automated triggers (schedule, vercel-cron, dispatcher).
       NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       # FIX-1060 — heap ceiling SIZED FROM MEASURED RSS, not from the OOM that
       # predates the external sort.
@@ -402,7 +407,7 @@ jobs:
       NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
       # FIX-1218: which trigger fired this run — stamped into every nightly_cron
       # row and read by the fec-phase preflight, which guards only the two
-      # automated triggers (schedule, vercel-cron).
+      # automated triggers (schedule, vercel-cron, dispatcher).
       NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       # LittleSis bulk + matcher index build is RAM-heavy; keep the 12 GB ceiling.
       NODE_OPTIONS: --max-old-space-size=12288
@@ -485,7 +490,7 @@ jobs:
       NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
       # FIX-1218: which trigger fired this run — stamped into every nightly_cron
       # row and read by the fec-phase preflight, which guards only the two
-      # automated triggers (schedule, vercel-cron).
+      # automated triggers (schedule, vercel-cron, dispatcher).
       NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -569,7 +574,7 @@ jobs:
       NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || inputs.slot_offset_hours || '0' }}
       # FIX-1218: which trigger fired this run — stamped into every nightly_cron
       # row and read by the fec-phase preflight, which guards only the two
-      # automated triggers (schedule, vercel-cron).
+      # automated triggers (schedule, vercel-cron, dispatcher).
       NIGHTLY_DISPATCHED_BY:     ${{ github.event_name == 'schedule' && 'schedule' || inputs.dispatched_by || 'manual' }}
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

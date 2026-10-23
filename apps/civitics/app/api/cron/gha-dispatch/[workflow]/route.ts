@@ -1,5 +1,11 @@
 /**
- * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly | sync-canary-check | platform-snapshot)
+ * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly | nightly-request | sync-canary-check | platform-snapshot)
+ *
+ * N2 (FIX-1336, cc-243): `nightly-request` fires only on the dispatcher's
+ * unconsumed request stamp (pipeline_state.gha_dispatch_request_nightly) and
+ * consumes it; the legacy `nightly` slot fires only while job_registry's
+ * `nightly` row still reads `at …` (otherwise `legacy_off`, no stamp). The
+ * logic is runGhaDispatch() in lib/gha-dispatch.ts; this file wires the deps.
  *
  * ── WHY THIS ROUTE EXISTS ────────────────────────────────────────────────────
  *
@@ -47,7 +53,13 @@ export const maxDuration = 30;
 
 import { NextResponse, type NextRequest } from "next/server";
 import { withDbTimeout } from "@/lib/supabase-check";
-import { dispatchLogLine, dispatchWorkflow, resolveDispatchTarget } from "@/lib/gha-dispatch";
+import {
+  dispatchWorkflow,
+  resolveDispatchTarget,
+  runGhaDispatch,
+  type GhaDispatchDeps,
+  type GhaDispatchRequest,
+} from "@/lib/gha-dispatch";
 
 const STAMP_TIMEOUT_MS = 10_000;
 
@@ -73,60 +85,83 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "workflow not in allowlist" }, { status: 400 });
   }
 
-  const startedAt = Date.now();
-  const outcome = await dispatchWorkflow(target, process.env["GITHUB_DISPATCH_TOKEN"]);
-
-  // The stamp. Lazy import inside the try for the FIX-1130 reason: module-scope
-  // client construction makes the route fail before it can report anything.
-  let dbAt: string | null = null;
-  let stampError: string | null = null;
-  try {
-    const { createAdminClient, noStoreFetch } = await import("@civitics/db");
-    // FIX-1208 — `no-store`, or the RPC can be answered from the Data Cache and
-    // never sent: force-dynamic does not stop Next 14.2 caching a fetch inside
-    // a GET Route Handler. See `noStoreFetch`.
-    const db = createAdminClient({ fetch: noStoreFetch });
-    const { data, error } = await withDbTimeout(
-      db.rpc("record_gha_dispatch", {
-        p: {
-          workflow_stem: target.stem,
-          workflow: target.workflow,
-          status: outcome.status,
-          http_status: outcome.http_status,
-          run_id: outcome.run_id,
-          detail: outcome.detail,
-          elapsed_ms: outcome.elapsed_ms,
-        },
-      }),
-      STAMP_TIMEOUT_MS,
-      "gha-dispatch-stamp",
+  // The admin client, built lazily inside a try for the FIX-1130 reason:
+  // module-scope client construction makes the route fail before it can report
+  // anything. FIX-1208 — `no-store`, or a read/RPC can be answered from the
+  // Data Cache and never sent: force-dynamic does not stop Next 14.2 caching a
+  // fetch inside a GET Route Handler. See `noStoreFetch`.
+  type Db = ReturnType<typeof import("@civitics/db").createAdminClient>;
+  let dbPromise: Promise<Db> | null = null;
+  const getDb = (): Promise<Db> => {
+    dbPromise ??= import("@civitics/db").then(({ createAdminClient, noStoreFetch }) =>
+      createAdminClient({ fetch: noStoreFetch }),
     );
-    if (error) {
-      stampError = error.message;
-    } else {
-      const at = (data as { at?: unknown } | null)?.at;
-      dbAt = typeof at === "string" ? at : null;
-    }
-  } catch (err) {
-    stampError = err instanceof Error ? err.message : String(err);
-  }
+    return dbPromise;
+  };
+  const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-  const line = dispatchLogLine(target, outcome, dbAt);
-  if (outcome.status === "dispatched" && stampError === null) {
-    console.info(line);
-  } else {
-    console.error(stampError === null ? line : `${line} stamp_error=${JSON.stringify(stampError)}`);
-  }
+  const deps: GhaDispatchDeps = {
+    // N2 (FIX-1336): the legacy slot reads the registry row it may be retired by.
+    readDeadlineRule: async (job) => {
+      try {
+        const db = await getDb();
+        const { data, error } = await withDbTimeout(
+          db.from("job_registry").select("deadline_rule").eq("job", job).maybeSingle(),
+          STAMP_TIMEOUT_MS,
+          "gha-dispatch-registry",
+        );
+        if (error) return { rule: null, error: error.message };
+        const rule = (data as { deadline_rule?: unknown } | null)?.deadline_rule;
+        return { rule: typeof rule === "string" ? rule : null, error: null };
+      } catch (err) {
+        return { rule: null, error: msg(err) };
+      }
+    },
+    // N2: the dispatcher's request stamp (service_role reads pipeline_state).
+    readRequest: async (stem) => {
+      try {
+        const db = await getDb();
+        const { data, error } = await withDbTimeout(
+          db.from("pipeline_state").select("value").eq("key", `gha_dispatch_request_${stem}`).maybeSingle(),
+          STAMP_TIMEOUT_MS,
+          "gha-dispatch-request",
+        );
+        if (error) return { value: null, error: error.message };
+        const value = (data as { value?: unknown } | null)?.value;
+        return { value: value && typeof value === "object" ? (value as GhaDispatchRequest) : null, error: null };
+      } catch (err) {
+        return { value: null, error: msg(err) };
+      }
+    },
+    recordDispatch: async (p) => {
+      try {
+        const db = await getDb();
+        const { data, error } = await withDbTimeout(db.rpc("record_gha_dispatch", { p }), STAMP_TIMEOUT_MS, "gha-dispatch-stamp");
+        if (error) return { at: null, error: error.message };
+        const at = (data as { at?: unknown } | null)?.at;
+        return { at: typeof at === "string" ? at : null, error: null };
+      } catch (err) {
+        return { at: null, error: msg(err) };
+      }
+    },
+    consumeRequest: async (stem, outcome, http) => {
+      try {
+        const db = await getDb();
+        const { error } = await withDbTimeout(
+          db.rpc("consume_gha_dispatch_request", { p_stem: stem, p_outcome: outcome, p_http: http ?? undefined }),
+          STAMP_TIMEOUT_MS,
+          "gha-dispatch-consume",
+        );
+        return { error: error ? error.message : null };
+      } catch (err) {
+        return { error: msg(err) };
+      }
+    },
+    dispatch: (t) => dispatchWorkflow(t, process.env["GITHUB_DISPATCH_TOKEN"]),
+  };
 
-  return NextResponse.json({
-    ok: outcome.status === "dispatched",
-    workflow: target.workflow,
-    status: outcome.status,
-    http_status: outcome.http_status,
-    run_id: outcome.run_id,
-    detail: outcome.detail,
-    at: dbAt,
-    ...(stampError === null ? {} : { stamp_error: stampError }),
-    elapsed_ms: Date.now() - startedAt,
-  });
+  const result = await runGhaDispatch(target, deps);
+  if (result.error) console.error(result.line);
+  else console.info(result.line);
+  return NextResponse.json(result.body);
 }

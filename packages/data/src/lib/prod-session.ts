@@ -244,11 +244,71 @@ export async function withProdSession<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const lock = await claimProdSession(opts);
+  // FIX-1337 (cc-243): a SIGTERM'd claimant (the GHA runner cancelling the
+  // nightly's fec phase) never reaches `finally`, and its hold rows outlived it
+  // until the next claim's self-heal. Release on the signal too — once.
+  const guard = releaseOnSignals(() => lock.release());
   try {
     return await fn();
   } finally {
-    await lock.release();
+    guard.uninstall();
+    await guard.release();
   }
+}
+
+/** Exit codes after a signal-driven release: 128 + the signal number. */
+export const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143, SIGBREAK: 149 } as const;
+/** How long a signal waits on the release before exiting anyway. */
+export const SIGNAL_RELEASE_TIMEOUT_MS = 5_000;
+
+/**
+ * FIX-1337 (rule 285) — install SIGINT / SIGTERM / SIGBREAK handlers that run
+ * `release` ONCE (best effort, at most `timeoutMs`), then exit 130 / 143 /
+ * 149. The returned `release` is the same once-wrapper, so the `finally` that
+ * follows a normal exit never releases twice. Installed by withProdSession()
+ * only: claim-prod-session.ts has its own handler. The DB net for a SIGKILL,
+ * which no handler sees, is the dispatcher's GHA reap sweep.
+ */
+export function releaseOnSignals(
+  release: () => Promise<void>,
+  opts: {
+    proc?: Pick<NodeJS.EventEmitter, "on" | "removeListener">;
+    exit?: (code: number) => void;
+    timeoutMs?: number;
+  } = {},
+): { release: () => Promise<void>; uninstall: () => void } {
+  const proc = opts.proc ?? process;
+  const exit = opts.exit ?? ((code: number) => process.exit(code));
+  const timeoutMs = opts.timeoutMs ?? SIGNAL_RELEASE_TIMEOUT_MS;
+  let once: Promise<void> | null = null;
+  const releaseOnce = (): Promise<void> => {
+    once ??= release().catch((err: unknown) => {
+      console.warn(`  [prod-session] release failed (${errText(err)}) — the next claim self-heals`);
+    });
+    return once;
+  };
+  const handlers: [keyof typeof SIGNAL_EXIT_CODES, () => void][] = [];
+  for (const sig of Object.keys(SIGNAL_EXIT_CODES) as (keyof typeof SIGNAL_EXIT_CODES)[]) {
+    const h = () => {
+      console.error(`  [prod-session] ${sig} — releasing the session before exit (FIX-1337)`);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cap = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      });
+      void Promise.race([releaseOnce(), cap]).finally(() => {
+        clearTimeout(timer);
+        exit(SIGNAL_EXIT_CODES[sig]);
+      });
+    };
+    handlers.push([sig, h]);
+    proc.on(sig, h);
+  }
+  return {
+    release: releaseOnce,
+    uninstall: () => {
+      for (const [sig, h] of handlers) proc.removeListener(sig, h);
+    },
+  };
 }
 
 /**
