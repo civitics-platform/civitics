@@ -134,13 +134,15 @@ the checklist below.
 
 ## Standing rules checklist
 
-CC reads this before starting. Each line is a rule that has cost a real session.
+CC reads this before starting. Root `CLAUDE.md` carries the rules every session
+needs; this checklist is what a `/cc` run needs on top. Where a rule lives in
+root, the checklist points at its heading (`→ CLAUDE.md §…`) instead of
+restating it. Each line is a rule that has cost a real session.
 
 ### FIX bookkeeping
 
-- **Status is derived, never read off the markdown.** `docs/FIXES.md` has no
-  checkbox. Run `pnpm fixes:status FIX-NNN` before claiming anything is open or
-  closed. (FIX-1016)
+- → `CLAUDE.md` §FIXES Workflow (derived status, append-only files, one-line
+  trailers, when `fixes:sync` runs). The trailer vocabulary below lives only here.
 - **`Fixes:` only on the commit that lands that FIX's own close.** Not on a
   follow-up, not on a docs commit that mentions it.
 - **`Closes:` for an administrative closure** (recognised / superseded /
@@ -151,11 +153,7 @@ CC reads this before starting. Each line is a rule that has cost a real session.
 - **Never write the literal `Verified:` in a commit BODY** — only in the trailer
   block. A wrapped prose line beginning with a trailer key has shadowed the real
   trailer before (FIX-465).
-- **Only the FIRST `Fixes:`/`Closes:` line is read by some tooling paths** — put
-  all ids for one trailer on ONE line, comma-separated.
-- **Real ids at filing time.** Allocate with `pnpm fix:add`, which prints the id;
-  use the printed id in the trailer immediately. Never a `FIX-<letter>`
-  placeholder in a diff.
+- **Real ids at filing time.** Never a `FIX-<letter>` placeholder in a diff.
 - **Every filing names its lane.** `pnpm fix:add … --lane <lane>` is required
   (FIX-1243). The lane is one of `cc.config.json`'s `lanes`, and it is written
   as a `<!--lane:X-->` marker after the id marker, on the same line. It is
@@ -165,23 +163,18 @@ CC reads this before starting. Each line is a rule that has cost a real session.
   hand-add one.
 - **One line per bullet.** `fix:add --body` takes a single line — a newline
   truncates it, and bash eats backticks.
-- **`fixes:sync` runs only AFTER the fix commits are on `origin/main`.** Running
-  it from a worktree pre-merge is the stranded-PR failure mode (FIX-461).
-- **Status commits are separate from code commits**, so a revert does not drag
-  status with it.
 
 ### Git and landing
 
-- Agents never commit on the primary VSCode checkout. One worktree per FIX:
-  `pnpm session:worktree <fix-id>`. Create it before `cc:prompt <n> --start`
-  and run that from inside it, so the marker names the slot. `/cc` Step 4 tears
+- → `CLAUDE.md` §Deployment (no commits on the primary checkout, one worktree
+  per FIX, ff-only landing to `main`, the pre-push hook, the git identity).
+- Create the worktree before `cc:prompt <n> --start` and run that from inside
+  it, so the marker names the slot. `/cc` Step 4 tears
   it down after the report push with `pnpm session:worktree:done <slot>`, run
   from the primary checkout in a tool call that STARTS there (a `cd` in the
   same command still EPERMs). That is the sanctioned teardown of a merged tree
   and needs no approval. A failure is reported as `worktree LEFT: <slot> —
   <reason>`, never retried with `rm` (cc-190).
-- `main` advances only by fast-forward from a rebased branch:
-  `git push origin feature/fix-<id>:main`.
 - Never `--amend`, never `--no-verify`, never force-push.
 - **Every push to main goes through the pre-push hook's `session:held` gate**
   (FIX-1250). The hook reads `prod_session_state()` through the primary
@@ -197,19 +190,17 @@ CC reads this before starting. Each line is a rule that has cost a real session.
   Co-Authored-By: Claude <model> <noreply@anthropic.com>
   Claude-Session: <the session URL from the prompt>
   ```
-- Git identity on this machine is `Civitics Platform
-  <civitics.platform@gmail.com>`.
 
 ### Database
 
-- **Check which DB is active before anything that reads or writes data:**
-  `grep "^NEXT_PUBLIC_SUPABASE_URL" .env.local`.
-- A migration on disk rides the next push; `pnpm db:push:prod` applies it to
-  Pro. Before pushing, `supabase migration list` and confirm the pending count
-  is exactly what you expect.
-- Ad-hoc SQL: `node scripts/db-query.mjs --local|--prod "…"`. `--prod` is
-  read-only by construction.
-- Never destructive SQL against Pro without explicit confirmation in the prompt.
+- → `CLAUDE.md` §Active environment check and §Database (the active-DB check,
+  `pnpm db:push:prod`, `db-query.mjs`, the `statement_timeout` rule) and
+  §Data-state changes (per-environment runs, the vacuum tail).
+- A migration on disk rides the next push. Before `pnpm db:push:prod`,
+  `supabase migration list` and confirm the pending count is exactly what you
+  expect.
+- For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
+  the prompt names it.
 - **The dispatcher's body pair** — what a dispatcher prompt's read 3 pins, from
   cc-244 on (2026-10-23, N2 `20261023000000`, cc-243): `md5(prosrc)` of
   `dispatch_one_unit` **`7b4e3f66105a49d030c41539e4cd2d56`** /
@@ -220,8 +211,6 @@ CC reads this before starting. Each line is a rule that has cost a real session.
   (`scripts/fix1329-revert-dispatcher-b1.sql`). N2 also moved `prod_op_gate`
   (`e3e543cd9a30a4b0dca2b52b159410a0`) and `run_entity_connections_rebuild`
   (`3315486c187ce91ae80a33837b72dbc8`).
-- A script that bulk-rewrites a table ends with `VACUUM (ANALYZE)` on what it
-  rewrote.
 - No heavy prod rebuilds or MV refreshes during Craig's active hours.
 
 #### Drain-and-wait before any second prod op
