@@ -1,0 +1,38 @@
+{
+  "cc": "242",
+  "prompt": "cc-prompt-242-context-load-and-io-budget-census-read-only.md",
+  "started_at": "2026-10-23T00:44:18Z",
+  "finished_at": "2026-10-23T01:25:00Z",
+  "head_before": "2ba45100",
+  "head_after": "7aa138ce",
+  "commits": [
+    {
+      "sha": "f3ec1746",
+      "subject": "[skip vercel] docs(audit): context-load + I/O-budget census (cc-242)"
+    },
+    {
+      "sha": "cf3c5d04",
+      "subject": "docs(fixes): cc-242 files FIX-1339, FIX-1340, FIX-1341"
+    },
+    {
+      "sha": "7aa138ce",
+      "subject": "[skip vercel] docs(audit): cc-242 census run window (00:44Z to 01:15Z)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1339",
+    "FIX-1340",
+    "FIX-1341"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "B4 read cc-210..cc-241 (2026-10-09..10-22, 13 days), not a true 30-day window (~cc-158 onward); timing-gate holds before 10-09 are not counted. B1/B3 cover the full 31 days from the DB."
+  ],
+  "lane": "hygiene",
+  "project": "context-haircut",
+  "owed": []
+}
