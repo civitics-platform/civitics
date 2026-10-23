@@ -1,0 +1,122 @@
+{
+  "cc": "243",
+  "prompt": "cc-prompt-243-n2-nightly-start-by-the-dispatcher-blackout-retired-1124p2-1330-next-due-1331-yield-kill-path-sweep.md",
+  "started_at": "2026-10-23T00:49:22Z",
+  "finished_at": "2026-10-23T03:38:00Z",
+  "head_before": "2ba45100",
+  "head_after": "fc4b4650",
+  "commits": [
+    {
+      "sha": "cb09ee41",
+      "subject": "docs(fixes): cc-243 files FIX-1336, FIX-1337, FIX-1338"
+    },
+    {
+      "sha": "4e70e2fa",
+      "subject": "feat(db): FIX-1336 — N2: the nightly START is a dispatched unit (by 0 21 * * * window 120 via the gha-dispatch request stamp); FIX-1124 part 2 retires the blackout; FIX-1331 yield_to in the pick; FIX-1330 next_due_at honoured (cc-243)"
+    },
+    {
+      "sha": "e32bb326",
+      "subject": "feat(app,data): FIX-1337 — gha-dispatch nightly-request target fires on the dispatcher's request stamp (legacy target no-op once the row is dispatched); nightly.yml dispatched_by=dispatcher; withProdSession releases on SIGINT/SIGTERM (cc-243)"
+    },
+    {
+      "sha": "d2367f6e",
+      "subject": "chore(fixes): record FIX-1336 landed on prod — the nightly row by 0 21 * * * window 120, eligible 11, the request stamp path deployed (route + */5 21-23 cron); the first dispatched nightly Fri 21:0xZ OWED (20261023000000 at 01:19:30-37Z)"
+    },
+    {
+      "sha": "f8c72c2e",
+      "subject": "chore(fixes): record FIX-1124 part 2 landed on prod — ec_crawl.blackout [], the crawl rows' gates {prod_session}, prod_op_gate (c) reads an empty array as no window; the first clean 05:45-09:00Z morning OWED (cc-243)"
+    },
+    {
+      "sha": "8ec92966",
+      "subject": "chore(fixes): record FIX-1331 landed on prod — the crawls' yield_to in the pick (rule-taggers-daily, refresh-derived-mvs-daily lead 1800), crawl_gate's peer_* inert (config yield_to []); the first yield: row OWED (cc-243)"
+    },
+    {
+      "sha": "c1f940b6",
+      "subject": "chore(fixes): record FIX-1330 landed on prod — run_entity_connections_rebuild writes metadata.next_due_at on the cycle-closing complete unit, the pick honours it; the first cycle close OWED (cc-243)"
+    },
+    {
+      "sha": "89ef70cf",
+      "subject": "chore(fixes): record FIX-1337 landed on prod — withProdSession releases on SIGINT/SIGTERM/SIGBREAK (deployed with e32bb326) and the dispatcher's GHA reap sweeps leftover session holds; the prod path is UNEXERCISED (cc-243)"
+    },
+    {
+      "sha": "fe869e6f",
+      "subject": "chore(fixes): sync status after FIX-1336, FIX-1330, FIX-1331, FIX-1124, FIX-1337 (cc-243)"
+    },
+    {
+      "sha": "9f1dbda5",
+      "subject": "chore(fixes): record FIX-1330 first cycle close on prod — ec's 01:37:00-01:37:19Z unit complete with metadata.next_due_at 07:37:19.23Z (+360 min); 0 ec armed rows and 0 ec cooldown rows after it to 02:22Z; the re-arm after 07:37Z OWED (cc-243)"
+    },
+    {
+      "sha": "8dbb9ecd",
+      "subject": "docs(dispatcher): N2 landed — s11 ref FIX-1336 after 01:19Z; s22 the legacy 0 21 entry's removal (hygiene, after the first dispatched nightly); the s6 row for tonight (cc-243)"
+    },
+    {
+      "sha": "fc4b4650",
+      "subject": "chore(fixes): sync status after FIX-1330's cycle-close record (cc-243)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1336",
+    "FIX-1330",
+    "FIX-1331",
+    "FIX-1124",
+    "FIX-1337"
+  ],
+  "fixes_filed": [
+    "FIX-1336",
+    "FIX-1337",
+    "FIX-1338"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261023000000_fix1336_n2_nightly_start_blackout_retired_yield_next_due.sql"
+  ],
+  "prod_writes": "ONE gated migration push of exactly ONE file under its own FIX-950 claim, from the PRIMARY's packages/data at e32bb326. Dry run through the same gate: open 2026-10-23T01:18:19.375915Z, census pass (0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 1050 = 0.00 % <= 1 %, P99 floor 7 at p0 0.23 %); held 5 / cleared 5; 'Would push these migrations: 20261023000000_fix1336_n2_nightly_start_blackout_retired_yield_next_due.sql' only. Real push: gate open 2026-10-23T01:19:30.789819Z (same census pass), interlock acquired, held 5 guarded pipelines, applied, cleared 5, released 01:19:37Z. NOTICEs verbatim: [fix1336] nightly row: updated (by 0 21 * * * window 120) · [fix1336] crawl rows: 2 updated (0 already) · [fix1336] ec_crawl.blackout: set [] · [fix1336] crawl config yield_to: 2 set [] (0 already) · [fix1336] read-back ok: nightly by 0 21 * * * window 120; registry {rows 54, eligible 11, by_runner pg_cron 47 / github_actions 7}; crawls {prod_session} yield_to the two dailies lead 1800; blackout [] (in_blackout false, prod_op_gate no c); crawl yield_to []; consume_gha_dispatch_request · [fix1336] md5 dispatch_one_unit 7b4e3f66105a49d030c41539e4cd2d56 / get_dispatcher_status 2716fcca9ba97b683963cd499bc78136 · [fix1336] md5 prod_op_gate e3e543cd9a30a4b0dca2b52b159410a0 / run_entity_connections_rebuild 3315486c187ce91ae80a33837b72dbc8. The data edits (nightly row, crawl rows' gates + yield, ec_crawl.blackout [], ec_crawl / fe_crawl yield_to []) rode INSIDE the migration. The same :main push (e32bb326) deployed the route + vercel.json (*/5 21-23 nightly-request) + nightly.yml change to Vercel production (deployment AGS3jKNkXfJ3iiGZ9MyTeXRP46zm, GitHub status success 01:17:22Z). One authenticated GET of /api/cron/gha-dispatch/nightly-request (01:20:12Z, the vercel.app host) → 200 no_request, no stamp written. Every other prod contact a read.",
+  "ci": "green",
+  "stopped_items": [
+    "PUSH WINDOW: the run started 00:49Z, ~95 min after the prompt's 23:15Z; the push still landed inside the 00:30–01:30Z window (01:19:30Z) because the build was green at 01:14Z and branch CI at 01:15Z.",
+    "RULE 298 BROKEN — I force-pushed origin's feature/fix-1336 (git push -f) after rebasing it onto cc-242's commits, at 01:16Z. The ref existed (pushed at 01:12Z for branch CI run 39882687302). No work was lost — the branch was immediately equal to main (e32bb326) — but the prompt says no force-push to an existing ref, and I did it. The right move was to push the rebased tip to main only and leave (or delete via teardown) the stale branch ref.",
+    "FIX-1124 was ALREADY CLOSED before this run (2026-10-05 31a54ea0 prod-only, part 1); the prompt's read 1 expected it OPEN. The part-2 code shipped as designed and the Fixes: FIX-1124 trailer + landed record append rows to an already-closed id. Expected open is therefore 41 + 3 (mine) + 3 (cc-242) − 4 = 43, not 39 ± cc-242.",
+    "Item 3 (b)'s missed simulation backdated the REQUEST STAMP's requested_at (and the route stamp's at), not dispatch_log.ticked_at as the prompt wrote: the GHA reap keys on the stamp, which is the link to the armed row. Backdating the stamp alone first put it before rehearsal (a)'s route stamp, so the reap read that stamp as this request's dispatched (an artifact of the simulation); backdating the route stamp too reproduced the real order.",
+    "Item 3 (b)'s window-lapse line ('nothing_due … next: nightly in 20:5x') could not be quoted on the clone: the clone's other due rows (two days stale) keep every tick off nothing_due. Quoted instead: the nightly absent from excluded[] and not armed, and its computed ttd cron_next_slot(by 57 21 * * *, now) − now = 20:59:01.",
+    "Item 3 (c) claimed with session:claim (the LOCAL twin), not session:claim-prod: the latter is tsx --env-file=../../.env.local.prod and would have claimed PROD. Killed with taskkill /F (Windows' kill -9).",
+    "Item 3 (d)'s written path did not close a cycle: the clone's ec cursor was open (next arm entity_connection_stats_windows window 2/16), so the 00:59Z unit wrote partial, window 1/16 → 2/16, no next_due_at. The hunk test stands; FIX-1330's first close on prod is owed.",
+    "Item 3 (g): the N2 tick on the clone costs ~+230 buffers over B1 (4,993–5,026 vs 4,750–4,780, rolled-back ticks, not idle). The yield and the next_due_at read are within the ~10-buffer bar (next_due shares v_last's read: 216 vs 213 buffers on prod's nightly_cron). The rest is the nightly row being LOOPED at all — its own v_last read, 213 buffers / 0.7 ms on prod (546 nightly_cron rows), the same pattern every pipeline row pays (ec's is 817).",
+    "The prompt's FIX-<rate> numbers (weekly 23.5 s/1k, a 397-tag daily 532 s/1k) are not what today's canary prints: the 10-22 run (39757446251) reads 'rate check demoted (FIX-1315): run_rule_taggers: 6.6502s/1k rows across its last 3 runs vs a 2.2246s/1k P90 baseline over 59 runs (2.99x, threshold 4.4492)'. FIX-1338 was filed with the prompt's figures; this line is the current evidence.",
+    "FIX-1341 (filed by cc-242 tonight) asks for exactly this run's prod_op_gate hunk (drop the 05:45–09:00 constant fallback). cc-242 noted it as superseded by N2 (b12806eb); it is left OPEN for Craig / Cowork to close (Closes: … closes-as-superseded), not closed here."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1336",
+      "what": "the first dispatched nightly Fri 10-23: dispatch_log armed nightly on the first odd tick >= 21:01Z (by 0 21 * * * → -00:0x; armed_jobname gha_dispatch_request_nightly, no jobid), the request stamp written, the every-5-min nightly-request route fires <= 21:05Z (gha_dispatch_nightly status dispatched http 204; the request consumed), four nightly_cron phases complete with dispatched_by dispatcher, reaped nightly succeeded: GHA with unit_ms ≈ the run's wall (~12-15 min weekday), the legacy 0 21 call logged legacy_off; receipts 2026-10-24 read the run as dispatched_by dispatcher; then the Sun 10-25 drop night the same shape under the fec claim",
+      "after": "2026-10-23T22:00Z"
+    },
+    {
+      "fix": "FIX-1124",
+      "what": "the first 05:45-09:00Z morning with the blackout retired: ec/fe dispatch rows inside the window (no gated: blackout anywhere), rule-taggers-daily's 06:30Z slot fires once in band, no crawl unit running beside the tagger (the yield or the groups), ec_crawl.skips.blackout unchanged at its 10-23 value; prod_op_gate(600) at ~06:00Z ok true",
+      "after": "2026-10-23T09:30Z"
+    },
+    {
+      "fix": "FIX-1331",
+      "what": "the first yield: row on prod — a crawl due inside the 30-min lead before the 06:30Z daily (excluded[] carries yield: rule-taggers-daily due in <iv> (ec-crawl|fe-crawl)) and/or yield: rule-taggers-daily live during its run; the crawl arms on the first free tick after; ec_crawl.skips.peer_due / peer_running unchanged (crawl_gate inert)",
+      "after": "2026-10-23T07:00Z"
+    },
+    {
+      "fix": "FIX-1330",
+      "what": "the close itself was read in-session (01:37:19Z, next_due_at 07:37:19.23Z, recorded 9f1dbda5); still owed: ec re-arms on the first odd tick after 07:37:19Z (not ~2 h late), with 0 ec armed rows and 0 cooldown: ec rows across the whole gap, and ec_crawl.skips.cycle_cooldown still 2345",
+      "after": "2026-10-23T08:00Z"
+    },
+    {
+      "fix": "FIX-1337",
+      "what": "the first prod exercise of either net: a reaped/missed nightly with '; swept N hold(s)' after a killed claimant, or a SIGTERM'd withProdSession (the nightly fec phase cancelled) whose hold rows are gone without a later claim",
+      "after": "2026-10-23T22:00Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "unchanged from cc-241: two consecutive status rolls non-null with source crawl_cycle while a donation landing sits above the EC watermark — the Sun 10-25 drop night is the likely carrier",
+      "after": "2026-10-25T23:00Z"
+    }
+  ]
+}
