@@ -23,6 +23,10 @@ beneath the claim it corrects, never edited over it.
 **Extended 2026-10-10** with the USASpending arc (FIX-1291, FIX-1274): new rule
 **C9**, plus dated addenda on **A1**, **C3**, **C5**, **C6** and **D4**.
 
+**Extended 2026-10-23** with the receipts the root `CLAUDE.md` haircut moved out
+(cc-245, FIX-1339). Root keeps each rule as one line; the measurements live here.
+New rules **C10** and **C11**, plus dated addenda on **C2**, **C5** and **D3**.
+
 ---
 
 ## A. Data-shape regimes
@@ -229,6 +233,40 @@ means the signal was sent, not that the backend died: a backend in
 `IO:DataFileRead` exits at its next interrupt check. Re-poll before calling the
 box quiet. *FIX-995 investigation, 2026-08-08*
 
+**Addendum — 2026-10-23, the `statement_timeout` receipts (moved from root
+`CLAUDE.md`).** The timeout is armed once, by the server, at the start of a
+top-level statement, from the GUC value at that moment. A routine-level `SET` —
+proconfig, `set_config` in a body, a `SET` after an intra-procedure `COMMIT` —
+changes what `current_setting()` reports and nothing else. Measured both
+directions on PG 17: it cannot tighten (60 s session, 1 s proconfig — a 3 s
+sleep completed) and cannot loosen (2 s session, 30 s proconfig — cancelled at
+2.001 s, identically to the same body with no proconfig). Trap 1 above is the
+multi-statement shape, not the `SET`: `SELECT 1; CALL <proc>` dies identically,
+~10 ms in, zero units run (cc-125). Two more consequences: a routine carrying
+**any** `SET` clause runs atomic and cannot `COMMIT`; and once the timeout has
+**fired** it is disarmed for the rest of that statement, so a procedure that
+catches `query_canceled` and continues runs every remaining unit unbounded
+(14.0 s of work under a 4 s bound). `pnpm check:proconfig` fails a migration
+that writes the inert form; a deliberate exception carries
+`-- fix1128: <reason>` on the line or the line above.
+
+The `postgres` role's in-backend ceiling is **3 h** (FIX-1185; was 6 h), sized
+on the **trailing-30-day** window. It is the one timer that DOES arm across
+intra-procedure `COMMIT`s, so it backstops what the watchdog cannot: a box that
+cannot fork (2026-08-29 — a canceller that must fork cannot bound that failure),
+and a watchdog late by more than a budget's slack. It is a DEFAULT, not a cap: a
+supervised landing that needs more sets `SET statement_timeout` as its own
+statement and says so in its header; a pg_cron job cannot, because its command
+must stay single-statement. A per-job budget sits at least one
+max-watchdog-lateness under the ceiling (10,800 − 963.8 = 9,836.2 s; the largest
+active budget was 9,000), or the ceiling silently demotes the watchdog for that
+job and the run ends on a global timer that records nothing job-specific.
+**Roll back with `SET statement_timeout = '6h'`, never `RESET`** — a `RESET`
+removes the ceiling instead of restoring it.
+*FIX-1128, FIX-1185, FIX-1063 · `docs/audits/2026-09-13-fix1128-experiments.md`,
+`docs/audits/2026-09-14-fix1128-half2-census.md` §4 ·
+`20260916000000_fix1185_postgres_role_statement_timeout_3h.sql`*
+
 ### C3. A guard must be able to fire in the case it exists for.
 
 Three guards this arc were silently incapable of firing in their own situation.
@@ -345,6 +383,21 @@ runbook. An ownerless table touched by a bulk writer is a filing, not a tail
 forever (FIX-1299 files the weekly `xsr-vacuum-analyze` job). *FIX-1291,
 FIX-1274, FIX-1133, FIX-1191 · `packages/data/src/pipelines/usaspending-bulk/index.ts`
 (`vacuumExternalSourceRefs`)*
+
+**Addendum — 2026-10-23, why the tail is not optional (moved from root
+`CLAUDE.md`).** Autovacuum tuning narrows the window but never closes it: the
+trigger is `autovacuum_vacuum_threshold + scale_factor × reltuples`, so a table
+is always allowed a floor of dead tuples first — on `financial_relationships`
+still **~164k** after the FIX-943 tuning — and a bulk rewrite lands its whole
+load inside that window at once. The FIX-930 audit went from **~8 min to blowing
+a 600 s `statement_timeout`** purely on the FIX-933 merge's ~260k dead tuples,
+and completed again after a vacuum. The four-day `donor-rollup-refresh` failure
+(FIX-944) cleared only because the FIX-933 merge script happened to carry a
+vacuum tail; nothing scheduled one. So verify `pg_stat_user_tables.last_vacuum`
+before treating a post-rewrite timing regression as a query problem, and never
+"fix" one by raising the timeout. The daily canary reports the cause
+(`bloat_degraded`, report-only) and escalates on the consequence (`vm_degraded`)
+via `check_rebuild_autovacuum_status()`. *FIX-943, FIX-930, FIX-933, FIX-944*
 
 ### C6. When resume is hard, price a full replay's no-op fraction before designing a cursor.
 
@@ -508,6 +561,82 @@ row (C6).
 (`2026-10-10-usaspending-resumable-rehearsal.md`) · `packages/data/src/scripts/usaspending-bulk.ts`
 · FIX-1310 `packages/data/src/pipelines/index.ts` (the nightly's claim)*
 
+### C10. A manifest-scoped remediation must not carry a platform-scoped tail.
+
+Every step in a remediation script's tail either SCALES WITH THE MANIFEST or HAS
+A SCHEDULED OWNER. Anything that is neither is a bug in the script, not a cost of
+the change. Measured on prod 2026-09-07, the FIX-954 set-2 apply — a **28-row**
+manifest: the delete plus all three manifest-scoped rollups took **78 s**
+(`donor_rollup_rebuild_recipients` 28.8 s / 2 officials,
+`financial_entity_donation_totals_rebuild` 15.3 s / 28 donors,
+`donor_party_rollup_rebuild_donors` 33.8 s). The script then entered
+`rebuild_financial_entity_ie_totals()` — platform-scoped, its cost independent of
+the manifest — and was cancelled by hand **28 minutes** in. Front-door damage
+over that one step, by SQLSTATE from the Logs API: **70 × 57014** plus
+13 × `08006` and 6 × `08P01`, against a baseline of **1 × 57014** in the
+equivalent window earlier the same day. The conservation phase before it cost
+another 132: **202 cancellations, ~70× baseline**, the rate highest during the
+global rebuild. With everything stopped, the next 15-minute window measured zero.
+
+**A step's presence in a tail is not evidence it has an owner.** FIX-688 moved
+the EC rebuild to pg_cron and left `refresh_group_donor_rollup()` with no
+scheduled owner at all — its only non-script caller sits in a workflow that
+became `workflow_dispatch`-only. It had been re-derived purely as a side effect
+of remediation tails, and nobody had noticed. `--defer-tails` shipped covering
+the VACUUM, search index and treemap; the six MV refreshes and then these two
+global rebuilds each had to be added after a prod run found them.
+
+**Apply:** check each tail step's owner by NAME in three places:
+`cron.job.command`, `pg_proc.prosrc` (a job may CALL a procedure that calls it)
+and the GHA workflows. `--defer-tails` must cover every ownerless or
+platform-scoped step, and the dry run prints each step's cost class —
+manifest-scoped, platform-scoped-with-owner, platform-scoped-orphan — so the
+trade is visible before the go-ahead rather than at minute 28. Reviewer's test: a
+step whose runtime does not move when the manifest goes from 28 rows to 2,736 is
+platform-scoped by definition.
+*FIX-1165, FIX-954, FIX-688 · `20260908000000_fix1165_group_donor_rollup_owner.sql`*
+
+### C11. Every `updated_at` watermark clamps to `watermark_horizon()` — and a landing held longer than the lag rewinds the watermarks.
+
+`financial_relationships.updated_at` (and `votes.updated_at`,
+`entity_connections.derived_at`) is stamped `NOW()` — when the writing
+transaction BEGAN, not when it committed. Every incremental rollup takes
+`dirty = updated_at > watermark`, so a transaction that starts before a rollup's
+watermark read and commits after it leaves rows stamped *below* the new watermark
+that were invisible at read time. Nothing ever picks them up again. FIX-983
+closes the routine case with a head-lag horizon: no watermark may advance past
+`clock_timestamp() - civitics.watermark_lag_seconds` (default 3600), so ordinary
+writers are safe by construction.
+
+**Apply:** every `updated_at` watermark reader/writer clamps to
+`public.watermark_horizon()` — not `NOW()`, not a bare `MAX(updated_at)` — bounds
+its dirty set above by the clamped target (`updated_at <= target`), and when the
+clamped target is at or below the current watermark logs a `complete` cycle with
+rows=0 and leaves the watermark alone. Writing it would move it BACKWARDS, and a
+non-`complete` status freezes the freshness clock (FIX-1140).
+`fr_watermark_horizon()` survives as a one-line wrapper so FIX-983's thirteen
+proven call sites need no churn; use the canonical name for anything new. The
+votes arm (`entity_connections_votes`) was the last holdout (FIX-1139).
+
+**A supervised landing that holds one transaction longer than the lag is outside
+the guarantee.** The FIX-933 money move (C1) held ~12 min atomic — inside 1 h,
+so covered — but the shape scales with the landing, not the lag. Such a landing
+either rewinds every FR-keyed watermark to its own transaction start before
+committing, or runs with the incremental consumers paused. If its duration is
+known in advance, raising the GUC for the session that drives the consumers costs
+only staleness. Batch-committing writers need nothing. The keys, all in
+`pipeline_state`: `financial_entity_totals_watermark`,
+`donor_party_rollup_watermark`, `donor_rollup_watermark`,
+`entity_connections_donations` (its scalar `last_indexed_at` **and** all sixteen
+`windows` entries), `agency_staffing_watermark` (`fr_last_indexed_at`). The EC
+donations arm is already covered by the FIX-1101 interlock, which defers its
+cycle while a FEC bulk run is pending or in flight; every other consumer is not.
+FIX-1074 is the broader convention this sits under: a landing owns the *derived*
+work its rewrite creates, not just the watermark correctness of it.
+*FIX-983, FIX-1074, FIX-1139, FIX-1140, FIX-1101, FIX-933 ·
+`20260903010000_fix983_fr_watermark_horizon.sql`,
+`20260905000100_fix1139_votes_watermark_horizon.sql`*
+
 ---
 
 ## D. Scheduled work
@@ -590,6 +719,22 @@ same migration.
 **Apply:** look the job up by `jobname`, then `cron.alter_job(job_id := …)` — it
 keeps the id, the history and the detector's continuity, and is still idempotent.
 *FIX-968 migration §1*
+
+**Addendum — 2026-10-23, the clone's `cron.job` is not prod's (moved from root
+`CLAUDE.md`).** `pnpm db:clone:prod` dumps `--schema=public --data-only`, and
+`cron.job` lives in the `cron` schema, so it is never restored. The local rows
+are whatever local migrations created, with whatever `active` flags local runs
+left. Jobids differ (`ec-vacuum-analyze` is 6 on prod and 15 locally;
+`platform-counts-daily` is 48 and 69), and so does `active` (2026-09-05: 33 of 37
+jobs active on prod, 21 of 37 locally). The clone is deliberately not mirrored to
+prod's flags, because a live pg_cron there would run prod-shaped jobs against
+local data. FIX-944 nearly went the wrong way on this: the clone suggested half
+the prod schedule was disabled, which would have justified re-enabling prod jobs
+that were never off.
+
+**Apply:** read cron state from prod, by name —
+`node scripts/db-query.mjs --prod "SELECT jobid, jobname, active, schedule FROM cron.job ORDER BY jobname;"`
+— and never treat the clone's `cron.job` as evidence about prod. *FIX-946, FIX-944*
 
 ### D4. Monitoring needs a RATE measure, and a detector covers only what it enumerates.
 

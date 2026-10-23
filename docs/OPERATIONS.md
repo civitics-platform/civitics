@@ -215,6 +215,41 @@ git push origin main
 git commit -m "[skip vercel] chore: next change"
 ```
 
+### FIXES workflow — mechanics
+
+The rules are in root `CLAUDE.md` §FIXES Workflow, the trailer vocabulary in
+`docs/cc/PROMPT_TEMPLATE.md` §FIX bookkeeping; this is the how. The FIX-1016
+history is in `docs/archive/claude-md-root-2026-10-23.md`.
+
+| command | does |
+|---|---|
+| `pnpm fixes:status [FIX-NNN …] [--open\|--closed] [--since D] [--json]` | the derived status, e.g. `FIX-914 closed 2026-09-09 42b36de3 prod-only …` |
+| `pnpm fix:add --title "…" --severity "🟠" --size S --section "…" --lane ops --body "…"` | appends a bullet with the next free id and its `<!--lane:…-->` marker; prints the id |
+| `pnpm fix:reopen FIX-NNN --note "…"` | appends a `reopen` row; refuses an id with no bullet marker, or one already OPEN |
+| `pnpm fixes:sync` (`fixes:sync:dry`) | scans trunk-ancestor trailers and appends `(id, sha, verified)` rows to `done.log`, dated by the committer instant in UTC (FIX-1319); never touches FIXES.md |
+| `pnpm fixes:check` | exits 1 on drift, an off-trunk completion, or a checkbox that contradicts the log |
+| `pnpm fixes:test` | the parser, derivation and trunk-guard suites — run after touching `scripts/fixes-sync.mjs` |
+| `pnpm fixes:clean` / `fixes:archive` / `fixes:housekeep` | the only in-place FIXES.md edits: **human-run**, deliberately, behind the trunk guard |
+
+**Status:** OPEN if an id has no `done.log` row, or its LAST row has `reopen` in
+the sha column; CLOSED otherwise. It keys on column 3 and row order only, never
+column 4 (`verified`), which is informational. One implementation:
+`scripts/lib/fix-status.mjs`.
+
+**`Verified:` values**, as normalized in `done.log`: `local` → `local-only`
+(exercised against local Docker only); `prod` → `prod-only` (a runtime action run
+only on prod — pair it with a local follow-up); `local + prod` → `local+prod`
+(a local smoke test AND a post-deploy prod check, or a runtime action re-run on
+each DB). No trailer → `unverified`. A `Closes:` commit takes
+`closes-as-recognized` (the default), `-superseded`, `-redirected` or `-no-op`.
+On a mixed commit, `Verified[FIX-NNN]: …` overrides the global value for that id
+(FIX-369). An id under both `Fixes:` and `Closes:` in one commit: `Fixes:` wins.
+
+**Audit greps** on `docs/done.log`: `"| prod-only |"` (no local repro),
+`"| local-only |"` (prod side never confirmed), `"| unverified |"` (trailer
+forgotten), `"| closes-as-"` (administrative closures). Rows before 2026-05-18
+used `Fixes:` for both kinds, plus a few one-off `superseded` / `redirected` values.
+
 ---
 
 ## Database Operations
