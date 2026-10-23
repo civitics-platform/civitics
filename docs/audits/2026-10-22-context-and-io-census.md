@@ -573,6 +573,7 @@ The log has **zero** `gated: prod_session`, `io:`, `missed` and `error` rows, ev
 **Two idle gates with ≥ 3 holds:**
 
 - **Blackout → FIX-1341.** Dispatcher s11 (N2, cc-243) already owns retiring the crawl config. But `prod_op_gate()` (`20260920150000`, lines 455–456 and 665–670) falls back to the constants `c_blackout_from 05:45` / `c_blackout_to 09:00` when `pipeline_state.ec_crawl.blackout` is absent. **Removing the config therefore leaves the supervised-op blackout in place**, so the filing is not a duplicate of s11.
+  - **Superseded on trunk at 2026-10-23 ~01:15Z, after this census.** cc-243 landed N2 (`4e70e2fa`, FIX-1336, migration `20261023000000_fix1336_n2_nightly_start_blackout_retired_yield_next_due.sql`). Its hunk (d) rewrites `prod_op_gate()` so that "an empty or absent ec_crawl.blackout is NO window" and removes `c_blackout_from` / `c_blackout_to`. FIX-1341's premise therefore no longer holds on trunk. Its Pro side is whatever cc-243's report states. FIX-1341 should close as `closes-as-superseded` by FIX-1336. cc-242 carries no `Closes:` trailer (prompt §7), so that closure is left to the next prompt. The B4 measurement (idle, 0 of 5) stands as the receipt for retiring the window.
 - **Vacuum spacing → §C (7).** The three-filing cap was reached.
 
 ### B5. Migrations and pushes
@@ -639,7 +640,7 @@ Each recommendation names the table cell that supports it.
 
    *next: cc-246+.*
 6. **Re-derive two gates from the post-cutover series, and release migration pushes from the bulk-op windows** (B4, B5):
-   - **Blackout:** idle 0 of 5, median ~160 min. `prod_op_gate`'s constant fallback outlives N2's config retirement (**FIX-1341**).
+   - **Blackout:** idle 0 of 5, median ~160 min. `prod_op_gate`'s constant fallback outlived N2's config retirement (**FIX-1341**). cc-243's N2 migration then removed it, so FIX-1341 is superseded (see B4).
    - **Vacuum spacing:** idle 0 of 3, median 44 min.
    - **Pushes:** 14 migration pushes, ≤ 26 s, 0 overlaps.
 
