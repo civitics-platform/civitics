@@ -211,11 +211,15 @@ CC reads this before starting. Each line is a rule that has cost a real session.
   read-only by construction.
 - Never destructive SQL against Pro without explicit confirmation in the prompt.
 - **The dispatcher's body pair** — what a dispatcher prompt's read 3 pins, from
-  cc-240 on (2026-10-20, B1 `20261020000000`, cc-239): `md5(prosrc)` of
-  `dispatch_one_unit` **`cfc9ed48517cd7de6fa76cf807dd1f37`** /
-  `get_dispatcher_status` **`1cf4b7745f4c89ce978935648c87c92b`**. The M1 pair
-  `98660b34c17c5c537fc3d2e03d021440` / `4c9d0eb0cd85f9f46b38a9947cc94785` is
-  now only the body revert's target (`scripts/fix1329-revert-dispatcher-b1.sql`).
+  cc-244 on (2026-10-23, N2 `20261023000000`, cc-243): `md5(prosrc)` of
+  `dispatch_one_unit` **`7b4e3f66105a49d030c41539e4cd2d56`** /
+  `get_dispatcher_status` **`2716fcca9ba97b683963cd499bc78136`**. The B1 pair
+  `cfc9ed48517cd7de6fa76cf807dd1f37` / `1cf4b7745f4c89ce978935648c87c92b` is
+  now only the N2 body revert's target (`scripts/fix1336-revert-dispatcher-n2.sql`);
+  the M1 pair `98660b34…` / `4c9d0eb0…` only B1's
+  (`scripts/fix1329-revert-dispatcher-b1.sql`). N2 also moved `prod_op_gate`
+  (`e3e543cd9a30a4b0dca2b52b159410a0`) and `run_entity_connections_rebuild`
+  (`3315486c187ce91ae80a33837b72dbc8`).
 - A script that bulk-rewrites a table ends with `VACUUM (ANALYZE)` on what it
   rewrote.
 - No heavy prod rebuilds or MV refreshes during Craig's active hours.
@@ -274,8 +278,11 @@ and its database.
   `/api/cron/gha-dispatch/nightly` fires it (FIX-1218; `prod_op_gate()`'s
   `c_nightly_start`), not the 22:35–22:50 the GitHub offset used to put it at;
   the `schedule:` fallback still arrives ~1.6–2.7 h later and stands down on
-  `already_ran` — **≥ `2 × expected wall + 15 min`** away. Still
-  outside 05:45–09:00 UTC, and ≥ 60 min before any weekend-only job. Vacuum
+  `already_ran` — **≥ `2 × expected wall + 15 min`** away. From cc-243 the
+  START is a dispatched unit (FIX-1336: `by 0 21 * * *` window 120 min, fired by
+  `/api/cron/gha-dispatch/nightly-request` on the dispatcher's request stamp),
+  still at ~21:0x UTC. Still ≥ 60 min before any weekend-only job. (The
+  05:45–09:00 UTC blackout clause was retired by cc-243, FIX-1124 part 2.) Vacuum
   spacing is PROPORTIONAL to the job, not one number: ≥ 90 min after the END of
   any unguarded VACUUM job whose wall exceeded 60 s (`fr-vacuum-analyze` 03:00
   is a BAND, not a class: ~10 s between drops, 161–212 s after a weekend drop
@@ -285,7 +292,7 @@ and its database.
   11:0x / 17:0x series is 0.2–1.5 s), and none of the > 60 s ones scheduled
   inside `[start, start + 2 × expected wall]`. Say which window you are in,
   with the clock reading. These conditions — (g), (d), (e), rule 155's vacuum
-  spacing and the blackout — are readable as
+  spacing — are readable as
   `SELECT public.prod_op_gate(<expected seconds>)`, and a runner waits on them
   with `session:wait-for-gate` (FIX-1215); (f) stays the census.
   >

@@ -107,6 +107,17 @@ share those pipeline names, so a Tuesday row can be a weekly; the `cadence`
 column says. A week of zero overlaps is the receipt that retires the blackout
 (FIX-1124 part 2).
 
+**Retired by cc-243 (2026-10-23, FIX-1124 part 2 + FIX-1331).** The blackout
+is `[]` and the crawls' config `yield_to` is `[]`: the yield moved into the
+dispatcher's pick (`job_registry.yield_to` / `yield_lead_seconds`, excluded
+rows read `yield: <peer> live | due in <iv>`). So `crawl_gate`'s `peer_due`,
+`peer_running` and `blackout` branches are inert and **their Peers counters
+stop moving by design** — a zero delta there is not a quiet day. The overlap
+column still reads the spans and is still the receipt. The nightly's START is
+a dispatched unit from the same night (FIX-1336): its runs read `dispatched_by
+dispatcher`, the registry row `nightly` has no band, and a §9 dispatched
+firing for it is band-`missing` by design.
+
 Section 11 is not filler. `57014` cancellation counts live in `postgres_logs`,
 which the Supabase Logs API serves and SQL cannot reach; GHA step logs age out.
 Saying so is the difference between "checked and clean" and "not checked".
