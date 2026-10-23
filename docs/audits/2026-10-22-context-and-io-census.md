@@ -1,6 +1,6 @@
 # Context-load + I/O-budget census — 2026-10-22 (cc-242, read-only)
 
-Run: cc-242, 2026-10-23 00:44Z → ~01:40Z, worktree `fix-cc-242`, head `2ba45100`.
+Run: cc-242, 2026-10-23 00:44Z → 01:15Z (prod reads 00:47Z → 01:06Z), worktree `fix-cc-242`, head `2ba45100`.
 Prod: read-only `db-query.mjs --prod` reads (one transaction each, `max_parallel_workers_per_gather = 0`).
 Each read took under 60 s, and every one ran while `session:held` printed `held=false`.
 Nothing was written to Pro, and no instruction file was edited. Plan: [`docs/cc/projects/context-haircut.md`](../cc/projects/context-haircut.md).
