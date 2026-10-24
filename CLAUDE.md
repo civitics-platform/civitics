@@ -66,7 +66,8 @@ Migrations land like code (§Deployment): `supabase migration up --local`, then
   pending), **never `--linked`** (FIX-392). A CLI command that reads the password
   from the env needs `set -a && source .env.local.prod && set +a`.
 - **Never destructive SQL against Pro without explicit confirmation** of the
-  exact query. The CLI is pinned in `supabase/.cli-version` (FIX-530): before
+  exact query; local Docker is free for any SQL, DROP/TRUNCATE/DELETE included,
+  for iteration. The CLI is pinned in `supabase/.cli-version` (FIX-530): before
   upgrading, check its bundled postgres major against `supabase/config.toml`.
 - **A routine-level `SET statement_timeout` bounds nothing** — bound the
   caller's statement. A COMMITting pg_cron procedure cannot carry a `SET` in its
@@ -200,7 +201,8 @@ normalizer — the constraint. Quick check:
 - **Both files are append-only.** File with `pnpm fix:add --lane <lane>` and use
   the printed id. Never edit, renumber or delete a bullet, id or log row; reopen
   with `pnpm fix:reopen` or a `Reopens:` trailer. Never force-push them.
-- **Trailers:** all ids for one trailer on ONE line. Vocabulary:
+- **Trailers:** every `Fixes:`/`Closes:`/`Reopens:` line is read (FIX-874), but
+  only the FIRST bare `Verified:` — per-id values use `Verified[FIX-NNN]:`. Vocabulary:
   `docs/cc/PROMPT_TEMPLATE.md` §FIX bookkeeping; `Verified:` values and the
   scripts: `docs/OPERATIONS.md` §FIXES workflow — mechanics.
 - **`pnpm fixes:sync` only after the commits are on `origin/main`**; its
