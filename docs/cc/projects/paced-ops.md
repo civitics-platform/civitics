@@ -10,7 +10,7 @@ steps:
   - {id: s2, kind: cc, ref: "cc-164", title: "paced runner: budget 3/CALL, breather census, edge floor p0 0.23 %"}
   - {id: s3, kind: design, ref: "FIX-1248", title: "weekly-merge paced-op design note — is rebuild_financial_entity_size_tags a paced op? phase_seconds lens", done: 2026-09-29}
   - {id: s4, kind: cc, ref: "cc-179", title: "weekly-merge prompt — not paced (design D2)"}
-  - {id: s5, kind: op, ref: "FIX-1258", title: "compaction: pg_repack if available, else deferred (design D5)", after: 2026-10-13}
+  - {id: s5, kind: op, ref: "FIX-1258", title: "compaction: pg_repack if available, else deferred (design D5) — cc-244 repacked entity_tags on prod 00:29:06→00:33:18Z Sat 10-24 under its own claim (heap 1,768 → 972 MB, relpages 226,259 → 124,400, total 4,422 → 2,169 MB); the twin 20261024000000 rides the next push", after: 2026-10-13, done: 2026-10-24}
   - {id: s6, kind: design, ref: "", title: "generic paced runner — lifted with the first windowable op (1240 backfill / dp full cycle / 1211)"}
   - {id: s7, kind: cc, ref: "cc-188", title: "census builds — the snapshot reads, 1132, 1145, the arm gate + park"}
   - {id: s8, kind: cc, ref: "cc-189", title: "FIX-1124 part 1 — crawls yield to peers (the first dispatcher instance)"}
@@ -53,6 +53,23 @@ firings, 2026-10-06 and 2026-10-13. FIX-1248 closes on the second.
 one-time compaction of `entity_tags` is FIX-1258, landed after 2026-10-13.
 Never `VACUUM (FULL)`: it holds ACCESS EXCLUSIVE on a table every entity page
 reads.
+
+cc-244 did it on Sat 2026-10-24, inside its own FIX-950 claim
+(00:28:47–00:33:56Z):
+- **The client.** `scripts/pg_repack/Dockerfile` is a source build of 1.5.2,
+  because PGDG carries only 1.5.3 now. It runs through the session pooler.
+  `scripts/fix1258-repack-entity-tags.mjs` drives it and asserts every catalog
+  property after the swap.
+- **The cost.** Wall 251.8 s plus a 30.8 s tail VACUUM (ANALYZE). The heap
+  went 1,768 → 972 MB and the total relation 4,422 → 2,169 MB, with 7/7
+  indexes valid and 100 % all-visible.
+- **It was not free at the front door.** The copy and index builds cost **6
+  renders / 7 events** of 57014 across 00:30:03–00:33:09Z on the 1 GB box.
+  That was IO, not locks: dispatcher ticks ran 7.3–9.3 s. The edge 5xx stayed
+  under its floor (7/1163). A repack of a bigger table should budget that
+  front-door cost against its wall.
+- **The extension stays (D6).** The twin `20261024000000` rides the next
+  gated push.
 
 **The generic runner (s6)** is decoupled from FIX-1248, which retires census
 decision 5. It is built with the first op that genuinely needs windows.
