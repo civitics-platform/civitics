@@ -1,0 +1,51 @@
+{
+  "cc": "245",
+  "prompt": "cc-prompt-245-root-claude-md-haircut.md",
+  "started_at": "2026-10-23T23:44:11Z",
+  "finished_at": "2026-10-24T00:24:00Z",
+  "head_before": "1167da42",
+  "head_after": "eecb4ced",
+  "commits": [
+    {
+      "sha": "b356d5d6",
+      "subject": "[skip vercel] docs(claude-md): FIX-1339 — root CLAUDE.md haircut to K rules + pointers; receipts to the playbook; the cut archived verbatim (cc-245)"
+    },
+    {
+      "sha": "fcf50459",
+      "subject": "[skip vercel] docs(cc): PROMPT_TEMPLATE keeps only the /cc-specific rules; each root rule has one home (cc-245)"
+    },
+    {
+      "sha": "99707583",
+      "subject": "[skip vercel] docs(claude-md): FIX-1339 follow-up — restore the local-DB SQL allowance; the trailer line matches the parser (cc-245)"
+    },
+    {
+      "sha": "05bfabd4",
+      "subject": "[skip vercel] docs(cc): context-haircut s3 done; s3a the MEMORY.md census; s4 owns the drain-worker call (cc-245)"
+    },
+    {
+      "sha": "34f97a71",
+      "subject": "[skip vercel] docs(fixes): FIX-1341 closes as superseded by FIX-1336 — prod_op_gate's blackout constants removed by 20261023000000 (cc-245)"
+    },
+    {
+      "sha": "eecb4ced",
+      "subject": "chore(fixes): sync status after FIX-1339, FIX-1341 (cc-245); FIX-1258, FIX-1124, FIX-1330, FIX-1331, FIX-1336 (cc-244)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1339",
+    "FIX-1341"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 7 (at most one filing): filed NOTHING, though the census qualifies (a K-only MEMORY.md is ~4.7 KB against 14.2 KB, and the rewrite is Craig's call). The primary checkout holds Craig's UNCOMMITTED fixes:clean (FIX-1340, s2: docs/FIXES.md −183 lines, fixes-archive.md +218). Any FIXES.md append landing on main would make that checkout's git pull --ff-only refuse. The proposal is §4 and the question is §6, so Craig can file it, or have the next run file it, once his clean is committed.",
+    "Item 5 (MEMORY.md): deleted 7 of the 19 index lines the census agents marked H. The other 12 failed my bar: every claim in the line's hook must be shown stale by a command. Three of the agents' H calls were refuted outright (§4). Nine are partly stale and were kept for a rewrite (§4 'H~'). The 7 deleted lines' memory FILES were left on disk; only their index lines went. Decision E authorises deleting lines, not files.",
+    "No Claude-Session trailer on any commit: the prompt carries no session URL."
+  ],
+  "lane": "hygiene",
+  "project": "context-haircut",
+  "owed": []
+}
