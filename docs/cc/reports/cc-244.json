@@ -1,0 +1,109 @@
+{
+  "cc": "244",
+  "prompt": "cc-prompt-244-fix1258-pg-repack-entity-tags-docker-client-session-pooler-under-claim-fri-records-n2-first-nightly-1124-1331-1330.md",
+  "started_at": "2026-10-23T23:39:51Z",
+  "finished_at": "2026-10-24T03:01:44Z",
+  "head_before": "51b1eee1",
+  "head_after": "aec96ca8",
+  "commits": [
+    {
+      "sha": "e5dd4cf8",
+      "subject": "[skip vercel] feat(ops): FIX-1258 — pg_repack client (Dockerfile pinned to prod's extension version) + scripts/fix1258-repack-entity-tags.mjs (claimed, dry-run first, asserted post-state, VACUUM (ANALYZE) tail) + the extension twin migration (cc-244)"
+    },
+    {
+      "sha": "1ca212a7",
+      "subject": "chore(fixes): record FIX-1336 receipt — the first dispatched nightly Fri 10-23: armed 21:01:00.19Z, fired 21:05:23Z (http 204, dispatched_by dispatcher), four phases complete, reaped succeeded: GHA unit_ms 778167; the legacy call's legacy_off NOT READ (cc-244)"
+    },
+    {
+      "sha": "9e6295a3",
+      "subject": "chore(fixes): record FIX-1124 receipt — the first blackout-free 05:45-09:00Z morning Fri 10-23: seven crawl arms inside it, 0 gated: blackout rows since the push, rule-taggers-daily armed once at 06:31Z and in band (209.3 s), ec_crawl.skips.blackout 527 unchanged (cc-244)"
+    },
+    {
+      "sha": "42edbc39",
+      "subject": "chore(fixes): record FIX-1331 receipt — the first yield: rows on prod Fri 10-23 (fe-crawl yields to rule-taggers-daily due in 00:16:59 at 06:13Z through 06:29Z, then yields while it is live 06:33-06:35Z) and fe-crawl armed 06:37:00.56Z on the first free tick after the tagger's reap (cc-244)"
+    },
+    {
+      "sha": "5760690e",
+      "subject": "chore(fixes): record FIX-1330 receipt — ec re-armed 07:39:00.11Z, the first odd tick after next_due_at 07:37:19.23Z, with 0 ec arms and 0 cooldown rows across the 198-tick gap; three more cycle closes since, each re-armed on the first tick after its +6 h next_due_at; skips.cycle_cooldown 2345 unchanged (cc-244)"
+    },
+    {
+      "sha": "fda5e633",
+      "subject": "chore(fixes): record FIX-1258 landed — entity_tags repacked on prod 00:29:06→00:33:18Z (pg_repack 1.5.2, session pooler, under the claim): heap 1767.6 → 971.9 MB, relpages 226259 → 124400, total 4422.2 → 2168.7 MB, 7 indexes valid, reloptions/policy/stats intact, count 5443091 = 5443091; tail VACUUM (ANALYZE) 30.8 s, all-visible 100 %; 57014 6 renders / 7 events in the op window (cc-244)"
+    },
+    {
+      "sha": "d974ecd2",
+      "subject": "chore(fixes): sync status after FIX-1258 (cc-244)"
+    },
+    {
+      "sha": "6bc4d21b",
+      "subject": "docs(paced-ops): s5 done 2026-10-24 — entity_tags compacted (FIX-1258); the twin rides the next push (cc-244)"
+    },
+    {
+      "sha": "995b0d86",
+      "subject": "chore(fixes): record FIX-1335 receipt — votes-vacuum-analyze's first dispatched firing Sat 10-24: due 02:37:00.08Z on the 7-day floor, armed 02:39:00.12Z, VACUUM 02:41:00.04-02:41:02.89Z, reaped succeeded: VACUUM unit_ms 2855 (band 0-29 s), last_vacuum moved, phase_due_at NULL; xsr Tue 10-27 still owed (cc-244)"
+    },
+    {
+      "sha": "aec96ca8",
+      "subject": "chore(fixes): sync status after FIX-1335's votes record (cc-244)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1258",
+    "FIX-1336",
+    "FIX-1124",
+    "FIX-1331",
+    "FIX-1330",
+    "FIX-1335"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "ONE supervised landing under its own FIX-950 claim, from the PRIMARY's packages/data at 5760690e: session:wait-for-gate:prod --expected-minutes 20 --census stop --reason 'cc-244 FIX-1258 pg_repack entity_tags' --then 'node ../../scripts/fix1258-repack-entity-tags.mjs --prod --apply --env-file ../../.env.local.prod --disk-total-gb 56.95 --image civitics/pg_repack:1.5.2'. The gate opened on its first poll at 2026-10-24T00:28:46.597Z (ok, blocked_by [], census pass 1 render / 1 event in 60 min, edge 1 of 1426). Then interlock acquired, held 5 guarded pipelines. The script's writes, all inside the claim: (4) 00:29:04.765Z CREATE EXTENSION IF NOT EXISTS pg_repack → 1.5.2 (owner supabase_admin). (5) 00:29:05.221Z pg_repack -N through the session pooler, exit 0. (6) 00:29:06.676 → 00:33:18.480Z pg_repack -k --no-order --jobs 1 --no-kill-backend --wait-timeout 60 --table public.entity_tags (its own repack.log_44155 / repack.table_44155 / trigger, created and dropped by it; the relfilenode swap 44155 → 296195), exit 0, wall 251.8 s. (8) 00:33:25.170 → 00:33:56.017Z VACUUM (ANALYZE) public.entity_tags, 30.8 s. Receipt: heap 1767.6 → 971.9 MB, relpages 226259 → 124400, indexes 2654.1 → 1196.5 MB, total 4422.2 → 2168.7 MB, all-visible 99.76 → 100.00 %, count 5443091 = 5443091, 7/7 indexes valid, every catalog assertion passed. Then cleared 5 holds, interlock released, --then exited 0 at 00:33:56Z. The pg_repack extension stays installed (D6); its twin migration 20261024000000 is on main, NOT pushed. Front-door cost: 57014 census [00:28:47, 00:48:56Z] 6 renders / 7 events (FAIL, all 00:30:03–00:33:09Z), edge 00:30Z bucket 7/1163 = 0.60 % (PASS). Every other prod contact was a read: db-query --prod, gh, the census, one vercel logs.",
+  "ci": "green",
+  "stopped_items": [
+    "FRONT DOOR — D-k expected 'renders 0 / events 0'. The census over [00:28:47, 00:48:56Z] read 6 renders lost / 7 events (ratio 9.02×, P99 floor 3 → FAIL), all inside the repack (00:30:03–00:33:09Z: get_official_page ×3, official_is_content_bearing, check_senate_reference_cohort ×2, data_sync_log). The edge 00:30Z bucket was 7 of 1163 = 0.60 % (≤ floor 7, PASS). Cause: IO from the copy and index builds on the 1 GB box. Dispatcher ticks ran 9.3 s / 7.3 s and stamped 10 s / 8 s late. It was not locks. Not a stop: the op was done before the window could be measured. It is a finding.",
+    "STEP ORDER CHANGED — D-b put the disk and quiet gates at (4), after the CREATE EXTENSION at (2). The script runs them at (3), BEFORE the first write, so a refused gate writes nothing at all. The step numbers in this report are the script's: (1) version, (2) pre-state, (3) gates, (4) CREATE EXTENSION, (5) -N, (6) repack, (7) assertions, (8) VACUUM, (9) receipt.",
+    "NOT A NET — the prompt listed 'the role's 3 h ceiling' among the nets. The 1.5.2 client issues its own `SET statement_timeout = 0` (strings on the binary), so nothing in-backend bounded the repack. The script banner says so.",
+    "THE GATE OPENED AT 00:28:47Z, about 1 min before the prompt's 00:30Z target. waitForProdOpGate's first poll is immediate and is shifted only out of a quarter-hour's first minute. I started it at 00:28:44Z.",
+    "NOT READ — FIX-1336's 'the legacy 0 21 call logged legacy_off'. vercel logs keeps about 1 h and the call was ~3.5 h old. dispatch_log has no non-pg_cron row after 20:50Z. The */5 route's no_request 200s were not read either.",
+    "NOT READABLE AFTER THE FACT — FIX-1124's 'prod_op_gate(600) at ~06:00Z ok true'. Its structural precondition was read instead: prod_op_gate(1800) at 23:43:34Z read blackout {source 'none (FIX-1124 part 2)', windows []}. The 'no other VACUUM in pg_stat_progress_vacuum' clause of FIX-1335 is in the same position; the proxy is 0 cron vacuum firings 02:35–02:45Z.",
+    "N/A — Item 5's 'the first status roll after (the entity_tags count in sections.ts:309 — its ms)'. sections.ts:309 reads entity_tags from the FIX-1126 platform-counts cache (03:53Z daily), not live, so there is no per-roll ms to read.",
+    "NOT TAKEN — read 10's io: rows, the FIX-1297 MAX probe and the xsr carry-read. Nothing tonight depended on them.",
+    "DESIGN DOC ABSENT — claude/design-fix1258-pg-repack-entity-tags-2026-10-20.md is not in Civitics/Claude/civitics (no file names 1258 except this prompt). The run used the prompt's restated D1/D2/D4/D6 and D-a..D-k.",
+    "fr 03:23Z — not read (optional; the run closed after the 03:00Z FIX-1335 record)."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": [
+    {
+      "fix": "FIX-1258",
+      "what": "the Sat 10-24 06:31Z rule-taggers-daily slot in band (183–260 s) with phase_seconds.scan below Friday's reading on the packed heap — Friday's real value is 173.7 s of 209.3 s (data_sync_log 10-23 06:33Z), not the prompt's 183.4 s (the receipts' frozen 10-13 pg_cron row); then the Tue 10-27 16:01Z weekly in band with scan < 63.4 s; entity_tags relpages still ~124.4k and all-visible ≥ 99 % at both reads (no re-bloat)",
+      "after": "2026-10-24T07:00Z"
+    },
+    {
+      "fix": "FIX-1258",
+      "what": "the receipts' README carries the compaction date (it does, from e5dd4cf8); a later bands re-cut for rule-taggers-daily cites it and takes runs from after 2026-10-24 only",
+      "after": "2026-10-27T17:00Z"
+    },
+    {
+      "fix": "FIX-1335",
+      "what": "xsr-vacuum-analyze's first dispatched firing: due 2026-10-27 01:41:01.77Z → armed 01:43, VACUUM 01:47Z (no band; cron 2.50 s) — succeeded: VACUUM, last_vacuum moved, alone, phase_due_at NULL after the reap (the votes half was recorded by this run)",
+      "after": "2026-10-27T02:00Z"
+    },
+    {
+      "fix": "FIX-1336",
+      "what": "the remainder of cc-243's entry: the Sun 10-25 drop night the same shape under the fec claim (armed ≥ 21:01Z, the request stamp, the route fires, four phases complete dispatched_by dispatcher, reaped succeeded: GHA ≈ the run's wall); and the legacy 0 21 call's legacy_off read inside vercel logs' ~1 h retention (read within an hour of 21:00Z)",
+      "after": "2026-10-25T23:00Z"
+    },
+    {
+      "fix": "FIX-1337",
+      "what": "the first prod exercise of either net: a reaped/missed nightly with '; swept N hold(s)' after a killed claimant, or a SIGTERM'd withProdSession (the nightly fec phase cancelled) whose hold rows are gone without a later claim",
+      "after": "2026-10-23T22:00Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "unchanged from cc-241: two consecutive status rolls non-null with source crawl_cycle while a donation landing sits above the EC watermark — the Sun 10-25 drop night is the likely carrier",
+      "after": "2026-10-25T23:00Z"
+    }
+  ]
+}
