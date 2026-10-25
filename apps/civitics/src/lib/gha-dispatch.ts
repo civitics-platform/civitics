@@ -41,19 +41,17 @@ export interface DispatchTarget {
   inputs: Record<string, string>;
   /**
    * N2 (FIX-1336, cc-243) — when the route may fire. Absent: every call (the
-   * FIX-1218 behaviour). `legacy-registry`: only while the stem's job_registry
-   * row still reads `at …` — once the dispatcher owns the START the legacy
-   * slot answers `legacy_off` and stamps nothing (the DB is the switch; an
-   * unreadable row fails OPEN, because the preflight de-duplicates).
-   * `request`: only on the dispatcher's unconsumed request stamp
-   * (`pipeline_state.gha_dispatch_request_<stem>`), which it then consumes.
+   * FIX-1218 behaviour). `request`: only on the dispatcher's unconsumed
+   * request stamp (`pipeline_state.gha_dispatch_request_<stem>`), which it then
+   * consumes. (The `legacy-registry` gate went with the legacy `nightly` slot,
+   * FIX-1350.)
    */
-  gate?: "legacy-registry" | "request";
+  gate?: "request";
 }
 
 /**
  * THE ALLOWLIST, keyed by STEM — the route's `[workflow]` path segment, e.g.
- * `/api/cron/gha-dispatch/nightly`. A literal: the segment is only ever used
+ * `/api/cron/gha-dispatch/sync-canary-check`. A literal: the segment is only ever used
  * as a lookup key into this map, so no caller-supplied string reaches the
  * GitHub URL. Adding a workflow is an edit here AND a cron in vercel.json.
  *
@@ -63,28 +61,18 @@ export interface DispatchTarget {
  * nothing about a query string in `path`. The stem also carries no dot, so no
  * middleware or static-file rule keyed on an extension can intercept it.
  *
- * nightly gets `slot_offset_hours: "3"` so a dispatch at the 21:00 slot names
- * the NEXT UTC day, exactly as a schedule event does (FIX-1163), and
- * `dispatched_by: "vercel-cron"` so its preflight de-duplicates against the
- * late scheduled fallback. The other two declare no inputs and read none.
- *
  * N2 (FIX-1336, cc-243): the nightly's START is a dispatcher unit. Its
  * registry row reads `by 0 21 * * *` (window 120 min); the dispatcher's ARM
  * writes a request stamp and `nightly-request` (Vercel, every 5 min 21-23 UTC)
- * fires on it with `dispatched_by: "dispatcher"` — same workflow, same
- * `gha_dispatch_nightly` stamp. The legacy `nightly` slot stays in vercel.json
- * until the first dispatched nightly has run, and goes quiet on its own.
+ * fires on it with `dispatched_by: "dispatcher"` and `slot_offset_hours: "3"`,
+ * so a dispatch in the 21:00 hour names the NEXT UTC day, exactly as a
+ * schedule event does (FIX-1163) — and stamps `gha_dispatch_nightly`, the
+ * stem's. The legacy `nightly` slot (`0 21 * * *`, `dispatched_by:
+ * "vercel-cron"`, gated on the registry row) answered `legacy_off` from N2 on
+ * and was removed by FIX-1350 (cc-249); `/api/cron/gha-dispatch/nightly` is now
+ * outside the allowlist. The other two declare no inputs and read none.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
-  [
-    "nightly",
-    {
-      workflow: "nightly.yml",
-      stem: "nightly",
-      inputs: { slot_offset_hours: "3", dispatched_by: "vercel-cron" },
-      gate: "legacy-registry",
-    },
-  ],
   [
     "nightly-request",
     {
@@ -234,8 +222,6 @@ export const REQUEST_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 /** Everything the route reaches outside this module, injected so the tests mock it. */
 export interface GhaDispatchDeps {
-  /** `job_registry.deadline_rule` for the stem's row; `rule: null` when the row is absent. */
-  readDeadlineRule: (job: string) => Promise<{ rule: string | null; error: string | null }>;
   /** The stem's request stamp; `value: null` when there is none. */
   readRequest: (stem: string) => Promise<{ value: GhaDispatchRequest | null; error: string | null }>;
   /** record_gha_dispatch(); `at` is the DB clock it stamped. */
@@ -261,16 +247,6 @@ export interface GhaDispatchResult {
 export async function runGhaDispatch(target: DispatchTarget, deps: GhaDispatchDeps): Promise<GhaDispatchResult> {
   const now = deps.now ?? Date.now;
   const t0 = now();
-  let registryError: string | null = null;
-
-  if (target.gate === "legacy-registry") {
-    const { rule, error } = await deps.readDeadlineRule(target.stem);
-    if (error === null && rule !== null && !rule.startsWith("at ")) {
-      const line = `[cron/gha-dispatch] workflow=${target.workflow} outcome=legacy_off deadline_rule=${JSON.stringify(rule)} (the dispatcher owns the start; no dispatch, no stamp)`;
-      return { body: { ok: true, outcome: "legacy_off", workflow: target.workflow, deadline_rule: rule }, line, error: false };
-    }
-    registryError = error; // unreadable → fail OPEN: the legacy slot fires, the preflight de-duplicates
-  }
 
   if (target.gate === "request") {
     const { value, error } = await deps.readRequest(target.stem);
@@ -307,7 +283,6 @@ export async function runGhaDispatch(target: DispatchTarget, deps: GhaDispatchDe
   let line = dispatchLogLine(target, outcome, stamp.at);
   if (stamp.error !== null) line += ` stamp_error=${JSON.stringify(stamp.error)}`;
   if (consumeError !== null) line += ` consume_error=${JSON.stringify(consumeError)}`;
-  if (registryError !== null) line += ` registry_error=${JSON.stringify(registryError)}`;
   return {
     body: {
       ok: outcome.status === "dispatched",
@@ -320,7 +295,6 @@ export async function runGhaDispatch(target: DispatchTarget, deps: GhaDispatchDe
       at: stamp.at,
       ...(stamp.error === null ? {} : { stamp_error: stamp.error }),
       ...(consumeError === null ? {} : { consume_error: consumeError }),
-      ...(registryError === null ? {} : { registry_error: registryError }),
       elapsed_ms: now() - t0,
     },
     line,

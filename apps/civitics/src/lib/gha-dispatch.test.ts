@@ -29,12 +29,12 @@ function fakeFetch(status: number, body: string, calls: Call[] = []): typeof fet
   }) as typeof fetch;
 }
 
-const nightly = resolveDispatchTarget("nightly") as DispatchTarget;
+// The nightly's one door since FIX-1350 (cc-249): the dispatcher's request target.
+const nightly = resolveDispatchTarget("nightly-request") as DispatchTarget;
 
 describe("resolveDispatchTarget — the allowlist", () => {
-  it("knows exactly the three dispatched workflows (+ the nightly's request target), keyed by path segment", () => {
+  it("knows exactly the three dispatched workflows (the nightly through its request target), keyed by path segment", () => {
     assert.deepEqual([...GHA_DISPATCH_WORKFLOWS.keys()].sort(), [
-      "nightly",
       "nightly-request",
       "platform-snapshot",
       "sync-canary-check",
@@ -65,12 +65,10 @@ describe("resolveDispatchTarget — the allowlist", () => {
   });
 
   it("the nightly carries the slot rule and the trigger name; the others carry nothing", () => {
-    assert.deepEqual(nightly.inputs, { slot_offset_hours: "3", dispatched_by: "vercel-cron" });
+    assert.deepEqual(nightly.inputs, { slot_offset_hours: "3", dispatched_by: "dispatcher" });
     assert.equal(nightly.workflow, "nightly.yml");
-    assert.equal(nightly.gate, "legacy-registry");
-    const req = resolveDispatchTarget("nightly-request");
-    assert.deepEqual(req?.inputs, { slot_offset_hours: "3", dispatched_by: "dispatcher" });
-    assert.equal(req?.gate, "request");
+    assert.equal(nightly.stem, "nightly", "stamps gha_dispatch_nightly, which canary-gha-dispatch reads");
+    assert.equal(nightly.gate, "request");
     assert.deepEqual(resolveDispatchTarget("sync-canary-check")?.inputs, {});
     assert.deepEqual(resolveDispatchTarget("platform-snapshot")?.inputs, {});
     assert.equal(resolveDispatchTarget("sync-canary-check")?.gate, undefined, "ungated: fires on every call");
@@ -85,8 +83,6 @@ type Log = string[];
 const NOW = Date.parse("2026-10-23T21:01:30Z");
 
 function mockDeps(opts: {
-  rule?: string | null;
-  ruleError?: string;
   request?: GhaDispatchRequest | null;
   requestError?: string;
   status?: number;
@@ -94,10 +90,6 @@ function mockDeps(opts: {
   const log: Log = [];
   const fetches: Call[] = [];
   const deps: GhaDispatchDeps = {
-    readDeadlineRule: async (job) => {
-      log.push(`readDeadlineRule ${job}`);
-      return { rule: opts.rule ?? null, error: opts.ruleError ?? null };
-    },
     readRequest: async (stem) => {
       log.push(`readRequest ${stem}`);
       return { value: opts.request ?? null, error: opts.requestError ?? null };
@@ -170,32 +162,20 @@ describe("runGhaDispatch — nightly-request fires only on the dispatcher's stam
   });
 });
 
-describe("runGhaDispatch — the legacy nightly slot reads the registry row", () => {
-  it("an `at …` row → dispatched as today (vercel-cron), no consume", async () => {
-    const { deps, log, fetches } = mockDeps({ rule: "at 0 21 * * *" });
-    const r = await runGhaDispatch(nightly, deps);
-    assert.equal(r.body["outcome"], "dispatched");
-    assert.match(String(fetches[0]?.init.body), /"dispatched_by":"vercel-cron"/);
-    assert.deepEqual(log, ["readDeadlineRule nightly", "record nightly dispatched"]);
+describe("FIX-1350 (cc-249) — the legacy 0 21 nightly slot is gone", () => {
+  it("`nightly` is outside the allowlist, so the route answers its 400 refusal and never reaches GitHub", () => {
+    assert.equal(resolveDispatchTarget("nightly"), null);
+    assert.equal(GHA_DISPATCH_WORKFLOWS.has("nightly"), false);
   });
 
-  it("a `by …` row → legacy_off: no dispatch, no stamp", async () => {
-    const { deps, log, fetches } = mockDeps({ rule: "by 0 21 * * *" });
-    const r = await runGhaDispatch(nightly, deps);
-    assert.equal(r.body["outcome"], "legacy_off");
-    assert.equal(fetches.length, 0);
-    assert.deepEqual(log, ["readDeadlineRule nightly"]);
+  it("no target is registry-gated and none dispatches as vercel-cron", () => {
+    for (const [key, t] of GHA_DISPATCH_WORKFLOWS) {
+      assert.ok(t.gate === undefined || t.gate === "request", `${key}: gate ${String(t.gate)}`);
+      assert.notEqual(t.inputs["dispatched_by"], "vercel-cron", key);
+    }
   });
 
-  it("an unreadable registry fails OPEN — the slot fires, the preflight de-duplicates", async () => {
-    const { deps, fetches } = mockDeps({ ruleError: "timeout" });
-    const r = await runGhaDispatch(nightly, deps);
-    assert.equal(r.body["outcome"], "dispatched");
-    assert.equal(r.body["registry_error"], "timeout");
-    assert.equal(fetches.length, 1);
-  });
-
-  it("an ungated target never reads the registry or a request", async () => {
+  it("an ungated target never reads a request", async () => {
     const { deps, log } = mockDeps({});
     await runGhaDispatch(resolveDispatchTarget("platform-snapshot") as DispatchTarget, deps);
     assert.deepEqual(log, ["record platform-snapshot dispatched"]);
@@ -214,7 +194,7 @@ describe("buildDispatchRequest", () => {
     assert.equal(h["X-GitHub-Api-Version"], "2022-11-28");
     assert.deepEqual(JSON.parse(init.body as string), {
       ref: "main",
-      inputs: { slot_offset_hours: "3", dispatched_by: "vercel-cron" },
+      inputs: { slot_offset_hours: "3", dispatched_by: "dispatcher" },
     });
   });
 });

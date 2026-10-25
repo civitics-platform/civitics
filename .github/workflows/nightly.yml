@@ -98,10 +98,11 @@ on:
         default: "0"
       # N2 (FIX-1336, cc-243): `dispatcher` is the dispatcher's request stamp
       # fired by /api/cron/gha-dispatch/nightly-request (the registry row reads
-      # `by 0 21 * * *`); `vercel-cron` is the legacy 0 21 slot, which goes
-      # quiet once the row is dispatched. Both are de-duplicated by the preflight.
+      # `by 0 21 * * *`). `vercel-cron` was the legacy 0 21 slot, removed by
+      # FIX-1350 (cc-249); nothing sends it now. It stays in the enum, and in the
+      # preflight's guarded set, so a stray call is de-duplicated, not 422'd.
       dispatched_by:
-        description: "FIX-1218/FIX-1336: which trigger fired this run. dispatcher (the request stamp) and vercel-cron (the legacy slot) are de-duplicated by the preflight; manual always runs"
+        description: "FIX-1218/FIX-1336: which trigger fired this run. dispatcher (the request stamp) is de-duplicated by the preflight; vercel-cron (the legacy slot, removed by FIX-1350) is kept for history; manual always runs"
         type: choice
         required: false
         default: manual

@@ -328,7 +328,7 @@ export function dispatcherLivenessVerdict(
       age_hours: null,
       line:
         "Dispatcher last fired **never** — `pipeline_state.gha_dispatch_nightly` is absent. Either the " +
-        "FIX-1218 migration is not on this database, or `/api/cron/gha-dispatch/nightly` has not run since it was.",
+        "FIX-1218 migration is not on this database, or `/api/cron/gha-dispatch/nightly-request` has not dispatched since it was.",
     };
   }
   const t = Date.parse(stamp.at);
@@ -1771,7 +1771,7 @@ export function renderMarkdown(d: ReceiptsData): string {
     p("### Runs for this nominal day");
     p("");
     p(
-      "The dispatcher (`/api/cron/gha-dispatch/nightly`, a Vercel cron at the 21:00 slot) fires " +
+      "The dispatcher (`/api/cron/gha-dispatch/nightly-request`, a Vercel cron every 5 min 21–23 UTC, on the dispatcher's request stamp) fires " +
         "`workflow_dispatch`; the `schedule:` trigger still fires hours later as the fallback, and its " +
         "preflight stands it down when the dispatched run already did the day (FIX-1218). " +
         "`already_ran` is read from the run's fec-phase `" + FEC_RUN_STEP + "` step concluding `skipped`.",

@@ -282,12 +282,12 @@ the check. History: the 05:45–09:00 UTC blackout clause was retired by cc-243
   22:30–01:00 band was standing in for, and it is READABLE, so read it: no
   `nightly_cron` phase `running` (`data_sync_log`, last phase `complete`), and
   the nightly's next START — the DISPATCH time, **21:00 UTC**, where
-  `/api/cron/gha-dispatch/nightly` fires it (FIX-1218; `prod_op_gate()`'s
+  `/api/cron/gha-dispatch/nightly-request` fires it (FIX-1218; `prod_op_gate()`'s
   `c_nightly_start`), not the 22:35–22:50 the GitHub offset used to put it at;
   the `schedule:` fallback still arrives ~1.6–2.7 h later and stands down on
   `already_ran` — **≥ `2 × expected wall + 15 min`** away. From cc-243 the
   START is a dispatched unit (FIX-1336: `by 0 21 * * *` window 120 min, fired by
-  `/api/cron/gha-dispatch/nightly-request` on the dispatcher's request stamp),
+  `/api/cron/gha-dispatch/nightly-request` on the dispatcher's request stamp; the legacy `0 21` slot is gone, FIX-1350),
   still at ~21:0x UTC. Still ≥ 60 min before any weekend-only job. A class-P
   push waits only on the three phase-state clauses, not on `2 × wall + 15 min`.
   Vacuum spacing is a state (a live VACUUM) or a slot in the span (rule (a)),

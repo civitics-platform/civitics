@@ -1,11 +1,12 @@
 /**
- * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly | nightly-request | sync-canary-check | platform-snapshot)
+ * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly-request | sync-canary-check | platform-snapshot)
  *
  * N2 (FIX-1336, cc-243): `nightly-request` fires only on the dispatcher's
  * unconsumed request stamp (pipeline_state.gha_dispatch_request_nightly) and
- * consumes it; the legacy `nightly` slot fires only while job_registry's
- * `nightly` row still reads `at …` (otherwise `legacy_off`, no stamp). The
- * logic is runGhaDispatch() in lib/gha-dispatch.ts; this file wires the deps.
+ * consumes it. The legacy `nightly` slot, and the job_registry read that gated
+ * it, were removed by FIX-1350 (cc-249): `/nightly` now gets the allowlist's
+ * 400. The logic is runGhaDispatch() in lib/gha-dispatch.ts; this file wires
+ * the deps.
  *
  * ── WHY THIS ROUTE EXISTS ────────────────────────────────────────────────────
  *
@@ -101,22 +102,6 @@ export async function GET(
   const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
   const deps: GhaDispatchDeps = {
-    // N2 (FIX-1336): the legacy slot reads the registry row it may be retired by.
-    readDeadlineRule: async (job) => {
-      try {
-        const db = await getDb();
-        const { data, error } = await withDbTimeout(
-          db.from("job_registry").select("deadline_rule").eq("job", job).maybeSingle(),
-          STAMP_TIMEOUT_MS,
-          "gha-dispatch-registry",
-        );
-        if (error) return { rule: null, error: error.message };
-        const rule = (data as { deadline_rule?: unknown } | null)?.deadline_rule;
-        return { rule: typeof rule === "string" ? rule : null, error: null };
-      } catch (err) {
-        return { rule: null, error: msg(err) };
-      }
-    },
     // N2: the dispatcher's request stamp (service_role reads pipeline_state).
     readRequest: async (stem) => {
       try {

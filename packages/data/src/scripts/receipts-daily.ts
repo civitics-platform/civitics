@@ -390,7 +390,7 @@ LIMIT 1`;
 
 /**
  * FIX-1218 — the nightly dispatcher's per-call stamp. One row by primary key,
- * rewritten on every call of /api/cron/gha-dispatch/nightly (dispatched,
+ * rewritten on every dispatching call of /api/cron/gha-dispatch/nightly-request (dispatched,
  * refused or error). Absent before the FIX-1218 migration, or before the
  * route's first call after it; the renderer says which.
  */
