@@ -1,14 +1,26 @@
 #!/usr/bin/env node
-// scripts/session-check.mjs — read-only start-of-session reconciliation.
+// scripts/session-check.mjs — start-of-session reconciliation.
 //
 // Run FIRST each session (`pnpm session:check`), before `pnpm fixes:sync`.
-// Changes NOTHING — it only fetches and reports. Its job is to surface
-// stranded work in the first seconds of a session: the failure mode that let
-// a PR sit unmerged while `fixes:sync` recorded its FIXes as shipped (FIX-461),
-// and any stray worktree/branch left by a parallel session.
+// It fetches and reports, and makes ONE write: on the PRIMARY checkout it
+// runs `git pull --ff-only origin main` (FIX-1345 D8) — the one git write
+// CLAUDE.md §Deployment already allows there. Every guard must hold, or it
+// only reports what it would have done:
+//   (i)   cwd is the primary checkout, not a linked worktree (--git-dir ==
+//         --git-common-dir); in a worktree it prints no `primary` line at all
+//   (ii)  the branch is `main`
+//   (iii) `git status --porcelain` is empty — a dirty tree prints
+//         `primary NOT pulled: N uncommitted path(s)` under ATTENTION
+//   (iv)  main is strictly BEHIND origin/main, nothing local-ahead (ahead > 0
+//         is the stranded-work signal below, never a pull)
+// plus: the fetch succeeded, and `--no-pull` was not passed. Its job is to
+// surface stranded work in the first seconds of a session: the failure mode
+// that let a PR sit unmerged while `fixes:sync` recorded its FIXes as shipped
+// (FIX-461), and any stray worktree/branch left by a parallel session.
 //
 // Reports:
-//   1. main vs origin/main ahead/behind (after a quiet `git fetch origin`)
+//   1. main vs origin/main ahead/behind (after a quiet `git fetch origin`),
+//      and the primary's guarded pull
 //   2. every worktree and the branch it is on
 //   3. branches not yet merged into origin/main  ← the stranded-work signal
 //   4. open PRs via `gh` (degrades gracefully if gh is absent/unauthenticated)
@@ -25,8 +37,10 @@
 
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const attention = [];
+const NO_PULL = process.argv.includes("--no-pull");
 
 // Run a command, capture stdout/stderr, never throw. Returns { ok, out, err }.
 function run(cmd, args, opts = {}) {
@@ -54,6 +68,62 @@ function section(title) {
   console.log(`\n── ${title} ${"─".repeat(Math.max(0, 56 - title.length))}`);
 }
 
+// An absolute, comparable form of `git rev-parse <flag>` (it may answer ".git").
+function gitPath(flag) {
+  const r = git("rev-parse", flag);
+  if (!r.ok || !r.out) return null;
+  const p = resolve(process.cwd(), r.out).replace(/\\/g, "/");
+  return process.platform === "win32" ? p.toLowerCase() : p;
+}
+
+// FIX-1345 D8 — the guarded catch-up pull (see the header for the guards).
+// Returns true when it pulled; otherwise it has said why not.
+function catchUpPrimary({ behind, ahead, branch }) {
+  const gitDir = gitPath("--git-dir");
+  const commonDir = gitPath("--git-common-dir");
+  if (!gitDir || !commonDir || gitDir !== commonDir) return false; // (i) a worktree: no line
+  if (!fetched.ok) {
+    console.log("primary NOT pulled: git fetch failed");
+    return false;
+  }
+  if (branch !== "main") {
+    console.log(`primary NOT pulled: on ${branch}, not main`); // (ii)
+    return false;
+  }
+  if (ahead > 0) {
+    console.log(`primary NOT pulled: ${ahead} local commit(s) ahead of origin/main`); // (iv)
+    return false;
+  }
+  if (behind === 0) {
+    console.log("primary: up to date");
+    return false;
+  }
+  const status = git("status", "--porcelain");
+  const dirty = status.ok ? status.out.split("\n").filter(Boolean).length : null;
+  if (dirty !== 0) {
+    const why = dirty === null ? "git status failed" : `${dirty} uncommitted path(s)`; // (iii)
+    console.log(`primary NOT pulled: ${why}`);
+    attention.push(`primary NOT pulled: ${why} — main is ${behind} behind origin/main`);
+    return false;
+  }
+  if (NO_PULL) {
+    console.log(`primary: would pull ${behind} commit(s) — skipped (--no-pull)`);
+    return false;
+  }
+  const before = git("rev-parse", "HEAD").out;
+  const pulled = git("pull", "--ff-only", "--quiet", "origin", "main");
+  if (!pulled.ok) {
+    const why = (pulled.err || pulled.out).split("\n")[0];
+    console.log(`primary NOT pulled: git pull --ff-only failed — ${why}`);
+    attention.push(`primary NOT pulled: git pull --ff-only failed — ${why}`);
+    return false;
+  }
+  const after = git("rev-parse", "HEAD").out;
+  const n = git("rev-list", "--count", `${before}..${after}`).out;
+  console.log(`primary: pulled ${n} commit(s) → ${after.slice(0, 8)}`);
+  return true;
+}
+
 // ── 1. fetch + ahead/behind ──────────────────────────────────────────────
 section("Fetch + main vs origin/main");
 const fetched = git("fetch", "origin", "--quiet");
@@ -74,7 +144,8 @@ if (!hasOriginMain) {
     const branch = git("rev-parse", "--abbrev-ref", "HEAD").out;
     console.log(`HEAD (${branch}): ${ahead} ahead, ${behind} behind origin/main`);
     if (ahead > 0) attention.push(`local HEAD is ${ahead} commit(s) ahead of origin/main (unpushed)`);
-    if (behind > 0) console.log(`  → 'git pull --ff-only' to catch up.`);
+    const pulled = catchUpPrimary({ behind, ahead, branch });
+    if (behind > 0 && !pulled) console.log(`  → 'git pull --ff-only' to catch up.`);
   }
 }
 
@@ -276,7 +347,7 @@ if (attention.length === 0) {
 } else {
   console.log("⚠ ATTENTION:");
   for (const a of attention) console.log(`  • ${a}`);
-  // Read-only diagnostic: exit 0 so it never blocks a session; the ⚠ banner is
-  // the signal. (The pre-push hook is the hard gate.)
+  // A diagnostic: exit 0 so it never blocks a session; the ⚠ banner is the
+  // signal. (The pre-push hook is the hard gate.)
   process.exit(0);
 }
