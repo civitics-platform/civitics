@@ -14,7 +14,7 @@ by path, because a comment does not follow a rename.
 |---|---|---|---|
 | [SESSION_LOG.md](SESSION_LOG.md) | before 2026-04-22 | The per-session log from before the CC loop. | `docs/done.log` (per FIX) and `docs/cc/reports/` (per run). |
 | [fixes-archive.md](fixes-archive.md) | ongoing | Closed FIXES.md bullets, moved by `pnpm fixes:archive`. It is machine-owned history, and its `[x]` boxes predate FIX-1016. | `docs/FIXES.md` holds the live backlog. Status lives in `docs/done.log`. |
-| [REBUILD_STATUS.md](REBUILD_STATUS.md) | 2026-04-22 | The Stage 0→2 rebuild tracker. The rebuild cut over on 2026-04-22. | `CLAUDE.md` (the cutover status line) and `docs/done.log` (FIX-097–104). |
+| [REBUILD_STATUS.md](REBUILD_STATUS.md) | 2026-04-22 | The Stage 0→2 rebuild tracker. The rebuild cut over on 2026-04-22. | The cutover status line, which root `CLAUDE.md` carried until cc-245 and is now in its archive copy [claude-md-root-2026-10-23.md](claude-md-root-2026-10-23.md); and `docs/done.log` (FIX-097–104). |
 | [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) | 2026-04-22 | The runbook that promoted `shadow.*` to `public.*`, done in migration `20260422000000`. | Executed. Nothing replaces it. |
 | `scripts/` | 2026-05-10 | Orphan scripts from the pipeline audit (`copy-pac-tags-to-prod.ts`). | Deleted from `packages/data`. |
 | [QWEN_PROMPTS.md](QWEN_PROMPTS.md) | 2026-09-29 | The Qwen Code task queue. Qwen is deprecated, and Claude Code runs the loop. | `docs/FIXES.md` and the CC prompts (`docs/cc/`). `QWEN.md` at the root still points here. |

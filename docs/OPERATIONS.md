@@ -197,12 +197,14 @@ type(scope): description                  ← triggers Vercel build + deploy
 pnpm build          # MUST pass clean — Vercel uses strict TypeScript
 pnpm dev            # Smoke test at localhost:3000
 
-# 2. Commit without [skip vercel] tag
+# 2. Commit without [skip vercel] tag, on the FIX's worktree branch (never on the
+#    primary checkout — root CLAUDE.md §Deployment; `pnpm session:worktree <id>`)
 git add packages/... apps/...
 git commit -m "feat(scope): description"
 
-# 3. Push — Vercel build triggers automatically
-git push origin main
+# 3. Land by fast-forward from the rebased branch — Vercel builds on the push
+git fetch origin && git rebase origin/main
+git push origin feature/fix-<id>:main     # rejected if main moved: rebase, retry
 
 # 4. Monitor build
 # Vercel dashboard: vercel.com/civitics-platform/civitics
@@ -862,7 +864,9 @@ Set these in Vercel Dashboard → Settings → Environment Variables (no code de
 | `CRON_DISABLED` | `true` | Stops the three **Vercel** cron routes that honour it (`/api/cron/nightly-sync`, `/api/cron/notify-followers`, `/api/cron/cron-watchdog`). It does **not** stop `platform-snapshot` or `front-door-watch` (neither reads the flag — both are watchdogs, on purpose), **not** the GitHub-Actions nightly, and **not** any of the 38 pg_cron jobs — see `docs/ops/prod-holds.md` for what does (FIX-1173). Note it DOES silence the Vercel half of budget enforcement while leaving pg_cron's half running (FIX-1194) |
 | `SUPABASE_AVAILABLE` | `false` | Prevents 10-second timeout burns when Supabase is paused |
 | `CONNECTIONS_PIPELINE_ENABLED` | `false` | Disables connections pipeline |
-| `AI_SUMMARIES_ENABLED` | `false` | Disables AI summary generation (officials/proposals summaries, ai-tagger pipeline, ai-summaries pipeline, and `/api/graph/narrative` — the graph header ✨ Explain button hides) |
+| `AI_SUMMARIES_ENABLED` | `false` | Disables AI summary generation (officials/proposals summaries, the ai-summaries pipeline). Since FIX-311 it no longer covers the tagger or the narrative — each AI feature has its own switch below, and `"false"` forces it off whatever the DB switch says (`packages/db/src/kill-switches.ts`) |
+| `AI_NARRATIVE_ENABLED` | `false` | Disables `/api/graph/narrative` (the graph header ✨ Explain button) |
+| `AI_TAGGER_ENABLED` | `false` | Disables the AI tagger (enrichment-queue tag work) |
 | `CHORD_DATA_ENABLED` | `false` | Disables chord diagram data queries |
 
 **When pausing Supabase:** Always set `SUPABASE_AVAILABLE=false` in Vercel first to prevent functions from timing out on dead DB connections.
@@ -1241,43 +1245,20 @@ cycle and nothing in the API discriminates between the two.
 
 ### pg_cron background-worker capacity (FIX-1022)
 
-**Applied on prod:** `max_worker_processes` raised **6 → 12**.
+**`job startup timeout` is a failed CONNECTION, not a missing worker slot.** With
+`cron.use_background_workers = off`, pg_cron never requests a background worker:
+it opens a libpq connection per firing inside a ~10 s window, and under I/O
+pressure the postmaster cannot fork and finish the handshake in time (playbook D1).
+FIX-1022 raised `max_worker_processes` 6 → 12 on the slot theory; FIX-1072's census
+refuted it (non-client backends peaked at 8 of 12, no pool competing). Raising
+`max_worker_processes` is a non-remedy — `docs/audits/2026-08-20-fix1069-ec-incremental-windowing.md` §6.
 
-**Why:** pg_cron runs with `cron.use_background_workers = off`, opening a fresh
-connection per firing inside a ~10 s window. At `mwp = 6`, three slots are
-permanently held on an idle box (two `Extension` bgworkers plus
-`LogicalLauncherMain`), and any parallel query takes two more — leaving pg_cron
-**one**. The result was 29 lifetime firings that never reached their command,
-all `return_message = 'job startup timeout'`, including **0-for-12 on the six
-FIX-1003 arm vacuums**.
-
-**How to apply a Supabase Postgres config override — the trick matters:**
-
-```
-supabase --experimental postgres-config update --no-restart   # stores, but NEVER renders
-```
-
-`--no-restart` writes the value and it does not take effect; a plain restart does
-**not** pick it up either. **Delete the key, then set it** — the
-delete-then-update forces the apply. Verify with
-`SELECT name, setting, source FROM pg_settings WHERE name = 'max_worker_processes'`
-(expect `source = configuration file`).
-
-> ⚠ **Custom Postgres config persists across compute resizes and will NOT
-> re-derive.** If the instance is ever resized, this override stays pinned at
-> whatever was set — it will not scale up with the new tier, and it can pin a
-> larger box to a small-box value. Re-check it after any resize.
-
-**`cron.max_running_jobs` is NOT in Supabase's overridable set** — it stays at
-the default 32, i.e. pg_cron still advertises far more concurrency than the
-postmaster can supply. **Schedule deconfliction is therefore the standing
-mitigation, not a nice-to-have** (FIX-969 / FIX-990).
-
-**Honest limit on the evidence:** the arm vacuums went 6-for-6 at 11:05–11:18 on
-2026-08-12, but jobids 2 and 16 were paused that day, and six of them already
-succeeded at 08-11 14:05–14:18 *before* the restart and *before* `mwp=12` — once
-the 6 h squatter died. The 0-for-12 was a contention record. The first real test
-of `mwp=12` is the next Mon/Wed 11:00 with jobid 16 active.
+**Applying a Supabase Postgres config override:** `supabase --experimental
+postgres-config update --no-restart` stores the value but never renders it, and a
+plain restart does not pick it up — delete the key, then set it. Verify with
+`SELECT name, setting, source FROM pg_settings WHERE name = '…'` (expect
+`source = configuration file`). An override persists across compute resizes and
+does not re-derive: re-check it after any resize.
 
 ### Dashboards
 

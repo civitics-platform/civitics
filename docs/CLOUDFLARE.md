@@ -125,7 +125,8 @@ Cloudflare 403s every scripted probe to civitics.com, including browser-UA curl 
 and www return `403 Cf-Mitigated: challenge` (FIX-799, FIX-513). Anything that depends on a
 CF-layer response header (`cf-cache-status`, `cf-mitigated`) has to be checked from a real
 browser. Scripted verification sees the Vercel layer only, and a green scripted check proves
-nothing about Cloudflare.
+nothing about Cloudflare. That is the REQUEST path: the zone's analytics are readable as text
+with `node scripts/cf-analytics.mjs` (edge traffic by hour, or `--by clientIP|userAgent`).
 
 ---
 

@@ -108,7 +108,7 @@ tonally separate.
 
 ## What Not To Do — Mission and Product Rules
 
-(Operational/runtime "do nots" live in [`/CLAUDE.md`](../CLAUDE.md#what-not-to-do).)
+(The operational/runtime "do nots" root `CLAUDE.md` used to list are in its archive copy, [`archive/claude-md-root-2026-10-23.md`](archive/claude-md-root-2026-10-23.md#what-not-to-do).)
 
 - Do not store precise user coordinates — always coarsen to district level
 - Do not show blockchain addresses, tx hashes, or network names in UI
