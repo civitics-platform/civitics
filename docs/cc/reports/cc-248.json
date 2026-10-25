@@ -1,0 +1,72 @@
+{
+  "cc": "248",
+  "prompt": "cc-prompt-248-weekly-fixes-clean-archive-bot-monday-10z-grace-7d.md",
+  "started_at": "2026-10-25T02:29:49Z",
+  "finished_at": "2026-10-25T04:50:00Z",
+  "head_before": "db077f18",
+  "head_after": "3d62c3af",
+  "commits": [
+    {
+      "sha": "971fd9b9",
+      "subject": "[skip vercel] chore(fixes): file FIX-1345 (weekly fixes-housekeep bot + fixes:clean grace + session:check pulls the primary) (cc-248)"
+    },
+    {
+      "sha": "3f84dd36",
+      "subject": "[skip vercel] feat(fixes): FIX-1345 — fixes:clean --older-than N moves a closed bullet only when its last done.log row is dated <= UTC today - N, prints the deferred set on one line, and writes nothing on a 0-move run; test-fixes-clean.mjs joins fixes:test (cc-248)"
+    },
+    {
+      "sha": "12037cab",
+      "subject": "[skip vercel] feat(session): FIX-1345 — session:check catches the primary up: git pull --ff-only origin main when cwd is the primary (not a worktree), on main, clean, and strictly behind with nothing local-ahead; a dirty tree prints primary NOT pulled under ATTENTION; --no-pull opts out (cc-248)"
+    },
+    {
+      "sha": "4fe08417",
+      "subject": "[skip vercel] feat(ci): FIX-1345 — fixes-housekeep.yml, Mondays 10:00Z: fixes:clean --older-than 7, fixes:archive, then fixes:check + fixes:test must pass before github-actions[bot] commits the move to main (empty diff = no commit, no trailer, no DB secret); CLAUDE.md, OPERATIONS and the cc-loop plan say so (cc-248)"
+    },
+    {
+      "sha": "3d6c575b",
+      "subject": "[skip vercel] fix(ci): FIX-1345 — fixes-housekeep's trailer-key guard is case-sensitive, as the parser is since FIX-465; the case-blind form refused every moving run, because the body's own 'fixes:clean — APPLIED' line begins with fixes: (cc-248)"
+    },
+    {
+      "sha": "d47edb55",
+      "subject": "[skip vercel] feat(db): FIX-1345 — the job_registry row for fixes-housekeep.yml (gha:fixes-housekeep.yml, at 0 10 * * 1, catalog-only like the other gha: rows), so check:job-registry's scheduled-workflow parity holds (cc-248)"
+    },
+    {
+      "sha": "5384b729",
+      "subject": "[skip vercel] fix(ci): FIX-1345 — fixes-housekeep gates on fixes:check:trunk, the pre-push hook's checker, not the full fixes:check: drift from another session's not-yet-synced close must not red the bot (Craig 10-25) (cc-248)"
+    },
+    {
+      "sha": "3d62c3af",
+      "subject": "[skip vercel] chore(fixes): sync status after FIX-1345's close (cc-248)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1345"
+  ],
+  "fixes_filed": [
+    "FIX-1345"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261025010000_fix1345_job_registry_fixes_housekeep.sql"
+  ],
+  "prod_writes": "ONE class-P migration push, authorised by Craig mid-run (the prompt's posture was code-only; check:job-registry made a registry row necessary — see 'What contradicted the prompt' 1). From the PRIMARY's packages/data at d47edb55. Dry run: 'Would push these migrations: 20261025010000_fix1345_job_registry_fixes_housekeep.sql' (exactly one). held=false. session:wait-for-gate:prod --expected-minutes 1 --census stop --reason 'FIX-1345 job_registry row for fixes-housekeep.yml (cc-248, class P)' --then 'node ../../scripts/db-push-prod.mjs --workdir ../..', started 03:09:05Z. Polls 03:09:08Z blocked_by [d:cron-job-budget-watchdog(→03:19), d:derived-mvs-unit-watchdog(→03:19), d:startup_timeout(→04:02)]; 03:14:08Z → 03:59:08Z (10 polls) blocked_by [d:startup_timeout(→04:02)] only — no b: and no a:nightly_next_start token in any poll. 04:04:08Z ok=true, census pass (2 renders / 2 events in 60 min, ratio 1.01, floor 6; edge 0 of 821 = 0.00 %). Interlock acquired, held 5 guarded pipelines, applied 20261025010000, cleared 5 holds, released, --then exited 0; client clock 04:04:15Z after exit: claim <= 7 s. Read-back 04:40:45Z: schema_migrations 524, head 20261025010000; job_registry 55 rows; fixes-housekeep row = github_actions / gha:fixes-housekeep.yml / priority 5 / at 0 10 * * 1 / cpu / 128 / 900 / {} (updated_at 04:04:14.999Z). Every other prod contact was a read: db-query --prod, the gate, gh.",
+  "ci": "green",
+  "stopped_items": [
+    "PERMISSION — rm -rf of the Item 4 scratch clone this run created (C:/Users/Craig/AppData/Local/Temp/claude/c--Users-Craig-Documents-Civitics-App/6dda6350-16d7-4766-92c6-c2acd028b0f8/scratchpad/rehearsal; the prompt sanctions the deletion) was denied at the permission prompt. The clone is left in the session scratchpad, outside the repo; nothing depends on it.",
+    "LOCAL MIGRATION APPLY — supabase --workdir <worktree> migration up --local stops at 20261014220000_fix1312_park_vote_stats_refresh.sql (ERROR P0001: the parked pipeline is already declared by someone else — official_vote_stats_rebuild). Local Docker's head is 20261014010000, so public.job_registry does not exist locally. Pre-existing local drift, not repaired here. 20261025010000's INSERT was run instead in a throwaway local schema rebuilt from the table's own migration DDL (INSERT 0 1, then INSERT 0 0; schema dropped) before the prod push."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1345",
+      "what": "the first SCHEDULED run, Mon 2026-10-26 10:00Z: green, 'Nothing to move for 2026-10-26 … skipping commit' (cutoff 2026-10-19; every closed live bullet is dated >= 10-24), no bot commit on main",
+      "after": "2026-10-26T10:30Z"
+    },
+    {
+      "fix": "FIX-1345",
+      "what": "the first MOVING run, Mon 2026-11-02 10:00Z: a github-actions[bot] commit '[skip vercel] chore(fixes): weekly clean + archive 2026-11-02 — N bullet(s) → docs/archive/fixes-archive.md' with N >= 7 (FIX-1258, 1339, 1340, 1341, 1342, 1345, 1346 plus whatever closes by 10-26), fixes:check:trunk + fixes:test green inside the run, a new '## Archived 2026-11-02' block on top of the archive, fixes:status open_count unchanged across the commit",
+      "after": "2026-11-02T10:30Z"
+    }
+  ]
+}
