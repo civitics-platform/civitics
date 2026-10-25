@@ -1,0 +1,66 @@
+{
+  "cc": "247",
+  "prompt": "cc-prompt-247-timing-rules-recut-prod-op-gate-op-classes-spacing-retired-template-drain-and-wait.md",
+  "started_at": "2026-10-25T02:09:37Z",
+  "finished_at": "2026-10-25T02:32:50Z",
+  "head_before": "25678510",
+  "head_after": "69c788d2",
+  "commits": [
+    {
+      "sha": "31f41a35",
+      "subject": "[skip vercel] chore(fixes): file FIX-1342 (prod_op_gate op classes + spacing retired), FIX-1343 (receipts stall-minute line), FIX-1344 (MEMORY.md K-only rewrite) (cc-247)"
+    },
+    {
+      "sha": "1e65187e",
+      "subject": "[skip vercel] feat(db): FIX-1342 — prod_op_gate() learns the op classes (a class-P push, expected <= 60 s, skips only nightly_next_start) and the clocked vacuum spacing retires (a live VACUUM or an unguarded > 60 s cron slotted in the span; dispatched rows read from job_registry) (cc-247)"
+    },
+    {
+      "sha": "db077f18",
+      "subject": "[skip vercel] docs(cc): PROMPT_TEMPLATE §Drain-and-wait says which class an op is — P push (first open gate, no window), B bulk (every gate), S scheduled (the dispatcher's); (a) derives the unguarded set and drops the 90-min-after-END rule; (g) spacing is a state or a slot, never a clock; the (b) note scoped by class (FIX-1342, cc-247)"
+    },
+    {
+      "sha": "fbf2d824",
+      "subject": "[skip vercel] docs(cc): context-haircut s5 done (FIX-1342 landed) + s5a the three-push receipt + s5b the stall-minute line (FIX-1343); paced-ops: the fix1258 twin rode cc-247's push; PROMPT_TEMPLATE pins prod_op_gate 1d3507cd (cc-247)"
+    },
+    {
+      "sha": "26715eb3",
+      "subject": "chore(fixes): record FIX-1342 landed — prod_op_gate 1d3507cd4b71439f0cfff51cde49b9d8 at 02:29:0xZ Sun 10-25 (gate open 02:28:59.36Z on the first poll, census pass 1 render / 1 event, held 5 / cleared 5, claim <= 7 s); the fix1258 twin applied (no-op, pg_repack 1.5.2 unchanged); head 20261025000000, 523 applied; the next three class-P pushes OWED (cc-247)"
+    },
+    {
+      "sha": "5f1fb435",
+      "subject": "chore(fixes): record FIX-1340 closed — Craig's fixes:clean + fixes:archive landed in 15b227d0 on 10-23: 183 bullets moved to docs/archive/fixes-archive.md, docs/FIXES.md 815,385 -> 121,750 B (cc-247)"
+    },
+    {
+      "sha": "69c788d2",
+      "subject": "[skip vercel] chore(fixes): sync status after FIX-1342's records and FIX-1340's close (cc-247)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1342",
+    "FIX-1340"
+  ],
+  "fixes_filed": [
+    "FIX-1342",
+    "FIX-1343",
+    "FIX-1344"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261024000000_fix1258_pg_repack_extension_twin.sql",
+    "supabase/migrations/20261025000000_fix1342_prod_op_gate_op_classes_spacing_retired.sql"
+  ],
+  "prod_writes": "ONE gated migration push (the first class-P push), from the PRIMARY's packages/data at db077f18, under its own FIX-950 claim. Dry run 02:28:44Z: 'Would push these migrations: 20261024000000_fix1258_pg_repack_extension_twin.sql, 20261025000000_fix1342_prod_op_gate_op_classes_spacing_retired.sql' (exactly two). held=false read 02:28:56Z. Then session:wait-for-gate:prod --expected-minutes 1 --census stop --reason 'cc-247 FIX-1342 prod_op_gate op classes + spacing retired (+ the fix1258 twin)' --then 'node ../../scripts/db-push-prod.mjs --workdir ../..', started 02:28:56.364Z. Gate (the OLD N2 body) ok on its first poll at 02:28:59.36Z, blocked_by [], census pass (1 render / 1 event in 60 min, ratio 0.51, floor 6; edge 1 of 802 = 0.12 %). Interlock acquired, held 5 guarded pipelines. NOTICEs: '[fix1258] read-back ok: pg_repack 1.5.2 installed (pinned 1.5.2, available 1.5.2)' (after 'extension pg_repack already exists, skipping'); '[fix1342] read-back ok: class P skips nightly_next_start, class B keeps it; no post-END spacing; dispatcher pair N2'; '[fix1342] md5 prod_op_gate 1d3507cd4b71439f0cfff51cde49b9d8'; '[fix1342] (b) readings: 14 job(s), dispatched {fr-vacuum-analyze,votes-vacuum-analyze,xsr-vacuum-analyze}'. Cleared 5 holds, interlock released, --then exited 0 by 02:29:06.31Z (client clock): claim <= 7 s. Read-back 02:29:17Z: dispatch_one_unit 7b4e3f66105a49d030c41539e4cd2d56, get_dispatcher_status 2716fcca9ba97b683963cd499bc78136, in_blackout a0010a4751a4cf35ae88945262bc0a74, run_entity_connections_rebuild 3315486c187ce91ae80a33837b72dbc8 (unchanged), prod_op_gate 1d3507cd4b71439f0cfff51cde49b9d8 (moved from e3e543cd9a30a4b0dca2b52b159410a0); schema_migrations 523, head 20261025000000; pg_repack 1.5.2 unchanged. Every other prod contact was a read: db-query --prod, gh, the gate's census.",
+  "ci": "green",
+  "stopped_items": [
+    "PARTIAL — Item 4.2's claim release instant and exact claim wall. wait-for-gate prints no timestamp on its acquire/release lines, and the claim leaves no row: pipeline_state.prod_session is deleted on release, the session-hold rows are deleted, and data_sync_log has no claim rows (census §B5). So the claim is bracketed: gate open 02:28:59.36Z (DB clock) to --then exit by 02:29:06.31Z (client clock), <= 7 s. The proposal in 'The next prompt' closes this."
+  ],
+  "lane": "ops",
+  "project": "context-haircut",
+  "owed": [
+    {
+      "fix": "FIX-1342",
+      "what": "the next THREE class-P pushes (cc-248 onward, each a prod_writes line in its report) read: gate wait before the push ≤ the census latency (the first poll that reads ok, ~1.7–3.1 min — no (b) hold, no (a) nightly_next_start hold), claim held ≤ 30 s, 0 writer skipped rows attributed to the claim in data_sync_log, and at most one gated: prod_session tick per due registry row in dispatch_log.excluded[] during the claim; after the third, Cowork decides class P → unattended-ok (D5)",
+      "after": "2026-10-25T05:00Z"
+    }
+  ]
+}
