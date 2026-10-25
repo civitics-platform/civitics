@@ -113,8 +113,10 @@ jobs:
             cat "$RUNNER_TEMP/archive.txt"
           } > "$MSG"
           # The trailer parser reads any body line that starts with a trailer
-          # key (FIX-465). This commit closes nothing, so it carries none.
-          if grep -Eiq '^[[:space:]]*(fixes|closes|reopens|verified)(\[[^]]*\])?:' "$MSG"; then
+          # key. This commit closes nothing, so it carries none. Case-SENSITIVE,
+          # as the parser is (FIX-465): the body's own `fixes:clean — APPLIED`
+          # line is prose to it, and must not trip this guard either.
+          if grep -Eq '^[[:space:]]*(Fixes|Closes|Reopens|Verified)(\[[^]]*\])?:' "$MSG"; then
             echo "::error::the commit body has a line beginning with a trailer key — refusing to commit"
             exit 1
           fi
