@@ -402,6 +402,297 @@ proves nothing about the sources.
   WHERE t.typname = 'party' ORDER BY e.enumsortorder;
   ```
 
+### Redefining a live MV — swap, never DROP + CREATE (FIX-1032)
+
+*Moved from `packages/db/CLAUDE.md` by cc-246 (FIX-1346); the rule stays there
+as one line.*
+
+Changing the defining query of an MV that a request path reads has exactly one
+safe shape. `DROP` + `CREATE … WITH DATA` holds ACCESS EXCLUSIVE for the whole
+populate — that is FIX-1032's incident, **442 s of request-path timeouts on
+2026-08-13**. `DROP` + `CREATE … WITH NO DATA` avoids the lock but leaves the MV
+empty, and `REFRESH … CONCURRENTLY` *refuses* to refresh an unpopulated MV, so
+the surface reads empty until the next scheduled refresh. Build a populated twin
+and swap it in:
+
+```sql
+CREATE MATERIALIZED VIEW public.<name>_new AS <new query> WITH NO DATA;
+CREATE UNIQUE INDEX <name>_new_pk ON public.<name>_new (<pk col>);
+GRANT SELECT ON public.<name>_new TO anon, authenticated, service_role;
+REFRESH MATERIALIZED VIEW public.<name>_new;            -- long; no lock on the live MV
+-- then, atomically:
+DROP MATERIALIZED VIEW public.<name>;
+ALTER MATERIALIZED VIEW public.<name>_new RENAME TO <name>;
+ALTER INDEX public.<name>_new_pk RENAME TO <name>_pk;
+```
+
+Rules that make it safe:
+
+- **Wrap the cutover in a `DO $$ … $$` block, not `BEGIN; … COMMIT;`.** A `DO`
+  block is one statement and so is atomic whether or not the migration file is
+  applied inside an implicit transaction; an explicit `BEGIN` inside an already
+  open block is a warning, and its `COMMIT` ends the *outer* block.
+- **Guard for idempotency** on `to_regclass('public.<name>_new')` and on a
+  substring of the outgoing definition, so a re-run is a no-op.
+- **Read `pg_depend` first.** A VIEW or RULE on the MV blocks the `DROP` and
+  needs its own step. Check `obj_description` and `reloptions` too — a `RENAME`
+  carries neither, so re-apply anything the old object had.
+- **The ACL comes back on its own.** Supabase's schema-`public` default
+  privileges give the new object the same `anon`/`authenticated`/`service_role`
+  grants; the explicit `GRANT SELECT` is belt-and-braces.
+- **Prove equivalence on a clone, not on prod.** Evaluate both defining queries
+  in one snapshot and require `(old EXCEPT new) UNION ALL (new EXCEPT old)` to
+  be 0 rows. On prod the two sides were populated at different times, so a delta
+  there is staleness — assert only a loose bound before the cutover.
+- **Swap against a warm box, in a window clear of the scheduled jobs.** The
+  populate is a normal long statement; `pnpm db:push:prod` carries them fine
+  (FIX-1030's ran 442 s).
+
+First instance: `20260902120000_fix1134_1032_official_homepage_stats_single_fr_scan.sql`,
+swapping `official_homepage_stats_mv` (37,294 rows) on prod 2026-09-02 22:47 UTC.
+What it actually cost, so the next one can be planned rather than guessed:
+
+- **44 s end-to-end** through `pnpm db:push:prod` — ~41 s of populate (a Parallel
+  Seq Scan of the 4,932 MB `financial_relationships` heap) and a sub-second
+  cutover.
+- **Zero lock waiters at every sample.** A 15 s poll of `pg_stat_activity`
+  across the whole window showed `wait_event_type='Lock'` = 0 and no ungranted
+  relation locks — the live MV kept serving reads throughout. That is the whole
+  point of the pattern, and it is the measured contrast with FIX-1032's 442 s.
+- **The census came back identical**: same ACL
+  (`{postgres,anon,authenticated,service_role}=arwdDxtm`, restored by default
+  privileges without any explicit grant being load-bearing), same `_pk` index
+  name, `reloptions`/`COMMENT` still null, `pg_depend` still just the index, no
+  leftover `_new`.
+- **PostgREST needed no schema reload** — an anon read of the swapped MV
+  returned 200 with the right columns immediately. Same name + same column set
+  means the schema cache never notices the new OID.
+- **The pre-cutover delta was explainable to the row.** 431 of 37,294 officials
+  differed; `votes` had gained 3,017 rows across exactly 431 distinct officials
+  since the old MV's 06:00 build, and `financial_relationships` had zero writes
+  to officials in that window. Staleness, not disagreement — which is what the
+  loose bound is there to let through.
+- Side benefit worth knowing: a fresh populate compacts. The MV went 770 -> 385
+  pages (8,608 kB -> 4,272 kB), because the old heap carried refresh bloat.
+
+### Retiring or pausing a pg_cron job (FIX-1059)
+
+*Moved from `packages/db/CLAUDE.md` by cc-246; the rule stays there as one
+paragraph.* Any `cron.unschedule(...)` or `cron.alter_job(..., active := false)`
+on a job whose procedure writes `data_sync_log` lands a
+`public.rollup_watch_overrides` row in the SAME migration.
+
+`list_scheduled_rollup_pipelines()` derives its watch list from
+`data_sync_log`, so a retired job's pipeline stays in the census for the whole
+90-day lookback with nothing recording *why*. `recipient_count_reconcile` is the
+worked example: FIX-736 unscheduled `ec-recipient-count-reconcile` on 2026-07-05
+and the retirement was written down nowhere, so the registry carried it as live
+at a fabricated 168h `default` cadence for six weeks. It only escaped paging
+because FIX-977b had separately NULLed the `default` escalate threshold.
+
+```sql
+INSERT INTO public.rollup_watch_overrides (pipeline, retired_at, note)
+VALUES ('<pipeline_name>', now(), 'Why it was retired, and what replaced it.');
+
+-- or, for a deliberate pause you intend to undo:
+INSERT INTO public.rollup_watch_overrides (pipeline, held_since, hold_reason, note)
+VALUES ('<pipeline_name>', now(), 'short reason', 'longer context + the FIX id');
+```
+
+Rows in that table are **declarations, never measurements** — they say what a
+human decided. A declared pipeline stays LISTED in the registry with
+`retired`/`held` set and both thresholds NULL; it is never dropped, because
+dropping it would narrow the watch list, which is the FIX-977 defect wearing a
+different hat (`detector-coverage.test.ts` pins registry ⊇ census). The table
+also carries an optional `cadence_hours` for asserting a cadence the schedule
+cannot express.
+
+Anything the canary finds that is NOT declared — pg_cron rows, no active job,
+no override row — appears in the registry's top-level `orphans` array and in the
+nightly canary email as report-only. That list is the backlog of retirements
+nobody wrote down.
+
+**The table has a second writer as of FIX-1177/1172 (cc-133): `claimProdSession()`.**
+A supervised prod session holds every GUARDED pipeline for its duration
+(`held_since` + `hold_reason` prefixed `prod session held: `) and clears its own
+holds on release, so a long landing no longer reports
+`stale rollup: financial_entity_totals_refresh` at the operator causing it. Two
+consequences for anyone writing a row by hand:
+
+- **A human hold wins.** The session's upsert skips a row that already has
+  `held_since` set, and its release clears only rows whose `hold_reason`
+  carries the session prefix. Your hold and your reason survive a session.
+- **A leftover session hold is a canary finding**, `prod_session_hold_stale`
+  (report tier) — because a hold suppresses both thresholds, so one nobody is
+  behind has blinded the instrument. The next claim sweeps it. See
+  `docs/ops/prod-holds.md`.
+
+The table's own COMMENT still says "Read only by
+`list_scheduled_rollup_pipelines()`", which was true when FIX-1059 wrote it and
+is now stale in two ways: `canary-prod-session.ts` reads it, and
+`claimProdSession()` writes it. The comment is migration text and is left as it
+is rather than rewritten in place; this paragraph is the correction.
+
+### Merging `financial_entities` rows — the FK-rewrite sequence (FIX-271, FIX-381)
+
+*Moved from `packages/db/CLAUDE.md` by cc-246; the rule and "When to extend
+this list" stay there.* Run `pnpm --filter @civitics/data data:audit-fe-fk-surface`
+first: it is the source of truth for which tables reference an FE row, and its
+reports land at `docs/audits/<date>-fe-fk-surface-audit-{local,prod}.md`.
+
+[supabase/migrations/20260514000001_cross_source_backfill.sql](../supabase/migrations/20260514000001_cross_source_backfill.sql)
+is the canonical end-to-end FK-rewrite migration (FIX-271). Mirror its
+execution sequence:
+
+1. `_loser_remap` temp table flat `(loser_id → winner_id)`.
+2. `financial_relationships` — **set-based DELETE+INSERT** aggregating by
+   `(type, new_from_id, to_type, new_to_id, cycle_year)` to dedupe the
+   `_relcycle_unique` UNIQUE before insert. Straight UPDATE collides.
+3. `external_relationships` — straight UPDATE (UNIQUE is `(source, source_id)`).
+4. `external_source_refs.entity_id` — straight UPDATE (UNIQUE is `(source, external_id)`).
+5. Hard-FK rewrites — straight UPDATE: `edgar_companies`,
+   `edgar_executive_officers`, `edgar_major_shareholders`,
+   `irs990_filings`, `irs990_officers`, `irs990_grants_out.matched_entity_id`,
+   `financial_entities.parent_entity_id` (self-ref).
+6. `entity_tags` + `enrichment_queue` (added per FIX-381) — see below.
+7. Winner row merge — sum totals, longest `display_name`, best metadata jsonb.
+8. DELETE losers.
+9. TRUNCATE `entity_connections`; downstream rebuild repopulates.
+
+`page_views` also carries free-TEXT discriminators but holds 0 FE rows
+(analytics, stale-OK; skip). `notifications` + `user_follows` discriminate on
+the ENUM `follow_entity_type(official, agency)` — FE is forbidden at the type
+system; skip. The 2026-05-25 twelve-table surface table is in
+`docs/archive/claude-md-db-2026-10-24.md`; re-run the audit rather than trust it.
+
+Step 6, after step 5 (hard-FK rewrites) and before the winner-merge step:
+
+```sql
+  -- ── 6a. entity_tags rewrite (FIX-381) ──────────────────────────────────
+  -- UNIQUE (entity_type, entity_id, tag, tag_category) → low collision risk.
+  -- A loser row tagged 'pharma' and a winner row also tagged 'pharma' would
+  -- collide. Pre-delete colliding loser rows; the winner's tag survives.
+  WITH dupes AS (
+    SELECT et_loser.id
+      FROM public.entity_tags et_loser
+      JOIN _loser_remap lr ON lr.loser_id = et_loser.entity_id
+      JOIN public.entity_tags et_winner
+        ON et_winner.entity_id   = lr.winner_id
+       AND et_winner.entity_type = et_loser.entity_type
+       AND et_winner.tag         = et_loser.tag
+       AND et_winner.tag_category = et_loser.tag_category
+     WHERE et_loser.entity_type = 'financial_entity'
+  )
+  DELETE FROM public.entity_tags WHERE id IN (SELECT id FROM dupes);
+
+  UPDATE public.entity_tags et
+     SET entity_id = lr.winner_id
+    FROM _loser_remap lr
+   WHERE et.entity_type = 'financial_entity'
+     AND et.entity_id   = lr.loser_id;
+
+  -- ── 6b. enrichment_queue rewrite (FIX-381) ─────────────────────────────
+  -- UNIQUE (entity_id, entity_type, task_type). entity_id is TEXT — cast
+  -- the UUIDs from _loser_remap. A loser + winner both having a pending
+  -- 'tag' row for the same task_type would collide; drop the loser's
+  -- (the winner's row stays in the queue).
+  WITH dupes AS (
+    SELECT eq_loser.id
+      FROM public.enrichment_queue eq_loser
+      JOIN _loser_remap lr ON lr.loser_id::text = eq_loser.entity_id
+      JOIN public.enrichment_queue eq_winner
+        ON eq_winner.entity_id   = lr.winner_id::text
+       AND eq_winner.entity_type = eq_loser.entity_type
+       AND eq_winner.task_type   = eq_loser.task_type
+     WHERE eq_loser.entity_type = 'financial_entity'
+  )
+  DELETE FROM public.enrichment_queue WHERE id IN (SELECT id FROM dupes);
+
+  UPDATE public.enrichment_queue eq
+     SET entity_id = lr.winner_id::text
+    FROM _loser_remap lr
+   WHERE eq.entity_type = 'financial_entity'
+     AND eq.entity_id   = lr.loser_id::text;
+```
+
+### Regenerating `database.ts` (`pnpm db:types`)
+
+*Moved from `packages/db/CLAUDE.md` by cc-246; the rule stays there.*
+
+`pnpm db:types` is `supabase gen types typescript --project-id …` — it generates
+from **prod**. That is the right default and the committed file is prod-faithful.
+
+Generate from **local** instead when a migration is on disk but not yet applied
+to Pro and the app must typecheck first (`supabase.rpc("new_fn")` fails
+typecheck until the `Database` type knows the function):
+
+```bash
+# --workdir is REQUIRED from a worktree: the CLI locates the running stack by
+# the project id derived from the workdir, and a worktree is not where the local
+# stack was started. Without it: "supabase start is not running".
+supabase --workdir /path/to/primary/checkout gen types typescript \
+  --db-url "postgresql://postgres:postgres@127.0.0.1:54322/postgres" > /abs/path/local.ts
+```
+
+Write the temp file to an **absolute** path — Node on Windows resolves `/tmp/x`
+to `C:\tmp\x`.
+
+**The local gen differs from the prod gen by four artifacts, none of them
+schema.** Do **not** overwrite the committed file with the local gen. Measured
+2026-09-19 (CLI 2.78.1), a local gen against a clean clone is 50 insertions / 14
+deletions against the committed file, and every one of them is an artifact:
+
+| # | artifact | lines | fix |
+|---|---|---|---|
+| 1 | local gen OMITS the `__InternalSupabase` `PostgrestVersion` header | −4 | splice the committed header back on |
+| 2 | local gen ADDS a `graphql_public` schema block to `Database` | +24 | the same splice drops it |
+| 3 | local gen ADDS `graphql_public` to the `Constants` export | +4 | strip it — see below |
+| 4 | generic-constraint parentheses differ by CLI version (`TableName extends (X extends … : never) = never` vs the same unparenthesised) | 10 pairs | leave alone; a prod-side `db:types` flips it straight back |
+
+Splice the committed header onto the local `public` schema:
+
+```js
+const marker = "\n  public: {";   // unique — "graphql_public" is followed by "graphql_public:"
+merged = committed.slice(0, committed.indexOf(marker)) + local.slice(local.indexOf(marker));
+```
+
+**The `Constants` `graphql_public` entry is MULTI-LINE as of CLI 2.78.1:**
+
+```
+  graphql_public: {
+    Enums: {},
+  },
+```
+
+not the single-line `graphql_public: { Enums: {} },` an older regex was written
+for. A regex for the single-line shape matches **nothing** and the churn lands in
+the commit silently. **Assert after stripping** rather than trusting the replace:
+
+```js
+if (/graphql_public/.test(merged)) throw new Error("graphql_public survived the strip");
+```
+
+**The local clone carries objects prod does not.** Proof/audit sessions leave
+scratch tables on the local Docker clone. A wholesale splice pulls them into
+`database.ts`, where they are indistinguishable from real schema. Before
+generating, check:
+
+```bash
+node scripts/db-query.mjs --local "SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND relname LIKE '\_%' ORDER BY 1;"
+```
+
+and confirm each hit against prod by name before deciding it is scratch — some
+underscore-prefixed tables are real (`_drb_chunk_fe`, `_drb_donor`, `_drb_fe`,
+`_drb_targets` exist on prod and belong in the generated types). 2026-09-19
+dropped ten local-only scratch tables (`_eq_a`, `_eq_b`, `_eq_c`, `_eq_before`,
+`_proof_ref_br`, `_proof_ref_odrmv`, `_proof_ref_odt`, `_proof_ref_sa`,
+`_proof_ref_sd`, `_proof_ref_tm` — 916 MB), which took the local-gen diff from
+392/10 to 50/14. `_proof_recips` is still there and still local-only.
+
+**When the real change is small, patch the committed file surgically instead of
+splicing.** Then the diff is only what you added, which is also what the future
+prod-side gen produces.
+
 ---
 
 ## Pipeline Operations

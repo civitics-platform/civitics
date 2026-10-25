@@ -27,6 +27,10 @@ beneath the claim it corrects, never edited over it.
 (cc-245, FIX-1339). Root keeps each rule as one line; the measurements live here.
 New rules **C10** and **C11**, plus dated addenda on **C2**, **C5** and **D3**.
 
+**Extended 2026-10-24** with the receipts the package `CLAUDE.md` haircuts moved
+out (cc-246, FIX-1346). Each package file keeps its rule as one line; the
+measurements live here. Dated addenda on **C5**, **D1**, **D7** and **E11**.
+
 ---
 
 ## A. Data-shape regimes
@@ -399,6 +403,32 @@ before treating a post-rewrite timing regression as a query problem, and never
 (`bloat_degraded`, report-only) and escalates on the consequence (`vm_degraded`)
 via `check_rebuild_autovacuum_status()`. *FIX-943, FIX-930, FIX-933, FIX-944*
 
+**Addendum — 2026-10-24, sizing an ad-hoc vacuum (moved from
+`packages/db/CLAUDE.md`).** A scheduled vacuum's runtimes measure the **steady
+state**, not a catch-up, and the two are not the same order of magnitude. jobid 38
+`fr-vacuum-analyze` was cheap (227.2 s / 20.3 s / 97.8 s over three firings)
+*precisely because* it ran weekly and never had much to do. Sizing an ad-hoc run
+from those numbers put **8 front-door statement timeouts through prod in 16
+minutes** on 2026-09-01. On `financial_relationships` the heap was not the cost:
+the heap phase finished 631,265 blocks in about 115 s, and the remaining **560 s
+was the index phase**, which is proportional to index bytes × index count —
+every pass sweeps all of them in full, on a box with 256 MB of `shared_buffers`.
+A **cancelled VACUUM banks nothing**: `vacuum_count`, `last_vacuum` and
+`n_dead_tup` are unchanged and the next attempt restarts from the top. And the
+index count is a first-class cost you cannot assume is reducible: the census of
+all 19 FR indexes found exactly one droppable (8 kB, a UNIQUE partial over a
+column with zero non-NULL rows); 1,091 MB of apparent slack was a PRIMARY KEY plus
+a live `ON CONFLICT` arbiter, both invisible to `idx_scan`.
+
+**Apply:** size an ad-hoc vacuum from `n_dead_tup` and the index footprint,
+never from `cron.job_run_details`, and budget a bulk rewrite of FR for its
+tens-of-minutes, front-door-visible tail. Classify indexes by **role first,
+callers second, counters last**, and check the stats window before believing a
+zero: `pg_stat_database.stats_reset` reads NULL both when stats were never reset
+and when a crash discarded them — triangulate against
+`pg_stat_statements_info.stats_reset` and an insert-only table's `n_tup_ins`.
+*FIX-1133 · `docs/audits/fr-index-census-2026-09.md`*
+
 ### C6. When resume is hard, price a full replay's no-op fraction before designing a cursor.
 
 A content-keyed resume cursor for the FEC indiv ingest was **proven
@@ -670,6 +700,22 @@ pattern: SECURITY DEFINER owned by `postgres`, because `service_role` holds the
 table grants but **not** `USAGE` on schema `cron`.
 *FIX-968 · cron audit §1, §4, §5 · `20260806010000_fix968_…sql`*
 
+**Addendum — 2026-10-24, the same holds for a GitHub schedule, worse (moved
+from `packages/db/CLAUDE.md`).** A GHA `schedule:` has no delivery guarantee:
+GitHub drops scheduled runs under load. `*/10 * * * *` was measured firing **8
+times in 51 hours** (mean ~6.4 h, shortest gap 3.2 h, 2026-08-29), after drifting
+to 1–3.5 h gaps in May — so a 4 h staleness threshold existed purely to absorb a
+tick that claimed to be ten minutes. The cron expression is not evidence of
+anything; the observed run history is. The opposite fix is wrong too: driving a
+sub-daily HTTP tick from pg_cron curling the route couples the tick to the health
+of the database it reports on, and the dashboard matters most when that database
+is in distress.
+
+**Apply:** a sub-daily tick goes on a Vercel cron (`platform-snapshot` is `*/30`
+in `apps/civitics/vercel.json`) and its consumers' staleness thresholds move WITH
+the cron expression. pg_cron is right for in-database work, not for watching the
+platform. *FIX-1127, FIX-327, FIX-1120 · `apps/civitics/src/lib/snapshot-freshness.ts`*
+
 ### D2. `cron.job_run_details` is the record. `data_sync_log` lies twice.
 
 **A `reaped_orphan` span is not a runtime** — it is `started_at` → *when the
@@ -855,6 +901,31 @@ monitoring because the absolute numbers look harmless. Autovacuum genuinely
 suffices once the trigger is reachable, so this is an override, not a cron job
 (contrast C5, where the table is bulk-rewritten and needs an owner).
 *FIX-1003, FIX-1006, FIX-943, FIX-884*
+
+**Addendum — 2026-10-24, the large-table side: what a scale factor buys and what
+it costs (moved from `packages/db/CLAUDE.md`).** Every vacuum pass scans **all**
+of a table's indexes, so the budget is index bytes × index count, not row count.
+`entity_connections` carries 3.5 GB across 10 indexes on an I/O-bound Small
+instance, so it stays at 0.05 with a **daily** scheduled `ec-vacuum-analyze`
+(placed by FIX-1152 on 2026-09-07 at 04:30 UTC, ahead of the 06:00 daily that
+depended on it; `fe-vacuum-analyze` at 04:50 on the same reasoning). Making the *autovacuum* threshold more aggressive
+is the move most likely to hurt the request path. Autovacuum keys on dead
+tuples, while what breaks the search-index unit is the visibility map. A
+scheduled VACUUM is already decay-keyed: it skips all-visible pages, and (PG14+)
+the index pass when dead items are few, so a quiet day is nearly free. 0.05 is
+not a guess: four tables have held it in production here and all four sit at
+**100.0% all-visible**. Self-maintaining rollups need nothing —
+`entity_connection_stats_mv`, `entity_search_index`, `group_donor_rollup`,
+`official_donor_rollup_mv` and `treemap_individuals_rollup` delete and re-insert
+millions of rows, clear even the 0.2 default every run, and were all 100%
+all-visible while untuned.
+
+**Apply:** ask first whether the table is on the request path — one rewritten
+wholesale and read only by a nightly job can decay cheaply
+(`external_relationships_review_queue` is deliberately untuned). Default to
+0.05; go to 0.02 only for cheap tables or the very largest request-path tables;
+let a scheduled VACUUM carry a big table rather than tightening its autovacuum.
+*FIX-1152 · `20260907000000_fix1152_daily_vacuum_slots_and_vm_receipt.sql`*
 
 ### D8. A quantum, batch size, page size or rate limit is a DISCRIMINATOR over a population. Census its cost distribution before choosing the number.
 
@@ -1153,3 +1224,25 @@ decision. Cheap belt-and-braces beats clever: the two files here differ by
 **65,891,767 bytes (3.3%)**, so a size compare alone would have caught it. E2 is
 the special case of this where the proxy is built from a rollup.
 *FIX-1014, FIX-1008, FIX-1002 · `packages/data/src/pipelines/fec-bulk/util.ts`*
+
+**Addendum — 2026-10-24, two more adjacent metrics (moved from
+`packages/db/CLAUDE.md`).** *"An EC edge exists" is not "a donation exists".*
+`entity_connections` donation edges are rebuilt on a schedule, so they **lag**
+the weekend FEC ingest until the next rebuild: an individual→committee pair from
+the current weekend legitimately has no edge yet, then self-heals. FIX-736's
+EC-derived `financial_entities.recipient_count` under-counted for exactly that
+window; the FR-derived aggregates (`recipient_count`, `total_donated_cents`,
+`total_received_cents`) are recomputed from `financial_relationships` and are
+effectively real-time. FIX-735 investigated the "edge gap" and closed it
+working-as-designed on that reasoning. *`count: 'estimated'` is not the row
+count.* It reads `pg_class.reltuples`, which is whatever the last vacuum or
+analyze wrote, and it drifts in one direction after a bulk delete: it overstated
+`votes` by **31%** after the vote-stub retirement. `platform_counts` replaced it
+with one EXACT `count(*)` per metric, overwritten daily with a `counted_at` the
+surface shows.
+
+**Apply:** query `financial_relationships` for presence and counts; read EC as a
+display cache. When the request-path cost is counting rather than aggregating, an
+exact count taken daily beats a planner estimate taken constantly — the price is
+freshness, so surface it rather than hide it. *FIX-735, FIX-736, FIX-1146,
+FIX-1095*
