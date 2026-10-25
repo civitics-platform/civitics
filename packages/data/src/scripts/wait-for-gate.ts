@@ -53,7 +53,9 @@ import {
   paceOffQuarterHour,
   waitForProdOpGate,
   type AlsoReading,
+  type GatePoll,
   type WaitOptions,
+  type WaitResult,
 } from "../lib/prod-op-gate";
 import {
   ProdSessionRefused,
@@ -174,6 +176,40 @@ export function childEnv(base: NodeJS.ProcessEnv, reason: string): NodeJS.Proces
   return { ...base, CIVITICS_PROD_SESSION_CLAIMANT: reason };
 }
 
+/** `HH:MM:SS.sssZ` — the receipt's instants. */
+export const instant = (d: Date): string => d.toISOString().slice(11, 23) + "Z";
+
+/** What the receipt line reports (FIX-1352). */
+export interface ReceiptFacts {
+  /** Process start, client clock. */
+  tStart: Date;
+  /** The ok=true poll's `prod_op_gate()->>'checked_at'`, DB clock. */
+  okCheckedAt: string;
+  /** Immediately after the interlock was acquired, client clock. */
+  tClaim: Date;
+  /** After --then exited and the release completed, client clock. */
+  tRelease: Date;
+  polls: readonly GatePoll[];
+}
+
+/**
+ * FIX-1352 — ONE line after the release, so a report quotes the claim's
+ * instants instead of bracketing them from two clocks (cc-247/248):
+ *   [gate] receipt: wait 3.0 s (02:28:56.400Z → 02:28:59.400Z) · claim 02:28:59.600Z → 02:29:06.200Z = 6.6 s · polls 1 · blocked_tokens []
+ * The wait spans two clocks (client start → the DB's checked_at), as the gate
+ * line always has. The tokens are every distinct `check:name` any poll carried,
+ * in first-seen order. Held / cleared counts stay on prod-session's own lines:
+ * withProdSession does not return them.
+ */
+export function formatReceiptLine(r: ReceiptFacts): string {
+  const ok = new Date(r.okCheckedAt);
+  const secs = (ms: number) => (ms / 1000).toFixed(1);
+  const tokens = [...new Set(r.polls.flatMap((p) => p.blocked))];
+  return `[gate] receipt: wait ${secs(ok.getTime() - r.tStart.getTime())} s (${instant(r.tStart)} → ${instant(ok)})` +
+    ` · claim ${instant(r.tClaim)} → ${instant(r.tRelease)} = ${secs(r.tRelease.getTime() - r.tClaim.getTime())} s` +
+    ` · polls ${r.polls.length} · blocked_tokens [${tokens.join(", ")}]`;
+}
+
 function usage(msg?: string): never {
   if (msg) console.error(`✗ ${msg}\n`);
   console.error(
@@ -202,6 +238,7 @@ function usage(msg?: string): never {
 }
 
 async function main(): Promise<void> {
+  const tStart = new Date();
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h")) usage();
   const parsed = parseWaitArgs(argv);
@@ -214,8 +251,9 @@ async function main(): Promise<void> {
   console.info(`[gate] expected ${args.expectedMinutes} min · poll ${args.pollSeconds} s · max wait ${args.maxWaitMinutes} min` +
     ` · census ${censusMode}${args.census === null ? " (default)" : ""}`);
 
+  let opened: WaitResult;
   try {
-    const opened = await waitForProdOpGate({
+    opened = await waitForProdOpGate({
       dbUrl,
       expectedSeconds: args.expectedMinutes * 60,
       pollSeconds: args.pollSeconds,
@@ -238,8 +276,12 @@ async function main(): Promise<void> {
 
   const reason = args.reason!;
   let code = 1;
+  // Assigned inside the callback; the cast keeps the narrowing out there honest.
+  let tClaim = null as Date | null;
   try {
     code = await withProdSession({ reason, expectedMinutes: args.expectedMinutes }, async () => {
+      const claimedAt = new Date();
+      tClaim = claimedAt;
       // withProdSession fails OPEN on an infra error and does not surface a
       // lost acquire race; a --then command must not run believing it is
       // claimed when it is not. The label's pid is this process only if the
@@ -249,7 +291,7 @@ async function main(): Promise<void> {
         console.error(`✗ the session is not held by this process (${s ? s.reason_text : "unreadable"}) — not running --then`);
         return 2;
       }
-      console.info(`[gate] claimed — running: ${args.then} (cwd ${THEN_CWD})`);
+      console.info(`[gate] claimed at ${instant(claimedAt)} — running: ${args.then} (cwd ${THEN_CWD})`);
       return await new Promise<number>((resolve) => {
         const child = spawn(args.then!, {
           shell: true,
@@ -268,7 +310,11 @@ async function main(): Promise<void> {
     }
     throw err;
   }
-  console.info(`[gate] released; --then exited ${code}`);
+  const tRelease = new Date();
+  console.info(`[gate] released at ${instant(tRelease)}; --then exited ${code}`);
+  if (tClaim) {
+    console.info(formatReceiptLine({ tStart, okCheckedAt: opened.gate.checked_at, tClaim, tRelease, polls: opened.polls }));
+  }
   process.exit(code);
 }
 

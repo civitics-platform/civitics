@@ -18,7 +18,9 @@ import { edgeVerdictFor, verdictFor } from "./cancellation-census";
 import {
   censusWaitOptions,
   childEnv,
+  formatReceiptLine,
   gateCensusHalf,
+  instant,
   parseWaitArgs,
   resolveCensusMode,
   THEN_CWD,
@@ -386,4 +388,41 @@ test("cc-159 D2: a poll whose +300 s lands inside a quarter window moves; the on
   });
   assert.deepEqual(r.polls.map((p) => p.at.slice(11, 19)), ["02:11:00", "02:17:30", "02:22:30"]);
   assert.match(lines[0]!, /next_poll=02:17:30Z$/, "the printed next_poll is the paced one");
+});
+
+// ───────────── FIX-1352 (cc-249): the [gate] receipt: line ─────────────
+
+test("FIX-1352 formatReceiptLine: wait, claim instants and wall, polls, every distinct blocked token in first-seen order", async () => {
+  const clk = fakeClock(Date.parse("2026-10-25T03:09:05Z"));
+  const gates = [blocked, blocked, clear];
+  let gi = 0;
+  const r = await waitForProdOpGate({
+    dbUrl: "x", expectedSeconds: 60, pollSeconds: 300, maxWaitSeconds: 7200,
+    readGate: async () => gates[gi++]!(new Date(clk.now()).toISOString()),
+    sleep: clk.sleep, now: clk.now, log: () => {},
+  });
+  const line = formatReceiptLine({
+    tStart: new Date("2026-10-25T03:09:04.940Z"),
+    okCheckedAt: r.gate.checked_at,
+    tClaim: new Date("2026-10-25T03:19:05.612Z"),
+    tRelease: new Date("2026-10-25T03:19:12.249Z"),
+    polls: r.polls,
+  });
+  assert.equal(line,
+    "[gate] receipt: wait 600.1 s (03:09:04.940Z → 03:19:05.000Z)" +
+    " · claim 03:19:05.612Z → 03:19:12.249Z = 6.6 s · polls 3 · blocked_tokens [b:ec-vacuum-analyze, c:blackout]");
+});
+
+test("FIX-1352 formatReceiptLine: rounds to 0.1 s; a first-poll open prints an empty token list", () => {
+  const line = formatReceiptLine({
+    tStart: new Date("2026-10-25T02:28:56.400Z"),
+    okCheckedAt: "2026-10-25T02:28:59.449+00:00",
+    tClaim: new Date("2026-10-25T02:28:59.600Z"),
+    tRelease: new Date("2026-10-25T02:29:06.249Z"),
+    polls: [{ at: "2026-10-25T02:28:56.400Z", ok: true, blocked: [] }],
+  });
+  assert.equal(line,
+    "[gate] receipt: wait 3.0 s (02:28:56.400Z → 02:28:59.449Z)" +
+    " · claim 02:28:59.600Z → 02:29:06.249Z = 6.6 s · polls 1 · blocked_tokens []");
+  assert.equal(instant(new Date("2026-10-25T02:28:59.6Z")), "02:28:59.600Z");
 });
