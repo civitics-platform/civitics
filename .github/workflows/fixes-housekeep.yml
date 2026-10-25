@@ -1,0 +1,126 @@
+name: fixes-housekeep
+
+# FIX-1345 — docs/FIXES.md keeps itself small. Once a week this moves every
+# bullet closed at least 7 days ago into docs/archive/fixes-archive.md
+# (`fixes:clean --older-than 7` → `fixes:archive`) and commits the move to
+# main. `fixes:status` still sees an archived id: its universe is FIXES.md +
+# done.log + the archive.
+#
+# A scheduled bot, never a session side effect (FIX-1016 D6): fixes:sync,
+# /cc Step 4 and the pre-push hook do not run the clean. A bot on a quiet
+# morning is the human who used to run it by hand.
+#
+# The slot — Mondays 10:00Z (03:00 PDT / 02:00 PST): Craig works weekday
+# evenings and sometimes late on weekend evenings, and is asleep before 02:00
+# local, so nothing of his is in flight. The Sunday receipts commit (~23:00Z)
+# and weekly-integrity-audit (04:00Z) are hours earlier, and his primary
+# checkout sees one `git pull --ff-only` Monday morning.
+#
+# The grace — 7 days: it is about collisions, not bytes. A bullet closed this
+# week sits in a live section exactly where this week's worktrees append;
+# deleting its line while one is mid-run is the only way this commit can cause
+# a rebase conflict. A week later those sessions have landed.
+#
+# The workflow checks itself: a push made with the workflow's token triggers
+# no other workflow (fixes-integrity.yml never sees it), and no hook is wired
+# here. So `pnpm fixes:check` (the full check: a superset of the hook's
+# fixes:check:trunk, plus done.log drift) and `pnpm fixes:test` MUST pass
+# after the move. Any failure — those, a trunk-guard abort, a push rejected
+# because main moved during the run — is a red run with nothing pushed; the
+# next Monday retries.
+#
+# No database secret and no `pnpm install`: every step is a dependency-free
+# Node script, and an install would also run the root `prepare`, which wires
+# core.hooksPath and would put the pre-push hook's data typecheck in front of
+# a docs-only push.
+
+on:
+  schedule:
+    - cron: "0 10 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fixes-housekeep
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  housekeep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Full history: fixes:check walks every commit's trailers and decides
+      # trunk ancestry for every done.log sha. A shallow clone would make both
+      # vacuous. (~6 s on this repo — fixes-integrity.yml does the same.)
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: "fixes:clean --older-than 7 (closed 7+ days ago → COMPLETED)"
+        run: node scripts/fixes-clean.mjs --older-than 7 | tee "$RUNNER_TEMP/clean.txt"
+
+      - name: "fixes:archive (COMPLETED → docs/archive/fixes-archive.md)"
+        run: node scripts/fixes-archive.mjs | tee "$RUNNER_TEMP/archive.txt"
+
+      - name: fixes:check (the bot push bypasses the pre-push hook)
+        run: pnpm fixes:check
+
+      - name: fixes:test
+        run: pnpm fixes:test
+
+      - name: Commit and push the move
+        if: github.ref == 'refs/heads/main'
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          if git diff --quiet -- docs/FIXES.md docs/archive/fixes-archive.md; then
+            echo "Nothing to move for ${DATE} (no closed bullet is 7+ days old) — skipping commit."
+            exit 0
+          fi
+          OTHER=$(git status --porcelain -- . ':!docs/FIXES.md' ':!docs/archive/fixes-archive.md')
+          if [ -n "$OTHER" ]; then
+            echo "::error::the move touched paths outside FIXES.md + the archive — refusing to commit"
+            echo "$OTHER"
+            exit 1
+          fi
+          N=$(git diff -U0 -- docs/archive/fixes-archive.md | grep -c '^+- ' || true)
+          if [ "$N" -lt 1 ]; then
+            echo "::error::FIXES.md changed but no bullet reached the archive — refusing to commit"
+            git diff --stat
+            exit 1
+          fi
+          MSG="$RUNNER_TEMP/msg.txt"
+          {
+            echo "[skip vercel] chore(fixes): weekly clean + archive ${DATE} — ${N} bullet(s) → docs/archive/fixes-archive.md"
+            echo
+            cat "$RUNNER_TEMP/clean.txt"
+            echo
+            cat "$RUNNER_TEMP/archive.txt"
+          } > "$MSG"
+          # The trailer parser reads any body line that starts with a trailer
+          # key (FIX-465). This commit closes nothing, so it carries none.
+          if grep -Eiq '^[[:space:]]*(fixes|closes|reopens|verified)(\[[^]]*\])?:' "$MSG"; then
+            echo "::error::the commit body has a line beginning with a trailer key — refusing to commit"
+            exit 1
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/FIXES.md docs/archive/fixes-archive.md
+          git commit -q -F "$MSG"
+          git log -1 --stat --format='%h %s'
+          git push

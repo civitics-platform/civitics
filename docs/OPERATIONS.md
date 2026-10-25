@@ -230,8 +230,12 @@ history is in `docs/archive/claude-md-root-2026-10-23.md`.
 | `pnpm fix:reopen FIX-NNN --note "…"` | appends a `reopen` row; refuses an id with no bullet marker, or one already OPEN |
 | `pnpm fixes:sync` (`fixes:sync:dry`) | scans trunk-ancestor trailers and appends `(id, sha, verified)` rows to `done.log`, dated by the committer instant in UTC (FIX-1319); never touches FIXES.md |
 | `pnpm fixes:check` | exits 1 on drift, an off-trunk completion, or a checkbox that contradicts the log |
-| `pnpm fixes:test` | the parser, derivation and trunk-guard suites — run after touching `scripts/fixes-sync.mjs` |
-| `pnpm fixes:clean` / `fixes:archive` / `fixes:housekeep` | the only in-place FIXES.md edits: **human-run**, deliberately, behind the trunk guard |
+| `pnpm fixes:test` | the parser, derivation, trunk-guard, `fixes:clean` and `session:check` suites — run after touching `scripts/fixes-sync.mjs` |
+| `pnpm fixes:clean [--older-than N]` / `fixes:archive` / `fixes:housekeep` | the only in-place FIXES.md edits: run **deliberately** — by hand or the weekly bot, never by a session's sync — behind the trunk guard |
+
+**The weekly bot** (FIX-1345): `.github/workflows/fixes-housekeep.yml`, Mondays 10:00Z, runs `fixes:clean --older-than 7` → `fixes:archive` → `fixes:check` + `fixes:test` and commits the move as `github-actions[bot]`; a red check pushes nothing.
+The 7-day grace keeps a bullet closed this week in its live section, where this week's worktrees append, so the move never conflicts with one; `fixes:status` still sees an archived id.
+Run `pnpm fixes:clean` / `fixes:archive` by hand only when you want it sooner, and commit immediately.
 
 **Status:** OPEN if an id has no `done.log` row, or its LAST row has `reopen` in
 the sha column; CLOSED otherwise. It keys on column 3 and row order only, never

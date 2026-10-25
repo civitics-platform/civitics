@@ -14,6 +14,8 @@ steps:
   - {id: s6, kind: cc, ref: "cc-190", title: "the runner tears its worktree down; fixes:check guards fix:add collisions (FIX-1271)"}
   - {id: s7, kind: cc, ref: "cc-201", title: "1276 prunable orphan path + 1275 HEAVY gate", done: 2026-10-06}
   - {id: s8, kind: cc, ref: "cc-221", title: "Sunday hygiene bundle — 1283 institutions 308, 1282 worktree root, 1289 ring 900 + slot windows, db-query label", done: 2026-10-12}
+  - {id: s9, kind: cc, ref: "cc-248", title: "weekly fixes-housekeep bot (Mon 10:00Z, clean --older-than 7 + archive) and session:check pulls the primary (FIX-1345)", done: 2026-10-24}
+  - {id: s10, kind: op, ref: "FIX-1345", title: "the first MOVING fixes-housekeep run — a bot commit moves N >= 1 bullets to the archive, fixes:check green inside the run", after: 2026-11-02}
 ---
 
 # The CC loop
@@ -32,3 +34,8 @@ pg_cron firing from the receipts history.
 With cc-190 the runner tears down the worktree it created, and the board counts
 any merged worktree a run left behind. `fixes:check` now refuses a FIX id that two
 sessions allocated, before the second one lands.
+
+With cc-248 (FIX-1345) `docs/FIXES.md` keeps itself small without a session
+touching it: a Monday 10:00Z bot moves bullets closed at least a week ago into
+the archive, and `session:check` catches the primary checkout up when it is
+clean and behind.

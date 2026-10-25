@@ -11,7 +11,7 @@ package `CLAUDE.md` files (loaded when a file under them is read),
 ## Session start — ask the tools
 
 - `pnpm session:check` first: stranded branches/worktrees/PRs, `fixes:check`,
-  the FIX status summary.
+  the FIX status summary; it pulls the primary when it is clean and behind.
 - Any status claim: `pnpm fixes:status [FIX-NNN]`. **Never read
   `docs/FIXES.md` (~800 KB) or `docs/done.log` (~240 KB) whole** — grep by id.
 - Then check the active DB, below, before any data work.
@@ -199,8 +199,10 @@ normalizer — the constraint. Quick check:
   an id has no row or its last row is `reopen`. Ask `pnpm fixes:status`;
   `docs/FIXES.md` has no checkbox — never add one.
 - **Both files are append-only.** File with `pnpm fix:add --lane <lane>` and use
-  the printed id. Never edit, renumber or delete a bullet, id or log row; reopen
-  with `pnpm fix:reopen` or a `Reopens:` trailer. Never force-push them.
+  the printed id. Never edit, renumber or delete a bullet, id or log row (the
+  Monday 10:00Z bot moves bullets closed ≥ 7 days to
+  `docs/archive/fixes-archive.md`; `fixes:status` still sees them); reopen with
+  `pnpm fix:reopen` or a `Reopens:` trailer. Never force-push them.
 - **Trailers:** every `Fixes:`/`Closes:`/`Reopens:` line is read (FIX-874), but
   only the FIRST bare `Verified:` — per-id values use `Verified[FIX-NNN]:`. Vocabulary:
   `docs/cc/PROMPT_TEMPLATE.md` §FIX bookkeeping; `Verified:` values and the
@@ -225,7 +227,8 @@ stranded-PR class where `fixes:sync` records FIXes as shipped while the code sit
 unmerged). Standing rules:
 
 - The **primary VSCode checkout stays parked on `main`** as the human view —
-  **agents never commit there.** It only ever runs `git pull --ff-only` to catch up.
+  **agents never commit there.** It only ever runs `git pull --ff-only` to catch
+  up — `session:check` does it when the tree is clean.
 - **Single small FIX:** serialize-by-default — fine to do it on a short branch.
   **Anything parallel or long:** give each FIX its **own worktree** via
   `pnpm session:worktree <fix-id>` (creates `feature/fix-<id>` in a sibling dir
@@ -243,10 +246,11 @@ unmerged). Standing rules:
   a trunk-ancestry violation, a hand-reintroduced checkbox, a duplicate FIX id
   marker or a trailer its commit subject does not name (FIX-1271). Drift is not
   gated here; `fixes-integrity.yml` checks it on PRs.
-- Start each session with **`pnpm session:check`** (read-only reconciliation).
-  Tear down a finished worktree with **`pnpm session:worktree:done <fix-id>`**
-  (refuses to remove unmerged work without `--force`). Run it from the primary
-  checkout. A `/cc` run does this in Step 4 without asking.
+- Start each session with **`pnpm session:check`** (read-only + the primary's
+  `pull --ff-only`). Tear down a finished worktree with
+  **`pnpm session:worktree:done <fix-id>`** (refuses to remove unmerged work
+  without `--force`). Run it from the primary checkout. A `/cc` run does this in
+  Step 4 without asking.
 
 Full landing recipe is printed by `pnpm session:worktree <fix-id>`. (Assumes
 `main` is push-able; if branch protection is later enabled, the `:main` push
