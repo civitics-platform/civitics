@@ -192,6 +192,13 @@ export function compareKnown(breaks, known) {
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const isHistory = (rel) => HISTORY_PREFIXES.some((p) => rel === p || rel.startsWith(p));
 const isCode = (rel) => CODE_PREFIXES.some((p) => rel.startsWith(p)) && !rel.endsWith(".md");
+/**
+ * Code whose doc names are test fixtures, not references (cc-246, FIX-1346):
+ * this checker's own suite writes real doc names as scanText input strings,
+ * and a fixture must not refuse a real doc's move. It is neither refused on
+ * nor rewritten.
+ */
+export const FIXTURE_FILES = new Set(["scripts/test-check-doc-links.mjs"]);
 
 /**
  * Plan a move of docs/<name> → docs/archive/<name> for each name, against the
@@ -210,7 +217,7 @@ export function planArchive(names, texts) {
 
   // Refusal first: any code/migration file naming a moving doc.
   for (const [file, text] of texts) {
-    if (!isCode(file)) continue;
+    if (!isCode(file) || FIXTURE_FILES.has(file)) continue;
     text.split("\n").forEach((line, i) => {
       for (const n of names) {
         if (new RegExp(`(^|[^A-Za-z0-9_])${esc(n)}`).test(line)) refused.push({ name: n, file, line: i + 1, text: line.trim() });

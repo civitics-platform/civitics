@@ -111,6 +111,20 @@ assertEq(
 assertEq("a link from docs/archive/ re-bases to its new sibling", after("docs/archive/LOG.md"), "Wrote OLD.md today; [old](OLD.md).");
 assertEq("history is read, never edited", [after("docs/audits/2026-01-01.md"), plan.history.map((h) => h.file)], ["audit cites docs/OLD.md", ["docs/audits/2026-01-01.md"]]);
 
+// cc-246: a doc named only by this suite's own fixture strings is not cited by
+// code — it moves, and the fixture file is left exactly as written.
+const fixtureOnly = new Map([
+  ["docs/FIXTURE_ONLY.md", "an aspirational doc"],
+  ["scripts/test-check-doc-links.mjs", '"See [x](../docs/FIXTURE_ONLY.md)." // a scanText input'],
+  ["scripts/other.mjs", "// no doc named here"],
+]);
+const planF = planArchive(["FIXTURE_ONLY.md"], fixtureOnly);
+assertEq(
+  "a fixture-only name is NOT refused, and the fixture is not rewritten",
+  [planF.refused.length, planF.moves.map((m) => m.to), planF.edits.has("scripts/test-check-doc-links.mjs")],
+  [0, ["docs/archive/FIXTURE_ONLY.md"], false],
+);
+
 // Rule 105: move the file, rewrite everything but ONE reference — the checker
 // must fail that tree. (A checker that only knew markdown links would pass it:
 // the leftover is a backtick root path.)

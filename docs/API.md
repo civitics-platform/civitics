@@ -501,7 +501,7 @@ or an admin session and may be restricted further in production.
 
 ## Planned — institutional API (Phase 2)
 
-The public-facing versioned API is [on the roadmap](ROADMAP.md). Expected
+The public-facing versioned API is [on the roadmap](archive/ROADMAP.md). Expected
 shape:
 
 - `GET /api/v1/officials` · `GET /api/v1/officials/{id}` (with `updated_after`)

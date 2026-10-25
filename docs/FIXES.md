@@ -30,7 +30,7 @@ Ask the question with **`pnpm fixes:status FIX-NNN`** (or `pnpm fixes:status` fo
 ---
 
 ## STRATEGIC PILLARS
-> Directional goals, not checkable tasks. Concrete sub-tasks are threaded throughout this doc. Phase 2+ strategy, architecture, and the Social App live in `docs/ROADMAP.md`.
+> Directional goals, not checkable tasks. Concrete sub-tasks are threaded throughout this doc. Phase 2+ strategy, architecture, and the Social App live in `docs/archive/ROADMAP.md`.
 
 ---
 

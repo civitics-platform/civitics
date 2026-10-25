@@ -2,7 +2,7 @@
 
 A short, public-facing view of where Civitics is heading. For the internal
 phase-by-phase plan with architecture notes and sequencing, see
-[ROADMAP.md](../ROADMAP.md). For granular task tracking,
+[ROADMAP.md](ROADMAP.md). For granular task tracking,
 see [PHASE_GOALS.md](../PHASE_GOALS.md).
 
 Last updated: 2026-04-18.
