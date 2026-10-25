@@ -233,7 +233,7 @@ history is in `docs/archive/claude-md-root-2026-10-23.md`.
 | `pnpm fixes:test` | the parser, derivation, trunk-guard, `fixes:clean` and `session:check` suites — run after touching `scripts/fixes-sync.mjs` |
 | `pnpm fixes:clean [--older-than N]` / `fixes:archive` / `fixes:housekeep` | the only in-place FIXES.md edits: run **deliberately** — by hand or the weekly bot, never by a session's sync — behind the trunk guard |
 
-**The weekly bot** (FIX-1345): `.github/workflows/fixes-housekeep.yml`, Mondays 10:00Z, runs `fixes:clean --older-than 7` → `fixes:archive` → `fixes:check` + `fixes:test` and commits the move as `github-actions[bot]`; a red check pushes nothing.
+**The weekly bot** (FIX-1345): `.github/workflows/fixes-housekeep.yml`, Mondays 10:00Z, runs `fixes:clean --older-than 7` → `fixes:archive` → `fixes:check:trunk` (the hook's checker) + `fixes:test` and commits the move as `github-actions[bot]`; a red check pushes nothing.
 The 7-day grace keeps a bullet closed this week in its live section, where this week's worktrees append, so the move never conflicts with one; `fixes:status` still sees an archived id.
 Run `pnpm fixes:clean` / `fixes:archive` by hand only when you want it sooner, and commit immediately.
 

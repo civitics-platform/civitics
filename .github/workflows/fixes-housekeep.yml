@@ -23,11 +23,15 @@ name: fixes-housekeep
 #
 # The workflow checks itself: a push made with the workflow's token triggers
 # no other workflow (fixes-integrity.yml never sees it), and no hook is wired
-# here. So `pnpm fixes:check` (the full check: a superset of the hook's
-# fixes:check:trunk, plus done.log drift) and `pnpm fixes:test` MUST pass
-# after the move. Any failure — those, a trunk-guard abort, a push rejected
-# because main moved during the run — is a red run with nothing pushed; the
-# next Monday retries.
+# here. So `pnpm fixes:check:trunk` — the checker the pre-push hook runs — and
+# `pnpm fixes:test` MUST pass after the move. Not the full `fixes:check`: it
+# also fails on done.log drift, and every `Fixes:` push is transiently unsynced
+# until its own fixes:sync lands, so a session landing at 10:00Z would red the
+# bot for a week over state the move neither causes nor touches (the first
+# hand dispatch, run 40157786168, went red exactly so). Drift stays checked on
+# PRs and by session:check. Any failure — those, a trunk-guard abort, a push
+# rejected because main moved during the run — is a red run with nothing
+# pushed; the next Monday retries.
 #
 # No database secret and no `pnpm install`: every step is a dependency-free
 # Node script, and an install would also run the root `prepare`, which wires
@@ -56,7 +60,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # Full history: fixes:check walks every commit's trailers and decides
+      # Full history: fixes:check:trunk walks every commit's trailers and decides
       # trunk ancestry for every done.log sha. A shallow clone would make both
       # vacuous. (~6 s on this repo — fixes-integrity.yml does the same.)
       - name: Checkout (full history)
@@ -78,8 +82,8 @@ jobs:
       - name: "fixes:archive (COMPLETED → docs/archive/fixes-archive.md)"
         run: node scripts/fixes-archive.mjs | tee "$RUNNER_TEMP/archive.txt"
 
-      - name: fixes:check (the bot push bypasses the pre-push hook)
-        run: pnpm fixes:check
+      - name: fixes:check:trunk (the bot push bypasses the pre-push hook)
+        run: pnpm fixes:check:trunk
 
       - name: fixes:test
         run: pnpm fixes:test

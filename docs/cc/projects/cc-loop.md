@@ -15,7 +15,7 @@ steps:
   - {id: s7, kind: cc, ref: "cc-201", title: "1276 prunable orphan path + 1275 HEAVY gate", done: 2026-10-06}
   - {id: s8, kind: cc, ref: "cc-221", title: "Sunday hygiene bundle — 1283 institutions 308, 1282 worktree root, 1289 ring 900 + slot windows, db-query label", done: 2026-10-12}
   - {id: s9, kind: cc, ref: "cc-248", title: "weekly fixes-housekeep bot (Mon 10:00Z, clean --older-than 7 + archive) and session:check pulls the primary (FIX-1345)", done: 2026-10-24}
-  - {id: s10, kind: op, ref: "FIX-1345", title: "the first MOVING fixes-housekeep run — a bot commit moves N >= 1 bullets to the archive, fixes:check green inside the run", after: 2026-11-02}
+  - {id: s10, kind: op, ref: "FIX-1345", title: "the first MOVING fixes-housekeep run — a bot commit moves N >= 1 bullets to the archive, fixes:check:trunk green inside the run", after: 2026-11-02}
 ---
 
 # The CC loop
