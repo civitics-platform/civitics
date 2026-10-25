@@ -46,6 +46,9 @@ const script = (name: string) => read(path.join(ROOT, "scripts", name));
 const B1_MD5 = { dispatch_one_unit: "cfc9ed48517cd7de6fa76cf807dd1f37", get_dispatcher_status: "1cf4b7745f4c89ce978935648c87c92b" };
 const GATE_MD5 = "6c036a1c4d35dc0b33a1f99ec405ff4a";
 const EC_MD5 = "38227eeb0969ca825db74e4dcc4cd2e0";
+/** prod_op_gate's live body: N2's, or FIX-1342's (cc-247) once 20261025000000 is applied. */
+const GATE_N2_MD5 = "e3e543cd9a30a4b0dca2b52b159410a0";
+const GATE_RECUT_MD5 = "1d3507cd4b71439f0cfff51cde49b9d8";
 /** dispatch_one_unit's added lines vs B1 (the hunks, nothing else). */
 const ADDED_DISPATCH_LINES = 203;
 
@@ -369,7 +372,11 @@ test("local: when N2 is applied, the live bodies are this file's (the ec procedu
     ] as const) {
       const r = await c.query<{ s: string; cfg: string[] | null }>(
         `SELECT prosrc AS s, proconfig AS cfg FROM pg_proc WHERE oid = '${regproc}'::regprocedure`);
-      assert.equal(r.rows[0]?.s.replace(/\r\n/g, "\n"), prosrc(src, name, kind), `${name} live body is not the N2 file's`);
+      const live = r.rows[0]?.s.replace(/\r\n/g, "\n");
+      // 20261025000000 (cc-247, FIX-1342) replaced prod_op_gate; its pin is
+      // prod-op-gate-recut.test.ts. Either body passes here, nothing else.
+      if (name === "prod_op_gate") assert.ok([GATE_N2_MD5, GATE_RECUT_MD5].includes(md5(live ?? "")), `${name} live body is neither N2's nor FIX-1342's`);
+      else assert.equal(live, prosrc(src, name, kind), `${name} live body is not the N2 file's`);
       if (kind === "PROCEDURE") assert.equal(r.rows[0]?.cfg, null, `${name} COMMITs; proconfig must stay NULL`);
     }
   } finally {

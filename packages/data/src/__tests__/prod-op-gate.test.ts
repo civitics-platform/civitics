@@ -189,12 +189,13 @@ test("FIX-1215: prod_op_gate() branches on the clone (p_now injected, rolled bac
       assert.equal(g.readings["watchdogs"].jobs.length >= 2, true);
     });
 
-    tx("(b) a > 60 s vacuum ended 30 min ago blocks; 100 min ago clears", async () => {
+    // FIX-1342 (cc-247): no clock after a VACUUM's END — the 90-min and
+    // 10-min post-END holds were idle 0 of 3 on the cc-242 census.
+    tx("(b) a 200 s vacuum ended 20 min ago no longer blocks (FIX-1342)", async () => {
       await watchdogs(NOON);
-      await run(c, ecv!, "2030-03-12 11:28:00+00", "2030-03-12 11:30:00+00");
+      await run(c, ecv!, "2030-03-12 11:36:40+00", "2030-03-12 11:40:00+00");
       const g = await gate(c, NOON);
-      assert.ok(has(g, "b", "ec-vacuum-analyze"), JSON.stringify(g.blocked_by));
-      assert.match(g.blocked_by.find((b) => b.check === "b")!.detail, /ran 120\.0 s/);
+      assert.ok(!has(g, "b"), JSON.stringify(g.blocked_by));
     });
     tx("(b) …ended 100 min ago → clear", async () => {
       await watchdogs(NOON);
@@ -202,11 +203,11 @@ test("FIX-1215: prod_op_gate() branches on the clone (p_now injected, rolled bac
       const g = await gate(c, NOON);
       assert.ok(!has(g, "b"), JSON.stringify(g.blocked_by));
     });
-    tx("(b) a 2 s vacuum ended 5 min ago blocks", async () => {
+    tx("(b) a 2 s vacuum ended 5 min ago no longer blocks (FIX-1342)", async () => {
       await watchdogs(NOON);
       await run(c, fev!, "2030-03-12 11:54:58+00", "2030-03-12 11:55:00+00");
       const g = await gate(c, NOON);
-      assert.ok(has(g, "b", "fe-vacuum-analyze"), JSON.stringify(g.blocked_by));
+      assert.ok(!has(g, "b"), JSON.stringify(g.blocked_by));
     });
     tx("(b) …ended 15 min ago → clear", async () => {
       await watchdogs(NOON);

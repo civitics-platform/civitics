@@ -4,6 +4,7 @@
 -- falls back to the 05:45–09:00 constants again on an empty ec_crawl.blackout.
 -- prosrc md5 6c036a1c4d35dc0b33a1f99ec405ff4a (prod at cc-243 read 3), asserted.
 -- A FILE, never run by a prompt unless its STOP table says so.
+-- superseded as a revert target by fix1342: running this after 20261025000000 also re-installs the 05:45–09:00 blackout constants
 -- =============================================================================
 
 BEGIN;
