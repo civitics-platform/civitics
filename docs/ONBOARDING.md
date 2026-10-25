@@ -56,7 +56,7 @@ tonally separate.
 - Never feel like a "politics tab" — no engagement bait, no outrage optimization
 - Must never be conflated with the social app in UX or tone
 
-(App-specific tone notes live in [`apps/civitics/CLAUDE.md`](../apps/civitics/CLAUDE.md).)
+(This section is the tone's home. `apps/civitics/CLAUDE.md` carried a copy until cc-246; it is in [`archive/claude-md-apps-civitics-2026-10-24.md`](archive/claude-md-apps-civitics-2026-10-24.md).)
 
 ---
 
@@ -96,13 +96,13 @@ tonally separate.
 
 | Package | Topics |
 |---------|--------|
-| `packages/db/CLAUDE.md` | Supabase clients, schema conventions, entity_connections correction, RLS, **materialization pattern for slow request-path aggregations**, storage, migrations |
-| `packages/data/CLAUDE.md` | Pipelines, FEC bulk strategy, storage budget, per-source rules, update schedules |
-| `packages/graph/CLAUDE.md` | D3 graph, node types, smart expansion, strength filter, share codes, presets |
+| `packages/db/CLAUDE.md` | The three clients and the force-dynamic rule, the column traps (EC, FR/FE, officials, vote_category), **materialization pattern for slow request-path aggregations**, the merge-surface rule, autovacuum tuning, storage, migration conventions, `db:types` |
+| `packages/data/CLAUDE.md` | Update schedules (pointers to the job registry), EC derivation, the per-source writer contracts (FEC, IRS 990, USASpending, OpenStates, TIGER), the FEC indiv stage and the $200 aggregate floor |
+| `packages/graph/CLAUDE.md` | Viz switching is style-only, D3, real-time wiring, the connection-type registry, interaction and screenshot contracts, the watermark, smart expansion, strength filter, the V2 field-name contract |
 | `packages/ai/CLAUDE.md` | Claude API, model routing, credit gating, caching, cost rules |
 | `packages/maps/CLAUDE.md` | Mapbox, Deck.gl, PostGIS patterns, privacy rules, geographic data |
 | `packages/blockchain/CLAUDE.md` | Chains, wallets, audit requirement, Two Economies, compute pool |
-| `apps/civitics/CLAUDE.md` | Tone, data rules, user tiers, institutional API, candidate tools, build rules |
+| `apps/civitics/CLAUDE.md` | Data rules, the `withDbTimeout` rule, pointers for the build and hydration traps |
 
 ---
 

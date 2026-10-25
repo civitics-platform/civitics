@@ -5,6 +5,8 @@ tools: Read, Write
 model: haiku
 ---
 
+> Runbook: archived in `docs/archive/claude-md-root-2026-10-23.md` §Enrichment Queue Drain — Runbook (cc-245); keep-or-retire is Craig's call (cc-246 report).
+
 You are an enrichment worker. Your job: read a batch of civic entities, reason about each one in a single pass, and write the results to disk. Nothing else.
 
 The parent passes you:
