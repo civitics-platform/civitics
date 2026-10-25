@@ -23,11 +23,23 @@
 //     it firing as a side effect of every sync.
 //   - Writes produce a single well-shaped commit when you run them —
 //     commit immediately so any VS Code editor collision is resolvable
-//     from git.
+//     from git. A run that selects nothing writes nothing, so "empty
+//     diff" and "nothing moved" are the same answer.
+//
+// FIX-1345: the periodic runner is `.github/workflows/fixes-housekeep.yml`,
+// Mondays 10:00Z, with `--older-than 7`. It is still a deliberate run — a
+// bot on a quiet morning, never a side effect of a session's sync. The grace
+// is about collisions, not bytes: a bullet closed this week sits in a live
+// section exactly where this week's worktrees append, and deleting its line
+// mid-run is the one way the move could cause a rebase conflict. A closed
+// bullet is selected only when its LAST done.log row is dated <= today - N
+// (UTC today; rows are UTC days since FIX-1319). No flag = no filter, which
+// is the hand-run behaviour.
 //
 // Usage:
-//   node scripts/fixes-clean.mjs            apply in place
-//   node scripts/fixes-clean.mjs --dry-run  preview, write nothing
+//   node scripts/fixes-clean.mjs                    apply in place
+//   node scripts/fixes-clean.mjs --dry-run          preview, write nothing
+//   node scripts/fixes-clean.mjs --older-than 7     only bullets closed >= 7 days ago
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -52,16 +64,43 @@ const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
 
+const USAGE = "usage: node scripts/fixes-clean.mjs [--dry-run] [--older-than N]   (N = whole days, >= 0)";
+
+// FIX-1345: `--older-than N` or `--older-than=N`. Absent → null (no filter).
+function parseOlderThan(argv) {
+  const i = argv.findIndex((a) => a === "--older-than" || a.startsWith("--older-than="));
+  if (i === -1) return null;
+  const raw = argv[i].includes("=") ? argv[i].slice(argv[i].indexOf("=") + 1) : argv[i + 1];
+  if (raw === undefined || !/^\d+$/.test(raw)) {
+    console.error(`fixes:clean — --older-than needs a whole number of days >= 0, got ${JSON.stringify(raw ?? null)}`);
+    console.error(USAGE);
+    process.exit(2);
+  }
+  return Number(raw);
+}
+const OLDER_THAN = parseOlderThan(process.argv.slice(2));
+// The newest last-row date that may move: UTC today minus N days. done.log
+// dates are YYYY-MM-DD, so the comparison is a string compare.
+const CUTOFF =
+  OLDER_THAN === null ? null : new Date(Date.now() - OLDER_THAN * 86400_000).toISOString().slice(0, 10);
+
 // FIX-1016 D1: the ONE derivation, shared with fixes:status and fixes:sync.
 // This replaces a hand-rolled copy of the same walk that lived here — a second
 // implementation of a rule is a second thing that can drift from it.
+//
+// Returns id → last row date for every CLOSED id. The grace test happens at
+// the bullet, so the deferred set names only bullets that are actually live.
 function loadCompletedFromDoneLog() {
-  const completed = new Set();
+  const completed = new Map();
   if (!existsSync(DONE_PATH)) return completed;
   const status = deriveStatus(parseDoneLog(readFileSync(DONE_PATH, "utf8")));
-  for (const [id, v] of status) if (v.status === "closed") completed.add(id);
+  for (const [id, v] of status) if (v.status === "closed") completed.set(id, v.lastRow.date);
   return completed;
 }
+
+// A malformed date cannot be shown to be old enough, so it stays (and is
+// named with the deferred set).
+const oldEnough = (date) => CUTOFF === null || (/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") && date <= CUTOFF);
 
 // ── parse FIXES.md into structured blocks ────────────────────────────
 // FIX-361: tolerate CRLF on read; writes stay LF via .join("\n") downstream.
@@ -89,6 +128,7 @@ const hasCompleted = completedIdx !== -1;
 // ── collect completed bullets from live sections ─────────────────────
 const doneLogCompleted = loadCompletedFromDoneLog();
 const moved = []; // { section, bullet, id }
+const deferred = []; // closed, but younger than --older-than — left in place
 const noMarker = []; // bullets with no id — unselectable, reported not moved
 const cleanedBlocks = blocks.map((b) => {
   if (b.kind !== "section") return b;
@@ -111,6 +151,11 @@ const cleanedBlocks = blocks.map((b) => {
       continue;
     }
     if (!doneLogCompleted.has(bullet.id)) {
+      kept.push(line);
+      continue;
+    }
+    if (!oldEnough(doneLogCompleted.get(bullet.id))) {
+      deferred.push(bullet.id);
       kept.push(line);
       continue;
     }
@@ -247,7 +292,7 @@ const mainBody = finalBlocks.map(renderBlock).join("\n");
 const completedRendered = [completedHeader, ...newCompletedBody].join("\n");
 const finalText = mainBody.replace(/\n+$/, "\n") + "\n" + completedRendered.replace(/\n+$/, "") + "\n";
 
-if (!DRY) {
+if (!DRY && moved.length > 0) {
   abortOnTrunkMove(TRUNK_BEFORE, {
     operation: "fixes:clean (move completed bullets into ## COMPLETED)",
     files: ["docs/FIXES.md"],
@@ -255,12 +300,20 @@ if (!DRY) {
   writeFileSync(FIXES_PATH, finalText);
 }
 
-console.log("fixes:clean —", DRY ? "DRY RUN" : "APPLIED");
+console.log("fixes:clean —", DRY ? "DRY RUN" : moved.length ? "APPLIED" : "NOTHING TO MOVE");
 console.table({
   bulletsMoved: moved.length,
   subsectionsUsed: new Set(moved.map((m) => m.section)).size,
   bulletsWithoutIdMarker: noMarker.length,
+  ...(OLDER_THAN === null ? {} : { bulletsDeferred: deferred.length, cutoff: CUTOFF }),
 });
+
+if (OLDER_THAN !== null) {
+  console.log(
+    `left in place: ${deferred.length} closed bullet(s) younger than ${OLDER_THAN} d` +
+      (deferred.length ? ` — ${deferred.join(", ")}` : ""),
+  );
+}
 
 if (noMarker.length) {
   console.log(
