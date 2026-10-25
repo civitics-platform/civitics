@@ -1,0 +1,73 @@
+{
+  "cc": "246",
+  "prompt": "cc-prompt-246-package-claude-md-haircuts-docs-archive-stale-sections.md",
+  "started_at": "2026-10-25T02:28:44Z",
+  "finished_at": "2026-10-25T03:05:00Z",
+  "head_before": "6fc5fd57",
+  "head_after": "d409e198",
+  "commits": [
+    {
+      "sha": "405472ae",
+      "subject": "[skip vercel] chore(fixes): file FIX-1346 (package CLAUDE.md haircuts + ROADMAP/API archive + the stale OPERATIONS/ONBOARDING lines) (cc-246)"
+    },
+    {
+      "sha": "6e79706a",
+      "subject": "[skip vercel] docs(archive): the four package CLAUDE.md files, verbatim, before the cc-246 haircut (FIX-1346)"
+    },
+    {
+      "sha": "349c373f",
+      "subject": "[skip vercel] docs(claude-md): packages/graph/CLAUDE.md haircut to K rules + pointers, 44,623 -> 7,557 B (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "bd058765",
+      "subject": "[skip vercel] docs(claude-md): packages/db/CLAUDE.md haircut to K rules + one-liners, 48,231 -> 13,477 B; runbooks to OPERATIONS, receipts to the playbook (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "11168060",
+      "subject": "[skip vercel] docs(claude-md): packages/data/CLAUDE.md haircut to the per-source writer contracts, 38,250 -> 13,093 B; the FEC indiv receipts to playbook E8 (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "0a7f2327",
+      "subject": "[skip vercel] docs(claude-md): apps/civitics/CLAUDE.md haircut to the data rules + withDbTimeout, 11,403 -> 2,286 B; the cost-defense receipt becomes playbook B4 (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "0837dcee",
+      "subject": "[skip vercel] docs(archive): ROADMAP.md to docs/archive; check:doc-links stops refusing on its own test fixtures; API.md stays (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "e52601cb",
+      "subject": "[skip vercel] docs: the stale lines cc-245 named outside the package files — OPERATIONS deploy/pg_cron/kill switches, ONBOARDING, archive README, CLOUDFLARE §5 (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "2380810c",
+      "subject": "[skip vercel] docs: ONBOARDING's package rows say what the cut files now hold; drain-worker points at its archived runbook (cc-246, FIX-1346)"
+    },
+    {
+      "sha": "84cd2f1d",
+      "subject": "[skip vercel] chore(fixes): file FIX-1347 (the four small package CLAUDE.md files, per cc-246 read 9); context-haircut s4 done, s4a/s4b/s4c (cc-246)"
+    },
+    {
+      "sha": "d409e198",
+      "subject": "[skip vercel] chore(fixes): sync status after FIX-1346 (cc-246)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1346"
+  ],
+  "fixes_filed": [
+    "FIX-1346",
+    "FIX-1347"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "The db haircut's commit subject (bd058765) says 13,477 B; the file it commits is 13,490 B. The number was an estimate written before the last one-line edit. Subjects are not amended; the size table below is the record.",
+    "pnpm lint on scripts/check-doc-links.mjs (Verification): not possible as asked. The root lint script is `turbo run lint`, which lints the workspace packages only, and no ESLint config covers scripts/. Ran `node --check` on both files plus check:doc-links:test instead; the branch CI ran the real lint (packages) green.",
+    "Context-haircut s4's `ref`: the prompt said `ref: FIX-<pkg>`. Kept `cc-246`, because board.mjs stepStatus derives a kind-cc step's done-ness only from a cc-NNN ref (scripts/board.mjs:687-704). FIX-1346 is named in the step title instead."
+  ],
+  "lane": "hygiene",
+  "project": "context-haircut",
+  "owed": []
+}
