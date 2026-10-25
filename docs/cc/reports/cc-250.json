@@ -1,0 +1,33 @@
+{
+  "cc": "250",
+  "prompt": "cc-prompt-250-sun-1025-io-budget-front-door-triage-read-only.md",
+  "started_at": "2026-10-25T17:30:39Z",
+  "finished_at": "2026-10-25T18:15:00Z",
+  "head_before": "454a449a",
+  "head_after": "035cf282",
+  "commits": [
+    {
+      "sha": "18ec87ef",
+      "subject": "docs(audits): 2026-10-25 IO-budget front-door outage triage — (B) swap-ceiling wedge, no owner of ours above last week's load (Supabase's 11:21:55Z daily backup the final reader), 11:25Z→13:45Z (cc-250)"
+    },
+    {
+      "sha": "035cf282",
+      "subject": "[skip vercel] docs(fixes): cc-250 files FIX-1348; appends to FIX-589, FIX-1107, FIX-1292, FIX-1125, FIX-1343"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1348"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "R11(a)/(b): the morning's autovacuum and pg_stat_statements history could not be read. The 13:25:52Z crash recovery reset pg_stat_user_tables, pg_stat_io, the checkpointer/bgwriter views and pgss (stats_reset 13:25:52–53Z), and track_io_timing = off zeroes every read time. The cumulative views are reported as CUMULATIVE SINCE 13:25:53Z only.",
+    "FIX-1338 append: not made. Its condition (a collapse in the crawls' unit_ms in R4) did not fire: the ec stats windows ran 53–70 s by design size, with no collapse before 11:21Z."
+  ],
+  "lane": "ops",
+  "project": "paced-ops",
+  "owed": []
+}
