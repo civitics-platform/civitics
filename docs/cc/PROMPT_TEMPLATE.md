@@ -222,14 +222,31 @@ and **states each as a number WITH the time it was read** — a gate with no
 timestamp is an assertion, not a reading, and every figure names its instrument
 and its database.
 
-- **(a) Unguarded owners, derived from the database.** A pg_cron job whose
-  command does not reach a procedure referencing `prod_session_state()` is
-  UNGUARDED: it fires inside a supervised session rather than deferring to it.
-  Derive the set (`cron.job` JOIN `pg_proc` — `packages/data/src/lib/cron-job-pipelines.ts`,
-  the `guarded` column); today it is the thirteen `*-vacuum-analyze` jobs, both
-  `*/2` watchdogs, `abuse-events-retention` and `platform-counts-daily`. Start
-  **≥ 90 min after the last unguarded VACUUM job's END**, with **none scheduled
-  inside `[start, start + 2 × expected wall]`**.
+**Which class is this op?** (FIX-1342, cc-247, on the cc-242 census.)
+
+| class | what | gate | window |
+|---|---|---|---|
+| **P — push** | `db-push-prod` of DDL / `CREATE OR REPLACE` / row `UPDATE`s on registry, cron, dials or `pipeline_state`; expected wall < 60 s; no rewrite, CONCURRENTLY, VACUUM or MV build | `held=false`, then from the PRIMARY's `packages/data`: `pnpm run session:wait-for-gate:prod -- --expected-minutes 1 --census stop --reason "…" --then "node ../../scripts/db-push-prod.mjs --workdir ../.."` (`prod_op_gate(60)`: (a)'s three phase states, (b), (d), (e), (f); the census); the dry run first | none — the first open gate |
+| **B — bulk op** | a data set, CIC / DROP CONCURRENTLY, pg_repack, a backfill, an MV swap, anything with `--apply` and a manifest | (a)–(g) below in full under its own claim; the io cap and `box_is_saturated` | a condition the runner waits on |
+| **S — scheduled bulk** | weeklies, dailies, the crawls, USASpending — dispatcher rows | the dispatcher's own gates (budget row, phase lock, io cap, cooldown/backoff, group, `prod_session`) | the row's deadline rule |
+
+A class-P prompt carries `when: after <dependency landing>` and no window /
+lapse / hard-stop rows; its STOP table keeps the box rows (`held`, the census,
+io) and drops the clock rows. A file with a class-B statement makes the whole
+push class B; the prompt names each file's class and the dry run's file list is
+the check. History: the 05:45–09:00 UTC blackout clause was retired by cc-243
+(FIX-1124 part 2), the clocked vacuum spacing by cc-247 (FIX-1342).
+
+- **(a) Unguarded owners, derived from the database.** A pg_cron job that does
+  not defer to a supervised session is UNGUARDED: it fires inside one. Derive
+  the set at prompt time — for VACUUM rows the registry test (`job_registry.job
+  = cron.jobname AND deadline_rule !~ '^at ' AND 'prod_session' = ANY (gates)`
+  reads `dispatched`), for procedures `Q_CRON_JOB_PIPELINES`'s `guarded` column
+  (`packages/data/src/lib/cron-job-pipelines.ts`). Today fr / votes / xsr are
+  dispatched rows gated `{prod_session}`; officials and the MV series are crons
+  — read 3 of the last timing prompt prints the set. Start with **no VACUUM
+  live** and **no unguarded VACUUM cron whose 14-d mean or last wall > 60 s
+  slotted inside `[start, start + 2 × expected wall]`**.
 - **(b) Autovacuum headroom, not a dead-tuple absolute.**
   `(trigger − n_dead_tup) / rate > 2 × expected wall` on `entity_connections`,
   `financial_entities` and `financial_relationships`, with `rate` from **two
@@ -270,18 +287,13 @@ and its database.
   `already_ran` — **≥ `2 × expected wall + 15 min`** away. From cc-243 the
   START is a dispatched unit (FIX-1336: `by 0 21 * * *` window 120 min, fired by
   `/api/cron/gha-dispatch/nightly-request` on the dispatcher's request stamp),
-  still at ~21:0x UTC. Still ≥ 60 min before any weekend-only job. (The
-  05:45–09:00 UTC blackout clause was retired by cc-243, FIX-1124 part 2.) Vacuum
-  spacing is PROPORTIONAL to the job, not one number: ≥ 90 min after the END of
-  any unguarded VACUUM job whose wall exceeded 60 s (`fr-vacuum-analyze` 03:00
-  is a BAND, not a class: ~10 s between drops, 161–212 s after a weekend drop
-  (14-d mean 87.6 s, cc-158 read 2) — so the ≥ 90-min spacing applies on the
-  night after a drop and ≥ 10 min otherwise; read the LAST wall, never assume
-  the class; `ec`/`fe` 04:30/04:50 = 10–130 s), ≥ 10 min after any other (the
-  11:0x / 17:0x series is 0.2–1.5 s), and none of the > 60 s ones scheduled
-  inside `[start, start + 2 × expected wall]`. Say which window you are in,
-  with the clock reading. These conditions — (g), (d), (e), rule 155's vacuum
-  spacing — are readable as
+  still at ~21:0x UTC. Still ≥ 60 min before any weekend-only job. A class-P
+  push waits only on the three phase-state clauses, not on `2 × wall + 15 min`.
+  Vacuum spacing is a state (a live VACUUM) or a slot in the span (rule (a)),
+  never a clock after an END — retired on the cc-242 census (idle 0/3),
+  FIX-1342. Say which window you are in,
+  with the clock reading. These conditions — (g), (d), (e), and rule 155
+  (re-cut 10-24: mechanised, not clocked) on vacuum spacing — are readable as
   `SELECT public.prod_op_gate(<expected seconds>)`, and a runner waits on them
   with `session:wait-for-gate` (FIX-1215); (f) stays the census.
   >
@@ -291,11 +303,11 @@ and its database.
   > is ~15 min, a Sunday drop night ~100 min. A condition reads the difference;
   > an hour cannot.
 
-> Gate (b)'s two-reading rule is scoped to ops whose wall is MINUTES. A
-> metadata-only DDL — an `ALTER … SET`, a `DROP INDEX` on a small index, a
-> `COMMENT` — completes inside the noise of a single reading, so demanding two
-> readings ≥ 30 min apart to bound it costs an hour to bound a millisecond
-> (cc-142 §5). State the op's expected wall; the gate follows from it.
+> Gate (b) by class: class P needs no (b) reading at all — its wall is inside
+> one reading's noise; class B keeps the two readings ≥ 30 min apart. Demanding
+> two readings to bound a metadata-only DDL costs an hour to bound a
+> millisecond (cc-142 §5). State the op's expected wall; the class follows from
+> it.
 
 > A gate must describe a state prod actually visits — `partial` is a terminal
 > status; "≤ 5,000 dead" is twelve minutes after a vacuum you are forbidden to
