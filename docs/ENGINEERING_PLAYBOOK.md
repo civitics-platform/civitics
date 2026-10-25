@@ -29,8 +29,8 @@ New rules **C10** and **C11**, plus dated addenda on **C2**, **C5** and **D3**.
 
 **Extended 2026-10-24** with the receipts the package `CLAUDE.md` haircuts moved
 out (cc-246, FIX-1346). Each package file keeps its rule as one line; the
-measurements live here. Dated addenda on **C5**, **D1**, **D7**, **E8** and
-**E11**.
+measurements live here. New rule **B4**, plus dated addenda on **C5**, **D1**,
+**D7**, **E8** and **E11**.
 
 ---
 
@@ -151,6 +151,27 @@ measurement that meant something was a whole chunk: `hit=156454 read=12604`,
 **Apply:** measure a real unit of work with a known cache state, or state which
 one you measured. To time write arms safely on prod, run the real workload in a
 transaction ending in `ROLLBACK`. *FIX-973 · FIX-974 audit §3a*
+
+### B4. A render that waits on the database is billed while it waits. Bound every request-path read.
+
+*Added 2026-10-24, moved from `apps/civitics/CLAUDE.md` (cc-246).* Vercel bills
+provisioned fluid-compute memory for the **entire** time a function is blocked on
+I/O. An unwrapped `await supabase.from(...).select(...)` on a page-render path
+against a slow or degraded database makes the render hang and accrue GB-hours
+while it waits. It is also the only defense against a low-and-slow crawl that
+evades the IP rate limiters, because each request is cheap to send and expensive
+to hold. The 2026-06-21 cost-resilience audit named it P0: the sweep wrapped
+**178 reads across 27 files** under `apps/civitics/app/**` in
+`withDbTimeout(query, 3000, "route:purpose")`, which races the query and returns
+`{ data: null, error }` instead of hanging. A degraded database then yields a
+fast degraded render, not a slow full one.
+
+**Apply:** bound every render-path read and make every call site survive the
+null. A guard that only covers the reads someone remembered is E5's failure, so
+`pnpm check:render-timeouts` scans for unwrapped reads in CI. A `revalidate` page
+must also call `assertRenderNotDegraded()`, or a timeout-null render gets cached
+as the page (FIX-1227). *FIX-638, FIX-639, FIX-1227 ·
+`scripts/check-render-timeouts.mjs` · `apps/civitics/src/lib/supabase-check.ts`*
 
 ---
 
