@@ -29,7 +29,8 @@ New rules **C10** and **C11**, plus dated addenda on **C2**, **C5** and **D3**.
 
 **Extended 2026-10-24** with the receipts the package `CLAUDE.md` haircuts moved
 out (cc-246, FIX-1346). Each package file keeps its rule as one line; the
-measurements live here. Dated addenda on **C5**, **D1**, **D7** and **E11**.
+measurements live here. Dated addenda on **C5**, **D1**, **D7**, **E8** and
+**E11**.
 
 ---
 
@@ -1159,6 +1160,35 @@ of it, ranked" is not a product requirement. Note FEC ingest still drops
 contributions under the $200 itemization floor (`fec-bulk/indiv.ts:203`) —
 removing that floor multiplies source rows by an order of magnitude.
 *FIX-974 migration (arm 1 body), FIX-952, FIX-965, FIX-961*
+
+**Addendum — 2026-10-24, the floor moved and the ingest stopped tracking the
+data (moved from `packages/data/CLAUDE.md`).** The "$200 itemization floor"
+above was the wrong rule. FEC itemizes on a per-donor **cycle aggregate**: once
+a contributor passes $200 cumulative with a committee, every later contribution
+is itemized however small. Applying $200 per transaction at parse discarded
+**90.2%** of in-scope cycle-2026 rows. PR 3b admits `amount > 0` and applies the
+floor once per `(donor × recipient × cycle)` group at emit; a group under $200
+writes no FR or donor row and is counted into `small_dollar_bracket_rollup`
+instead. Measured on the full cycle-2026 file, identical across sort buffers
+25k/100k/400k: FR rows **1,316,608 → 1,980,786** (+50.4%), dollars
+**$4,074,508,705 → $4,556,216,174** (+11.8%), and the residual, silently dropped
+before, is now 1,002,643 groups / $83,453,297, bracketed. The stage could take
+that tenfold growth because PR 3a had already made its memory independent of the
+data. The old heap guidance (8 GB, 12 GB for a presidential cycle) tuned a number
+that was O(distinct groups); 12 GB OOM'd at ~53M of ~69M lines of `indiv20`.
+The external sort (bounded buffer, gzip'd sorted runs, k-way merge) completed the
+full cycle-2026 file — 30,632,248 lines, 5,401 MB extracted — at heap 2048 /
+1024 / 512 MB with buffers 400k / 100k / 25k: stage peak RSS 2,256 / 900 /
+424 MB, identical outputs, flat wall-clock (86–93 s). After the floor moved, sort
+disk grew ~5× (142.9 → 822.7 MB at buffer 25k) while peak heap did not move
+(~254 MB).
+
+**Apply:** apply a source's filter at the grain the source defines it, and
+measure what the wrong grain discarded before trusting a "threshold". When a
+memory ceiling tracks the data, bound the working set instead of raising the
+ceiling — the knob is the buffer (`FEC_INDIV_SORT_BUFFER`), and the resource to
+budget becomes disk. *FIX-1068, FIX-961 · `docs/audits/2026-08-18-fec-coverage-pr3a-phase0.md`
+· `packages/data/src/lib/external-sort.ts`*
 
 ### E9. Prove a zero with a relaxation ladder — drop one predicate clause at a time and show where the population dies.
 
