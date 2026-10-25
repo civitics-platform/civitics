@@ -209,7 +209,8 @@ restating it. Each line is a rule that has cost a real session.
   now only the N2 body revert's target (`scripts/fix1336-revert-dispatcher-n2.sql`);
   the M1 pair `98660b34…` / `4c9d0eb0…` only B1's
   (`scripts/fix1329-revert-dispatcher-b1.sql`). N2 also moved `prod_op_gate`
-  (`e3e543cd9a30a4b0dca2b52b159410a0`) and `run_entity_connections_rebuild`
+  (`e3e543cd9a30a4b0dca2b52b159410a0` → FIX-1342 `20261025000000`
+  `1d3507cd4b71439f0cfff51cde49b9d8` (cc-247)) and `run_entity_connections_rebuild`
   (`3315486c187ce91ae80a33837b72dbc8`).
 - No heavy prod rebuilds or MV refreshes during Craig's active hours.
 

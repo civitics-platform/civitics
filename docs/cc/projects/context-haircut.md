@@ -10,7 +10,9 @@ steps:
   - {id: s3, kind: cc, ref: "cc-245", title: "root CLAUDE.md haircut (FIX-1339) — 22 of 29 sections / 44.1 KB classified K+R/D/H/G; reduce to K rules + playbook pointers; resolve the PROMPT_TEMPLATE overlap", done: 2026-10-23}
   - {id: s3a, kind: cc, ref: "cc-245", title: "MEMORY.md census; K/D/G proposal in the cc-245 report", done: 2026-10-23}
   - {id: s4, kind: cc, ref: "cc-246", title: "package CLAUDE.md haircuts (graph 32.4 KB H+D first; data's stale EC-rebuild schedule) + top-level docs archive (ROADMAP.md movable; API.md's refusal is a test-fixture false positive); the drain-worker agent (.claude/agents/drain-worker.md, one test references it) is this step's call"}
-  - {id: s5, kind: design, ref: "timing-rules", title: "re-derive the gates from the post-cutover series (Cowork) — blackout idle 0/5 (FIX-1341, superseded by cc-243's FIX-1336, which removed prod_op_gate's constant fallback; close it as superseded); vacuum spacing idle 0/3; migration pushes ≤ 26 s, 0 overlaps"}
+  - {id: s5, kind: design, ref: "FIX-1342", title: "re-derive the gates from the post-cutover series (Cowork) — blackout idle 0/5 (FIX-1341, superseded by cc-243's FIX-1336, which removed prod_op_gate's constant fallback; close it as superseded); vacuum spacing idle 0/3; migration pushes ≤ 26 s, 0 overlaps — landed by cc-247: prod_op_gate learns the op classes, the clocked spacing retires", done: 2026-10-25}
+  - {id: s5a, kind: op, ref: "FIX-1342", title: "the three-push receipt — gate wait ≤ the census latency, 0 deferred-writer rows under the claim, claim ≤ 30 s, on the next three class-P pushes (cc-248+)", after: 2026-10-25}
+  - {id: s5b, kind: cc, ref: "FIX-1343", title: "the stall-minute receipts line"}
   - {id: s6, kind: design, ref: "memory", title: "Cowork memory restructure (done 10-21 — the export is in ../Claude/civitics/memory-export)", done: 2026-10-21}
 ---
 
