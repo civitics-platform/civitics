@@ -13,7 +13,7 @@ package `CLAUDE.md` files (loaded when a file under them is read),
 - `pnpm session:check` first: stranded branches/worktrees/PRs, `fixes:check`,
   the FIX status summary; it pulls the primary when it is clean and behind.
 - Any status claim: `pnpm fixes:status [FIX-NNN]`. **Never read
-  `docs/FIXES.md` (~800 KB) or `docs/done.log` (~240 KB) whole** — grep by id.
+  `docs/FIXES.md` (~130 KB; the Monday bot keeps it there) or `docs/done.log` (~240 KB) whole** — grep by id.
 - Then check the active DB, below, before any data work.
 
 ---

@@ -143,6 +143,8 @@ type PipelineDef = {
 };
 
 // ── Data sources: external ingests ───────────────────────────────────────────
+// Schedules: packages/data/CLAUDE.md §Update Schedules (the job registry and
+// the nightly's phases). The per-row comments record audit evidence only.
 const PIPELINES: PipelineDef[] = [
   {
     key: "congress",
@@ -230,8 +232,7 @@ const PIPELINES: PipelineDef[] = [
     key: "courtlistener",
     display: "CourtListener",
     aliases: ["courtlistener"],
-    // packages/data/CLAUDE.md: "weekly via nightly orchestrator (Sunday-only
-    // block)". Audit confirms ~5d gap between runs.
+    // The nightly's Sunday block. Audit confirms ~5d gap between runs.
     cadence: "weekly",
     source: { label: "CourtListener", href: "https://www.courtlistener.com" },
     retryCmd: "pnpm data:courts",
@@ -271,7 +272,7 @@ const PIPELINES: PipelineDef[] = [
     key: "legistar",
     display: "Legistar (local)",
     aliases: ["legistar"],
-    // packages/data/CLAUDE.md: "Manual only" — not on the orchestrator.
+    // Manual only — not on the orchestrator.
     cadence: "on_demand",
     retryCmd: "pnpm data:legistar",
   },
@@ -286,7 +287,7 @@ const PIPELINES: PipelineDef[] = [
     key: "agency_leadership",
     display: "Agency Leadership",
     aliases: ["agency_leadership"],
-    // packages/data/CLAUDE.md: Sunday block of nightly. Audit shows ~weekly
+    // The nightly's Sunday block. Audit shows ~weekly
     // cadence in prod; the "federal directory rarely changes" assumption is
     // about content churn, not run frequency.
     cadence: "weekly",
@@ -296,7 +297,7 @@ const PIPELINES: PipelineDef[] = [
     key: "agency_enrichment",
     display: "Agency Enrichment",
     aliases: ["agency_enrichment"],
-    // First Sunday of month per packages/data/CLAUDE.md ("Monthly").
+    // Monthly (the first Sunday).
     cadence: "monthly",
     retryCmd: "pnpm data:agency-enrichment",
   },
@@ -318,7 +319,7 @@ const PIPELINES: PipelineDef[] = [
     key: "irs990",
     display: "IRS 990 (nonprofits)",
     aliases: ["irs990"],
-    // packages/data/CLAUDE.md: weekly Sunday after FEC bulk. HEAD-watermark
+    // Weekly, Sunday after FEC bulk. HEAD-watermark
     // short-circuits cheaply when IRS bulk hasn't changed, but the pipeline
     // still records a run each Sunday.
     cadence: "weekly",

@@ -282,19 +282,20 @@ Keys:               run `supabase status` to get local publishable/secret keys
 supabase db diff --local -f migration_name
 # Creates: supabase/migrations/YYYYMMDDHHMMSS_migration_name.sql
 
-# 3. Test migration applies cleanly
-supabase db reset
-# Drops and recreates local DB from all migrations — confirms clean apply
+# 3. Rehearse it twice on the clone, then record it (FIX-1351; never `supabase db reset` —
+#    the clone cannot replay from zero, see §Environment Files)
+node scripts/db-query.mjs --local --file supabase/migrations/<file>.sql   # x2: the second run must change nothing
+supabase --workdir <worktree> migration up --local                       # the third, recording apply
 
-# 4. Push migration to production
-supabase db push
-# Applies pending migrations to prod Supabase project
+# 4. Push migration to production — the gated, dry-run-first path (root CLAUDE.md §Database)
+pnpm db:push:prod -- --dry-run
+pnpm db:push:prod
 ```
 
 **Migration rules:**
 - Append-only — never modify an existing migration file
 - Always reversible — include a `-- DOWN:` section or document manual rollback
-- Filename format: `NNNN_description.sql` (sequential number prefix)
+- Filename format: `YYYYMMDDHHMMSS_description.sql` — the 14-digit timestamp the CLI orders by; this repo names the FIX (`20261026000000_fix1349_move_ec_fe_vacuums.sql`)
 - Never `DROP TABLE`, `TRUNCATE`, or `DELETE` without explicit confirmation
 
 ### Current Migration State
@@ -737,14 +738,14 @@ pnpm --filter @civitics/data data:nightly
 
 ### Safe Run Order
 
-Source pipelines run first, then `rebuild_entity_connections()` derives edges. The nightly orchestrator handles this — only re-create the order manually for one-off ad-hoc runs:
+Source pipelines run first, then the `ec-crawl` registry unit derives edges (`docs/cc/projects/dispatcher.md`; it replaced the nightly's `rebuild_entity_connections()` call). The nightly orchestrator and the dispatcher handle this — only re-create the order manually for one-off ad-hoc runs:
 
 ```
 1. data:congress           (heaviest — 227k vote records)
 2. data:fec-bulk           (PAC contributions, ~200MB streamed)
 3. data:usaspending-bulk   (contract/grant awards; on prod it is dispatch-only / a supervised :prod run — FIX-1291)
 4. data:regulations        (proposals + comment periods)
-5. rebuild_entity_connections()  (SQL function — see "Entity Connections Derivation" in packages/data/CLAUDE.md)
+5. the ec-crawl unit             (dispatched; see "Entity Connections Derivation" in packages/data/CLAUDE.md)
 6. data:tag-rules          (lightweight, no API cost)
 7. data:ai-summaries       (costs money — run after other pipelines complete)
 8. data:tag-ai             (costs money — run last)
@@ -1373,4 +1374,4 @@ Shifts the OS dynamic-port range to 10000–10999 so future boots won't generate
 
 **Important:** the dynamicport change does NOT release exclusions that HNS / Docker Desktop have already allocated in the old range. `net stop winnat / net start winnat`, `net stop hns / net start hns`, and Docker Desktop restarts all fail to flush them. **A full Windows reboot is the only reliable way to clear stale exclusions.** The dynamicport change makes the fix permanent post-reboot.
 
-**Fallback while waiting to reboot:** schema changes can still ship via `supabase db push --linked` against prod. The commit trailer becomes `Verified: prod` instead of `Verified: local + prod` — see [apps/civitics/CLAUDE.md](../apps/civitics/CLAUDE.md) FIXES Workflow for the trailer convention.
+**Fallback while waiting to reboot:** schema changes can still ship via `pnpm db:push:prod` against prod (never `--linked`, FIX-392). The commit trailer becomes `Verified: prod` instead of `Verified: local + prod` — see root [CLAUDE.md](../CLAUDE.md) §FIXES Workflow for the trailer convention.
