@@ -1,0 +1,137 @@
+{
+  "cc": "249",
+  "prompt": "cc-prompt-249-return-refresh-derived-mvs-daily-move-ec-fe-vacuums-legacy-nightly-entry-removed-drop-night-records.md",
+  "started_at": "2026-10-25T23:42:15Z",
+  "finished_at": "2026-10-26T00:45:00Z",
+  "head_before": "48c17a77",
+  "head_after": "27bb80f7",
+  "commits": [
+    {
+      "sha": "a64a3362",
+      "subject": "[skip vercel] docs(fixes): cc-249 files FIX-1349, FIX-1350, FIX-1351, FIX-1352, FIX-1353"
+    },
+    {
+      "sha": "21a30bf5",
+      "subject": "[skip vercel] feat(gate): FIX-1352 — wait-for-gate prints a [gate] receipt: line after the release (wait start → ok checked_at, claim acquire → release instants and wall, polls, every distinct blocked token); the claimed / released lines carry their instants (cc-249)"
+    },
+    {
+      "sha": "e73528b7",
+      "subject": "[skip vercel] docs(ops): FIX-1351 — the local clone's schema_migrations reconciled (15 version rows inserted, then migration up --local applied 20261025010000: 524 → 525 with this run's file); every file-applied migration is now recorded by migration up --local as the third apply (cc-249)"
+    },
+    {
+      "sha": "63e33e2e",
+      "subject": "feat(cron): FIX-1350 — remove the legacy 0 21 * * * /api/cron/gha-dispatch/nightly Vercel entry and its legacy-registry gate; the nightly's one door is nightly-request (cc-249)"
+    },
+    {
+      "sha": "ea608d16",
+      "subject": "feat(db): FIX-1349 — MOVE ec-vacuum-analyze + fe-vacuum-analyze to the dispatcher: dead_tuples > 60% of trigger + floor 24 hours, gates {prod_session}, phase_lock true (fr's rule); crons parked by name at the move (cc-249)"
+    },
+    {
+      "sha": "7285844c",
+      "subject": "chore(fixes): record FIX-1349 landed — 20261026000000 on prod 00:14:11Z (crons 6 / 30 parked, eligible 13, head 525); the first dispatched ec VACUUM 00:17:00-00:17:09Z, null anchor, reaped succeeded: VACUUM unit_ms 8862; fe NOT due (anchor = the nightly fec vacuum-tail 22:53:36Z, floor due 10-26 22:53:37Z) (cc-249)"
+    },
+    {
+      "sha": "7df6142f",
+      "subject": "chore(fixes): record FIX-1350 landed — the legacy 0 21 /api/cron/gha-dispatch/nightly entry is off production: deployment dpl_ASief2bUC9koNNLApofrH7Swbx5A READY 00:09:27Z from ea608d16; GET /nightly → 400 \\\"workflow not in allowlist\\\", GET /nightly-request → 200 no_request (cc-249)"
+    },
+    {
+      "sha": "88e8ee6e",
+      "subject": "chore(fixes): record FIX-1336 receipt — the Sun 10-25 drop night under the dispatched START: armed 21:01:00.22Z, fired 21:05:22.74Z (http 204, dispatched_by dispatcher), the fec phase's claim held 5 21:09:38→22:54:46Z, four phases complete, reaped succeeded: GHA unit_ms 7036758 (cc-249)"
+    },
+    {
+      "sha": "5c45f084",
+      "subject": "chore(fixes): record FIX-1258 receipt — the Sat 10-24 06:33Z run_rule_taggers daily on the packed heap: scan 172.1 s < 173.7 s (the pre-repack 10-23 daily), delete 26.2 -> 6.7 s, wall 209.3 -> 182.5 s; the Tue weekly still owed (cc-249)"
+    },
+    {
+      "sha": "8d493163",
+      "subject": "[skip vercel] docs(cc): dispatcher.md s12b split — s12b-1 the ec/fe MOVE landed (FIX-1349), s12b-2 cc-251's memory threshold + the daily RETURN, s23 FIX-1353's design; context-haircut s5a names candidates 1 (cc-248) and 2 (cc-249) of FIX-1342's three-push receipt (cc-249)"
+    },
+    {
+      "sha": "b4331ddd",
+      "subject": "[skip vercel] docs(claude-md): FIX-1347 — the small package CLAUDE.md files to K rules + pointers: ai 10,347 -> 2,249 B, maps 6,541 -> 2,086 B, blockchain 4,402 -> 708 B (ui left at 5,431 B); each archived byte-equal; the tracked CLAUDE.md tree 77,345 -> 61,098 B (cc-249)"
+    },
+    {
+      "sha": "d29275a3",
+      "subject": "[skip vercel] docs: the stale lines cc-246 left — OPERATIONS Schema Changes (pnpm db:push:prod, the 14-digit filename, the clone's rehearse-twice-then-record step in place of supabase db reset), Safe Run Order's ec-crawl unit, the --linked fallback and its phantom apps/civitics/CLAUDE.md pointer; root CLAUDE.md's FIXES.md figure; DashboardClient's schedule-quoting comments (cc-249)"
+    },
+    {
+      "sha": "71f19d7f",
+      "subject": "[skip vercel] fix(docs): check-doc-links --archive leaves append-only FIXES bullets alone — a line carrying <!--id:FIX- is listed under \\\"left (append-only bullet)\\\" instead of rewritten (the FIX-1346 incident: cc-246's archive run rewrote two bullets) (cc-249)"
+    },
+    {
+      "sha": "9d6a29a1",
+      "subject": "[skip vercel] feat(receipts): FIX-1343 — the stall-minute line in receipts section 9: monitor runs > 10 s over the last 24 h (box-health-probe, the two 2-minute watchdogs, dispatcher-tick, by name) plus job startup timeouts, and a stall_minutes JSON key (cc-249)"
+    },
+    {
+      "sha": "e905acf6",
+      "subject": "[skip vercel] chore(drain): context-haircut s4c — the drain-worker agent RETIRED (Craig 10-24 #5a): the agent, claim.ts + data:drain:claim, the tag/summary drain prompts, their version test and the .gitignore stanza go; the pipelines' own cost-gated runs are the only AI drain path (cc-249)"
+    },
+    {
+      "sha": "576ddd82",
+      "subject": "chore(fixes): record FIX-1352 receipt — wait-for-gate's first prod exercise printed the receipt line on cc-249's class-P push: wait 299.7 s, claim 00:14:10.440Z -> 00:14:12.201Z = 1.8 s, polls 2, blocked_tokens [e:live_writers] (cc-249)"
+    },
+    {
+      "sha": "27bb80f7",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-249's closes — FIX-1349, FIX-1350, FIX-1351, FIX-1352, FIX-1347, FIX-1343 closed; receipts on FIX-1336, FIX-1258 (cc-249)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1352",
+    "FIX-1351",
+    "FIX-1350",
+    "FIX-1349",
+    "FIX-1336",
+    "FIX-1258",
+    "FIX-1347",
+    "FIX-1343"
+  ],
+  "fixes_filed": [
+    "FIX-1349",
+    "FIX-1350",
+    "FIX-1351",
+    "FIX-1352",
+    "FIX-1353"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261026000000_fix1349_move_ec_fe_vacuums.sql"
+  ],
+  "prod_writes": "ONE gated class-P migration push of exactly ONE file under its own FIX-950 claim, from the PRIMARY's packages/data at ea608d16. Dry run 00:08:18Z: 'Would push these migrations: 20261026000000_fix1349_move_ec_fe_vacuums.sql' only. held=false. session:wait-for-gate:prod --expected-minutes 1 --census stop --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. Polls: 00:09:05Z ok=false blocked_by=[e:live_writers] (fe-crawl's dispatched unit) · 00:14:05Z ok=true blocked_by=[] census pass (0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 452 = 0.00 %, P99 floor 4 at p0 0.23 %). Interlock acquired, held 5; claimed at 00:14:10.440Z; applied; cleared 5; released at 00:14:12.201Z; --then exited 0. '[gate] receipt: wait 299.7 s (00:09:05.352Z → 00:14:05.020Z) · claim 00:14:10.440Z → 00:14:12.201Z = 1.8 s · polls 2 · blocked_tokens [e:live_writers]'. NOTICEs: ec + fe rows moved (1 row each); cron ec-vacuum-analyze (jobid 6) and fe-vacuum-analyze (jobid 30) parked; read-back ok, registry rows 55 / eligible 13; ec trigger 528075.0, line 316845, n_dead 0, anchor NULL → DUE NOW (null anchor); fe trigger 264076.0, line 158446, n_dead 118545, anchor 2026-10-25 22:53:36.94Z → floor due 2026-10-26 22:53:36.94Z; md5 7b4e3f66105a49d030c41539e4cd2d56 / 2716fcca9ba97b683963cd499bc78136 / 1d3507cd4b71439f0cfff51cde49b9d8. Read-back 00:14:42Z: both rows as written, cron 19 active / 28 inactive, head 20261026000000 / 525, the five md5s and pg_postmaster_start_time() unchanged, prod_op_gate(60)/(5400) ok true with 5 dispatched VACUUM jobs. The in-session consequence: ec-vacuum-analyze armed 00:15:00.23Z, VACUUM 00:17:00.05–00:17:08.92Z (8.86 s), reaped 00:19:00.07Z succeeded: VACUUM unit_ms 8862; fe not due. Two Vercel production deploys rode the :main pushes (ea608d16 READY 00:09:27Z — the legacy cron entry removed; 576ddd82 — see stopped_items). Every other prod contact was a READ-ONLY db-query --prod, gh, vercel inspect, two authenticated GETs of the gha-dispatch route (/nightly → 400 refusal, no stamp; /nightly-request → 200 no_request, no stamp), and 16 remote-ref deletions (Item 7, Craig-sanctioned).",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1293 — NOT recorded: its condition did not occur in-session. ec's landing cycle is held by next_due_at 2026-10-26 02:35:18Z (the 20:35Z cycle's), so every status roll 21:01–23:31Z reads dirty_set source caught_up; the 112,755 drop-night donation rows wait for it. Owed.",
+    "fe-vacuum-analyze did not arm in-session: it has an anchor (the nightly fec phase's vacuum-tail, last_vacuum 22:53:36.94Z), so its floor is due 2026-10-26 22:53:37Z. The prompt's own branch ('an anchor exists after all') — Monday's arm is its whole receipt.",
+    "The second :main push (576ddd82) was NOT [skip vercel]-headed as Item 8 asked: its head was the FIX-1352 receipt record, which carries no tag. It made no difference: [skip vercel] skips nothing on this project, and every skip-tagged head tonight (a64a3362, 8d493163, 27bb80f7) and on cc-248/250 also built a production deployment (What contradicted the prompt 3). 576ddd82 deployed Ready (dpl_6T91xXWMGbgUP2bRQ79Br4UHgSVM); its app-side changes are comments only, and pnpm build was green on the branch.",
+    "8e — outside cc-246's list and left: packages/data/src/drain/prompts/agency-summary.md (its only reader was the deleted version test, so it is orphaned now), submit.ts / status.ts / apply.ts / args.ts and the data:drain:submit / data:drain:status scripts. vocabulary.ts stays because the tag pipelines import it.",
+    "The Vercel 21:00Z log read for the legacy call (read 6) was not taken: past the ~1 h retention at 23:4xZ. Not a finding (the prompt's own note); the GHA inputs and the DB stamps are the evidence."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1349",
+      "what": "ec-vacuum-analyze's first FLOOR arm: the first tick >= 2026-10-27 00:19:00Z (anchor = this run's reap 00:19:00.07Z + 24 h), reaped succeeded: VACUUM with unit_ms in band 0-140 s, phase_due_at written at that arm; the next arm after it held to the µs (the lock engaged); crawls read 'group busy: ec' for at most one unit while it runs",
+      "after": "2026-10-27T00:30Z"
+    },
+    {
+      "fix": "FIX-1349",
+      "what": "fe-vacuum-analyze's first dispatched arm: on the floor at the first tick >= 2026-10-26 22:53:37Z, or earlier on the pct term (fe n_dead 118,531 of the 158,446 line at 00:40Z, fe-crawl unit running since 00:39Z), or later if Monday's nightly vacuum-tail moves the anchor (say which); reaped succeeded: VACUUM in band 0-140 s; no 'io: vacuum live' collision with fr's 03:2xZ; the Tue receipts section 9 lines band-judged",
+      "after": "2026-10-27T03:00Z"
+    },
+    {
+      "fix": "FIX-1350",
+      "what": "Mon 2026-10-26 21:0xZ nightly: nightly-request dispatches it (dispatched_by dispatcher), pipeline_state.gha_dispatch_nightly stamped by the request route, no /api/cron/gha-dispatch/nightly call in the 21:00Z Vercel logs (read within the hour), canary-gha-dispatch quiet",
+      "after": "2026-10-26T22:30Z"
+    },
+    {
+      "fix": "FIX-1343",
+      "what": "the first prod rendering: the Tue 10-27 nominal receipts file carries 'Stall minutes (24 h, FIX-1343): ...' in section 9 and a stall_minutes JSON key with Monday's numbers",
+      "after": "2026-10-27T00:30Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "the drop-night rolls: after ec's first cycle on the landing opens (next_due_at 2026-10-26 02:35:18Z; 112,755 donation rows above the watermark 2026-10-24 21:12:12Z), two consecutive status_snapshot rolls with ec_crawl_health.dirty_set.source crawl_cycle and its staged_at, section time under service_role's 8 s",
+      "after": "2026-10-26T03:35Z"
+    }
+  ]
+}
