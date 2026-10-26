@@ -201,11 +201,19 @@ const isCode = (rel) => CODE_PREFIXES.some((p) => rel.startsWith(p)) && !rel.end
 export const FIXTURE_FILES = new Set(["scripts/test-check-doc-links.mjs"]);
 
 /**
+ * A line carrying this marker is an append-only FIXES bullet (root CLAUDE.md
+ * §FIXES Workflow): the move never rewrites it, it lists it as left. cc-246's
+ * archive run rewrote two such bullets (FIX-1346); a bullet citing a moved doc
+ * is history in the bullet's own words.
+ */
+export const APPEND_ONLY_MARKER = /<!--id:FIX-/;
+
+/**
  * Plan a move of docs/<name> → docs/archive/<name> for each name, against the
  * given text files (repo-relative posix → text). Pure: returns
  *   { moves: [{from, to}], edits: Map<file, {before, after, changes: [{line, from, to}]}>,
  *     history: [{file, line, text}], refused: [{name, file, line, text}],
- *     unrewritten: [{file, line, text, why}] }
+ *     unrewritten: [{file, line, text, why}], appendOnly: [{file, line, text}] }
  */
 export function planArchive(names, texts) {
   const moving = new Map(names.map((n) => [`docs/${n}`, `docs/archive/${n}`]));
@@ -213,6 +221,7 @@ export function planArchive(names, texts) {
   const refused = [];
   const history = [];
   const unrewritten = [];
+  const appendOnly = [];
   const edits = new Map();
 
   // Refusal first: any code/migration file naming a moving doc.
@@ -243,6 +252,10 @@ export function planArchive(names, texts) {
       if (!hits.length && !relLinks && !bareSibling) return line;
       if (isHistory(file)) {
         if (hits.length) history.push({ file, line: i + 1, text: line.trim() });
+        return line;
+      }
+      if (APPEND_ONLY_MARKER.test(line)) {
+        appendOnly.push({ file, line: i + 1, text: line.trim() });
         return line;
       }
       let out = line;
@@ -301,6 +314,7 @@ export function planArchive(names, texts) {
     history,
     refused,
     unrewritten,
+    appendOnly,
   };
 }
 
@@ -352,9 +366,12 @@ export function main(argv = process.argv.slice(2), { root = REPO, stdout = proce
     }
     for (const h of plan.history) stdout.write(`history  ${h.file}:${h.line} left as written: ${h.text.slice(0, 160)}\n`);
     for (const u of plan.unrewritten) stdout.write(`bare     ${u.file}:${u.line} (${u.why}): ${u.text.slice(0, 160)}\n`);
+    if (plan.appendOnly.length) stdout.write("left (append-only bullet):\n");
+    for (const a of plan.appendOnly) stdout.write(`  ${a.file}:${a.line}: ${a.text.slice(0, 160)}\n`);
     stdout.write(
       `check:doc-links — ${plan.moves.length} move(s), ${n} line rewrite(s) in ${plan.edits.size} file(s), ` +
-        `${plan.history.length} history hit(s) left, ${plan.refused.length} refusal(s)${dry ? " — DRY RUN, nothing changed" : ""}\n`,
+        `${plan.history.length} history hit(s) left, ${plan.appendOnly.length} append-only bullet(s) left, ` +
+        `${plan.refused.length} refusal(s)${dry ? " — DRY RUN, nothing changed" : ""}\n`,
     );
     if (dry) return 0;
     for (const m of plan.moves) execFileSync("git", ["mv", m.from, m.to], { cwd: root });

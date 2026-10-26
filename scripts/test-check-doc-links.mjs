@@ -125,6 +125,26 @@ assertEq(
   [0, ["docs/archive/FIXTURE_ONLY.md"], false],
 );
 
+// cc-249 (the FIX-1346 incident): an append-only FIXES bullet that cites the
+// moved doc is NOT rewritten — it is listed as left. A plain line in the same
+// file still follows the move.
+const fixesShaped = new Map([
+  ["docs/GONE_SOON.md", "a doc on its way to the archive"],
+  [
+    "docs/FIXES.md",
+    "## INFRA\n" +
+      "- 🟢 S — **old bullet** — see docs/GONE_SOON.md §2 <!--id:FIX-0042--> <!--lane:hygiene-->\n" +
+      "Header prose: docs/GONE_SOON.md is the plan.",
+  ],
+]);
+const planB = planArchive(["GONE_SOON.md"], fixesShaped);
+const fixesAfter = planB.edits.get("docs/FIXES.md")?.after ?? fixesShaped.get("docs/FIXES.md");
+assertEq(
+  "a FIXES bullet carrying <!--id:FIX- is left as written and named in the plan; the plain line follows",
+  [fixesAfter.split("\n")[1].includes("docs/GONE_SOON.md"), fixesAfter.split("\n")[2], planB.appendOnly.map((a) => `${a.file}:${a.line}`)],
+  [true, "Header prose: docs/archive/GONE_SOON.md is the plan.", ["docs/FIXES.md:2"]],
+);
+
 // Rule 105: move the file, rewrite everything but ONE reference — the checker
 // must fail that tree. (A checker that only knew markdown links would pass it:
 // the leftover is a backtick root path.)
