@@ -20,10 +20,10 @@
  *
  *   (proposal, plain_language)  ← packages/data/src/pipelines/ai-summaries
  *                               ← apps/civitics/app/api/proposals/[id]/summary
- *                               ← packages/data/src/drain/prompts/summary.md
+ *                               ← (the drain prompt summary.md, retired by cc-249)
  *   (official,  profile)        ← packages/data/src/pipelines/ai-summaries
  *                               ← apps/civitics/app/api/officials/[id]/summary
- *                               ← packages/data/src/drain/prompts/summary.md
+ *                               ← (the drain prompt summary.md, retired by cc-249)
  *
  * A reader of a cached row cannot tell which of the three produced it (that is
  * the FIX-931 observation, and the reason the first two are kept byte-identical

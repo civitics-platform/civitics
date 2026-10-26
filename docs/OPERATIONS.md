@@ -723,6 +723,8 @@ Pipelines run as Node.js scripts in `packages/data/`. They are NOT part of the N
 | `data:tag-ai` | AI-based topic/issue classification | ~$0.60/run |
 | `data:nightly` | Full nightly sync (runs all, in order) | ~$0.60/run |
 
+The pipelines' own cost-gated runs are the only AI drain path. The hand-run `enrichment_queue` drain (the `drain-worker` subagent and `data:drain:claim`) was retired by cc-249 (context-haircut s4c); its runbook is history in `docs/archive/claude-md-root-2026-10-23.md`.
+
 ### Running Pipelines
 
 ```powershell

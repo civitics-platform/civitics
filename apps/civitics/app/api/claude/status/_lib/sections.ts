@@ -462,12 +462,12 @@ const HIDDEN_PIPELINES = new Set<string>([
  * FIX-924 — how old a `processing` claim has to be before the dashboard calls it
  * abandoned. Minutes.
  *
- * The semantic is "long enough that a live drain wave never trips it", NOT
+ * The semantic is "long enough that a live claim never trips it", NOT
  * "the operator's reclaim threshold". Deliberately looser than
  * `data:drain:status`'s 10-minute default: that script answers "what can I
- * reclaim right now", this number answers "does this look abandoned". A wave of
- * 12 subagents chewing 60-item batches finishes well inside an hour, so 60
- * minutes never fires on healthy work while still catching the orphan class
+ * reclaim right now", this number answers "does this look abandoned". Healthy
+ * work finishes well inside an hour (the hand drain-worker waves retired in
+ * cc-249), so 60 minutes never fires on it while still catching the orphan class
  * that motivated this fix (44 claims stranded since April).
  *
  * It governs only the WARN. `processing` is reported unconditionally — hiding a

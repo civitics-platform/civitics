@@ -81,7 +81,6 @@
     "data:sweep-official-tags": "tsx --env-file=../../.env.local src/scripts/sweep-official-tags.ts",
     "data:calibrate-cost": "tsx --env-file=../../.env.local src/scripts/calibrate-ai-cost.ts",
     "data:verify-gate": "tsx --env-file=../../.env.local src/scripts/verify-source-text-gate.ts",
-    "data:drain:claim": "tsx --env-file=../../.env.local src/drain/claim.ts",
     "data:drain:submit": "tsx --env-file=../../.env.local src/drain/submit.ts",
     "data:drain:status": "tsx --env-file=../../.env.local src/drain/status.ts",
     "session:claim-prod": "tsx --env-file=../../.env.local.prod src/scripts/claim-prod-session.ts",
