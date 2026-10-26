@@ -99,9 +99,9 @@ tonally separate.
 | `packages/db/CLAUDE.md` | The three clients and the force-dynamic rule, the column traps (EC, FR/FE, officials, vote_category), **materialization pattern for slow request-path aggregations**, the merge-surface rule, autovacuum tuning, storage, migration conventions, `db:types` |
 | `packages/data/CLAUDE.md` | Update schedules (pointers to the job registry), EC derivation, the per-source writer contracts (FEC, IRS 990, USASpending, OpenStates, TIGER), the FEC indiv stage and the $200 aggregate floor |
 | `packages/graph/CLAUDE.md` | Viz switching is style-only, D3, real-time wiring, the connection-type registry, interaction and screenshot contracts, the watermark, smart expansion, strength filter, the V2 field-name contract |
-| `packages/ai/CLAUDE.md` | Claude API, model routing, credit gating, caching, cost rules |
-| `packages/maps/CLAUDE.md` | Mapbox, Deck.gl, PostGIS patterns, privacy rules, geographic data |
-| `packages/blockchain/CLAUDE.md` | Chains, wallets, audit requirement, Two Economies, compute pool |
+| `packages/ai/CLAUDE.md` | The cost rule, the pricing pointer (`ai-pricing.ts`), the cost gate every AI pipeline calls first, the API keys |
+| `packages/maps/CLAUDE.md` | Privacy (coarsen coordinates), the GIST + `query_districts` rules, the TIGER boundary loads, visual principles |
+| `packages/blockchain/CLAUDE.md` | Phase 4 status, the invisible-blockchain rule, the audit requirement |
 | `apps/civitics/CLAUDE.md` | Data rules, the `withDbTimeout` rule, pointers for the build and hydration traps |
 
 ---
