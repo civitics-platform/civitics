@@ -15,7 +15,7 @@ steps:
   - {id: s4c, kind: design, ref: "drain-worker", title: "keep or retire .claude/agents/drain-worker.md (retiring takes the agent + drain-prompt-version.test.ts + the drain prompt files together) — Craig's call from the cc-246 report"}
   - {id: s5, kind: design, ref: "FIX-1342", title: "re-derive the gates from the post-cutover series (Cowork) — blackout idle 0/5 (FIX-1341, superseded by cc-243's FIX-1336, which removed prod_op_gate's constant fallback; close it as superseded); vacuum spacing idle 0/3; migration pushes ≤ 26 s, 0 overlaps — landed by cc-247: prod_op_gate learns the op classes, the clocked spacing retires", done: 2026-10-25}
   - {id: s5a, kind: op, ref: "FIX-1342", title: "the three-push receipt — gate wait ≤ the census latency, 0 deferred-writer rows under the claim, claim ≤ 30 s, on the next three class-P pushes (cc-248+) — candidate 1 = cc-248 (10-25 03:09→04:04Z, 55 min on (d) only, claim ≤ 7 s); candidate 2 = cc-249 (10-26 00:09:05→00:14:05Z, 299.7 s on e:live_writers only — fe-crawl's dispatched unit — claim 1.8 s from the new receipt line, 0 skipped writer rows); the third is owed", after: 2026-10-25}
-  - {id: s5b, kind: cc, ref: "FIX-1343", title: "the stall-minute receipts line"}
+  - {id: s5b, kind: cc, ref: "cc-249", title: "the stall-minute receipts line — FIX-1343, cc-249: receipts §9 gains Stall minutes (24 h, FIX-1343) and the JSON stall_minutes key; the first prod rendering (the Tue 10-27 nominal file) owed", done: 2026-10-26}
   - {id: s6, kind: design, ref: "memory", title: "Cowork memory restructure (done 10-21 — the export is in ../Claude/civitics/memory-export)", done: 2026-10-21}
 ---
 

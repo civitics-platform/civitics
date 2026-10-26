@@ -1212,6 +1212,34 @@ export function unitDispatcherFromStatus(s: Record<string, unknown> | null | und
 }
 
 /**
+ * FIX-1343 — the §9 stall-minute line, the cc-242 census's distress instrument
+ * (docs/audits/2026-10-22-context-and-io-census.md §B1): runs of the four
+ * monitors — box-health-probe, the two 2-minute watchdogs and dispatcher-tick,
+ * each normally under 1 s — that took > 10 s, and `job startup timeout` rows,
+ * over the last 24 h. `stall_minutes` counts the distinct minutes holding such
+ * a run.
+ */
+export interface StallMinutesReceipt {
+  stall_minutes: number;
+  runs_over_10s: number;
+  probe: number;
+  watchdogs: number;
+  tick: number;
+  startup_timeouts: number;
+}
+
+/** FIX-1343 — the line. Pure. `undefined` is a file written before the reader existed. */
+export function stallMinutesLine(s: StallMinutesReceipt | undefined): string {
+  const head = "Stall minutes (24 h, FIX-1343): ";
+  if (s === undefined) return head + "not read.";
+  if (s.runs_over_10s === 0 && s.startup_timeouts === 0) return head + "none";
+  return (
+    head + s.stall_minutes + " min over " + s.runs_over_10s + " run(s) > 10 s (probe " + s.probe +
+    " · watchdogs " + s.watchdogs + " · tick " + s.tick + ") · startup timeouts " + s.startup_timeouts
+  );
+}
+
+/**
  * FIX-1308 — the §9 dispatcher line. Pure. `undefined` is a file written before
  * the reader existed ("not read"); `not_capturable` is a database without the
  * migration; otherwise the cadence, the 24 h decisions, the eligible rows and
@@ -1661,6 +1689,8 @@ export interface ReceiptsData {
    * not inside `cron_jobs[]`, which the registry checker and the board iterate.
    */
   dispatched?: DispatchedReceipt;
+  /** FIX-1343 — §9, the stall-minute line. Optional so an older JSON still renders. */
+  stall_minutes?: StallMinutesReceipt;
   not_capturable: string[];
   queries: QueryRecord[];
 }
@@ -2073,6 +2103,8 @@ export function renderMarkdown(d: ReceiptsData): string {
       "was bounded for six hours (FIX-1123).",
   );
   p("");
+  p(stallMinutesLine(d.stall_minutes));
+  p("");
   p("### Startup timeouts by UTC hour, last 24 h");
   p("");
   p("Only hours with at least one failure. An empty table is the good answer.");
@@ -2192,6 +2224,7 @@ export function renderMarkdown(d: ReceiptsData): string {
   p("");
   p(
     queryBlock(d.queries, [
+      "stall_minutes",
       "forker_24h",
       "forker_7d",
       "forker_running",

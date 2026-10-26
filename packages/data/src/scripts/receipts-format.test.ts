@@ -51,6 +51,7 @@ import {
   parkedArmLines,
   unitDispatcherFromStatus,
   unitDispatcherLine,
+  stallMinutesLine,
   dispatchedFirings,
   dispatchedLines,
   type DispatchLogReapedRow,
@@ -1675,4 +1676,26 @@ test("FIX-1318: §9 dispatched lines — none, one, missed, and not capturable",
     "Dispatched (24 h, FIX-1318): not capturable — dispatcher not landed.",
   ]);
   assert.deepEqual(dispatchedLines(undefined), ["Dispatched (24 h, FIX-1318): not read."]);
+});
+
+// ── FIX-1343 (cc-249): the stall-minute line ────────────────────────────────
+
+test("FIX-1343 stallMinutesLine: minutes over runs, the per-monitor split, startup timeouts", () => {
+  assert.equal(
+    stallMinutesLine({ stall_minutes: 14, runs_over_10s: 19, probe: 14, watchdogs: 4, tick: 1, startup_timeouts: 155 }),
+    "Stall minutes (24 h, FIX-1343): 14 min over 19 run(s) > 10 s (probe 14 · watchdogs 4 · tick 1) · startup timeouts 155",
+  );
+  // startup timeouts alone still print the line: they are the same distress, a fork that never ran.
+  assert.equal(
+    stallMinutesLine({ stall_minutes: 0, runs_over_10s: 0, probe: 0, watchdogs: 0, tick: 0, startup_timeouts: 3 }),
+    "Stall minutes (24 h, FIX-1343): 0 min over 0 run(s) > 10 s (probe 0 · watchdogs 0 · tick 0) · startup timeouts 3",
+  );
+});
+
+test("FIX-1343 stallMinutesLine: all zero is `none`; a pre-FIX-1343 file is `not read.`", () => {
+  assert.equal(
+    stallMinutesLine({ stall_minutes: 0, runs_over_10s: 0, probe: 0, watchdogs: 0, tick: 0, startup_timeouts: 0 }),
+    "Stall minutes (24 h, FIX-1343): none",
+  );
+  assert.equal(stallMinutesLine(undefined), "Stall minutes (24 h, FIX-1343): not read.");
 });

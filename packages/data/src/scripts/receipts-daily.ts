@@ -73,6 +73,7 @@ import {
   type CrawlSkips,
   type MemoryBankedBy,
   type MemoryWindow,
+  type StallMinutesReceipt,
   type UnitDispatcherReceipt,
   type DispatchedReceipt,
   BURST_THRESHOLD,
@@ -671,6 +672,27 @@ WHERE d.start_time >= now() - interval '24 hours'
 GROUP BY 1
 ORDER BY 1 DESC`;
 
+// FIX-1343 — the stall-minute line: the four monitors BY NAME (jobids differ
+// between prod and the clone, FIX-946), a run counted when it took > 10 s, and
+// every `job startup timeout` row. One scan of the last 24 h.
+const Q_STALL_MINUTES = `
+WITH d AS (
+  SELECT j.jobname, d.start_time, d.end_time - d.start_time > interval '10 seconds' AS slow,
+         (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%') AS startup_timeout
+  FROM cron.job_run_details d
+  LEFT JOIN cron.job j ON j.jobid = d.jobid
+  WHERE d.start_time >= now() - interval '24 hours'
+)
+SELECT count(DISTINCT date_trunc('minute', start_time)) FILTER (WHERE slow AND jobname IN
+         ('box-health-probe', 'cron-job-budget-watchdog', 'derived-mvs-unit-watchdog', 'dispatcher-tick'))::int AS stall_minutes,
+       count(*) FILTER (WHERE slow AND jobname IN
+         ('box-health-probe', 'cron-job-budget-watchdog', 'derived-mvs-unit-watchdog', 'dispatcher-tick'))::int AS runs_over_10s,
+       count(*) FILTER (WHERE slow AND jobname = 'box-health-probe')::int AS probe,
+       count(*) FILTER (WHERE slow AND jobname IN ('cron-job-budget-watchdog', 'derived-mvs-unit-watchdog'))::int AS watchdogs,
+       count(*) FILTER (WHERE slow AND jobname = 'dispatcher-tick')::int AS tick,
+       count(*) FILTER (WHERE startup_timeout)::int AS startup_timeouts
+FROM d`;
+
 const Q_FORKER_7D = `
 SELECT to_char(date_trunc('day', d.start_time), 'YYYY-MM-DD') AS bucket,
        count(*)                  AS failures,
@@ -1248,6 +1270,17 @@ async function main(): Promise<void> {
     );
     const forker7d = bucketRows(await r.run<Record<string, unknown>>("forker_7d", Q_FORKER_7D));
 
+    // FIX-1343 — the stall-minute line.
+    const stallRow = (await r.run<Record<string, unknown>>("stall_minutes", Q_STALL_MINUTES))[0] ?? {};
+    const stallMinutes: StallMinutesReceipt = {
+      stall_minutes: num(stallRow["stall_minutes"]) ?? 0,
+      runs_over_10s: num(stallRow["runs_over_10s"]) ?? 0,
+      probe: num(stallRow["probe"]) ?? 0,
+      watchdogs: num(stallRow["watchdogs"]) ?? 0,
+      tick: num(stallRow["tick"]) ?? 0,
+      startup_timeouts: num(stallRow["startup_timeouts"]) ?? 0,
+    };
+
     const forkerRunningRows = await r.run<Record<string, unknown>>(
       "forker_running",
       Q_FORKER_RUNNING,
@@ -1517,6 +1550,7 @@ async function main(): Promise<void> {
       legislator_ids: { latest: legRun("latest"), complete: legRun("complete"), bind: legRun("bind") },
       unit_dispatcher: unitDispatcher,
       dispatched,
+      stall_minutes: stallMinutes,
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
     };
