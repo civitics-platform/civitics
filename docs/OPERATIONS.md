@@ -94,6 +94,8 @@ SUPABASE_SECRET_KEY=sb_secret_xxx                         # from Supabase dashbo
 3. Add key name only (no value) to `.env.example`
 4. Update `CLAUDE.md` if architecturally relevant
 
+**The local clone's migration history (FIX-1351, cc-249).** `node scripts/db-query.mjs --local --file <migration>` applies a file but records no version, so the clone's `supabase_migrations.schema_migrations` drifted 16 files behind its live state and `migration up --local` died re-applying them. Rehearse each new migration ×2 with `db-query --local --file` (rule 241's idempotency check), THEN record it with `supabase --workdir <worktree> migration up --local` — the third, recording apply of an idempotent file. Never `supabase db reset` to fix a drifted history: insert the missing `(version, name)` rows instead.
+
 ---
 
 ## Daily Dev Workflow
