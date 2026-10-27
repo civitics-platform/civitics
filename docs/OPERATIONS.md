@@ -880,6 +880,36 @@ Set these in Vercel Dashboard → Settings → Environment Variables (no code de
 
 **When pausing Supabase:** Always set `SUPABASE_AVAILABLE=false` in Vercel first to prevent functions from timing out on dead DB connections.
 
+### The dispatcher's memory dials (FIX-1354)
+
+Two rows of `public.platform_dials` decide when the dispatcher stops arming
+work because the box is short of memory. Both read the on-box mirror
+`pipeline_state.box_health_mem`, which `/api/cron/box-health` (Vercel, every
+2 min) writes:
+
+| dial | default | what it excludes |
+|---|---|---|
+| `swap_ceiling_mb` | 1018 | **every pick.** When swap in use is ≥ this, `box_is_saturated()` reads `saturated / reason memory`, and the tick logs `skipped` / `box: memory`. The GitHub-Actions nightly is included: its `by 0 21 * * *` window lapses to the GHA `schedule:` fallback. The `box_backoff_gate` START gates and the per-chunk backoffs of the four heavy rollups back off on it too |
+| `headroom_target_mb` | 150 | **one due row.** When MemAvailable − the row's `cap_mb` (default 64) is < this, the row waits as `headroom: <avail> MB avail − <cap> MB cap < 150 MB` in `dispatch_log.excluded`. A 128-cap crawl needs ≥ 278 MB; the 256-cap `refresh-derived-mvs-daily` needs ≥ 406 MB |
+
+- **A stale mirror fails open.** If the route has not written for longer than
+  the probe's freshness (180 s), neither dial excludes anything. The tick's
+  `box.thresholds.memory.mem_stale` reads `true`, and
+  `get_dispatcher_status().mem_stale_ticks_24h` counts it. The on-box clauses
+  (`stale`, `fork_failures`) still fail closed.
+- **Moving a dial is one UPDATE.** For example `UPDATE public.platform_dials
+  SET swap_ceiling_mb = 1024;` (any value above SwapTotal turns the ceiling
+  off) or `SET headroom_target_mb = 0` (turns the per-row test off).
+  `pause = true` stops everything. `scripts/fix1354-revert-box-gate-memory-rules.sql`
+  is the full revert.
+- **A planned restart is the lever for the creep until the tier changes.**
+  The 2026-10-26 census (`docs/audits/2026-10-26-box-memory-census.md` §M1)
+  shows swap back at ~420 MB within 2 h of the 10-25 reboot. On the previous
+  uptime it read 912–926 MB on day 8 and P50 981 MB on day 13; on day 17 the
+  box wedged. MemAvailable does not show the creep (median ~387 MB on day 1 and
+  on the creep days alike), so watch swap: a quiet-window restart around day 10
+  of uptime resets it.
+
 ### Upgrade Path
 
 | Trigger | Upgrade | Cost |

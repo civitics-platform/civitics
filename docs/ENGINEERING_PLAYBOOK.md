@@ -32,6 +32,9 @@ out (cc-246, FIX-1346). Each package file keeps its rule as one line; the
 measurements live here. New rule **B4**, plus dated addenda on **C5**, **D1**,
 **D7**, **E8** and **E11**.
 
+**Extended 2026-10-26** with the box memory census (cc-251, FIX-1354). New
+rule **B5**.
+
 ---
 
 ## A. Data-shape regimes
@@ -172,6 +175,38 @@ null. A guard that only covers the reads someone remembered is E5's failure, so
 must also call `assertRenderNotDegraded()`, or a timeout-null render gets cached
 as the page (FIX-1227). *FIX-638, FIX-639, FIX-1227 ·
 `scripts/check-render-timeouts.mjs` · `apps/civitics/src/lib/supabase-check.ts`*
+
+### B5. The box creeps to its swap ceiling under an unchanged workload. Gate on the mirror; expect a foreign reader to finish the wedge.
+
+*Added 2026-10-26 (cc-251).* No job of ours grew between 10-18 and 10-24. The
+non-monitor cron wall was 3,754 s on the incident day against 4,070 / 5,037 s on
+clean days. Swap still crept from a daily average of 913 MB to 989 MB of the
+1,024 MB ceiling, 17 days after the 10-08 restart. By day 13 of that uptime
+(10-21), 17 of 63 gate readings sat at ≥ 1,000 MB.
+
+The dispatcher kept arming io- and memory-heavy units into it, because its box
+gate measured only the forker (stale probe, fork failures). Supabase's daily
+backup forced an immediate checkpoint at 11:21:55Z 10-25, and that finished the
+wedge: front door 52× 11:30–13:15Z, then an unclean vendor-side reboot at
+13:25:52Z.
+
+After the reboot the floor came back within two hours (183 → ~420 MB of swap).
+At least 141 MiB of the 256 MB buffer pool sits in swap, which is the pool's
+cold share. MemAvailable on a one-day-old box (median 387 MB) is no better than
+on the creep days. **The creep is in swap, not MemAvailable.**
+
+**Apply:**
+
+- The gate reads the on-box mirror (`pipeline_state.box_health_mem`, written by
+  the Vercel route). It stands down at `platform_dials.swap_ceiling_mb` (1018,
+  the clean-day P95 + 1) and per row at MemAvailable − `cap_mb` <
+  `headroom_target_mb` (150). A stale mirror fails open and is counted, because
+  the on-box clauses already fail closed.
+- A gate cannot stop a reader that is not ours. Until the tier changes, a planned
+  quiet-window restart around day 10 of uptime is the lever for the creep.
+
+*FIX-1354, FIX-1125, FIX-589 · `docs/audits/2026-10-25-io-budget-front-door-triage.md`
+· `docs/audits/2026-10-26-box-memory-census.md`*
 
 ---
 
