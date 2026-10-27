@@ -1,0 +1,79 @@
+{
+  "cc": "251",
+  "prompt": "cc-prompt-251-box-gate-memory-threshold-d8-headroom-swap-ceiling-memory-census-return-refresh-derived-mvs-daily.md",
+  "started_at": "2026-10-26T23:47:26Z",
+  "finished_at": "2026-10-27T01:20:00Z",
+  "head_before": "ae415e99",
+  "head_after": "d6b84f6d",
+  "commits": [
+    {
+      "sha": "9f728075",
+      "subject": "[skip vercel] docs(fixes): cc-251 files FIX-1354, FIX-1355"
+    },
+    {
+      "sha": "d655ef46",
+      "subject": "[skip vercel] docs(audit): the box memory census — M1-M5 on prod 10-26 23:47Z-00:01Z (cc-251)"
+    },
+    {
+      "sha": "a8e26d53",
+      "subject": "[skip vercel] feat(db): FIX-1354 + FIX-1355 — the box gate reads memory (swap ceiling 1018 + the D8 headroom test) and refresh-derived-mvs-daily RETURNS behind it on by 0 6 * * * (cc-251)"
+    },
+    {
+      "sha": "eb97ef4e",
+      "subject": "[skip vercel] docs(ops): the dispatcher's memory dials (swap_ceiling_mb 1018, headroom_target_mb 150) + playbook B5 — the box creeps to its swap ceiling under an unchanged workload (cc-251)"
+    },
+    {
+      "sha": "f6dc5922",
+      "subject": "[skip vercel] fix(test): the FIX-1354 redefinition seen by the earlier box/dispatcher tests — box_is_saturated's header spells VOLATILE / SECURITY INVOKER (prosrc unchanged), no routine header in the hunk comments, box-health-probe pins P1-A's overload DROP to P1-A, dispatcher-n2's live-body check accepts FIX-1354's pins (cc-251)"
+    },
+    {
+      "sha": "7cb6c668",
+      "subject": "[skip vercel] docs(cc): dispatcher.md s15 -> s15a done (cc-251: the box gate's memory rules + the census) + s15b design (the sensor's trip + the controller); s12b-2 -> the RETURN op with the first dispatched daily; context-haircut s5a candidate 3 = cc-251 (cc-251)"
+    },
+    {
+      "sha": "a6bf48f9",
+      "subject": "chore(fixes): record FIX-1355 landed — 20261027001000 on prod 00:35:29Z (refresh-derived-mvs-daily by 0 6 * * *, the shared hold row -> cadence_hours 24, jobid 9 parked); the first dispatched daily headroom-excluded 00:37:00Z, armed 00:39:00Z, ran 00:41:00-00:44:40Z complete 220.0 s, reaped succeeded: CALL unit_ms 220067 (cc-251)"
+    },
+    {
+      "sha": "beb1167c",
+      "subject": "chore(fixes): record FIX-1354 landed — 20261027000000 on prod 00:35:28Z (box_is_saturated ac8dbcdd / dispatch_one_unit 64c8271e / get_dispatcher_status 4c305237; swap_ceiling_mb 1018); the headroom rung's first prod exclusions 00:37:00Z + 00:43:00Z; thresholds.memory on every box tick; the first box: memory tick owed (cc-251)"
+    },
+    {
+      "sha": "d6b84f6d",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-251's closes — FIX-1354, FIX-1355 closed (local a8e26d53 + prod records beb1167c / a6bf48f9) (cc-251)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1354",
+    "FIX-1355"
+  ],
+  "fixes_filed": [
+    "FIX-1354",
+    "FIX-1355"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261027000000_fix1354_box_gate_memory_rules.sql",
+    "supabase/migrations/20261027001000_fix1355_return_refresh_derived_mvs_daily.sql"
+  ],
+  "prod_writes": "ONE gated class-P migration push of exactly TWO files under its own FIX-950 claim, from the PRIMARY's packages/data at f6dc5922. Dry run 00:35:09Z: 'Would push these migrations: 20261027000000_fix1354_box_gate_memory_rules.sql, 20261027001000_fix1355_return_refresh_derived_mvs_daily.sql' only. held=false. session:wait-for-gate:prod --expected-minutes 1 --census stop --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. Poll: 00:35:24Z ok=true blocked_by=[] census pass (0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 650 = 0.00 %, P99 floor 5 at p0 0.23 %). Interlock acquired, held 5; claimed at 00:35:28.367Z; both files applied; cleared 5; released at 00:35:29.496Z; --then exited 0. '[gate] receipt: wait 0.2 s (00:35:24.379Z → 00:35:24.605Z) · claim 00:35:28.367Z → 00:35:29.496Z = 1.1 s · polls 1 · blocked_tokens []'. NOTICEs: md5 box_is_saturated ac8dbcddf71978e73d28c999433156b7 / dispatch_one_unit 64c8271e7601095d275c68eff5187931 / get_dispatcher_status 4c30523742e280a4b48ea2ec390654d6 (old 494240af / 7b4e3f66 / 2716fcca); prod_op_gate / in_blackout / record_box_health_mem unchanged; swap_ceiling_mb 1018 / headroom_target_mb 150; box_is_saturated(false) clear, swap 396 / MemAvailable 365, thresholds.memory {mem_stale false, swap_ceiling_mb 1018, headroom_target_mb 150}; refresh-derived-mvs-daily at 0 6 → by 0 6 * * * (1 row); the refresh_derived_mvs hold → cadence_hours 24 (1 row); jobid 9 inactive; DUE NOW (ttd -18:35:29); headroom now 365 − 256 = 109 < 150 → excluded until MemAvailable ≥ 406. Read-back 00:36:07Z: head 20261027001000 / 527, registry 55 / eligible 14, cron 19 standing active / 28 inactive, postmaster unchanged, prod_op_gate(60) ok. PINS: box_is_saturated ac8dbcddf71978e73d28c999433156b7 · dispatch_one_unit 64c8271e7601095d275c68eff5187931 · get_dispatcher_status 4c30523742e280a4b48ea2ec390654d6. The dispatcher's consequent writes: tick 00:37:00Z excluded the daily (headroom: 394 MB avail − 256 MB cap < 150 MB), armed it 00:39:00Z (one-shot disp-refresh-derived-mvs-daily-1793061540, jobid 751, its 5400 s budget row), the unit ran 00:41:00.15–00:44:40.11Z complete (13 units incl. REFRESH MATERIALIZED VIEW ×8, rebuild_entity_search_index, rebuild_all_primary_sources and three prunes), reaped 00:45:00Z succeeded: CALL unit_ms 220067; fe-crawl armed/reaped 00:45:01Z / 00:49:00Z and 01:13:00Z. One census catalog write that did not survive: pg_buffercache created in extensions inside BEGIN … ROLLBACK through db-query --prod --call --yes-i-mean-prod --timeout 2min (23:58:16Z; pg_extension count 0 after). Every other prod contact was a READ-ONLY db-query --prod, one metrics-endpoint scrape (23:59:18Z), gh reads; M3's pg_log_backend_memory_contexts call was refused (permission denied) and wrote nothing. One Vercel production deploy may have ridden each :main push (no app files changed; pnpm build green).",
+  "ci": "green",
+  "stopped_items": [
+    "M3 (per-backend memory) — SKIPPED per the prompt's own stop: SELECT pg_log_backend_memory_contexts(1269) → 'ERROR:  permission denied for function pg_log_backend_memory_contexts' (ACL {supabase_admin=X/supabase_admin}; postgres not superuser). No Logs API read was made. The metrics endpoint's kernel split (M3′) stands in; D6's backend half has bounds, not a per-backend sum.",
+    "D1's first prod exercise (a 'box: memory' tick) did not occur in-session: swap 396–467 MB on day 2 of uptime. Owed (open-ended), as the prompt anticipated; D2's half DID occur (00:37:00Z, 00:43:00Z)."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1355",
+      "what": "the first SLOT firing — Tue 2026-10-27 by 0 6 * * *: armed on the first tick at or after 06:00Z that the headroom test admits (MemAvailable ≥ 406), complete, unit_ms within ~2x tonight's 220,067 ms; the crawls' excluded[] carry 'yield: refresh-derived-mvs-daily due in …' from ~05:30Z and 'live' during the run; receipts §3 refresh_derived_mvs daily row + §9 dispatched line (no-band expected); the canary quiet on refresh_derived_mvs with the hold converted",
+      "after": "2026-10-27T07:00Z"
+    },
+    {
+      "fix": "FIX-1354",
+      "what": "the first tick whose box reads 'box: memory' (swap ≥ swap_ceiling_mb 1018) — expected only as the box creeps back toward the ceiling (M1: ~day 10–13 of uptime, ~2026-11-05) unless the planned restart lands first; until then every box-carrying tick's thresholds.memory present with mem_stale false and mem_stale_ticks_24h 0 while the Vercel route writes (the headroom half already fired in-session, 00:37:00Z)",
+      "after": "2026-10-28T00:00Z"
+    }
+  ]
+}
