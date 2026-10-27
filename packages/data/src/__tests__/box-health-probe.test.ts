@@ -42,8 +42,10 @@ const latest = (fn: string): string =>
 // prod-op-gate.test.ts derives it. Pinned to 20260920120000, the rule-93 and
 // c_wd_max_wall_s anchors kept passing on a body two later migrations replaced.
 const GATE = latest("prod_op_gate");
-// cc-183: box_is_saturated() was redefined (4 args) by FIX-1194 P1-A.
+// cc-183: box_is_saturated() was redefined (4 args) by FIX-1194 P1-A; cc-251
+// (FIX-1354) redefines it again with the same 4 args and the memory reason.
 const SAT = latest("box_is_saturated");
+const P1A = path.join(MIGRATIONS, "20261003030000_fix1194_p1a_box_backoff_gates.sql");
 // cc-153's migration carries the service_role revoke on record_box_health.
 const REVOKE_SRC = path.join(MIGRATIONS, "20260920150000_fix1220_1194_streak_minutes_gate_d_one_scan_revoke.sql");
 const LOCAL_DSN =
@@ -91,8 +93,9 @@ test("FIX-1194: every function's only SET clause is search_path; DEFINER only on
 test("FIX-1194 P1-A: box_is_saturated() takes p_include_watchdog_wall DEFAULT true, and the 3-arg overload is dropped", () => {
   assert.notEqual(SAT, MIGRATION, "the live definition is the P1-A migration's");
   assert.match(header(SAT_SRC, "box_is_saturated"), /p_include_watchdog_wall\s+boolean\s+DEFAULT true/);
-  // Two overloads would make a bare box_is_saturated() ambiguous.
-  assert.match(SAT_SRC, /DROP FUNCTION IF EXISTS public\.box_is_saturated\(int, int, timestamptz\);/);
+  // Two overloads would make a bare box_is_saturated() ambiguous. P1-A dropped
+  // the 3-arg one; a later CREATE OR REPLACE (FIX-1354) keeps the 4-arg list.
+  assert.match(fs.readFileSync(P1A, "utf8"), /DROP FUNCTION IF EXISTS public\.box_is_saturated\(int, int, timestamptz\);/);
   // The wall rule is the ONE rule the switch guards.
   assert.match(body(SAT_SRC, "box_is_saturated"), /ELSIF v_walls AND v_wall > c_watchdog_wall_s THEN/);
 });
@@ -309,7 +312,9 @@ test("FIX-1194: the clone's ACL — service_role cannot execute record_box_healt
   }
 });
 
-test("FIX-1194: memory is REPORT-ONLY — returned in readings, never sets saturated", async (t) => {
+// FIX-1354 (cc-251) ended REPORT-ONLY: swap at platform_dials.swap_ceiling_mb now
+// saturates (dispatcher-r4.test.ts). MemAvailable alone still never does.
+test("FIX-1194: MemAvailable alone never sets saturated; swap under the ceiling reads clear", async (t) => {
   const c = await connect(t);
   if (!c) return;
   try {

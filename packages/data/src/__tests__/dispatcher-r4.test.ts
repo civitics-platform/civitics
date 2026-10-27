@@ -127,9 +127,13 @@ test("the dial: ADD COLUMN IF NOT EXISTS swap_ceiling_mb int NOT NULL DEFAULT 10
 });
 
 test("each routine keeps prod's signature + SET clause (the revert IS prod's pg_get_functiondef)", () => {
+  // box_is_saturated spells out its two defaults, VOLATILE and SECURITY INVOKER, as
+  // P1-A did (box-health-probe.test.ts asserts them); pg_get_functiondef omits both.
+  const spelled = (h: string) => h.replace(" VOLATILE\n SECURITY INVOKER\n", "");
   for (const r of ROUTINES) {
-    assert.equal(header(def(MEM(), r)), header(def(REVERT_MEM(), r)), `${r}: header byte-equal`);
+    assert.equal(spelled(header(def(MEM(), r))), header(def(REVERT_MEM(), r)), `${r}: header byte-equal`);
   }
+  assert.ok(header(def(MEM(), "box_is_saturated")).includes(" VOLATILE\n SECURITY INVOKER\n SET search_path TO 'public', 'pg_catalog'\n"));
   assert.ok(header(def(MEM(), "box_is_saturated")).includes(
     "(p_stale_seconds integer DEFAULT 180, p_fork_failures_10m integer DEFAULT 3, p_now timestamp with time zone DEFAULT clock_timestamp(), p_include_watchdog_wall boolean DEFAULT true)"));
 });
