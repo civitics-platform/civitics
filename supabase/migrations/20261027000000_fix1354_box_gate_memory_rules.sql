@@ -86,7 +86,14 @@
 -- definitions, verbatim). The hunks, the whole change:
 --
 -- ── box_is_saturated ──
---   @@ -14,6 +14,15 @@
+--   @@ -1,6 +1,8 @@
+--     RETURNS jsonb
+--     LANGUAGE plpgsql
+--   + VOLATILE
+--   + SECURITY INVOKER
+--     SET search_path TO 'public', 'pg_catalog'
+--    DECLARE
+--   @@ -14,6 +16,15 @@
 --      v_reason  text;
 --      v_memory  jsonb := NULL;
 --      v_walls   boolean := COALESCE(p_include_watchdog_wall, true);
@@ -102,7 +109,7 @@
 --    BEGIN
 --      SELECT value INTO v_bh  FROM public.pipeline_state WHERE key = 'box_health';
 --      SELECT value INTO v_mem FROM public.pipeline_state WHERE key = 'box_health_mem';
---   @@ -23,28 +32,40 @@
+--   @@ -23,28 +34,40 @@
 --      v_wall := GREATEST((v_bh->'watchdog_max_wall_10m'->>'budget')::numeric,
 --                         (v_bh->'watchdog_max_wall_10m'->>'unit')::numeric);
 --    
@@ -154,7 +161,7 @@
 --    
 --      RETURN jsonb_build_object(
 --        'saturated',   v_reason <> 'clear',
---   @@ -58,7 +79,10 @@
+--   @@ -58,7 +81,10 @@
 --            'fork_failures_10m',        p_fork_failures_10m,
 --            'watchdog_wall_s',          c_watchdog_wall_s,
 --            'watchdog_wall_considered', v_walls,
@@ -294,6 +301,8 @@ COMMENT ON COLUMN public.platform_dials.swap_ceiling_mb IS
 CREATE OR REPLACE FUNCTION public.box_is_saturated(p_stale_seconds integer DEFAULT 180, p_fork_failures_10m integer DEFAULT 3, p_now timestamp with time zone DEFAULT clock_timestamp(), p_include_watchdog_wall boolean DEFAULT true)
  RETURNS jsonb
  LANGUAGE plpgsql
+ VOLATILE
+ SECURITY INVOKER
  SET search_path TO 'public', 'pg_catalog'
 AS $function$
 DECLARE

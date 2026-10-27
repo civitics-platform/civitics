@@ -49,6 +49,11 @@ const EC_MD5 = "38227eeb0969ca825db74e4dcc4cd2e0";
 /** prod_op_gate's live body: N2's, or FIX-1342's (cc-247) once 20261025000000 is applied. */
 const GATE_N2_MD5 = "e3e543cd9a30a4b0dca2b52b159410a0";
 const GATE_RECUT_MD5 = "1d3507cd4b71439f0cfff51cde49b9d8";
+/** dispatch_one_unit / get_dispatcher_status live: N2's, or FIX-1354's (cc-251) once 20261027000000 is applied (its pins: dispatcher-r4.test.ts). */
+const R4_MD5: Record<string, string> = {
+  dispatch_one_unit: "64c8271e7601095d275c68eff5187931",
+  get_dispatcher_status: "4c30523742e280a4b48ea2ec390654d6",
+};
 /** dispatch_one_unit's added lines vs B1 (the hunks, nothing else). */
 const ADDED_DISPATCH_LINES = 203;
 
@@ -376,7 +381,9 @@ test("local: when N2 is applied, the live bodies are this file's (the ec procedu
       // 20261025000000 (cc-247, FIX-1342) replaced prod_op_gate; its pin is
       // prod-op-gate-recut.test.ts. Either body passes here, nothing else.
       if (name === "prod_op_gate") assert.ok([GATE_N2_MD5, GATE_RECUT_MD5].includes(md5(live ?? "")), `${name} live body is neither N2's nor FIX-1342's`);
-      else assert.equal(live, prosrc(src, name, kind), `${name} live body is not the N2 file's`);
+      // 20261027000000 (cc-251, FIX-1354) replaced these two; either body passes, nothing else.
+      else if (R4_MD5[name] !== undefined && md5(live ?? "") === R4_MD5[name]) continue;
+      else assert.equal(live, prosrc(src, name, kind), `${name} live body is neither the N2 file's nor FIX-1354's`);
       if (kind === "PROCEDURE") assert.equal(r.rows[0]?.cfg, null, `${name} COMMITs; proconfig must stay NULL`);
     }
   } finally {
