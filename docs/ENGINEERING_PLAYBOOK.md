@@ -1143,7 +1143,13 @@ production. FIX-1359 made it real (`apps/civitics/scripts/vercel-ignore-build.sh
 and the design shows the second trap: Vercel builds only a push's tip, so the
 question is the range since the last SUCCESSFUL deployment
 (`VERCEL_GIT_PREVIOUS_SHA`), not `HEAD^..HEAD` — that diff would have skipped
-every records push whose tip is an empty commit above an app change.
+every records push whose tip is an empty commit above an app change. And the
+third: a file setting OVERRIDES the dashboard one. The project's dashboard
+Ignored Build Step had been cancelling every Preview all along, and the
+`ignoreCommand` silently replaced it. The first branch push after the landing
+built a 2-minute preview, and `vercel inspect` on an older Canceled preview is
+what showed the rule existed. Read the setting a file will override before
+writing the file.
 
 **Apply:** a convention that claims to switch something off names the
 mechanism that does it, and its first claim is checked against the switched

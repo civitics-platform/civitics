@@ -12,6 +12,7 @@
  *   - an untagged app change builds;
  *   - an EMPTY untagged tip above a tagged app commit builds — the case a
  *     `git diff HEAD^ HEAD` design gets wrong (every cc run's records push);
+ *   - a Preview never builds (the dashboard rule this file overrides);
  *   - no previous sha, an unreachable one, or a redeploy of the same commit
  *     builds: a doubt builds.
  */
@@ -51,9 +52,9 @@ function repo() {
     git("commit", "-q", "--allow-empty", "-m", msg);
     return git("rev-parse", "HEAD");
   };
-  const run = (prev: string | null, head: string) => {
+  const run = (prev: string | null, head: string, vercelEnv = "production") => {
     git("checkout", "-q", "--detach", head);
-    const env = { ...process.env };
+    const env = { ...process.env, VERCEL_ENV: vercelEnv };
     delete env["VERCEL_GIT_PREVIOUS_SHA"];
     if (prev !== null) env["VERCEL_GIT_PREVIOUS_SHA"] = prev;
     return spawnSync("bash", [SCRIPT], { cwd: join(dir, "apps/civitics"), env, encoding: "utf8" });
@@ -87,5 +88,11 @@ test("skip / build across the five shapes", (t) => {
   for (const [name, prev, head, want] of cases) {
     const res = r.run(prev, head);
     assert.equal(res.status, want, `${name}: ${res.stdout}${res.stderr}`);
+  }
+  // The dashboard rule vercel.json overrides: a Preview never builds, even an
+  // untagged app change with no previous sha (the 01:33Z 10-28 preview did).
+  for (const vercelEnv of ["preview", "development", ""]) {
+    const res = r.run(null, app, vercelEnv);
+    assert.equal(res.status, 0, `VERCEL_ENV=${vercelEnv}: ${res.stdout}${res.stderr}`);
   }
 });

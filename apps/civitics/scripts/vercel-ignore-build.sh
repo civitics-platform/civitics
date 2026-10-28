@@ -24,7 +24,17 @@
 # A tagged-only range skips even when it changes app code: that is what the tag
 # means (CLAUDE.md §Commit conventions). The next untagged push — at the
 # latest the 00:09Z receipts bot — sees the whole range and builds it.
+#
+# PREVIEWS NEVER BUILD. Before this file the project's dashboard Ignored Build
+# Step skipped every Preview (feature-branch pushes; every one Canceled back to
+# at least 10-18) and let every Production build. vercel.json's ignoreCommand
+# OVERRIDES that setting, so the dashboard rule is restated here first —
+# without it the first branch push after FIX-1359 built a 2-minute preview.
 set -u
+if [ "${VERCEL_ENV:-}" != "production" ]; then
+  echo "skip: VERCEL_ENV=${VERCEL_ENV:-unset} — only production builds"
+  exit 0
+fi
 prev="${VERCEL_GIT_PREVIOUS_SHA:-}"
 if [ -z "$prev" ]; then
   echo "build: no VERCEL_GIT_PREVIOUS_SHA"

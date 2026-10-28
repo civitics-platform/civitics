@@ -182,9 +182,12 @@ type(scope): description                  ← triggers Vercel build + deploy
 own, so until 2026-10-28 the tag did nothing and every push built production.
 `apps/civitics/vercel.json` now carries `"ignoreCommand": "bash
 scripts/vercel-ignore-build.sh"`, which Vercel runs in the project's root
-directory before each git deployment (exit 0 = skip, 1 = build). It compares
-`VERCEL_GIT_PREVIOUS_SHA` (the last deployment that SUCCEEDED) with `HEAD`,
-because Vercel builds only a push's tip:
+directory before each git deployment (exit 0 = skip, 1 = build). It
+**overrides** the dashboard's Ignored Build Step, which had skipped every
+Preview and no Production build, so the script restates that first: anything
+but `VERCEL_ENV=production` skips (feature-branch pushes never build). For
+Production it compares `VERCEL_GIT_PREVIOUS_SHA` (the last deployment that
+SUCCEEDED) with `HEAD`, because Vercel builds only a push's tip:
 - **skip** when every commit in that range is `[skip vercel]`-headed, or when
   nothing under `apps/civitics`, `packages/` or the root `package.json` /
   `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `.npmrc` changed
