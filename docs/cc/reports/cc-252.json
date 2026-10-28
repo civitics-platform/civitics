@@ -1,0 +1,157 @@
+{
+  "cc": "252",
+  "prompt": "cc-prompt-252-parallel-workers-zero-hash-mem-multiplier-one-memory-levers-2-3.md",
+  "started_at": "2026-10-28T00:45:14Z",
+  "finished_at": "2026-10-28T01:56:00Z",
+  "head_before": "edcc0c29",
+  "head_after": "64a841aa",
+  "commits": [
+    {
+      "sha": "14fffa0f",
+      "subject": "[skip vercel] docs(fixes): cc-252 files FIX-1356, FIX-1357, FIX-1358, FIX-1359, FIX-1360"
+    },
+    {
+      "sha": "51683562",
+      "subject": "[skip vercel] feat(db): FIX-1356 — max_parallel_workers_per_gather 0 + hash_mem_multiplier 1 on the postgres and authenticator login roles (cc-252)"
+    },
+    {
+      "sha": "a1894245",
+      "subject": "[skip vercel] feat(db): FIX-1357 — job_registry.cap_mb re-derived for hash_mem_multiplier 1: 33 multiplier-derived rows halved, 14 VACUUM + 8 GHA rows left, Σ 6656 → 4288 (cc-252)"
+    },
+    {
+      "sha": "cbde2851",
+      "subject": "[skip vercel] feat(db): FIX-1358 — fe-vacuum-analyze phase_lock false: the fec phase's vacuum-tail is the third owner, so the floor is a fallback, never a slot (cc-252)"
+    },
+    {
+      "sha": "fb6f5819",
+      "subject": "chore(fixes): record FIX-1356 landed — 20261028000000 on prod 01:22:53Z: postgres@postgres {statement_timeout=3h,work_mem=64MB,max_parallel_workers_per_gather=0,hash_mem_multiplier=1}, authenticator@postgres {max_parallel_workers_per_gather=0,hash_mem_multiplier=1}; a post-push backend reads 0 / 1 and plans no Gather (cc-252)"
+    },
+    {
+      "sha": "151fcc2d",
+      "subject": "chore(fixes): record FIX-1357 landed — 20261028001000 on prod 01:22:54Z: 33 multiplier-derived caps halved, 22 left, Σ cap_mb 6656 → 4288 against max_live_caps_mb 1024; the daily at 128 needs MemAvailable ≥ 278 (cc-252)"
+    },
+    {
+      "sha": "7d8faef8",
+      "subject": "chore(fixes): record FIX-1358 landed — 20261028002000 on prod 01:22:54Z: fe-vacuum-analyze phase_lock false (the lock had engaged Mon 10-26 22:55Z and armed Tue on the locked slot); ec-vacuum-analyze still locked (cc-252)"
+    },
+    {
+      "sha": "58559b5b",
+      "subject": "chore(fixes): record FIX-1342 three-push receipt COMPLETE — cc-248 (55 min on (d), claim ≤ 7 s), cc-249 (299.7 s on e:live_writers, claim 1.8 s), cc-251 (0.2 s, claim 1.1 s): 0 skipped writer rows and 0 ticks inside every claim, no b: / a:nightly_next_start token; class P stays supervised (cc-252)"
+    },
+    {
+      "sha": "0dbd9a8c",
+      "subject": "chore(fixes): record FIX-1343 on prod — the Tue 10-27 receipts (45c470dd) carry stall_minutes {0, 0, 0, 0, 0, 0} and §9 reads \"Stall minutes (24 h, FIX-1343): none\" (cc-252)"
+    },
+    {
+      "sha": "15870756",
+      "subject": "chore(fixes): record FIX-1349 on prod — ec-vacuum-analyze's first FLOOR arm 10-27 04:45:00Z (due 04:43:00.06646Z = the 10-26 reap + 24 h to the µs, phase_due_at written, reaped succeeded: VACUUM unit_ms 114528); fe armed on its floor Mon and Tue 22:55Z with no tail — FIX-1358 unlocks it (cc-252)"
+    },
+    {
+      "sha": "b6833fdc",
+      "subject": "chore(fixes): record FIX-1350 on prod — Mon 10-26's nightly ran dispatched_by dispatcher through nightly-request (GHA 40401357484, workflow_dispatch 21:05:22Z, success); the canary's gha_dispatch block stamped and quiet (cc-252)"
+    },
+    {
+      "sha": "74a037d8",
+      "subject": "chore(fixes): record FIX-1345 on prod — the Mon 10-26 fixes-housekeep run 40361282508 green: cutoff 2026-10-19, bulletsMoved 0, archive nothing to do, no bot commit; it started 16:39:56Z, not 10:00Z (cc-252)"
+    },
+    {
+      "sha": "bcdbf493",
+      "subject": "chore(fixes): record FIX-1335 on prod — xsr-vacuum-analyze's first dispatched VACUUM was Sun 10-25 13:51:00Z (the null anchor after the 13:25:53Z restart), reaped 13:55:00Z succeeded: VACUUM unit_ms 2032, alone on the box — not Tue ~01:41Z (cc-252)"
+    },
+    {
+      "sha": "8d235da3",
+      "subject": "chore(fixes): record FIX-1355 on prod — the daily's first SLOT firing Tue 10-27: yields from 05:43Z, headroom-excluded 06:01:00Z (397 MB) and 06:03:00Z (269 MB), armed 06:05:00Z at 458 MB, complete 06:07:00 → 06:10:18Z (198.0 s, 13 units), reaped succeeded: CALL unit_ms 198064 (cc-252)"
+    },
+    {
+      "sha": "2cfda4de",
+      "subject": "feat(deploy): FIX-1359 — [skip vercel] made real: apps/civitics/vercel.json ignoreCommand skips a push whose every commit since the last deployment is tagged, or that changes nothing deployable (cc-252)"
+    },
+    {
+      "sha": "ea4a0c6d",
+      "subject": "[skip vercel] fix(ci): FIX-1360 — nightly.yml's receipts push survives the drop-night add/add race: on a failed pull/push it regenerates on top of the other run's commit and retries (3 attempts), never skipping the job (cc-252)"
+    },
+    {
+      "sha": "6a7a3ac7",
+      "subject": "[skip vercel] docs(ops): the login roles' memory GUCs + the caps rule (OPERATIONS), playbook C12 / D10 / a D9 addendum, the template's dispatcher pins, dispatcher.md s12b-1 / s15b / s15c, context-haircut s5a done, FIX-1125 appended (cc-252)"
+    },
+    {
+      "sha": "c8b3e083",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-252's closes — FIX-1356, FIX-1357, FIX-1358 (local + prod records), FIX-1359 (local), FIX-1360 (local-only); records on FIX-1335, 1342, 1343, 1345, 1349, 1350, 1355 (cc-252)"
+    },
+    {
+      "sha": "4f544cc0",
+      "subject": "[skip vercel] fix(deploy): FIX-1359 — previews never build: the ignore script restates the dashboard Ignored Build Step that vercel.json's ignoreCommand overrode (cc-252)"
+    },
+    {
+      "sha": "fe652cb7",
+      "subject": "[skip vercel] fix(test): FIX-1359's ignore test types its child env as NodeJS.ProcessEnv — 4f544cc0's spread narrowed it and tsc refused the VERCEL_GIT_PREVIOUS_SHA index (TS7053; tests.yml run 40616191032) (cc-252)"
+    },
+    {
+      "sha": "f64f0e34",
+      "subject": "chore(fixes): record FIX-1359 on prod — the first skipped production deployment: dpl_52kJmS5kdr8b12Gqegq5GLRiWz9n (4f544cc0, 01:39:22Z) Canceled, \"skip: all 2 commit(s) since 6a7a3ac7 are [skip vercel]\"; previews skip again (\"skip: VERCEL_ENV=preview\") (cc-252)"
+    },
+    {
+      "sha": "64a841aa",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-252's FIX-1359 prod record (f64f0e34) (cc-252)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1356",
+    "FIX-1357",
+    "FIX-1358",
+    "FIX-1359",
+    "FIX-1360"
+  ],
+  "fixes_filed": [
+    "FIX-1356",
+    "FIX-1357",
+    "FIX-1358",
+    "FIX-1359",
+    "FIX-1360"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261028000000_fix1356_parallel_zero_hash_mem_one.sql",
+    "supabase/migrations/20261028001000_fix1357_cap_mb_rederived_for_hash_mem_one.sql",
+    "supabase/migrations/20261028002000_fix1358_fe_vacuum_phase_lock_false.sql"
+  ],
+  "prod_writes": "ONE gated class-P migration push of exactly THREE files under its own FIX-950 claim, outcome (i) (role-level ALTER ROLE; no config-API write), from the PRIMARY's packages/data at cbde2851. Dry run 01:22:33Z: 'Would push these migrations: 20261028000000_fix1356_parallel_zero_hash_mem_one.sql, 20261028001000_fix1357_cap_mb_rederived_for_hash_mem_one.sql, 20261028002000_fix1358_fe_vacuum_phase_lock_false.sql' only. held=false; the four pins re-read 01:22:38Z = read 2. session:wait-for-gate:prod --expected-minutes 1 --census stop --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. Poll 01:22:47Z ok=true blocked_by=[] census pass (0 renders / 0 events in 60 min, ratio 0.00, floor 6; edge 0 of 649 = 0.00 %). Interlock acquired, held 6; claimed 01:22:52.891Z; three files applied; cleared 6; released 01:22:54.804Z; --then exited 0. '[gate] receipt: wait 0.2 s (01:22:47.493Z → 01:22:47.697Z) · claim 01:22:52.891Z → 01:22:54.804Z = 1.9 s · polls 1 · blocked_tokens []'. The five facts: wait 0.2 s on the first poll; no b: / a:nightly_next_start token; claim 1.9 s; 0 data_sync_log skipped rows started 01:21:52.9–01:24:29.8Z; 0 ticks inside the claim (01:21:00.12Z and 01:23:00.79Z bracket it). NOTICEs: [fix1356] postgres@postgres = {statement_timeout=3h,work_mem=64MB,max_parallel_workers_per_gather=0,hash_mem_multiplier=1} · authenticator@postgres = {max_parallel_workers_per_gather=0,hash_mem_multiplier=1} · this session still reads 1 / 2; [fix1357] 33 'cap_mb old → new' lines · read-back ok: 33 halved, 22 left; 55 rows, Σ cap_mb 4288 (was 6656) against max_live_caps_mb 1024 (unchanged) · headroom now: 391 MB avail − 128 MB cap = 263 ≥ 150 → refresh-derived-mvs-daily admitted (needs ≥ 278; at 256 needed ≥ 406); [fix1358] fe-vacuum-analyze phase_lock true → false (1 row) · phase_due_at 2026-10-27 22:53:36.940046+00 inert · ec phase_lock true (04:43:00.06646) · the lock was already engaged. Read-back 01:23–01:24Z: pg_db_role_setting as above (authenticator's global row untouched); head 20261028002000 / 530; pins box_is_saturated ac8dbcdd / dispatch_one_unit 64c8271e / get_dispatcher_status 4c305237 / prod_op_gate 1d3507cd unchanged; postmaster 10-25 13:25:53.305061Z unchanged; a backend started 01:23:27.405Z reads hash_mem_multiplier reset_val 1 (database user) and parallel reset_val 0, and plans no Gather where the pre-push backends plan Gather Merge; registry cap 64 x 43 / 128 x 12, fe phase_lock f. Consequent dispatcher write: tick 9996 01:43:00.20Z armed fe-crawl (MemAvailable 395, swap 452); 9997 live_caps_mb 64. Every other prod contact read-only (db-query --prod, the Logs API x 8 paced, gh, vercel ls / inspect). No --call on prod.",
+  "ci": "green",
+  "stopped_items": [
+    "Read 8 (FIX-1293) NOT MET: no two consecutive crawl_cycle rolls exist to quote. status_snapshot retains only from 10-26 06:31:14Z (prune_status_snapshot); that roll reads source crawl_cycle at 421 ms, and every roll since reads caught_up — pipeline_state.entity_connections_donations has no cycle (all 16 windows at the 10-25 22:51:26.958474Z watermark: no new donation FR since Sunday). Two rolls nulled the section in whole-box stalls (10-26 17:01:59Z ec 11,842 ms, query 28.1 s; 10-27 12:31:34Z 12,629 ms). No record.",
+    "Read 13 (FIX-1258) NOT MET: Tue 10-27 rule-taggers-weekly started 16:03:00.10Z, complete 16:15:30.66Z (750.6 s), phase_seconds {scan 64.8, delete 41.5, insert 391.4} — scan 64.8 s is not < 63.4 s. desired 4,453,006, inserted 13,810, updated 85,103, deleted 1,325. No record.",
+    "Rule-105 red check refused by a permission prompt — the command (mkdir ../cc252-aside && mv the three new migrations there, run the three test files, move them back) was denied and not worked around; the new tests' red state is not demonstrated (their green state and the full suite are).",
+    "The FIX-1360 race simulation refused by a permission prompt — the command (rm -rf + git init --bare + two clones racing the extracted step) was denied and not retried; 4b is checked by js-yaml parse, bash -n and check:workflow-parity only.",
+    "Item 2's authenticator read through the public REST door not performed: no anon-callable route reads current_setting, and PostgREST's plan header needs pgrst.db_plan_enabled (a write). The catalog row + 3 of 5 PostgREST backends started after the push + PG's login semantics shown on a fresh postgres backend stand in.",
+    "Process miss, not a stop: 4f544cc0 reached main on a misread branch CI (run 40616191032 FAILED typecheck, TS7053 in vercel-ignore-build.test.ts; the background task's exit 0 was the shell's). main's tests.yml 40616331815 was red from 01:39:22Z until fe652cb7 + f64f0e34 landed (run 40616763657 success). Production was never affected: 4f544cc0's deployment was skipped."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1356",
+      "what": "7 days of postgres_logs after the push carry 0 DSM-refusal lines (read 3's predicate) against read 3's before-count, which was ALSO 0 (10-21 → 10-28) — so this proves the class stays absent, not a drop; the Mon 11-02 receipts' stall-minute line not worse than the prior week",
+      "after": "2026-11-03T12:00Z"
+    },
+    {
+      "fix": "FIX-1357",
+      "what": "the Wed 10-28 06:00Z refresh-derived-mvs-daily arms on the first tick >= 06:00Z that reads MemAvailable >= 278 (cap 128 + 150), with no headroom exclusion at a reading between 278 and 405 — the band the old cap refused; complete, unit_ms within ~2x 220,067",
+      "after": "2026-10-28T07:00Z"
+    },
+    {
+      "fix": "FIX-1358",
+      "what": "fe-vacuum-analyze's next arm (no fec vacuum-tail Mon or Tue, so likely Wed ~22:57Z, last_vacuum 22:57:07Z + 24 h) writes phase_due_at NULL and does not lock; the following day's next: is 24 h after THAT reap (fixed-delay); a night the tail runs re-anchors it and fe does not arm",
+      "after": "2026-10-29T00:00Z"
+    },
+    {
+      "fix": "FIX-1359",
+      "what": "an untagged push that changes apps/civitics or packages BUILDS on the range rule — its log reads 'build: deployable paths changed in N commit(s) since …', not the fail-safe 'not reachable' (6a7a3ac7) — and a docs-only untagged push reads 'skip: nothing deployable'; the skips are already observed (e6u66ogwj, ghwrwfoh8, iwbl2ypjy Canceled)",
+      "after": "2026-10-28T12:00Z"
+    },
+    {
+      "fix": "FIX-1360",
+      "what": "the Sun 11-01 drop night: the 22:xxZ schedule: fallback run is green — either its receipts push wins outright or it logs the 'lost a race' warning, regenerates and pushes on top of the dispatched run's receipts commit — or no fallback ran because the dispatched run finished first (say which)",
+      "after": "2026-11-02T00:30Z"
+    }
+  ]
+}
