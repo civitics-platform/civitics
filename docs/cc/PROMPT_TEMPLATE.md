@@ -201,10 +201,19 @@ restating it. Each line is a rule that has cost a real session.
   expect.
 - For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
   the prompt names it.
-- **The dispatcher's body pair** — what a dispatcher prompt's read 3 pins, from
-  cc-244 on (2026-10-23, N2 `20261023000000`, cc-243): `md5(prosrc)` of
-  `dispatch_one_unit` **`7b4e3f66105a49d030c41539e4cd2d56`** /
-  `get_dispatcher_status` **`2716fcca9ba97b683963cd499bc78136`**. The B1 pair
+- **The dispatcher's bodies** — what a dispatcher prompt's read 2/3 pins, from
+  cc-252 on (2026-10-27 00:35:29Z, FIX-1354 `20261027000000`, cc-251):
+  `md5(prosrc)` of `dispatch_one_unit` **`64c8271e7601095d275c68eff5187931`** /
+  `get_dispatcher_status` **`4c30523742e280a4b48ea2ec390654d6`** /
+  `box_is_saturated` **`ac8dbcddf71978e73d28c999433156b7`** (and `prod_op_gate`
+  `1d3507cd4b71439f0cfff51cde49b9d8`, unchanged; cc-252 re-read all four after
+  its push). Lineage: the N2 pair `7b4e3f66105a49d030c41539e4cd2d56` /
+  `2716fcca9ba97b683963cd499bc78136` and the box body `494240af…` are now only
+  FIX-1354's revert target (`scripts/fix1354-revert-box-gate-memory-rules.sql`).
+- **The N2 pair, as it was** — from cc-244 on (2026-10-23, N2 `20261023000000`,
+  cc-243): `md5(prosrc)` of `dispatch_one_unit`
+  `7b4e3f66105a49d030c41539e4cd2d56` / `get_dispatcher_status`
+  `2716fcca9ba97b683963cd499bc78136`. The B1 pair
   `cfc9ed48517cd7de6fa76cf807dd1f37` / `1cf4b7745f4c89ce978935648c87c92b` is
   now only the N2 body revert's target (`scripts/fix1336-revert-dispatcher-n2.sql`);
   the M1 pair `98660b34…` / `4c9d0eb0…` only B1's

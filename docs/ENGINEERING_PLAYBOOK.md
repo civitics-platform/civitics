@@ -35,6 +35,11 @@ measurements live here. New rule **B4**, plus dated addenda on **C5**, **D1**,
 **Extended 2026-10-26** with the box memory census (cc-251, FIX-1354). New
 rule **B5**.
 
+**Extended 2026-10-28** with memory levers 2 + 3 and `[skip vercel]` made real
+(cc-252, FIX-1356 / FIX-1357 / FIX-1359). New rules **C12** and **D10**, plus a
+dated addendum on **D9** (the caps). D9 item 1's "(D10)" is the spec's D10, not
+this file's.
+
 ---
 
 ## A. Data-shape regimes
@@ -724,6 +729,41 @@ work its rewrite creates, not just the watermark correctness of it.
 `20260903010000_fix983_fr_watermark_horizon.sql`,
 `20260905000100_fix1139_votes_watermark_horizon.sql`*
 
+### C12. A role setting is a LOGIN default — set it on the role that logs in, and read it from a session that started after it.
+
+`ALTER ROLE r IN DATABASE postgres SET p = v` writes `pg_db_role_setting`; a
+backend applies it once, at login, and never again. Three consequences, each
+measured on 2026-10-28 (FIX-1356):
+1. **The login role is the row that matters.** PostgREST logs in as
+   `authenticator` and `SET ROLE`s to `anon` / `authenticated` /
+   `service_role` per request, so a planner or memory GUC for the request path
+   goes on `authenticator`. A row on `anon` would be inert for it. pg_cron
+   units are fresh `postgres` logins (`cron.use_background_workers = off`), so
+   `postgres` covers every dispatched unit, gated push and ad-hoc read.
+2. **A "new" session may be an old backend.** Supavisor's session pooler hands
+   back warm backends. After the push, two `db-query --prod` sessions landed
+   on backends started at 01:22:09Z and 01:22:52.77Z, before the 01:22:53Z
+   commit, and read the OLD `hash_mem_multiplier 2`. Only a third, concurrent
+   one reached a backend started at 01:23:27Z (`reset_val 1`, source
+   `database user`). Print `backend_start` beside every such read; the catalog
+   row is the authoritative statement of what new sessions get.
+3. **Who may set it is decided by the GUC's context, not a list.** On
+   Supabase `postgres` is not a superuser. A USERSET parameter (`work_mem`,
+   `hash_mem_multiplier`, `max_parallel_workers_per_gather`) can be set on any
+   role `postgres` administers (itself; `authenticator` via ADMIN OPTION, a
+   modifiable reserved role in supautils). `supautils.privileged_role_allowed_configs`
+   governs SUSET parameters, and a placeholder such as `civitics.*` needs an
+   explicit SET grant (fix1316's failure). `has_parameter_privilege(…, 'SET')`
+   reads only `pg_parameter_acl` grants, so it returned **f** for `work_mem`,
+   whose ALTER ROLE had landed. Rehearse the statement itself on the clone
+   instead.
+
+**Apply:** a GUC for the request path goes on `authenticator`, one for jobs on
+`postgres`. Its read-back is the catalog plus a session whose `backend_start`
+postdates the commit. The revert restores the exact prior array: RESET where
+there was no entry, SET where there was one.
+*FIX-1356 · `20261028000000_fix1356_parallel_zero_hash_mem_one.sql` · cc-252*
+
 ---
 
 ## D. Scheduled work
@@ -1074,6 +1114,43 @@ registry row says so in its `note`. A row moves from `at …` to `by …` /
 `stale_after …` only when its job meets items 1, 2 and 8, because the
 dispatcher can only bound a unit it can see the end of.
 *FIX-1307 · spec-job-registry-and-dispatcher-2026-10-11 §1 · docs/audits/2026-10-12-job-registry-contract-audit.md*
+
+**Addendum — 2026-10-28, the multiplier is 1 (item 8).** FIX-1356 set
+`hash_mem_multiplier = 1` on the `postgres` login role, so item 8's arithmetic
+is now `cap_mb = work_mem × 1`. FIX-1357 halved the 33 multiplier-derived rows
+(4 at 256 → 128, 29 at 128 → 64), Σ 6,656 → 4,288. It left the 14 VACUUM rows
+(`maintenance_work_mem`, which the multiplier does not scale) and the 8 GHA
+rows. The cap is an input to FIX-1354's headroom rung
+(`MemAvailable − cap_mb < headroom_target_mb`), so a cap derived under the
+wrong multiplier is a real refusal, not a rounding: the 256-cap daily needed
+MemAvailable ≥ 406 against a ~387 median and was excluded at 397 MB on its
+first slot (Tue 10-27 06:01Z). **Apply:** re-derive every cap when the
+multiplier, the role's `work_mem` or a body's `SET work_mem` moves — the
+derivation table lives in `20261028001000`'s header, and
+`fix1357-caps.test.ts` pins it. The seed test still checks the SEED's × 2.
+*FIX-1357 · cc-252 read 6*
+
+### D10. A convention nobody measured is not a control — read the system's own record of what it did.
+
+`[skip vercel]` was taught in CLAUDE.md, OPERATIONS, CONTRIBUTING, the README,
+the handoff and the commit-push command, and tagged on hundreds of commits as
+"no deploy". Vercel has no commit-message skip and the tree had no
+`ignoreCommand`, so it skipped nothing, ever: every tagged push on 10-24/25/26
+built a production deployment, and cc-249 found it only by quoting Vercel's
+deployment list. Nothing failed, so nothing was checked. The cost was a build
+per receipts / bot / docs push, and a false belief that main could run ahead of
+production. FIX-1359 made it real (`apps/civitics/scripts/vercel-ignore-build.sh`),
+and the design shows the second trap: Vercel builds only a push's tip, so the
+question is the range since the last SUCCESSFUL deployment
+(`VERCEL_GIT_PREVIOUS_SHA`), not `HEAD^..HEAD` — that diff would have skipped
+every records push whose tip is an empty commit above an app change.
+
+**Apply:** a convention that claims to switch something off names the
+mechanism that does it, and its first claim is checked against the switched
+system's own record — the deployment list, `cron.job_run_details`, the GHA run
+list — not against the absence of complaints. A skip rule decides on the range
+the system acts on, and a doubt builds.
+*FIX-1359 · cc-249 (the deployment ids) · cc-252*
 
 ---
 

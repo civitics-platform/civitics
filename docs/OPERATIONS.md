@@ -909,7 +909,7 @@ work because the box is short of memory. Both read the on-box mirror
 | dial | default | what it excludes |
 |---|---|---|
 | `swap_ceiling_mb` | 1018 | **every pick.** When swap in use is ≥ this, `box_is_saturated()` reads `saturated / reason memory`, and the tick logs `skipped` / `box: memory`. The GitHub-Actions nightly is included: its `by 0 21 * * *` window lapses to the GHA `schedule:` fallback. The `box_backoff_gate` START gates and the per-chunk backoffs of the four heavy rollups back off on it too |
-| `headroom_target_mb` | 150 | **one due row.** When MemAvailable − the row's `cap_mb` (default 64) is < this, the row waits as `headroom: <avail> MB avail − <cap> MB cap < 150 MB` in `dispatch_log.excluded`. A 128-cap crawl needs ≥ 278 MB; the 256-cap `refresh-derived-mvs-daily` needs ≥ 406 MB |
+| `headroom_target_mb` | 150 | **one due row.** When MemAvailable − the row's `cap_mb` (default 64) is < this, the row waits as `headroom: <avail> MB avail − <cap> MB cap < 150 MB` in `dispatch_log.excluded`. Since FIX-1357 (2026-10-28) a 64-cap crawl needs ≥ 214 MB and the 128-cap `refresh-derived-mvs-daily` ≥ 278 MB (at the old 128 / 256 caps: 278 / 406) |
 
 - **A stale mirror fails open.** If the route has not written for longer than
   the probe's freshness (180 s), neither dial excludes anything. The tick's
@@ -928,6 +928,47 @@ work because the box is short of memory. Both read the on-box mirror
   box wedged. MemAvailable does not show the creep (median ~387 MB on day 1 and
   on the creep days alike), so watch swap: a quiet-window restart around day 10
   of uptime resets it.
+
+### The login roles' memory GUCs (FIX-1356) and the caps rule (FIX-1357)
+
+Since 2026-10-28 01:22:53Z, `pg_db_role_setting` in database `postgres` reads:
+
+| role | setconfig |
+|---|---|
+| `postgres` | `{statement_timeout=3h, work_mem=64MB, max_parallel_workers_per_gather=0, hash_mem_multiplier=1}` |
+| `authenticator` | `{max_parallel_workers_per_gather=0, hash_mem_multiplier=1}` (its global row — `safeupdate`, 8 s / 8 s — is separate and untouched) |
+
+The server itself stays at `max_parallel_workers_per_gather 1` and
+`hash_mem_multiplier 2`.
+
+- **Why these two roles.** `postgres` is every pg_cron unit (each firing is a
+  fresh login), every gated push, every ad-hoc read and the GHA direct
+  connections. `authenticator` is PostgREST's login, so it covers every
+  request. Role settings apply at LOGIN; `anon` / `authenticated` rows would be
+  inert for these.
+- **What they buy.** Parallel 0 removes the DSM-segment class (cc-182/188, the
+  10-07 swap storm). At 1 the request path's heavy-entity FR reads planned
+  `Gather Merge`. Multiplier 1 halves every hash node's peak (64MB → 64 MB per
+  node for jobs, 128MB bodies → 128 MB); a hash that no longer fits spills to
+  batches — IO, not swap.
+- **How to read them.** Read the catalog row, plus `pg_settings.reset_val` from
+  a session whose `pg_stat_activity.backend_start` postdates the change.
+  Supavisor hands back warm backends, so a plain `db-query --prod` can show the
+  old value (playbook C12). `db-query --prod`'s prelude sets the parallel GUC
+  to 0 itself; `RESET` it first to see the role value.
+- **Mechanism.** `ALTER ROLE … IN DATABASE postgres SET` works for USERSET
+  parameters on roles `postgres` administers. `has_parameter_privilege` cannot
+  tell you so — it reads f even for `work_mem`.
+- **Reverts.** `scripts/fix1356-revert-parallel-hash.sql` RESETs all four (no
+  prior entry existed). Revert FIX-1357 with it:
+  `scripts/fix1357-revert-cap-mb.sql`. Both run with
+  `node scripts/db-query.mjs --prod --call --yes-i-mean-prod --file …`.
+- **The caps rule.** `job_registry.cap_mb = work_mem × hash_mem_multiplier`
+  for a row whose body (or its one callee) sets `work_mem`, or inherits the
+  `postgres` role's 64MB. VACUUM rows are `maintenance_work_mem` (64) and do not
+  scale. GHA rows stay 128. Re-derive every cap when the multiplier, the role's
+  `work_mem` or a body's `SET work_mem` moves — the headroom dial reads them
+  (the table is in `20261028001000`'s header; `fix1357-caps.test.ts` pins it).
 
 ### Upgrade Path
 
