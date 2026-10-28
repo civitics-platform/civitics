@@ -445,11 +445,12 @@ test("clone: the RETURNed row, the converted hold row, jobid 9 parked", async (t
   if (!c) return;
   try {
     const reg = (await c.query(
-      "SELECT deadline_rule, gates, cap_mb, priority, exclusion_group, budget_seconds FROM public.job_registry WHERE job = 'refresh-derived-mvs-daily'",
+      "SELECT deadline_rule, gates, cap_mb, priority, exclusion_group, budget_seconds, note FROM public.job_registry WHERE job = 'refresh-derived-mvs-daily'",
     )).rows[0];
     assert.equal(reg.deadline_rule, "by 0 6 * * *");
     assert.deepEqual(reg.gates, ["prod_session"]);
-    assert.equal(reg.cap_mb, 256);
+    // FIX-1357 (cc-252) halves it once hash_mem_multiplier is 1.
+    assert.equal(reg.cap_mb, /FIX-1357/.test(reg.note) ? 128 : 256);
     const hold = (await c.query(
       "SELECT held_since, hold_reason, cadence_hours, note FROM public.rollup_watch_overrides WHERE pipeline = 'refresh_derived_mvs'",
     )).rows[0];
