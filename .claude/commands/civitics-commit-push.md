@@ -56,7 +56,10 @@ FIX-314).
 ```
 
 The `[skip vercel]` prefix is honored verbatim if it appears in the subject —
-no separate flag.
+no separate flag. Vercel skips the build only when every commit since the last
+deployment carries it, or nothing deployable changed
+(`apps/civitics/scripts/vercel-ignore-build.sh`, FIX-1359); one untagged
+commit in the push builds the whole range.
 
 ---
 

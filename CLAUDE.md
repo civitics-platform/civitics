@@ -217,7 +217,10 @@ normalizer — the constraint. Quick check:
 Run `pnpm build` locally before every push. Vercel uses strict TypeScript. Build must pass clean.
 
 **Branch model (post-cutover):**
-- `main` — production. Every push auto-deploys to Vercel (unless `[skip vercel]`).
+- `main` — production. Every push auto-deploys to Vercel — except a push whose
+  every commit since the last deployment is `[skip vercel]`-headed, or that
+  changes nothing deployable: `apps/civitics/vercel.json`'s `ignoreCommand`
+  skips those (FIX-1359; before it, the tag did nothing).
 - `feature/<fix-id>` or `feature/<name>` — work branches. Land via PR or fast-forward merge to `main`.
 
 **Parallel sessions — collision guards (FIX-462+):** VSCode is always open on the

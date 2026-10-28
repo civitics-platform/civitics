@@ -172,6 +172,11 @@ shouldn't trigger a Vercel deploy:
 [skip vercel] chore: wire up local tooling
 ```
 
+The skip is enforced by `apps/civitics/vercel.json`'s `ignoreCommand`
+(FIX-1359): a push builds unless every commit since the last deployment is
+tagged or nothing deployable changed. One untagged commit in the push builds
+the whole range. See `docs/OPERATIONS.md` §Commit Conventions.
+
 **Never** use `--amend` on a pushed commit — create a new commit instead.
 **Never** pass `--no-verify` or skip hooks without explicit sign-off. If a
 hook fails, investigate and fix the root cause.

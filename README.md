@@ -141,7 +141,8 @@ pnpm dev
 # → http://localhost:3000
 ```
 
-**Before pushing any non-`[skip vercel]` commit:** run `pnpm build` to confirm it
+**Before pushing any non-`[skip vercel]` commit** (the tag is enforced per push by
+`apps/civitics/vercel.json`'s `ignoreCommand`, FIX-1359): run `pnpm build` to confirm it
 type-checks clean. Vercel uses strict TypeScript and will reject anything that doesn't.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, commit conventions, and

@@ -48,7 +48,7 @@ packages/ui/            # Shared UI components
 - Check files before writing prompts (`Get-Content`, `Select-String`)
 - Write targeted prompts with exact line references
 - Verify via PowerShell API calls before and after
-- `[skip vercel]` in commit messages = no deploy
+- `[skip vercel]` in commit messages = no deploy, when every commit since the last deployment carries it (`apps/civitics/vercel.json` `ignoreCommand`, FIX-1359 — before 2026-10-28 the tag did nothing)
 
 **What doesn't work:**
 - Claude Code touching prod Supabase (has happened — always use `--local`)
@@ -357,7 +357,7 @@ supabase stop
 
 ### Commit Conventions
 ```
-git commit -m "[skip vercel] description"  # no deploy
+git commit -m "[skip vercel] description"  # no deploy (per push: FIX-1359's ignoreCommand)
 git commit -m "feat: description"           # deploys to prod
 ```
 

@@ -178,6 +178,24 @@ feature/*       → local only, never pushed directly (merge to main when ready)
 type(scope): description                  ← triggers Vercel build + deploy
 ```
 
+**What actually skips (FIX-1359).** Vercel has no commit-message skip of its
+own, so until 2026-10-28 the tag did nothing and every push built production.
+`apps/civitics/vercel.json` now carries `"ignoreCommand": "bash
+scripts/vercel-ignore-build.sh"`, which Vercel runs in the project's root
+directory before each git deployment (exit 0 = skip, 1 = build). It compares
+`VERCEL_GIT_PREVIOUS_SHA` (the last deployment that SUCCEEDED) with `HEAD`,
+because Vercel builds only a push's tip:
+- **skip** when every commit in that range is `[skip vercel]`-headed, or when
+  nothing under `apps/civitics`, `packages/` or the root `package.json` /
+  `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `.npmrc` changed
+  (docs, receipts, the bots, `supabase/`, `scripts/`);
+- **build** otherwise, and on any doubt (no previous sha, one the shallow clone
+  cannot reach, a redeploy).
+So the tag is per RANGE: one untagged commit in a push builds everything
+undeployed under it. Tagged app changes ship with the next untagged push — at
+the latest the 00:09Z receipts bot. A skipped deployment reads **Canceled** in
+the Vercel list.
+
 **Types:** `feat`, `fix`, `perf`, `chore`, `docs`, `refactor`
 
 **When to use `[skip vercel]`:**
@@ -862,7 +880,8 @@ It also renders in the daily receipts, §9 "The forker".
 **Vercel Fluid CPU:**
 - Cloudflare's `Common Exploit Paths` WAF rule blocks the PHP/WordPress scanners that burned CPU before proxy was enabled (Bot Fight Mode is off by design — see `docs/CLOUDFLARE.md`)
 - Use `[skip vercel]` on all non-release commits
-- `[skip vercel]` commits: zero Vercel build cost
+- `[skip vercel]`-only and docs-only pushes: zero Vercel build cost — since
+  FIX-1359's `ignoreCommand` (2026-10-28); before it every push built
 
 ### Emergency Kill Switches
 
