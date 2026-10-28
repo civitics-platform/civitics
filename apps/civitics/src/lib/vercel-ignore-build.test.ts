@@ -54,7 +54,7 @@ function repo() {
   };
   const run = (prev: string | null, head: string, vercelEnv = "production") => {
     git("checkout", "-q", "--detach", head);
-    const env = { ...process.env, VERCEL_ENV: vercelEnv };
+    const env: NodeJS.ProcessEnv = { ...process.env, VERCEL_ENV: vercelEnv };
     delete env["VERCEL_GIT_PREVIOUS_SHA"];
     if (prev !== null) env["VERCEL_GIT_PREVIOUS_SHA"] = prev;
     return spawnSync("bash", [SCRIPT], { cwd: join(dir, "apps/civitics"), env, encoding: "utf8" });
