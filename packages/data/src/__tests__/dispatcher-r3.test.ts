@@ -161,14 +161,16 @@ test("clone: the two rules read as written, phase-locked, both crons parked, off
   await c.connect();
   try {
     const reg = await c.query(
-      "SELECT job, deadline_rule, gates, phase_lock FROM public.job_registry " +
+      "SELECT job, deadline_rule, gates, phase_lock, note FROM public.job_registry " +
         "WHERE job IN ('ec-vacuum-analyze', 'fe-vacuum-analyze', 'officials-vacuum-analyze', 'dpr-vacuum-analyze') ORDER BY job",
     );
     const byJob = Object.fromEntries(reg.rows.map((r) => [r.job, r]));
     for (const { job } of MOVES) {
       assert.equal(byJob[job]?.deadline_rule, RULE, `${job} rule`);
       assert.deepEqual(byJob[job]?.gates, ["prod_session"], `${job} gates`);
-      assert.equal(byJob[job]?.phase_lock, true, `${job} phase_lock`);
+      // FIX-1358 (cc-252) unlocks fe: its floor is a fallback behind the fec phase's vacuum-tail.
+      const unlocked = job === "fe-vacuum-analyze" && /FIX-1358/.test(byJob[job]?.note ?? "");
+      assert.equal(byJob[job]?.phase_lock, !unlocked, `${job} phase_lock`);
     }
     assert.equal(byJob["officials-vacuum-analyze"]?.deadline_rule, "at 30 1 * * 1");
     assert.equal(byJob["dpr-vacuum-analyze"]?.deadline_rule, "at 0 2 * * 0,3");
