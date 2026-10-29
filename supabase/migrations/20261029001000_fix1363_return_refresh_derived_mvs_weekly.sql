@@ -45,8 +45,9 @@
 --       on the old text; an "already returned" NOTICE on the `by` text;
 --       anything else RAISEs naming the rule it read.
 --   (2) the shared rollup_watch_overrides row is ASSERTED to be FIX-1355's
---       cadence row (held_since / hold_reason / retired_at NULL, cadence_hours
---       24, note LIKE 'FIX-1355 (cc-251)%'), and only its note gains
+--       cadence row (held_since / hold_reason NULL, or the gated push's own
+--       'prod session held: …' hold; retired_at NULL, cadence_hours 24, note
+--       LIKE 'FIX-1355 (cc-251)%'), and only its note gains
 --       '; weekly RETURNED 2026-10-28 (FIX-1363)', so
 --       list_scheduled_rollup_pipelines() readers see that both rows are
 --       registry-owned. The prefix FIX-1355's revert keys on is kept.
@@ -121,10 +122,18 @@ BEGIN
   END IF;
 
   -- ── (2) the shared hold row: ASSERT FIX-1355's cadence row; note only ─────
+  -- A gated push holds every guarded pipeline for its claim
+  -- (packages/data/src/lib/prod-session.ts setGuardedHolds: held_since now(),
+  -- hold_reason 'prod session held: <reason>'; the release clears exactly
+  -- those). So inside the push this row carries the session's OWN hold, which
+  -- is not a human's. The first push of this file (cc-253, 00:18:16Z) refused
+  -- on it and rolled back.
   SELECT * INTO v_row FROM public.rollup_watch_overrides WHERE pipeline = 'refresh_derived_mvs';
   IF NOT FOUND THEN
     RAISE EXCEPTION '[fix1363] rollup_watch_overrides has no refresh_derived_mvs row — expected FIX-1355''s cadence row';
-  ELSIF v_row.held_since IS NOT NULL OR v_row.hold_reason IS NOT NULL OR v_row.retired_at IS NOT NULL
+  ELSIF NOT ((v_row.held_since IS NULL AND v_row.hold_reason IS NULL)
+             OR v_row.hold_reason LIKE 'prod session held: %')
+        OR v_row.retired_at IS NOT NULL
         OR v_row.cadence_hours IS DISTINCT FROM 24 OR v_row.note NOT LIKE 'FIX-1355 (cc-251)%' THEN
     RAISE EXCEPTION '[fix1363] refresh_derived_mvs override is not FIX-1355''s cadence row (held_since %, hold_reason %, cadence_hours %, note %) — a human hold is resolved by a human',
       v_row.held_since, v_row.hold_reason, v_row.cadence_hours, left(v_row.note, 40);
@@ -165,7 +174,8 @@ BEGIN
     v_missing := v_missing || 'cron refresh-derived-mvs-daily is active (it stays parked)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.rollup_watch_overrides
-                  WHERE pipeline = 'refresh_derived_mvs' AND held_since IS NULL AND hold_reason IS NULL
+                  WHERE pipeline = 'refresh_derived_mvs'
+                    AND ((held_since IS NULL AND hold_reason IS NULL) OR hold_reason LIKE 'prod session held: %')
                     AND retired_at IS NULL AND cadence_hours = 24 AND note LIKE 'FIX-1355 (cc-251)%'
                     AND note LIKE '%weekly RETURNED 2026-10-28 (FIX-1363)%') THEN
     v_missing := v_missing || 'refresh_derived_mvs hold row (FIX-1355''s cadence row + the FIX-1363 note)';

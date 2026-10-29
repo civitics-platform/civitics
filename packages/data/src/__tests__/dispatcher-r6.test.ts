@@ -73,6 +73,47 @@ test("the hold row: asserted as FIX-1355's cadence row; only the note appended; 
   assert.ok(sql.includes("a human hold is resolved by a human"));
 });
 
+test("the hold row's guard admits the gated push's OWN session hold, spelled as prod-session.ts writes it", async () => {
+  // cc-253's first push refused here: setGuardedHolds() holds every guarded pipeline
+  // for the claim (held_since now(), hold_reason SESSION_HOLD_PREFIX + reason), so a
+  // "held_since IS NULL" assertion can never pass inside session:wait-for-gate.
+  const { SESSION_HOLD_PREFIX } = await import("../lib/prod-session");
+  assert.equal(SESSION_HOLD_PREFIX, "prod session held: ");
+  const sql = stripComments(WEEKLY());
+  const accepts = `hold_reason LIKE '${SESSION_HOLD_PREFIX}%'`;
+  assert.equal(sql.split(accepts).length - 1, 2, "the guard and the read-back both accept it");
+  assert.match(sql, /ELSIF NOT \(\(v_row\.held_since IS NULL AND v_row\.hold_reason IS NULL\)\s+OR v_row\.hold_reason LIKE 'prod session held: %'\)/);
+  assert.doesNotMatch(sql, /held_since IS NOT NULL OR v_row\.hold_reason IS NOT NULL/, "the refusing form is gone");
+});
+
+test("clone: the file applies UNDER a session hold (the gate's shape), from the un-RETURNed row, inside a rolled-back transaction", async (t) => {
+  if (process.env["CIVITICS_CLONE_TESTS"] !== "1") {
+    t.skip("set CIVITICS_CLONE_TESTS=1 to run against the migrated clone");
+    return;
+  }
+  const c = new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 });
+  await c.connect();
+  try {
+    await c.query("BEGIN");
+    try {
+      await c.query(read(path.join(ROOT, "scripts", "fix1363-revert-return-refresh-derived-mvs-weekly.sql")));
+      await c.query(
+        `UPDATE public.rollup_watch_overrides SET held_since = now(), hold_reason = 'prod session held: cc-253 clone test'
+          WHERE pipeline = 'refresh_derived_mvs' AND held_since IS NULL`,
+      );
+      await c.query(WEEKLY());
+      const reg = (await c.query("SELECT deadline_rule FROM public.job_registry WHERE job = 'refresh-derived-mvs-weekly'")).rows[0];
+      assert.equal(reg.deadline_rule, "by 47 0 * * 2");
+      const hold = (await c.query("SELECT hold_reason FROM public.rollup_watch_overrides WHERE pipeline = 'refresh_derived_mvs'")).rows[0];
+      assert.equal(hold.hold_reason, "prod session held: cc-253 clone test", "the file never touches the session's hold");
+    } finally {
+      await c.query("ROLLBACK");
+    }
+  } finally {
+    await c.end();
+  }
+});
+
 test("one owner: both crons by NAME, inactive; no un-park, no dial", () => {
   const sql = stripComments(WEEKLY());
   assert.ok(sql.includes("SELECT count(*) INTO v_n FROM cron.job WHERE jobname = 'refresh-derived-mvs-weekly';"));
