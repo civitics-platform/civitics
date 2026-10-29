@@ -1,0 +1,115 @@
+{
+  "cc": "253",
+  "prompt": "cc-prompt-253-return-refresh-derived-mvs-weekly-shared-pipeline-anchor-headroom-rung-after-live-skip-vercel-prefix.md",
+  "started_at": "2026-10-28T23:48:34Z",
+  "finished_at": "2026-10-29T02:40:00Z",
+  "head_before": "d8191578",
+  "head_after": "6ab17d2a",
+  "commits": [
+    {
+      "sha": "f0a12db9",
+      "subject": "[skip vercel] docs(fixes): cc-253 files FIX-1361, FIX-1362, FIX-1363, FIX-1364"
+    },
+    {
+      "sha": "b84b0af9",
+      "subject": "[skip vercel] feat(db): FIX-1361 + FIX-1362 — dispatch_one_unit anchors a shared pipeline's row on its own metadata.cadence (job_registry.anchor_cadence on the four shared rows) and reads live above the headroom rung (cc-253)"
+    },
+    {
+      "sha": "a4b1b1cc",
+      "subject": "[skip vercel] feat(db): FIX-1363 — RETURN refresh-derived-mvs-weekly as by 47 0 * * 2 behind the memory gate, on FIX-1361's per-cadence anchor; the shared hold row stays the daily's cadence row (cc-253)"
+    },
+    {
+      "sha": "a78d4a24",
+      "subject": "[skip vercel] fix(db): FIX-1363's hold-row guard admits the gated push's own session hold — the first push refused on it at 00:18:16Z and rolled back; 20261029000000 (FIX-1361/1362) landed alone (cc-253)"
+    },
+    {
+      "sha": "66db9160",
+      "subject": "chore(fixes): record FIX-1357 on prod — the Wed 10-28 06:00Z refresh-derived-mvs-daily at cap 128 armed on the first tick (06:01:00.28Z) at MemAvailable 404 / swap 450, inside the 278–405 band the old 256 cap refused; complete 06:03:00.08 → 06:06:32.28Z (212.2 s, 13 units), reaped succeeded: CALL unit_ms 212295 (cc-253)"
+    },
+    {
+      "sha": "2eb60c7a",
+      "subject": "chore(fixes): record FIX-1358 on prod — fe-vacuum-analyze's first unlocked arm Wed 10-28 23:01:00.25Z on its floor (no fec vacuum-tail: the fec phase 21:06:02–21:10:06Z never reached the IE rebuild), phase_due_at stays NULL, reaped 23:05:00.37Z succeeded: VACUUM unit_ms 10720 (cc-253)"
+    },
+    {
+      "sha": "1be0123d",
+      "subject": "chore(fixes): record FIX-1359 on prod — the untagged cc-252 report push c6e2d5db BUILT on the range rule, \"build: deployable paths changed in 6 commit(s) since 6a7a3ac7\" (27k3gwldh Ready, 01:51:59Z), and the docs-only receipts push d8191578 skipped, \"skip: nothing deployable changed in 1 commit(s) since c6e2d5db\" (ogr1ruexb Canceled, 21:18:55Z) (cc-253)"
+    },
+    {
+      "sha": "686b0e71",
+      "subject": "chore(fixes): record FIX-1361 on prod — 20261029000000 applied 00:18:16Z, read-back ok (job_registry.anchor_cadence on the four shared rows, 51 NULL; dispatch_one_unit 64c8271e → d6a9073b); the weekly read DUE with the daily's Wed 06:06:32Z row newer than its slot, and armed 00:29:00Z \"by 47 0 * * 2 → -1 days -23:42:00\" (cc-253)"
+    },
+    {
+      "sha": "ee20c916",
+      "subject": "chore(fixes): record FIX-1362 on prod — the live body d6a9073b reads the cooldown, then live, then the headroom rung (20261029000000 read-back ok 00:18:16Z; the 00:19:00Z tick onward ran on it); the 24 h receipt is owed (cc-253)"
+    },
+    {
+      "sha": "8815e1fa",
+      "subject": "chore(fixes): record FIX-1363 on prod — the first dispatched refresh-derived-mvs-weekly armed 00:29:00Z (by 47 0 * * 2 → -1 days -23:42:00, MemAvailable 441 / swap 470), ran 00:31:00.05 → 00:50:26.49Z complete, 6 / 6 units, 1,166.4 s, budget_hit false; reaped 00:51:00Z succeeded: CALL unit_ms 1166603 (cc-253)"
+    },
+    {
+      "sha": "27f1356e",
+      "subject": "fix(deploy): FIX-1364 — the Ignored Build Step counts a commit as tagged only when the tag HEADS its subject (grep -cvE on the anchored prefix), so a record quoting a skip line mid-subject is untagged (cc-253)"
+    },
+    {
+      "sha": "2084038c",
+      "subject": "[skip vercel] docs(ops): the shared-pipeline anchor rule + the weekly's nets (OPERATIONS), playbook D11, the template's dispatcher pins → d6a9073b and the session-hold rule for override-asserting migrations, dispatcher.md s12b-3 / s12b / s15b / s24, FIX-1125 appended (cc-253)"
+    },
+    {
+      "sha": "5bf06459",
+      "subject": "chore(fixes): record FIX-1364 on prod — the untagged 4a push 2084038c BUILT on the range rule, \"build: deployable paths changed in 8 commit(s) since 84236910\" (dpl_8FE8EpWuUNqkmVDMA1JjxHgemiCa Ready, 02:11:23.993Z), and the script it ran counts only a [skip vercel] that heads the subject (cc-253)"
+    },
+    {
+      "sha": "6ab17d2a",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-253's closes — FIX-1361, FIX-1362, FIX-1363, FIX-1364 (local + prod records); records on FIX-1357, 1358, 1359 (cc-253)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1361",
+    "FIX-1362",
+    "FIX-1363",
+    "FIX-1364"
+  ],
+  "fixes_filed": [
+    "FIX-1361",
+    "FIX-1362",
+    "FIX-1363",
+    "FIX-1364"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261029000000_fix1361_dispatcher_anchor_cadence_and_headroom_rung_after_live.sql",
+    "supabase/migrations/20261029001000_fix1363_return_refresh_derived_mvs_weekly.sql"
+  ],
+  "prod_writes": "TWO gated class-P migration pushes, the second on Craig's in-session approval (the prompt authorized one). PUSH 1 from the PRIMARY's packages/data at a4b1b1cc: dry run 00:16:10Z 'Would push these migrations: 20261029000000_fix1361_dispatcher_anchor_cadence_and_headroom_rung_after_live.sql, 20261029001000_fix1363_return_refresh_derived_mvs_weekly.sql' only; held=false; the four pins re-read 00:16:25Z = read 2. session:wait-for-gate:prod --expected-minutes 1 --census stop --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. '[gate] receipt: wait 90.2 s (00:16:42.302Z → 00:18:12.520Z) · claim 00:18:16.054Z → 00:18:17.200Z = 1.1 s · polls 1 · blocked_tokens []'; '--then exited 1'. 20261029000000 APPLIED, read-back ok: '[fix1361] read-back ok: anchor_cadence on refresh-derived-mvs-daily=daily, refresh-derived-mvs-weekly=weekly, rule-taggers-daily=daily, rule-taggers-weekly=weekly (every other row NULL: 51)' · 'md5 dispatch_one_unit d6a9073bcc4d9084b9d7994324a89b18 (was 64c8271e…) · unchanged get_dispatcher_status 4c305237… / box_is_saturated ac8dbcdd… / prod_op_gate 1d3507cd…'. 20261029001000 REFUSED and rolled back atomically: postgres_logs 00:18:16.900Z P0001 '[fix1363] refresh_derived_mvs override is not FIX-1355's cadence row (held_since 2026-10-29 00:18:16.005576+00, hold_reason prod session held: cc-253 …)' — the gate's own setGuardedHolds hold. Prod after push 1: head 20261029000000 / 531, the weekly still at 47 0 * * 2, no session hold left; the 00:19:00Z tick succeeded on d6a9073b. No revert ran (1a's read-back did not miss). PUSH 2 at a78d4a24 (the guard accepts a 'prod session held: %' hold): dry run 00:27:26Z '20261029001000_fix1363_return_refresh_derived_mvs_weekly.sql' only; held=false; pins 00:27:29Z d6a9073b / 4c305237 / ac8dbcdd / 1d3507cd. '[gate] 00:27:42Z ok=true blocked_by=[] census=pass (2 render(s) / 2 event(s) in 60 min, ratio 1.01, floor 6; edge 1 of 452 request(s) = 0.22 %)'; 'held 6 guarded pipeline(s)'; '[gate] receipt: wait 0.2 s (00:27:42.674Z → 00:27:42.903Z) · claim 00:27:46.702Z → 00:27:47.625Z = 0.9 s · polls 1 · blocked_tokens []'; '--then exited 0'. NOTICEs: '[fix1363] job_registry refresh-derived-mvs-weekly: at 47 0 * * 2 → by 47 0 * * 2 (1 row)' · 'rollup_watch_overrides refresh_derived_mvs: FIX-1355's cadence row (24 h) kept; note appended (1 row)' · 'cron refresh-derived-mvs-weekly (jobid 10) inactive — registry owns it' · 'read-back ok: … (prev 2026-10-27 00:47:00+00 / next 2026-11-03 00:47:00+00); its own last complete|partial 2026-10-06 01:10:27.472379+00; DUE NOW (ttd -1 days -23:40:47); md5 ac8dbcdd… / d6a9073b… / 4c305237…' · 'headroom now: 464 MB avail − 128 MB cap = 336 ≥ 150 MB → admitted'. The five class-P facts, both claims: wait 90.2 s / 0.2 s, each on its first poll; no b: / a:nightly_next_start token (blocked_tokens []); claims 1.1 s / 0.9 s; 0 data_sync_log skipped rows started 00:17:00–00:19:30Z and 00:26:40–00:28:50Z; 0 ticks inside either claim (00:17:00.18 / 00:19:00.07Z and 00:27:00.17 / 00:29:00.13Z bracket them). Read-back 00:28Z: head 20261029001000 / 532; the four anchor rows, 51 NULL, job_registry_anchor_cadence_check; pins d6a9073b / 4c305237 / ac8dbcdd / 1d3507cd; the weekly by 47 0 * * 2, cap 128, anchor weekly. CONSEQUENT DISPATCHER WRITES (the first dispatched weekly, supervised): tick 10737 00:29:00.13Z armed refresh-derived-mvs-weekly 'by 47 0 * * 2 → -1 days -23:42:00' at MemAvailable 441 / swap 470, 0 live units; running row 00:31:00.05Z cadence weekly, budget_seconds 4200, unit_budget_seconds 900, 6 units; complete 00:50:26.49Z, 1,166.4 s, units_ok 6, budget_hit false, unit_seconds chord_industry 289.0 / chord_donor_type 208.4 / chord_donor_state 208.1 / chord_subject 4.8 / official_sector 121.2 / refresh_spending_totals 334.9; tick 10748 00:51:00.18Z reaped 'succeeded: CALL' unit_ms 1166603; 10749 00:51:00.44Z armed fe-crawl at 295 / 488. Box (box_health_mem mirror): 427 / 451 before, MemAvailable low 207 (unit 1), swap peak 543 (unit 2), 295 / 488 after. Every other prod contact read-only (db-query --prod, one Logs API read, gh, vercel ls / inspect). No --call on prod.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 as written (ONE gated push of TWO files) did not complete: 20261029000000 applied and passed its read-back; 20261029001000 RAISEd on its own hold-row guard. The prompt's assertion 'held_since NULL' cannot pass inside a gated push, because the claim's setGuardedHolds holds every guarded pipeline (packages/data/src/lib/prod-session.ts:573-596). The guard was corrected (a78d4a24), clone-tested under an injected session hold, and landed by a SECOND gated push on Craig's explicit in-session answer ('Push 1b now'). Not a revert path: 1a's read-back did not miss.",
+    "Permission prompt refused: the command 'gh run cancel 40804595152; git rebase origin/main; …; git push --force-with-lease origin feature/fix-1361; gh workflow run tests.yml …' was denied; nothing in it ran. Not worked around: branch CI finished on 42f9fd60 (CONCLUSION=success), the branch was rebased locally over the receipts commit 84236910 and landed with a plain fast-forward 'git push origin HEAD:main'; main's tests.yml 40804863067 on the rebased 2084038c is success. remotes/origin/feature/fix-1361 is left at the pre-rebase 42f9fd60 (same content, different shas), so session:check will list it as unmerged until it is deleted.",
+    "Item 2's pg_stat_statements read for the two REFRESH MATERIALIZED VIEW CONCURRENTLY statements: not visible (pg_stat_statements.track = top, the REFRESHes are nested in the CALL). The CALL row aggregates 4 calls since the 10-25 reboot (3 dailies + tonight, 1,796.8 s): temp_blks_written 323,960 / temp_blks_read 307,031. The weekly's spill cannot be separated from it.",
+    "Rule-105 red state for the TEXT tests not shown by moving the files aside (not attempted after cc-252's denial); the clone tests WERE run red before the local apply (4 red, the live test for the right reason: 'headroom: 200 MB avail − 128 MB cap < 150 MB (cc253-test-live)'), and prod's own 00:18:16.900Z ERROR is the red state of dispatcher-r6's session-hold clone test."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1363",
+      "what": "the Tue 11-03 00:47Z slot: armed on the first tick ≥ 00:47Z the gate admits (MemAvailable ≥ 278, swap < 1018), complete before 06:00Z, unit_ms within ~2× the in-session 1,166,603; the daily still arms at its 06:00Z slot the same morning (the anchor fix's receipt in the field)",
+      "after": "2026-11-03T07:00Z"
+    },
+    {
+      "fix": "FIX-1361",
+      "what": "no by-row lapse across Tue 11-03: both refresh_derived_mvs rows and both run_rule_taggers rows arm at their own slots; dispatch_log shows no slot passed with the sibling's row as the anchor",
+      "after": "2026-11-04T00:00Z"
+    },
+    {
+      "fix": "FIX-1362",
+      "what": "24 h of dispatch_log after the push (00:18:16Z): 0 excluded[] entries reading headroom: … (<job>) for a job live on the same tick (2 h in: 0 headroom entries, 13 live entries)",
+      "after": "2026-10-30T00:00Z"
+    },
+    {
+      "fix": "FIX-1364",
+      "what": "the next untagged records push whose subject quotes [skip vercel] mid-subject builds (or skips on nothing-deployable), never on the tag — this run's own 5bf06459 already read 'skip: nothing deployable changed in 1 commit(s) since 2084038c', but a run's own sha cannot settle its receipt",
+      "after": "2026-10-30T00:00Z"
+    }
+  ]
+}
