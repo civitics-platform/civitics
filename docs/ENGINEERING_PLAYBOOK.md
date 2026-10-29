@@ -40,6 +40,9 @@ rule **B5**.
 dated addendum on **D9** (the caps). D9 item 1's "(D10)" is the spec's D10, not
 this file's.
 
+**Extended 2026-10-29** with the first weekly's RETURN (cc-253, FIX-1361 /
+FIX-1363). New rule **D11**.
+
 ---
 
 ## A. Data-shape regimes
@@ -1157,6 +1160,34 @@ system's own record — the deployment list, `cron.job_run_details`, the GHA run
 list — not against the absence of complaints. A skip rule decides on the range
 the system acts on, and a doubt builds.
 *FIX-1359 · cc-249 (the deployment ids) · cc-252*
+
+### D11. A slot keyed on a shared anchor is satisfied by its sibling — and the lapse writes no row.
+
+The dispatcher's `by` and `stale_after` rows read their clock off "the
+pipeline's newest complete|partial `data_sync_log` row". Two registry rows
+share a pipeline when one procedure runs at two cadences: `refresh_derived_mvs`
+daily + weekly, `run_rule_taggers` daily + weekly. So each row's completion
+resets the other's clock. At the RETURN push (cc-253 read 3, 10-28 23:50Z) the
+weekly's own last run was 10-06 01:10:27Z and its prev slot was Tue 10-27
+00:47Z, but the daily's Wed 06:06:32Z row was newer than that slot. The old
+body therefore read the weekly NOT due, and its first dispatched run would have
+been an unsupervised Tue 11-03. The hazard is worse in steady state: a weekly
+the gate holds past 06:00Z lapses to the next week the moment the daily
+completes, and a `by` lapse writes nothing, so no row is there to notice. The
+rule-taggers pair had not lapsed only because its daily slot happens to
+precede its weekly's on the same day. FIX-1361's `job_registry.anchor_cadence`
+keys the read on `metadata->>'cadence'`, which both procedures stamp on their
+running row.
+
+**Apply:** a registry row that shares its pipeline with another dispatched row
+carries `anchor_cadence`, and its pipeline stamps the cadence on every row it
+writes. Read the arithmetic both ways before the push: the anchor under the
+current body and under the new one, with the sibling's row quoted. Today's
+latent pairs share a pipeline with a parked `at` row only (ec-crawl /
+`rebuild-ec-incremental*`, fe-crawl / `financial-entity-totals-incremental`).
+They become siblings the day the `at` row RETURNs. A crawl's rows stamp no
+cadence, so that RETURN needs the stamp first.
+*FIX-1361 · cc-253 (read 3)*
 
 ---
 

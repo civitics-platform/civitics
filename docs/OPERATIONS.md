@@ -975,6 +975,47 @@ The server itself stays at `max_parallel_workers_per_gather 1` and
   `work_mem` or a body's `SET work_mem` moves — the headroom dial reads them
   (the table is in `20261028001000`'s header; `fix1357-caps.test.ts` pins it).
 
+### A registry row that shares its pipeline (FIX-1361) and the weekly's nets (FIX-1363)
+
+A `by` / `stale_after` row's clock is its pipeline's newest complete|partial
+`data_sync_log` row. Two dispatched rows that share a pipeline would satisfy
+each other's slots, and a lapsed `by` slot writes no row. So since 2026-10-29
+00:18:16Z, `job_registry.anchor_cadence` (`daily` | `weekly` | `monthly`, NULL
+by default) keys the read on `metadata->>'cadence'`:
+
+| pipeline | row | anchor_cadence |
+|---|---|---|
+| `refresh_derived_mvs` | `refresh-derived-mvs-daily` (`by 0 6 * * *`) | daily |
+| `refresh_derived_mvs` | `refresh-derived-mvs-weekly` (`by 47 0 * * 2`) | weekly |
+| `run_rule_taggers` | `rule-taggers-daily` (`by 30 6 * * *`) | daily |
+| `run_rule_taggers` | `rule-taggers-weekly` (`by 0 16 * * 2`) | weekly |
+
+- **The rule.** A row that shares its pipeline with another dispatched row
+  MUST carry `anchor_cadence`, and its procedure must stamp `cadence` on the
+  running row (both procedures here do). `dispatcher-r5`'s clone test fails on
+  a shared dispatched row without it. The crawls share their pipelines with
+  parked `at` rows only (ec-crawl / `rebuild-ec-incremental*`, fe-crawl /
+  `financial-entity-totals-incremental`). Their rows stamp no cadence, so
+  RETURNing one of those `at` rows needs the stamp first.
+- **The rung order.** Since the same body (FIX-1362), a due row reads the
+  cooldown, then `live`, then `headroom: …`. A running unit is never counted as
+  a headroom exclusion.
+- **refresh-derived-mvs-weekly's nets** (RETURNed `by 47 0 * * 2`, cap 128, the
+  first of the five parked weeklies): the swap ceiling 1018 and headroom 150
+  (it arms at MemAvailable ≥ 278); the 5400 s one-shot budget row and the */2
+  watchdog; the procedure's 4200 s predictive budget (→ `partial`) and 900 s
+  per-unit budget; `max_concurrent_units 2`; the I6 cooldown;
+  `platform_dials.pause`.
+- **Reverts.** `scripts/fix1363-revert-return-refresh-derived-mvs-weekly.sql`
+  (the rule back to `at`; the hold row is the daily's cadence row and is not
+  touched). `scripts/fix1361-revert-dispatcher-anchor-rung.sql` restores
+  `64c8271e…`, then drops the column (pause first; WORKING ORDER in its
+  header). A lighter net for one row is `UPDATE public.job_registry SET
+  anchor_cadence = NULL WHERE job = '<row>'`.
+- **A migration asserting a `rollup_watch_overrides` row** sees the gated push's
+  own `prod session held: …` hold (`setGuardedHolds`). Accept it; cc-253's
+  first push of the weekly's file refused on it and rolled back.
+
 ### Upgrade Path
 
 | Trigger | Upgrade | Cost |

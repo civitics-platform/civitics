@@ -202,14 +202,24 @@ restating it. Each line is a rule that has cost a real session.
 - For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
   the prompt names it.
 - **The dispatcher's bodies** — what a dispatcher prompt's read 2/3 pins, from
-  cc-252 on (2026-10-27 00:35:29Z, FIX-1354 `20261027000000`, cc-251):
-  `md5(prosrc)` of `dispatch_one_unit` **`64c8271e7601095d275c68eff5187931`** /
+  cc-254 on (2026-10-29 00:18:16Z, FIX-1361 `20261029000000`, cc-253):
+  `md5(prosrc)` of `dispatch_one_unit` **`d6a9073bcc4d9084b9d7994324a89b18`** /
   `get_dispatcher_status` **`4c30523742e280a4b48ea2ec390654d6`** /
   `box_is_saturated` **`ac8dbcddf71978e73d28c999433156b7`** (and `prod_op_gate`
-  `1d3507cd4b71439f0cfff51cde49b9d8`, unchanged; cc-252 re-read all four after
-  its push). Lineage: the N2 pair `7b4e3f66105a49d030c41539e4cd2d56` /
-  `2716fcca9ba97b683963cd499bc78136` and the box body `494240af…` are now only
-  FIX-1354's revert target (`scripts/fix1354-revert-box-gate-memory-rules.sql`).
+  `1d3507cd4b71439f0cfff51cde49b9d8`, unchanged; cc-253 re-read all four after
+  its pushes). Lineage: `64c8271e7601095d275c68eff5187931` (FIX-1354
+  `20261027000000`, cc-251) is now only FIX-1361's revert target
+  (`scripts/fix1361-revert-dispatcher-anchor-rung.sql`); the N2 pair
+  `7b4e3f66105a49d030c41539e4cd2d56` / `2716fcca9ba97b683963cd499bc78136` and
+  the box body `494240af…` only FIX-1354's
+  (`scripts/fix1354-revert-box-gate-memory-rules.sql`).
+- **A migration that asserts a `rollup_watch_overrides` row runs under the
+  gate's own session hold** (cc-253). `session:wait-for-gate`'s claim holds
+  every guarded pipeline for its span (`setGuardedHolds`, hold_reason
+  `prod session held: …`). So a guard of the form `held_since IS NULL` refuses
+  inside every gated push, and the clone rehearsal cannot see it because no
+  claim runs locally. Accept `hold_reason LIKE 'prod session held: %'`
+  alongside NULL / NULL, and rehearse the file under an injected session hold.
 - **The N2 pair, as it was** — from cc-244 on (2026-10-23, N2 `20261023000000`,
   cc-243): `md5(prosrc)` of `dispatch_one_unit`
   `7b4e3f66105a49d030c41539e4cd2d56` / `get_dispatcher_status`
