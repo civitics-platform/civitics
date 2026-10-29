@@ -12,6 +12,8 @@
  *   - an untagged app change builds;
  *   - an EMPTY untagged tip above a tagged app commit builds — the case a
  *     `git diff HEAD^ HEAD` design gets wrong (every cc run's records push);
+ *   - a subject that QUOTES the tag mid-line is untagged (FIX-1364: f64f0e34's
+ *     record skipped on it); only a tag that heads the subject counts;
  *   - a Preview never builds (the dashboard rule this file overrides);
  *   - no previous sha, an unreachable one, or a redeploy of the same commit
  *     builds: a doubt builds.
@@ -75,6 +77,10 @@ test("skip / build across the five shapes", (t) => {
   const record = r.commit("chore(fixes): record FIX-1 landed");
   const docs = r.commit("docs(receipts): 2026-10-28", { "docs/a.md": "2" });
   const app = r.commit("feat(app): an untagged app change", { "apps/civitics/page.tsx": "2" });
+  // FIX-1364: f64f0e34's shape — an empty record whose subject QUOTES the tag
+  // mid-line, above a tagged app commit. Only a tag that heads the subject counts.
+  const tagged2 = r.commit("[skip vercel] fix(deploy): a second tagged app change", { "apps/civitics/page.tsx": "3" });
+  const quoted = r.commit('chore(fixes): record FIX-2 on prod — "skip: all 2 commit(s) since 6a7a3ac7 are [skip vercel]"');
 
   const cases: Array<[string, string | null, string, number]> = [
     ["every commit tagged → skip, even with app code", base, tagged, 0],
@@ -84,7 +90,11 @@ test("skip / build across the five shapes", (t) => {
     ["no previous sha → build", null, app, 1],
     ["a redeploy of the same commit → build", app, app, 1],
     ["an unreachable previous sha → build", "0123456789abcdef0123456789abcdef01234567", app, 1],
+    ["a record that QUOTES the tag mid-subject is untagged → build (FIX-1364)", app, quoted, 1],
+    ["the tag heading every subject still skips (FIX-1364 keeps it)", app, tagged2, 0],
   ];
+  assert.match(r.run(app, quoted).stdout, /^build: deployable paths changed in 2 commit\(s\) since /m);
+  assert.match(r.run(app, tagged2).stdout, /^skip: all 1 commit\(s\) since .* are \[skip vercel\]$/m, "the skip line's text unchanged");
   for (const [name, prev, head, want] of cases) {
     const res = r.run(prev, head);
     assert.equal(res.status, want, `${name}: ${res.stdout}${res.stderr}`);

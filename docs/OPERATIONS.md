@@ -195,7 +195,9 @@ SUCCEEDED) with `HEAD`, because Vercel builds only a push's tip:
 - **build** otherwise, and on any doubt (no previous sha, one the shallow clone
   cannot reach, a redeploy).
 So the tag is per RANGE: one untagged commit in a push builds everything
-undeployed under it. Tagged app changes ship with the next untagged push — at
+undeployed under it. A commit is tagged only when `[skip vercel]` heads its
+subject (FIX-1364): a record whose subject quotes a skip line mid-subject is
+untagged. Tagged app changes ship with the next untagged push — at
 the latest the 00:09Z receipts bot. A skipped deployment reads **Canceled** in
 the Vercel list.
 

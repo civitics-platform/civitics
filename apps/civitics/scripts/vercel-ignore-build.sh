@@ -24,6 +24,8 @@
 # A tagged-only range skips even when it changes app code: that is what the tag
 # means (CLAUDE.md §Commit conventions). The next untagged push — at the
 # latest the 00:09Z receipts bot — sees the whole range and builds it.
+# The tag counts only where it HEADS the subject (FIX-1364): a subject that
+# quotes it mid-line, such as a record commit quoting a skip line, is untagged.
 #
 # PREVIEWS NEVER BUILD. Before this file the project's dashboard Ignored Build
 # Step skipped every Preview (feature-branch pushes; every one Canceled back to
@@ -52,7 +54,7 @@ if [ "$n" -eq 0 ]; then
   echo "build: HEAD is the last deployed commit (a redeploy)"
   exit 1
 fi
-untagged="$(git log --format=%s "${prev}..HEAD" | grep -cvF '[skip vercel]')"
+untagged="$(git log --format=%s "${prev}..HEAD" | grep -cvE '^\[skip vercel\]')"
 if [ "$untagged" -eq 0 ]; then
   echo "skip: all ${n} commit(s) since ${prev:0:8} are [skip vercel]"
   exit 0
