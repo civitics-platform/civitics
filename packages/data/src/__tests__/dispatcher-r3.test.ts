@@ -173,7 +173,12 @@ test("clone: the two rules read as written, phase-locked, both crons parked, off
       assert.equal(byJob[job]?.phase_lock, !unlocked, `${job} phase_lock`);
     }
     assert.equal(byJob["officials-vacuum-analyze"]?.deadline_rule, "at 30 1 * * 1");
-    assert.equal(byJob["dpr-vacuum-analyze"]?.deadline_rule, "at 0 2 * * 0,3");
+    // FIX-1366 (cc-254) MOVEs dpr with donor-party's RETURN: its weekly rule, its cron parked.
+    const dprMoved = /FIX-1366/.test(byJob["dpr-vacuum-analyze"]?.note ?? "");
+    assert.equal(
+      byJob["dpr-vacuum-analyze"]?.deadline_rule,
+      dprMoved ? "dead_tuples > 60% of trigger + floor 7 days" : "at 0 2 * * 0,3",
+    );
     const cron = await c.query(
       "SELECT jobname, active FROM cron.job " +
         "WHERE jobname IN ('ec-vacuum-analyze', 'fe-vacuum-analyze', 'officials-vacuum-analyze', 'dpr-vacuum-analyze') ORDER BY jobname",
@@ -182,7 +187,7 @@ test("clone: the two rules read as written, phase-locked, both crons parked, off
     assert.equal(active["ec-vacuum-analyze"], false);
     assert.equal(active["fe-vacuum-analyze"], false);
     assert.equal(active["officials-vacuum-analyze"], true);
-    assert.equal(active["dpr-vacuum-analyze"], true);
+    assert.equal(active["dpr-vacuum-analyze"], !dprMoved);
   } finally {
     await c.end();
   }
