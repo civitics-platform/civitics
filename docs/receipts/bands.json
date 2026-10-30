@@ -46,7 +46,7 @@
   "donor-party-rollup-refresh": {
     "lo_s": 0,
     "hi_s": 119,
-    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max is 11,335.1 s (09-22, a full-mode cycle ending partial) and is EXCLUDED as the full-mode outlier; the two crawl-mode firings left are 67.9 s (09-29) and 78.8 s (10-06), so ceil(1.5 × 78.8) = 119. A full-mode cycle (lag past full_rebuild_lag_days) runs to its 1,500 s CALL budget and renders out-of-band BY DESIGN — read the run row's metadata.mode before calling that a regression. Receipt for FIX-1295 M2."
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max is 11,335.1 s (09-22, a full-mode cycle ending partial) and is EXCLUDED as the full-mode outlier; the two crawl-mode firings left are 67.9 s (09-29) and 78.8 s (10-06), so ceil(1.5 × 78.8) = 119. A full-mode cycle (lag past full_rebuild_lag_days) runs to its 1,500 s CALL budget and renders out-of-band BY DESIGN — read the run row's metadata.mode before calling that a regression. Receipt for FIX-1295 M2. A catch-up CRAWL after a park can run long and render `above` by design too (cc-254, FIX-1365: the first dispatched run crawled a 14 d 22:53 lag in 12 slices, 15,928 donors, 198.5 s); read metadata.mode, metadata.lag and unit_capped before calling it a regression."
   },
 
   "contract-flow-rollups-refresh": {

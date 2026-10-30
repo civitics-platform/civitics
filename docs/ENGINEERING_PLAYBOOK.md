@@ -43,6 +43,9 @@ this file's.
 **Extended 2026-10-29** with the first weekly's RETURN (cc-253, FIX-1361 /
 FIX-1363). New rule **D11**.
 
+**Extended 2026-10-30** with the second weekly's RETURN (cc-254, FIX-1365).
+New rule **D12**.
+
 ---
 
 ## A. Data-shape regimes
@@ -1188,6 +1191,31 @@ latent pairs share a pipeline with a parked `at` row only (ec-crawl /
 They become siblings the day the `at` row RETURNs. A crawl's rows stamp no
 cadence, so that RETURN needs the stamp first.
 *FIX-1361 · cc-253 (read 3)*
+
+### D12. A windowed cycle under a per-slot row expires after `c_cycle_max_age / slot` CALLs. Size the cycle or change the row's rule, never the age.
+
+`refresh_donor_party_rollup_incremental` has two paths. The crawl COMMITs each
+slice's rows and its watermark together and needs no cursor. The windowed full
+rebuild (FIX-1212) keeps a cursor of the windows it has done, and discards it
+at `c_cycle_max_age` 22 days (FIX-1216). Under a `by 0 15 * * 2` row the
+dispatcher gives the procedure ONE CALL per Tuesday, because a `partial`
+advances the row's clock. Each CALL stops at its 1500 s unit budget, so a cycle
+gets three CALLs before its cursor expires. The windowed path has never run on
+prod. Its one-statement predecessor took 11,278 s (09-22), and prod cold IO runs
+10–60× the clone's 311 s cycle. So a cycle needing more than three Tuesdays
+restarts forever and the watermark never moves: FIX-1216's trap, reached a new
+way. The mode is picked by `lag > full_rebuild_lag_days`. At the RETURN (cc-254
+read 3) the lag was 14 d 22:53. That reads **full** at the absent-key default
+of 14 and **crawl** at prod's 30 (FIX-1249). The prompt had assumed the key
+absent and planned a dial move; the read found the dial already crawl-first.
+
+**Apply:** before a resumable returns under a per-slot rule, compute both
+paths' CALL count against the slot: the windowed cycle's CALLs against
+`c_cycle_max_age / slot`, and the crawl's slices against `max_units ×
+unit_budget`. Quote the mode the body picks with prod's dial, not the default.
+If only the windowed path fits the lag, the RETURN waits for a supervised cycle
+or a resized one. Lengthening the age only lengthens the loop.
+*FIX-1365 · FIX-1212 · FIX-1216 · FIX-1249 · cc-254 (read 3)*
 
 ---
 

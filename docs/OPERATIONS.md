@@ -1016,6 +1016,43 @@ by default) keys the read on `metadata->>'cadence'`:
   own `prod session held: …` hold (`setGuardedHolds`). Accept it; cc-253's
   first push of the weekly's file refused on it and rolled back.
 
+### A parked resumable comes back through its crawl (FIX-1365) and dpr's MOVE (FIX-1366)
+
+A `resumable` row under `by` gets **one CALL per slot**: a `partial` is an
+advancing row (the pick reads complete|partial), so the next CALL is the next
+slot's. A procedure with two paths, a cursorless crawl and a windowed rebuild
+whose cursor expires, must come back through the crawl.
+
+- **donor-party-rollup-refresh** (`by 0 15 * * 2` since 2026-10-30 01:10:51Z).
+  The body picks the windowed FULL rebuild when `LEAST(max(FR.updated_at),
+  fr_watermark_horizon()) − donor_party_rollup_watermark` exceeds
+  `pipeline_state.donor_party_crawl.full_rebuild_lag_days`. That is **30 on
+  prod** (FIX-1249, set 2026-09-30); with the key absent the body uses 14. The
+  windowed cycle's cursor is discarded at `c_cycle_max_age` 22 days, which at
+  one CALL per Tuesday is three CALLs of ≤ 1500 s each. A cycle that needs more
+  never completes. The crawl has no cursor: every slice COMMITs its rows and
+  its watermark, and a capped `partial` resumes from the watermark next slot.
+- **The lag is measured from the newest FR write, not from now.** A 16-day park
+  read 14 d 22:53 at the RETURN, because FR's last write was 10-25 22:51Z.
+- **Before a RETURN, read on prod** the dial, the watermark, FR max, the
+  horizon, the mode at the dial, and any `donor_party_full_rebuild` cursor.
+  FIX-1365's file asserts the dial (30) and the absent cursor and RAISEs
+  otherwise. A lag past the dial is a design question: size the cycle or run
+  it supervised. Do not raise the dial to dodge it.
+- **The hold row stays a hold** (FIX-1311's takeover text) until the catch-up's
+  receipt. A 168 h cadence row would read a multi-Tuesday catch-up as stale.
+- **dpr-vacuum-analyze** (`dead_tuples > 60% of trigger + floor 7 days`,
+  gates `{prod_session}`, no phase_lock; cron jobid 31 parked at the move) rides
+  the RETURN. `donor_party_rollup_mv` has scale_factor 0.02 and no threshold
+  reloption, so on 2.98 M rows the trigger is 59,553 and the 60 % line 35,732.
+  It shares group `rollups` with the crawl, so it never runs beside it. Its
+  floor anchors on the cron's last VACUUM (10-28 02:00Z), so it is due Wed
+  11-04 02:00Z unless the pct term fires first.
+- **Reverts.** `scripts/fix1365-revert-return-donor-party-rollup.sql` (the rule
+  back to `at`; no dial was written; the cron stays parked);
+  `scripts/fix1366-revert-move-dpr-vacuum.sql` (the rule back to `at`, gates
+  `{}`, and the cron RE-ACTIVATED by name; pause first, as its header says).
+
 ### Upgrade Path
 
 | Trigger | Upgrade | Cost |
