@@ -1,0 +1,75 @@
+{
+  "cc": "254",
+  "prompt": "cc-prompt-254-return-donor-party-rollup-by-tue-15z-crawl-first-dial-move-dpr-vacuum.md",
+  "started_at": "2026-10-30T00:20:43Z",
+  "finished_at": "2026-10-30T01:23:29Z",
+  "head_before": "83d35dc7",
+  "head_after": "bb15976b",
+  "commits": [
+    {
+      "sha": "93f83511",
+      "subject": "[skip vercel] docs(fixes): cc-254 files FIX-1365, FIX-1366, FIX-1367"
+    },
+    {
+      "sha": "ecce5e5c",
+      "subject": "[skip vercel] feat(db): FIX-1365 — RETURN donor-party-rollup-refresh as by 0 15 * * 2, crawl-first on the dial prod already carries (full_rebuild_lag_days 30, FIX-1249, asserted not written); the FIX-1311 hold stays a hold (cc-254)"
+    },
+    {
+      "sha": "cbca7f38",
+      "subject": "[skip vercel] feat(db): FIX-1366 — MOVE dpr-vacuum-analyze at 0 2 * * 0,3 to dead_tuples > 60% of trigger + floor 7 days, gates {prod_session}, no phase_lock, its cron parked by name at the move (cc-254)"
+    },
+    {
+      "sha": "5ea6528b",
+      "subject": "chore(fixes): record FIX-1365 on prod — 20261030000000 applied 01:10:51Z, read-back ok (mode crawl at the dial 30, lag 14 d 22:53, 565,260 FR rows); the first dispatched donor-party-rollup-refresh armed 01:11:00.62Z (by 0 15 * * 2 → -2 days -10:11:00, MemAvailable 445 / swap 483), ran 01:13:00.08 → 01:16:18.59Z complete, crawl, 12 units, 15,928 donors, 21,260 rows, caught_up true; reaped 01:17:00Z succeeded: CALL unit_ms 198542 (cc-254)"
+    },
+    {
+      "sha": "e1708e4b",
+      "subject": "chore(fixes): record FIX-1362 on prod — 24 h of dispatch_log after the 10-29 00:18:16Z push (782 rows to 10-30 00:18:16Z): 0 headroom entries naming a job live on the same tick; the one headroom entry (06:35:07Z, fe-crawl) was on a tick whose live job was rule-taggers-daily; 65 live entries (cc-254)"
+    },
+    {
+      "sha": "863c24a4",
+      "subject": "[skip vercel] docs(ops): the crawl-first rule for a resumable by row (OPERATIONS), playbook D12 (a windowed cycle under a per-slot row expires after c_cycle_max_age / slot CALLs), dispatcher.md s12b-4 / s12b-5 / s12b-6 / s12b / s15b, the donor-party band's catch-up sentence (cc-254)"
+    },
+    {
+      "sha": "bb15976b",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-254's closes — FIX-1365 (local + prod records), FIX-1366 (local; its first dispatched VACUUM owed); record on FIX-1362 (cc-254)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1365",
+    "FIX-1366"
+  ],
+  "fixes_filed": [
+    "FIX-1365",
+    "FIX-1366",
+    "FIX-1367"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261030000000_fix1365_return_donor_party_rollup_refresh_crawl_first.sql",
+    "supabase/migrations/20261030001000_fix1366_move_dpr_vacuum_analyze.sql"
+  ],
+  "prod_writes": "ONE gated class-P migration push of TWO files from the PRIMARY's packages/data at cbca7f38. Dry run 01:10Z 'Would push these migrations: 20261030000000_fix1365_return_donor_party_rollup_refresh_crawl_first.sql, 20261030001000_fix1366_move_dpr_vacuum_analyze.sql' only; held=false 01:10:34Z; pins re-read 01:10:35Z d6a9073b / 4c305237 / ac8dbcdd / 1d3507cd. session:wait-for-gate:prod --expected-minutes 1 --census stop --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. '[gate] 01:10:45Z ok=true blocked_by=[] census=pass (4 render(s) / 4 event(s) in 60 min, ratio 2.02, floor 6; edge 0 of 1426 request(s) = 0.00 % <= 1 % (P99 floor 8 at p0 0.23 %))'; 'held 6 guarded pipeline(s)'; '[gate] receipt: wait 0.2 s (01:10:45.596Z → 01:10:45.794Z) · claim 01:10:49.631Z → 01:10:51.991Z = 2.4 s · polls 1 · blocked_tokens []'; '--then exited 0'. NOTICEs: '[fix1365] job_registry donor-party-rollup-refresh: at 0 15 * * 2 → by 0 15 * * 2 (1 row)' · 'pipeline_state donor_party_crawl {\\\"full_rebuild_lag_days\\\": 30} — full_rebuild_lag_days 30 asserted, not written' · 'rollup_watch_overrides donor_party_rollup_refresh: FIX-1311 hold kept (hold_reason parked for the dispatcher cutover (cc-232, FIX-1311); returns via job_registry); note appended (1 row)' · 'cron donor-party-rollup-refresh (jobid 17) inactive — registry owns it' · 'read-back ok: … (prev 2026-10-27 15:00:00+00 / next 2026-11-03 15:00:00+00); its last complete|partial 2026-10-13 15:00:48.710027+00; DUE NOW (ttd -2 days -10:10:50); md5 d6a9073b… / 4c305237… / ac8dbcdd… / 1d3507cd…' · 'mode now: crawl (watermark 2026-10-10 23:57:47.283978+00, target 2026-10-25 22:51:26.958474+00, lag 14 days 22:53:39.674496 vs full_rebuild_lag 30 days; body md5 7bf24bc1… (the body this arithmetic copies)); FR rows in range 565260 → 12 slice(s) of 50,000 (max_units 40); dirty-index rows 23686' · 'headroom now: 445 MB avail − 64 MB cap = 381 ≥ 150 MB → admitted' · '[fix1366] job_registry dpr-vacuum-analyze: at 0 2 * * 0,3 → dead_tuples > 60% of trigger + floor 7 days, gates {prod_session} (1 row)' · 'cron dpr-vacuum-analyze (jobid 31) parked — the registry owns it' · 'read-back ok: … trigger 59553.0, 60% line 35732, n_dead_tup 0, anchor 2026-10-28 02:00:00.257092+00 (stats …, reaped NULL) → floor due 2026-11-04 02:00:00.257092+00'. The five class-P facts: wait 0.2 s on the first poll; no b: / a:nightly_next_start token (blocked_tokens []); claim 2.4 s; 0 data_sync_log skipped rows started 01:10:40–01:11:30Z; 0 ticks inside the claim (01:09:00.139 / 01:11:00.619Z bracket it). Read-back 01:11Z: head 20261030001000 / 534; donor-party by 0 15 * * 2, cap 64, rollups, budget 1800, gates {prod_session}, anchor_cadence NULL; dpr dead_tuples > 60% of trigger + floor 7 days, gates {prod_session}, phase_lock false; officials at 30 1 * * 1 cron active; crons 17 / 31 inactive; dial {\\\"full_rebuild_lag_days\\\": 30}; no cursor; hold row held_since 2026-10-13 23:32:42Z with the FIX-1365 note; pins unchanged. CONSEQUENT DISPATCHER WRITES (the first dispatched donor-party run, supervised): tick 11541 01:11:00.62Z armed donor-party-rollup-refresh 'by 0 15 * * 2 → -2 days -10:11:00' (disp-donor-party-rollup-refresh-1793322660, armed_for 01:13:00Z) at MemAvailable 445 / swap 483, 0 live; cron job 934 started 01:13:00.008Z; running row 01:13:00.08Z mode crawl, lag 14 days 22:53:39, budget_seconds 1500, max_units 40, full_rebuild_lag 30 days; complete 01:16:18.59Z, units_run 12, dirty_donors 15,928, rollup_rows 21,260, caught_up true, unit_capped false, elapsed 199 s, watermark 2026-10-10 23:57:47.283978Z → 2026-10-25 22:51:26.958474Z; job_run_details succeeded 198.5 s 'CALL'; tick 11544 01:17:00.22Z reaped 'succeeded: CALL' unit_ms 198542. Tick 11542 01:13:00.21Z armed fe-crawl beside it (live (donor-party-rollup-refresh); group fe-totals ≠ rollups). Box (box_health_mem): 445 / 483 at the arm, 401 / 449 at 01:13Z, 271 / 301 at 01:14:35–01:15:20Z, 326 / 344 after. dpr not due after the run: n_dead_tup 16,926 < 35,732. Every other prod contact read-only (db-query --prod, two Logs API reads, gh, vercel ls / inspect). No --call on prod.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 1a's dial write (donor_party_crawl.full_rebuild_lag_days 14 → 35) was NOT made. Read 3 found the key PRESENT at 30 on prod (FIX-1249, cc-174, 2026-09-30 02:41:29Z), not absent, so the body already crawls at a lag of 14 d 22:53. Craig answered in-session 'Keep 30, no write (Recommended)'. The file asserts 30 and RAISEs otherwise, and the revert has no dial to restore.",
+    "FIX-1366 closes local-only: no dispatched VACUUM in-session. The catch-up left n_dead_tup 16,926 under the 60 % line 35,732, so the first arm is the floor, ~Wed 11-04 02:00:00Z (owed). The mechanism read is MET: rule, cron parked, anchor, due.",
+    "The [donor-party-rollup] slice -> NOTICEs could not be read from postgres_logs. Prod's log_min_messages is warning, and the window 01:12:50–01:20Z holds only 'cron job 934 starting: CALL …'. The slices, donors and rows come from the run row's metadata and the watermark's advances, sampled every 45 s.",
+    "The clone mode test does not read metadata.mode from a dispatch_one_unit('manual') running row as the prompt suggested. A tick arms a pg_cron one-shot, and the CALL runs in its own backend after the tick commits, so a rolled-back tick never writes a running row. The test pins the live body (md5 7bf24bc1, its decision lines asserted in text) and evaluates that decision inside BEGIN … ROLLBACK, with the watermark 16 d behind the clone's own target: crawl at 30, full at 14 and full with the key absent.",
+    "The v1.3 cutover note §2 (RETURN vs MOVE) is a Cowork document and is not on disk. The RETURN and MOVE shapes were taken from 20261029001000 (fix1363), 20261026000000 (fix1349) and 20261021000000 (fix1335)."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1365",
+      "what": "the Tue 11-03 15:00Z slot: armed on the first tick ≥ 15:00Z the gate admits (MemAvailable ≥ 214, swap < 1018), mode crawl, caught_up true, wall in band (≤ 119 s) now the catch-up is done; rule-taggers-weekly's 16:00Z slot unaffected (group rollups ≠ taggers)",
+      "after": "2026-11-03T18:00Z"
+    },
+    {
+      "fix": "FIX-1366",
+      "what": "the first dispatched dpr-vacuum-analyze: the floor ~Wed 11-04 02:00Z (anchor = the cron's 10-28 02:00:00.257Z VACUUM + 7 d; the pct term only if the 11-03 crawl lifts n_dead_tup from 16,926 past 35,732) — armed, reaped succeeded: VACUUM, last_vacuum moved; no cron firing after the park",
+      "after": "2026-11-04T04:00Z"
+    }
+  ]
+}
