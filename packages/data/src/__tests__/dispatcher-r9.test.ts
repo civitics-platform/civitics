@@ -346,9 +346,9 @@ test("clone: the files apply from the un-RETURNed rows, twice; holds stay holds,
       await applyFresh(c);
       for (const r of ROWS) await c.query(r.file());  // idempotent: a second run NOTICEs and changes nothing
       for (const r of ROWS) {
-        const reg = (await c.query("SELECT deadline_rule, note FROM public.job_registry WHERE job = $1", [r.job])).rows[0];
+        const reg: { deadline_rule: string } = (await c.query("SELECT deadline_rule FROM public.job_registry WHERE job = $1", [r.job])).rows[0];
         assert.equal(reg.deadline_rule, `by ${r.slot}`, r.job);
-        const hold = (await c.query(
+        const hold: { held_since: Date | null; cadence_hours: number | null; retired_at: Date | null; note: string } = (await c.query(
           "SELECT held_since, cadence_hours, retired_at, note FROM public.rollup_watch_overrides WHERE pipeline = $1",
           [r.pipeline],
         )).rows[0];
@@ -356,8 +356,8 @@ test("clone: the files apply from the un-RETURNed rows, twice; holds stay holds,
         assert.equal(hold.cadence_hours, null, "not converted");
         assert.equal(hold.retired_at, null);
         assert.match(hold.note, /^FIX-1311 \(cc-232\)/);
-        assert.equal((hold.note as string).split(`(${r.fix})`).length - 1, 1, "the hold note is appended once");
-        const cron = (await c.query("SELECT active FROM cron.job WHERE jobname = $1", [r.cronName])).rows;
+        assert.equal(hold.note.split(`(${r.fix})`).length - 1, 1, "the hold note is appended once");
+        const cron: { active: boolean }[] = (await c.query("SELECT active FROM cron.job WHERE jobname = $1", [r.cronName])).rows;
         assert.deepEqual(cron, [{ active: false }], "parked, by name");
       }
     } finally {
@@ -417,7 +417,7 @@ test("clone: the live bodies are prod's, and their constants evaluate as the hea
   if (!c) return;
   try {
     for (const b of Object.values(BODIES)) {
-      const live = (await c.query(
+      const live: { m: string } = (await c.query(
         "SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = $1 AND pronamespace = 'public'::regnamespace",
         [b.name],
       )).rows[0];
