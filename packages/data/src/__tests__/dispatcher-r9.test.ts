@@ -318,6 +318,19 @@ async function clone(t: { skip: (m: string) => void }): Promise<Client | null> {
   return c;
 }
 
+/**
+ * BEGIN, then the registry's table lock FIRST. These transactions write three
+ * rows and then every other row; r4 / r5 / r7 write the same table in another
+ * order, and the default run executes files concurrently (deadlock 40P01 on
+ * job_registry, seen in cc-256's first full clone run). Holding the table lock
+ * before any row lock means this file waits holding nothing, and a peer that
+ * waits on it has taken nothing of ours.
+ */
+async function begin(c: Client): Promise<void> {
+  await c.query("BEGIN");
+  await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE");
+}
+
 /** Apply every file inside the caller's transaction, from the un-RETURNed rows. */
 async function applyFresh(c: Client): Promise<void> {
   for (const r of ROWS) await c.query(r.revert());
@@ -328,7 +341,7 @@ test("clone: the files apply from the un-RETURNed rows, twice; holds stay holds,
   const c = await clone(t);
   if (!c) return;
   try {
-    await c.query("BEGIN");
+    await begin(c);
     try {
       await applyFresh(c);
       for (const r of ROWS) await c.query(r.file());  // idempotent: a second run NOTICEs and changes nothing
@@ -359,7 +372,7 @@ test("clone: each file applies under the gate's own session hold; RAISEs on a hu
   const c = await clone(t);
   if (!c) return;
   const attempt = async (r: Row, setup: string, params: unknown[] = []): Promise<string | null> => {
-    await c.query("BEGIN");
+    await begin(c);
     try {
       await c.query(r.revert());
       await c.query(setup, params);
@@ -476,7 +489,7 @@ test("clone: one tick at MemAvailable 450 arms the earliest prev slot and queues
   const c = await clone(t);
   if (!c) return;
   try {
-    await c.query("BEGIN");
+    await begin(c);
     try {
       await tickFixture(c, ROWS.map((r) => r.job));
       // ttd ranks (all priority 3): the earliest prev slot is the pick (agency at a Fri/Sat push).
@@ -518,7 +531,7 @@ test("clone: each no-running-row unit (agency, group-donor) armed alone holds gr
   if (!c) return;
   try {
     for (const solo of [ROWS[1]!, ROWS[2]!, ROWS[0]!]) {
-      await c.query("BEGIN");
+      await begin(c);
       try {
         await tickFixture(c, [solo.job]);
         await c.query("SELECT public.dispatch_one_unit('manual')");
