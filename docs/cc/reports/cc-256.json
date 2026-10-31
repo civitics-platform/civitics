@@ -1,0 +1,92 @@
+{
+  "cc": "256",
+  "prompt": "cc-prompt-256-return-treemap-agency-staffing-group-donor-rollups-chain.md",
+  "started_at": "2026-10-30T23:58:33Z",
+  "finished_at": "2026-10-31T00:54:38Z",
+  "head_before": "8b65979e",
+  "head_after": "36f6a2e0",
+  "commits": [
+    {
+      "sha": "34e78138",
+      "subject": "[skip vercel] docs(fixes): cc-256 files FIX-1368, FIX-1369, FIX-1370"
+    },
+    {
+      "sha": "626cbbc7",
+      "subject": "[skip vercel] feat(db): FIX-1368 — RETURN treemap-individuals-global-refresh at 0 14 * * 2 → by 0 14 * * 2 (its own pipeline; a resumable 64-chunk full sweep, c_budget 5400 = the row's budget, c_max_sweep 240 h ≥ two Tuesdays so a partial resumes rather than starves); the FIX-1311 hold kept (cc-256)"
+    },
+    {
+      "sha": "54843802",
+      "subject": "[skip vercel] feat(db): FIX-1369 — RETURN agency-staffing-rollup-refresh at 5 0 * * 2 → by 5 0 * * 2 (its own pipeline; c_full_lag 14 d is a body constant, so the ~18-day park runs full: 136 agencies, 3 chunks); the FIX-1311 hold kept (cc-256)"
+    },
+    {
+      "sha": "2de9a7f3",
+      "subject": "[skip vercel] feat(db): FIX-1370 — RETURN group-donor-rollup-refresh at 10 3 * * 3 → by 10 3 * * 3 (its own pipeline; atomic DELETE + re-INSERT, work_mem 64MB in-body; no running row, live by its armed dispatch_log row); the FIX-1311 hold kept; dispatcher-r9 anchors all three (cc-256)"
+    },
+    {
+      "sha": "586df8bd",
+      "subject": "[skip vercel] test(dispatcher): r9's clone transactions take job_registry's table lock first — the default run is concurrent and r4 / r5 / r7 write the registry in another row order (40P01 in the first full clone run) (cc-256)"
+    },
+    {
+      "sha": "46d2f427",
+      "subject": "[skip vercel] test(dispatcher): r9 types its clone rows (TS7022 under @civitics/data typecheck, caught by pre-push) (cc-256)"
+    },
+    {
+      "sha": "da6168dd",
+      "subject": "chore(fixes): record FIX-1369 on prod — 20261031001000 applied 00:18:50Z, read-back ok (mode full, lag 18 d 00:13:50 vs c_full_lag 14 d, 136 agencies); the first dispatched agency-staffing-rollup-refresh armed 00:19:00.127Z (by 5 0 * * 2 → -4 days -00:14:00, MemAvailable 445 / swap 485), ran 00:21:00.066 → 00:22:10.988Z complete, mode full, 3 chunks, 136 agencies, 71 s; reaped 00:23:00.293Z succeeded: CALL unit_ms 70956 (cc-256)"
+    },
+    {
+      "sha": "da1d41ee",
+      "subject": "chore(fixes): record FIX-1368 on prod — 20261031000000 applied 00:18:50Z, read-back ok (a fresh sweep: no cursor, staging absent, budget GUC unset → 5400 s); the first dispatched treemap-individuals-global-refresh armed 00:23:01.022Z behind agency-staffing (by 0 14 * * 2 → -3 days -10:23:00, MemAvailable 314 / swap 317), ran 00:25:00.056 → 00:41:26.235Z complete, resumed false, 64 chunks, 986 s, slowest chunk 36 s, 3,071 rows; reaped succeeded: CALL (cc-256)"
+    },
+    {
+      "sha": "edcef7ee",
+      "subject": "chore(fixes): record FIX-1370 on prod — 20261031002000 applied 00:18:50Z, read-back ok (wrapper a656fca8 / refresh 362d0579, work_mem 64MB in-body, no running row); the first dispatched group-donor-rollup-refresh armed 00:45:00.277Z after treemap's reap, beside fe-crawl (by 10 3 * * 3 → -2 days -21:35:00, MemAvailable 309 / swap 353), ran 00:47:00.081 → 00:48:42.919Z complete, 581 cohorts, 47,208 donor_rows, 103 s; reaped 00:49:00.130Z succeeded: CALL unit_ms 102883 (cc-256)"
+    },
+    {
+      "sha": "0b0799f0",
+      "subject": "[skip vercel] docs(ops): a multi-row RETURN in one exclusion group runs as a chain — the rollups receipt table, the no-running-row caveat (the census reads the armed row) and the priority cut-in (OPERATIONS); dispatcher.md s12b-7 / s12b-8 / s12b-9 and s12b's remaining list; bands.json sentences for treemap and group-donor (cc-256)"
+    },
+    {
+      "sha": "36f6a2e0",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-256's closes — FIX-1368, FIX-1369, FIX-1370 (local + prod records)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1368",
+    "FIX-1369",
+    "FIX-1370"
+  ],
+  "fixes_filed": [
+    "FIX-1368",
+    "FIX-1369",
+    "FIX-1370"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261031000000_fix1368_return_treemap_individuals_global_refresh.sql",
+    "supabase/migrations/20261031001000_fix1369_return_agency_staffing_rollup_refresh.sql",
+    "supabase/migrations/20261031002000_fix1370_return_group_donor_rollup_refresh.sql"
+  ],
+  "prod_writes": "ONE gated class-P migration push of THREE files from the PRIMARY's packages/data at 46d2f427. Dry run 00:18Z 'Would push these migrations: 20261031000000_fix1368_return_treemap_individuals_global_refresh.sql, 20261031001000_fix1369_return_agency_staffing_rollup_refresh.sql, 20261031002000_fix1370_return_group_donor_rollup_refresh.sql' only; held=false; pins re-read 00:18:37Z d6a9073b / 4c305237 / ac8dbcdd / 1d3507cd; box 445 / 484. session:wait-for-gate:prod --expected-minutes 1 --census stop --reason 'cc-256 FIX-1368/1369/1370 RETURN treemap + agency-staffing + group-donor (rollups chain, class P)' --then 'node ../../scripts/db-push-prod.mjs --workdir ../..'. '[gate] 00:18:45Z ok=true blocked_by=[] census=pass (0 render(s) / 0 event(s) in 60 min, ratio 0.00, floor 6; edge 0 of 603 request(s) = 0.00 % <= 1 % (P99 floor 5 at p0 0.23 %))'; 'held 6 guarded pipeline(s)'; '[gate] receipt: wait 0.2 s (00:18:45.175Z → 00:18:45.370Z) · claim 00:18:49.454Z → 00:18:50.632Z = 1.2 s · polls 1 · blocked_tokens []'; '--then exited 0'. NOTICEs: '[fix1368] job_registry treemap-individuals-global-refresh: at 0 14 * * 2 → by 0 14 * * 2 (1 row)' · 'FIX-1311's hold kept … note appended (1 row)' · 'cron treemap-individuals-global-refresh (jobid 26) inactive' · 'read-back ok … (prev 2026-10-27 14:00:00+00 / next 2026-11-03 14:00:00+00); its last complete|partial 2026-10-13 14:15:31.628693+00; DUE NOW (ttd -3 days -10:18:50)' · 'body premise: treemap_global_refresh {last_completed_at: 2026-10-13 14:15:31.618572+00}; staging absent; budget GUC unset → c_budget 5400 s; the first CALL runs a fresh sweep (no cursor); body md5 227e9995… (the body this premise reads)' · 'headroom now: 445 MB avail − 64 MB cap = 381 ≥ 150 MB → admitted' · '[fix1369] … at 5 0 * * 2 → by 5 0 * * 2 (1 row)' · 'cron agency-staffing-rollup-refresh (jobid 25) inactive' · 'read-back ok … its last complete|partial 2026-10-13 00:12:16.277269+00; DUE NOW (ttd -4 days -00:13:50)' · 'mode now: full (watermark fr 2026-10-12 23:05:00.231545+00 / ec same, horizon 2026-10-30 23:18:50.237817+00, lag 18 days 00:13:50.006272 vs c_full_lag 14 days — a body constant); agencies 136 → 3 chunk(s) of 50 when full; body md5 c2802f12… (the body this arithmetic copies)' · 'headroom now: 445 MB avail − 128 MB cap = 317 ≥ 150 MB → admitted' · '[fix1370] … at 10 3 * * 3 → by 10 3 * * 3 (1 row)' · 'cron group-donor-rollup-refresh (jobid 49) inactive' · 'read-back ok … its last complete|partial 2026-10-07 03:11:41.567919+00 (cohorts 581, donor_rows 47208); DUE NOW (ttd -2 days -21:08:50)' · 'body premise: wrapper md5 a656fca8… (as read), refresh md5 362d0579… (as read); work_mem: in-body SET LOCAL 64MB present, proconfig {search_path=public, pg_temp}; the wrapper writes no running row; pipeline_state group_donor% keys: none' · 'headroom now: 445 MB avail − 64 MB cap = 381 ≥ 150 MB → admitted'. The five class-P facts: wait 0.2 s on the first poll; no b: / a:nightly_next_start token (blocked_tokens []); claim 1.2 s; 0 data_sync_log skipped rows started 00:18:40–00:19:30Z; 0 ticks inside the claim (00:17:00.194 / 00:19:00.054Z bracket it). Read-back 00:19Z: head 20261031002000 / 537; the three rows by 0 14 * * 2 / by 5 0 * * 2 / by 10 3 * * 3, every other column unchanged, anchor_cadence NULL; crons 25 / 26 / 49 inactive; the three hold rows held_since 2026-10-13 23:32:42.338Z, cadence_hours NULL, the RETURN notes appended; pins unchanged. CONSEQUENT DISPATCHER WRITES (the chain, supervised): tick 12296 00:19:00.127Z armed agency-staffing-rollup-refresh 'by 5 0 * * 2 → -4 days -00:14:00' (disp-agency-staffing-rollup-refresh-1793405940, jobid 994, armed_for 00:21:00Z) at MemAvailable 445 / swap 485, 0 live, excluded {queued (group-donor-rollup-refresh), queued (treemap-individuals-global-refresh)}; tick 12297 00:21:00.148Z {live (agency-staffing-rollup-refresh), group busy: rollups (group-donor-rollup-refresh), group busy: rollups (treemap-individuals-global-refresh)}; agency complete 00:21:00.066 → 00:22:10.988Z mode full, 3 chunks, 136 agencies, 71 s, watermark → 2026-10-30 23:21:00.098Z; tick 12298 00:23:00.293Z reaped 'succeeded: CALL' unit_ms 70956. Tick 12299 00:23:01.022Z armed treemap-individuals-global-refresh 'by 0 14 * * 2 → -3 days -10:23:00' (jobid 995, armed_for 00:25:00Z) at 314 / 317, excluded {queued (group-donor-rollup-refresh)}; ticks 12300–12308 {group busy: rollups (group-donor-rollup-refresh), live (treemap-individuals-global-refresh)}; treemap running row 00:25:00.056Z resumed false, budget_seconds 5400; chunk_cursor 0 → 62 sampled every 60 s; complete 00:41:26.235Z, 986 s, slowest chunk 36 s, 3,071 rows; tick 12309 00:43:00.128Z reaped 'succeeded: CALL' unit_ms 986252. Tick 12310 00:43:00.382Z armed fe-crawl (priority 2) with excluded {queued (group-donor-rollup-refresh)}; tick 12311 00:45:00.277Z armed group-donor-rollup-refresh 'by 10 3 * * 3 → -2 days -21:35:00' (jobid 997, armed_for 00:47:00Z) at 309 / 353, excluded {live (fe-crawl)}; tick 12313 00:47:00.750Z {live (group-donor-rollup-refresh)} with no running row; group-donor complete 00:47:00.081 → 00:48:42.919Z, 581 cohorts, 47,208 donor_rows; tick 12314 00:49:00.130Z reaped 'succeeded: CALL' unit_ms 102883. Box (box_health_mem, 60 s): low 292 / 425 at 00:32:47Z, swap peak 493 at 00:40:56Z; 309 / 353 at 00:52Z. Every other prod contact read-only (db-query --prod, gh, vercel ls / inspect). No --call on prod.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1369",
+      "what": "the Tue 11-03 00:05Z slot: armed on the first admitted tick ≥ 00:05Z (MemAvailable ≥ 278 for cap 128), mode incremental (the watermark is now 10-30 23:21Z), complete, wall ≤ 60 s; the weekly refresh-derived-mvs at 00:47Z behind it in a different group",
+      "after": "2026-11-03T06:00Z"
+    },
+    {
+      "fix": "FIX-1368",
+      "what": "the Tue 11-03 14:00Z slot: armed on the first admitted tick ≥ 14:00Z, a fresh sweep (resumed false) complete ≤ 5400 s, or partial resumable with the chunk named; donor-party's 15:00Z slot queues behind it in group rollups (quote its group busy row) and still runs the same afternoon",
+      "after": "2026-11-03T18:00Z"
+    },
+    {
+      "fix": "FIX-1370",
+      "what": "the Wed 11-04 03:10Z slot: armed ≥ 03:10Z, complete, cohorts + donor_rows in the row; no cron firing after the park",
+      "after": "2026-11-04T06:00Z"
+    }
+  ]
+}
