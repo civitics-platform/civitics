@@ -1053,6 +1053,47 @@ whose cursor expires, must come back through the crawl.
   `scripts/fix1366-revert-move-dpr-vacuum.sql` (the rule back to `at`, gates
   `{}`, and the cron RE-ACTIVATED by name; pause first, as its header says).
 
+### A multi-row RETURN in one exclusion group runs as a chain (FIX-1368 / 1369 / 1370)
+
+Rows that share an `exclusion_group` never run together, so one push can
+return several of them. The tick arms them one at a time, by `(priority, ttd,
+job)`, and each waits for the previous one's reap. cc-256 returned three
+`rollups` rows in one class-P push at 2026-10-31 00:18:50Z. All three were
+DUE, and all three were terminal 30 min later:
+
+| row | rule | armed | ran | terminal |
+|---|---|---|---|---|
+| agency-staffing-rollup-refresh | `by 5 0 * * 2` | 00:19:00Z (ttd −4 d 00:14) | 00:21:00–00:22:10Z | complete, mode full, 136 agencies, 71 s |
+| treemap-individuals-global-refresh | `by 0 14 * * 2` | 00:23:01Z, 1 s after agency's reap | 00:25:00–00:41:26Z | complete, 64 chunks, 986 s, 3,071 rows |
+| group-donor-rollup-refresh | `by 10 3 * * 3` | 00:45:00Z, after fe-crawl (priority 2) took 00:43Z | 00:47:00–00:48:42Z | complete, 581 cohorts, 103 s |
+
+- **The `excluded` rows are the serialization receipt.** At the first arm
+  the other two read `queued (<job>)`. While a link runs, every tick reads
+  `live (<running>)` plus `group busy: rollups (<waiting>)` for each row still
+  waiting. Quote one per row.
+- **A unit that writes no running row is still live.** Neither
+  `refresh_agency_staffing_rollup` nor `run_group_donor_rollup_refresh`
+  writes a `running` row (they write only their terminal row). Step 5's
+  census reads the dispatcher's own state: every `armed` `dispatch_log` row
+  with no `reaped` / `missed` row is a unit (`20261029000000` :541-548,
+  :562-563), and so is a client backend whose query CALLs the row's routine
+  (:570-577). The group of every live unit is busy (:603-606). So "no running
+  row" is not "not live", and a `data_sync_log` read cannot tell you a unit
+  is idle: read `cron.job_run_details` for the `disp-<job>-<epoch>` one-shot,
+  or the tick's own `live (…)` entry.
+- **A higher-priority row in another group can cut in.** At 00:43Z the
+  treemap reap freed `rollups`, but fe-crawl (priority 2, group `fe-totals`)
+  was due and won the pick. group-donor read `queued` and armed on the next
+  tick beside it (1 live of `max_concurrent_units` 2).
+- **Box over the chain** (`box_health_mem`, 60 s samples): MemAvailable low
+  292 MB (00:32:47Z, mid-sweep), swap peak 493 MB. The 128-cap agency row needs
+  ≥ 278 MB at its arm; the 64-cap rows need ≥ 214.
+- **Reverts**, one per row, each the rule back to `at` and nothing else (the
+  hold note stays, the cron stays parked): `scripts/fix1368-revert-return-treemap-individuals-global-refresh.sql`,
+  `scripts/fix1369-revert-return-agency-staffing-rollup-refresh.sql`,
+  `scripts/fix1370-revert-return-group-donor-rollup-refresh.sql`. Pause first if
+  that row's one-shot is armed, as each header says.
+
 ### Upgrade Path
 
 | Trigger | Upgrade | Cost |
