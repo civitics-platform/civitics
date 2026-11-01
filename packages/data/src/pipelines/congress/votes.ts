@@ -59,6 +59,7 @@ import {
   type InsertFailure,
   type SkippedRoll,
 } from "./vote-bill-guard";
+import { looksLikeRoll, probeSessionRolls } from "./roll-probe";
 import { XMLParser } from "fast-xml-parser";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect } from "../../lib/heavy-rebuild";
@@ -411,10 +412,39 @@ const xmlParser = new XMLParser({
   isArray: (name) => ["recorded-vote", "member"].includes(name),
 });
 
-/** A Senate LIS roll's `<roll_call_vote>` root, or null when the XML has none. */
+const SENATE_ROLL_ROOT = "roll_call_vote";
+const HOUSE_ROLL_ROOT = "rollcall-vote";
+
+/**
+ * A body the parser should never see: no root element, or XML that throws.
+ * FIX-1324 — fast-xml-parser throws `TypeError … 'tagName'` on senate.gov's
+ * HTML page (an inline-script `<` before an unclosed quote), so the guard runs
+ * before the parse, and the parse cannot throw past it.
+ */
+function parseRollRoot(xmlText: string, rootTag: string): Record<string, unknown> | null {
+  if (!looksLikeRoll(xmlText, rootTag)) return null;
+  try {
+    const root = xmlParser.parse(xmlText)?.[rootTag];
+    return root && typeof root === "object" ? (root as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A Senate LIS roll's `<roll_call_vote>` root, or null when the body is not one. */
 export function parseSenateRoll(xmlText: string): Record<string, unknown> | null {
-  const root = xmlParser.parse(xmlText)?.["roll_call_vote"];
-  return root && typeof root === "object" ? (root as Record<string, unknown>) : null;
+  return parseRollRoot(xmlText, SENATE_ROLL_ROOT);
+}
+
+/** A House Clerk roll's metadata and vote data, or null when the body is not one. */
+export function parseHouseRoll(
+  xmlText: string,
+): { meta: Record<string, unknown>; voteData: Record<string, unknown> } | null {
+  const root = parseRollRoot(xmlText, HOUSE_ROLL_ROOT);
+  const meta = root?.["vote-metadata"];
+  const voteData = root?.["vote-data"];
+  if (!meta || typeof meta !== "object" || !voteData || typeof voteData !== "object") return null;
+  return { meta: meta as Record<string, unknown>, voteData: voteData as Record<string, unknown> };
 }
 
 /**
@@ -618,46 +648,25 @@ export async function runVotesPipeline(
     console.info(`  Pre-loaded ${houseExistingIds.size} existing House roll IDs`);
   }
 
-  // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data
+  // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data.
+  // FIX-1324: probeSessionRolls() walks the session and stops 3 misses past its
+  // last roll — the clerk answers a missing roll 200, never 404.
   for (const { session, year } of sessions) {
     console.info(`\n  House session ${session} (${year}) — collecting rolls...`);
 
-    for (let rollNum = 1; rollNum <= 500; rollNum++) {
-      const paddedRoll = String(rollNum).padStart(3, "0");
-      const url = `https://clerk.house.gov/evs/${year}/roll${paddedRoll}.xml`;
-      const rollCallId = `${year}-house-${paddedRoll}`;
-
+    await probeSessionRolls({
+      label: `House session ${session} (${year})`,
+      rootTag: HOUSE_ROLL_ROOT,
+      rollCallIdFor: (rollNum) => `${year}-house-${String(rollNum).padStart(3, "0")}`,
+      urlFor: (rollNum) => `https://clerk.house.gov/evs/${year}/roll${String(rollNum).padStart(3, "0")}.xml`,
+      stored: houseExistingIds,
+      fetchText,
+      parse: parseHouseRoll,
+      log: (line) => console.info(line),
+    }, ({ rollNum, rollCallId, url, parsed: { meta, voteData } }) => {
       try {
-        if (houseExistingIds.has(rollCallId)) {
-          continue;
-        }
-
-        console.info(`    Roll ${rollNum}: fetching...`);
-
-        let xmlText: string;
-        try {
-          xmlText = await fetchText(url);
-        } catch (fetchErr: unknown) {
-          const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-          if (msg.includes("HTTP 404")) {
-            console.info(`    Roll ${rollNum}: 404 — no more rolls for session ${session}`);
-            break;
-          }
-          console.error(`    Roll ${rollNum}: fetch error — ${msg}`);
-          continue;
-        }
-
-        const parsed = xmlParser.parse(xmlText);
-        const meta = parsed["rollcall-vote"]?.["vote-metadata"];
-        const voteData = parsed["rollcall-vote"]?.["vote-data"];
-
-        if (!meta || !voteData) {
-          console.error(`    Roll ${rollNum}: unexpected XML structure, skipping`);
-          continue;
-        }
-
-        const legisNum     = meta["legis-num"] ?? "";
-        const billRef      = parseHouseLegisNum(String(legisNum));
+        const legisNum     = String(meta["legis-num"] ?? "");
+        const billRef      = parseHouseLegisNum(legisNum);
         const actionDateStr = meta["action-date"] ?? "";
         const votedAt      = parseHouseDate(String(actionDateStr));
         const resultStr    = String(meta["vote-result"] ?? "");
@@ -701,7 +710,7 @@ export async function runVotesPipeline(
       } catch (err) {
         console.error(`    House roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
-    }
+    });
   }
 
   stampMintStatuses(houseBillArgs, houseRollBuffer);
@@ -817,46 +826,28 @@ export async function runVotesPipeline(
     console.info(`  Pre-loaded ${senateExistingIds.size} existing Senate roll IDs`);
   }
 
-  // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data
+  // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data.
+  // FIX-1324: the same walk as the House — senate.gov answered past the last
+  // roll with a 200 HTML page, and since 10-23 answers everything 403.
   for (const { session } of sessions) {
     console.info(`\n  Senate session ${session} — collecting rolls...`);
 
     const folderKey = `vote${CURRENT_CONGRESS}${session}`;
+    const padded = (rollNum: number) => String(rollNum).padStart(5, "0");
 
-    for (let rollNum = 1; rollNum <= 500; rollNum++) {
-      const paddedRoll = String(rollNum).padStart(5, "0");
-      const url =
+    await probeSessionRolls({
+      label: `Senate session ${session}`,
+      rootTag: SENATE_ROLL_ROOT,
+      rollCallIdFor: (rollNum) => `senate-${CURRENT_CONGRESS}-${session}-${padded(rollNum)}`,
+      urlFor: (rollNum) =>
         `https://www.senate.gov/legislative/LIS/roll_call_votes/${folderKey}/` +
-        `vote_${CURRENT_CONGRESS}_${session}_${paddedRoll}.xml`;
-      const rollCallId = `senate-${CURRENT_CONGRESS}-${session}-${paddedRoll}`;
-
+        `vote_${CURRENT_CONGRESS}_${session}_${padded(rollNum)}.xml`,
+      stored: senateExistingIds,
+      fetchText,
+      parse: parseSenateRoll,
+      log: (line) => console.info(line),
+    }, ({ rollNum, rollCallId, url, parsed: root }) => {
       try {
-        if (senateExistingIds.has(rollCallId)) {
-          continue;
-        }
-
-        console.info(`    Roll ${rollNum}: fetching...`);
-
-        let xmlText: string;
-        try {
-          xmlText = await fetchText(url);
-        } catch (fetchErr: unknown) {
-          const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-          if (msg.includes("HTTP 404")) {
-            console.info(`    Roll ${rollNum}: 404 — no more rolls for session ${session}`);
-            break;
-          }
-          console.error(`    Roll ${rollNum}: fetch error — ${msg}`);
-          continue;
-        }
-
-        const root = parseSenateRoll(xmlText);
-
-        if (!root) {
-          console.error(`    Roll ${rollNum}: unexpected XML structure, skipping`);
-          continue;
-        }
-
         const voteDateStr  = String(root["vote_date"] ?? "");
         const votedAt      = parseSenateDate(voteDateStr);
         const voteQuestion = String(root["question"] ?? "");
@@ -943,7 +934,7 @@ export async function runVotesPipeline(
       } catch (err) {
         console.error(`    Senate roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
-    }
+    });
   }
 
   stampMintStatuses(senateBillArgs, senateRollBuffer);
