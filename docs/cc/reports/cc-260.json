@@ -1,0 +1,67 @@
+{
+  "cc": "260",
+  "prompt": "cc-prompt-260-code-only-senate-roll-probe-cap-canonical-www-front-door-breadcrumb-backfill.md",
+  "started_at": "2026-10-31T23:58:42Z",
+  "finished_at": "2026-11-01T00:47:31Z",
+  "head_before": "5eecbeac",
+  "head_after": "a803b2b4",
+  "commits": [
+    {
+      "sha": "52b5389b",
+      "subject": "[skip vercel] docs(fixes): cc-260 files FIX-1372 — senate.gov answers every Senate roll request 403 (Akamai) since the 10-23 nightly"
+    },
+    {
+      "sha": "8e6b685b",
+      "subject": "fix(data): FIX-1324 — the House and Senate roll walks stop 3 misses past a session's last roll, and say so in one line"
+    },
+    {
+      "sha": "b8010cc0",
+      "subject": "feat(app): FIX-1306 — every entity detail page declares alternates.canonical on one www origin; metadataBase and the sitemap read the same constant"
+    },
+    {
+      "sha": "99005ad1",
+      "subject": "feat(app): FIX-1348 — the front-door-watch breadcrumb carries `backfill` for the ticks a wedge swallowed (option b)"
+    },
+    {
+      "sha": "9f870228",
+      "subject": "[skip vercel] chore(fixes): record FIX-1348 landed on prod — the first two front_door_watch ticks after dpl_CvsPpNGcFehXei3TwFQheSU2Yx1Y (Ready by 00:28:56Z) carry metadata.backfill, null on a quiet quarter-hour"
+    },
+    {
+      "sha": "a803b2b4",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-260's closes — FIX-1324, FIX-1306, FIX-1348 (and cc-257's FIX-1371, on trunk unsynced)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1324",
+    "FIX-1306",
+    "FIX-1348"
+  ],
+  "fixes_filed": [
+    "FIX-1372"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none (DB). Vercel deploy dpl_CvsPpNGcFehXei3TwFQheSU2Yx1Y Ready by 2026-11-01T00:28:56Z (vercel inspect --wait). UNINTENDED: `vercel curl` generated a Deployment Protection bypass token on project prj_RY4rfiN7pDcLEW9REPDuJxZg4MWf at ~00:30Z (left in place for Craig). The canonical curl: not readable from here (Cloudflare challenge; origin-auth 403). The breadcrumb ticks: 00:30:28.368Z and 00:45:28.234Z carry metadata.backfill (null).",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1324 (a), the vote-menu path: not built. STOP row 2 fired: vote_menu_119_{1,2}.xml answers 403 (Akamai) from every client this run had: Node fetch and curl with no UA, a Chrome UA and a bot UA, and headless Chrome. Built (b)+(c) for both chambers.",
+    "FIX-1306 prod receipt: not read. www.civitics.com and the apex answer curl and headless Chrome with the Cloudflare Under Attack challenge (cf-mitigated: challenge). The deployment URL sits behind Vercel Authentication, and `vercel curl` through it gets origin-auth's 403 {\\\"error\\\":\\\"origin\\\"}. The probe-skip secret exists only in GHA and the WAF rule. The receipt is owed (below).",
+    "env change is Craig's: NEXT_PUBLIC_SITE_URL is SET in Vercel Production (type Secret, value Hidden — `vercel env ls` cannot show it), so the new www default does not apply on prod. If it names the apex, set it to https://www.civitics.com (or remove it) in Vercel Production and redeploy.",
+    "Permission/side effect, not worked around: `vercel curl` (tried for the FIX-1306 read) generated a Deployment Protection bypass token on the Vercel project before fetching. It reached nothing (origin-auth 403). Revoking it is a dashboard action, so it is Craig's: Project Settings → Deployment Protection → Protection Bypass for Automation.",
+    "/jurisdictions and /institutions list pages: no canonical added. Their generateMetadata varies the title by ?type/?q, so one canonical would merge distinct listings. /proposals' default view got one, because the page already computes isDefaultView.",
+    "project: the prompt names `hygiene`, but there is no docs/cc/projects/hygiene.md, so the key is omitted (the /cc rule)."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1324",
+      "what": "the next nightly's fec-phase log: one summary line per House and Senate session, zero tagName lines, no per-roll lines; House stops 3 past its last roll (not 500); Senate reads HTTP 403 ×3 while FIX-1372 holds",
+      "after": "2026-11-02T00:30Z"
+    },
+    {
+      "fix": "FIX-1306",
+      "what": "a prod page's <link rel=canonical> read past Cloudflare (browser view-source of www.civitics.com/officials/<id>, or a GHA curl carrying the x-civitics-probe header): the www URL of the resolved path, and the sitemap's <loc>s; says which host NEXT_PUBLIC_SITE_URL gives",
+      "after": "2026-11-01T00:29Z"
+    }
+  ]
+}
