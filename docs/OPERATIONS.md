@@ -1335,6 +1335,28 @@ The route's JSON and its `data_sync_log` row carry
 `restart: {action, reason, mode, downForMs, down_ticks, state_store, health,
 issued, state_write, emailed}`. The row lands on DB-reachable ticks only.
 
+**The gap is accepted, and the next row says what it swallowed (FIX-1348,
+option b).** A wedge that hides Postgres swallows the breadcrumb: on 10-25 the
+rows stop at 11:15:28 and resume at 13:45:28, nine ticks, the seven DOWN ticks
+among them. Upstash was at its request cap the same hours (`state_store:
+unreachable: … max requests limit exceeded`), so no record of those ticks
+existed anywhere. Since cc-260 each tick reads the newest `front_door_watch`
+row's `started_at` before its INSERT. The first tick that can write then
+carries `metadata.backfill = {missed_ticks, from, to, buckets, state, reason,
+mode, state_store}`. `from`/`to` bound the gap. `buckets` are the four closed
+buckets that tick already holds (the 10-25 13:45 row held 12:45, 13:00 and 13:15
+RED), so a gap longer than an hour is covered for its last hour only. The key is
+`null` on a tick with no gap, and `{error}` when the newest-row read failed, in
+which case the INSERT still runs. During the outage the alert emails are the
+live record. Nothing off-box survives an Upstash cap. **FIX-1348 (a)**, an
+off-box breadcrumb outside that cap, stays filed and is not built.
+
+```sql
+SELECT started_at, metadata->'backfill' FROM data_sync_log
+WHERE pipeline = 'front_door_watch' AND metadata->'backfill' <> 'null'::jsonb
+ORDER BY started_at DESC LIMIT 20;
+```
+
 **Known risks, stated and accepted:**
 
 - A restart cannot read the FIX-950 interlock (`prod_session_state()`), because

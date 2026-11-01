@@ -107,11 +107,16 @@ import {
   type ProjectHealth,
   type RestartStateRead,
 } from "@civitics/db";
+import type { Json } from "@civitics/db";
 import { sendEmail } from "@/lib/email";
+import { landBreadcrumb } from "@/lib/front-door-breadcrumb";
 
 const PROBE_ATTEMPTS = 3;
 const PROBE_TIMEOUT_MS = 5_000;
 const LOGS_TIMEOUT_MS = 10_000;
+// FIX-1348: the newest-row read before the breadcrumb INSERT. It runs after the
+// alert, so this bounds only how long a dark Postgres can delay the INSERT.
+const BREADCRUMB_READ_TIMEOUT_MS = 5_000;
 
 /**
  * Direct liveness probe against the REST front door.
@@ -367,30 +372,58 @@ export async function GET(request: NextRequest) {
   // registry can see the job (paired with a rollup_watch_overrides row
   // declaring the 0.25 h cadence, since no pg_cron schedule can express it).
   // If Postgres is NOT reachable — the very case this route exists for — the
-  // catch swallows it and the alert has already gone out.
+  // catch swallows it and the alert has already gone out. FIX-1348: the first
+  // tick that CAN write carries `backfill` for the ticks that could not
+  // (src/lib/front-door-breadcrumb.ts).
   try {
     const { createAdminClient, noStoreFetch } = await import("@civitics/db");
-    await createAdminClient({ fetch: noStoreFetch })
-      .from("data_sync_log")
-      .insert({
-        pipeline: "front_door_watch",
-        started_at: new Date(nowMs).toISOString(),
-        completed_at: new Date().toISOString(),
-        status: verdict.state === "down" ? "partial" : "complete",
-        // A blind tick still ran, so it stays "complete": the rollup registry
-        // counts only complete rows, and a watch that ran must not read as a
-        // watch that stopped. The canary reads the state, report-only (FIX-1219).
-        metadata: {
-          source: "vercel_cron",
-          state: verdict.state,
-          reason: verdict.reason,
-          logs_api: logsApi,
-          probe_answered: probe.answered,
-          emailed,
-          buckets: body.buckets,
-          restart: body.restart,
+    const db = createAdminClient({ fetch: noStoreFetch });
+    await landBreadcrumb(
+      {
+        newestStartedAt: async () => {
+          const { data, error } = await db
+            .from("data_sync_log")
+            .select("started_at")
+            .eq("pipeline", "front_door_watch")
+            .order("started_at", { ascending: false })
+            .limit(1)
+            .abortSignal(AbortSignal.timeout(BREADCRUMB_READ_TIMEOUT_MS))
+            .maybeSingle();
+          if (error) throw new Error(error.message);
+          return data?.started_at ?? null;
         },
-      });
+        insert: async (metadata) => {
+          await db.from("data_sync_log").insert({
+            pipeline: "front_door_watch",
+            started_at: new Date(nowMs).toISOString(),
+            completed_at: new Date().toISOString(),
+            status: verdict.state === "down" ? "partial" : "complete",
+            // A blind tick still ran, so it stays "complete": the rollup registry
+            // counts only complete rows, and a watch that ran must not read as a
+            // watch that stopped. The canary reads the state, report-only (FIX-1219).
+            metadata: metadata as Json,
+          });
+        },
+      },
+      nowMs,
+      {
+        source: "vercel_cron",
+        state: verdict.state,
+        reason: verdict.reason,
+        logs_api: logsApi,
+        probe_answered: probe.answered,
+        emailed,
+        buckets: body.buckets,
+        restart: body.restart,
+      },
+      {
+        buckets: body.buckets,
+        state: verdict.state,
+        reason: verdict.reason,
+        mode,
+        state_store: body.restart.state_store,
+      },
+    );
   } catch {
     // Best-effort by design. See the comment above.
   }
