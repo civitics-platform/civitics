@@ -9,6 +9,7 @@ import { Footer } from "./components/Footer";
 import { FooterGate } from "./components/FooterGate";
 import { NavBar } from "./components/NavBar";
 import { WebVitalsReporter } from "./components/WebVitalsReporter";
+import { SITE_ORIGIN } from "@/lib/canonical";
 import "./globals.css";
 
 // Self-hosted, preloaded fonts. `display: swap` shows fallback text immediately
@@ -39,7 +40,8 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   // metadataBase resolves the static app/opengraph-image.png and every dynamic
   // opengraph-image route to an absolute URL for share cards (FIX-714).
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://civitics.com"),
+  // FIX-1306: the same origin the sitemap and every canonical use.
+  metadataBase: new URL(SITE_ORIGIN),
   title: {
     default: "Civitics",
     template: "%s | Civitics",

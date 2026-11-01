@@ -29,6 +29,7 @@ import { QASection } from "../../components/QASection";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
+import { canonicalForEntity } from "@/lib/canonical";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
@@ -234,7 +235,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { data } = await withDbTimeout(
     supabase
       .from("institutions")
-      .select("name, acronym")
+      .select("id, name, acronym")
       .eq("id", id)
       .maybeSingle(),
     3000,
@@ -243,7 +244,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
   if (!data) return { title: "Institution" };
   const label = data.acronym ? `${data.acronym} — ${data.name}` : data.name;
-  return { title: label };
+  // FIX-1306: from the loaded row's id, not the request param. /agencies/<uuid>
+  // 308s here, so this is that id's canonical too.
+  // (institutions is a view, so its id types as nullable.)
+  return { title: label, ...(data.id ? canonicalForEntity("institution", data.id) : {}) };
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────

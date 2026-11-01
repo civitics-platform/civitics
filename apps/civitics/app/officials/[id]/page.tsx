@@ -6,6 +6,7 @@ import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { Icon } from "@civitics/graph";
 import { fetchAllRows } from "@/lib/paginate";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { canonicalForEntity, entityPath, SITE_ORIGIN } from "@/lib/canonical";
 // FIX-205: defer the D3 graph chunk off the initial /officials/[id] bundle.
 // Most visitors land on the profile and never expand the graph; even when
 // they do, the chunk loads on demand.
@@ -93,6 +94,8 @@ export async function generateMetadata(
       description,
       ...(data.photo_url ? { images: [{ url: data.photo_url }] } : {}),
     },
+    // FIX-1306: from the loaded row's id, not params.id.
+    ...canonicalForEntity("official", data.id),
     // FIX-683: a recordless official (no votes / donations / connections) is an
     // empty shell — noindex,nofollow so crawlers stop cold-reading the heavy
     // get_official_page RPC on it. Officials with any record (and any cache
@@ -885,13 +888,13 @@ export default async function OfficialProfilePage({
   const recentVotes = (votesRes.data ?? []) as VoteRow[];
 
   // ── JSON-LD structured data (schema.org/Person) ───────────────────────────
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://civitics.com";
   const officialJsonLd = {
     "@context": "https://schema.org",
     "@type": "Person",
     name: official.full_name,
     jobTitle: official.role_title,
-    url: `${baseUrl}/officials/${params.id}`,
+    // FIX-1306: the same URL as the canonical.
+    url: `${SITE_ORIGIN}${entityPath("official", official.id)}`,
     ...(official.photo_url ? { image: official.photo_url } : {}),
     ...(official.email ? { email: official.email } : {}),
     ...(official.website_url ? { sameAs: official.website_url } : {}),

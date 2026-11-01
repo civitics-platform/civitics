@@ -13,6 +13,7 @@ import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { getSlowMode } from "@/lib/slow-mode";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { canonicalForEntity } from "@/lib/canonical";
 import { INITIATIVE_STAGE_KINDS, type InitiativeStage } from "@civitics/db";
 import { QualityGate } from "./components/QualityGate";
 import { SignaturePanel } from "./components/SignaturePanel";
@@ -36,7 +37,7 @@ export async function generateMetadata(
   const { data: proposal } = await withDbTimeout(
     supabase
       .from("proposals")
-      .select("title, summary_plain, initiative_details!initiative_details_proposal_id_fkey(stage, scope)")
+      .select("id, title, summary_plain, initiative_details!initiative_details_proposal_id_fkey(stage, scope)")
       .eq("id", params.id)
       .eq("type", "initiative")
       .maybeSingle(),
@@ -62,6 +63,8 @@ export async function generateMetadata(
       title: `${proposal.title} | Civitics`,
       description,
     },
+    // FIX-1306: from the loaded row's id, not params.id.
+    ...canonicalForEntity("initiative", proposal.id),
   };
 }
 

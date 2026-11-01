@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createPublicClient } from "@civitics/db";
+import { SITE_ORIGIN } from "@/lib/canonical";
 
 // FIX-513: give crawlers a canonical, bounded walk of the site instead of letting
 // them spelunk the faceted /proposals?... URL space (ClaudeBot probed /sitemap.xml,
@@ -11,7 +12,8 @@ import { createPublicClient } from "@civitics/db";
 // under the 10,000-URL ceiling.
 export const revalidate = 86400; // 24h
 
-const BASE = (process.env["NEXT_PUBLIC_SITE_URL"] ?? "https://civitics.com").replace(/\/+$/, "");
+// FIX-1306: the one origin metadataBase and every canonical use (www by default).
+const BASE = SITE_ORIGIN;
 
 // PostgREST caps any single SELECT at max_rows = 1000 (the publishable/anon client
 // goes through PostgREST), so 1000 is the per-REQUEST ceiling — a higher .limit()

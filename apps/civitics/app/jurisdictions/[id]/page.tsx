@@ -39,6 +39,7 @@ import { QASection } from "../../components/QASection";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { lookupJurisdictionCache } from "@/lib/jurisdiction-cache";
+import { canonicalForEntity } from "@/lib/canonical";
 
 export const revalidate = 300;
 
@@ -112,8 +113,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const supabase = anonClient();
   const [{ data }, lookup] = await Promise.all([
     withDbTimeout(
-      supabase.from("jurisdictions").select("name, type").eq("id", id).maybeSingle() as PromiseLike<{
-        data: { name: string; type: string } | null;
+      supabase.from("jurisdictions").select("id, name, type").eq("id", id).maybeSingle() as PromiseLike<{
+        data: { id: string; name: string; type: string } | null;
       }>,
       3000,
       "jurisdiction:metadata",
@@ -123,6 +124,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!data) return { title: "Jurisdiction" };
   return {
     title: data.name,
+    // FIX-1306: from the loaded row's id, not the request param.
+    ...canonicalForEntity("jurisdiction", data.id),
     // FIX-683: an empty county/district leaf (not in jurisdiction_page_cache) is
     // noindex,nofollow — the sitemap already drops it; this deindexes the ~10k
     // shells already crawled. Content jurisdictions (isMember true) and any cache

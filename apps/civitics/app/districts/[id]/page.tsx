@@ -8,6 +8,7 @@ import { DeferredDistrictMap } from "../components/DeferredDistrictMap";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { lookupJurisdictionCache } from "@/lib/jurisdiction-cache";
+import { canonicalForEntity } from "@/lib/canonical";
 
 // FIX-645: this page reads only public (RLS USING(true)) data and emits no
 // per-user content, so force-dynamic was pure overhead — every hit fully
@@ -39,6 +40,7 @@ interface DistrictRow {
 interface ParentRow { name: string | null }
 
 interface DistrictMetaRow {
+  id:       string;
   name:     string | null;
   metadata: Record<string, unknown> | null;
   parent:   ParentRow | null;
@@ -128,7 +130,7 @@ async function loadDistrictMeta(id: string): Promise<DistrictMetaRow | null> {
   const { data } = await withDbTimeout(
     createPublicClient()
       .from("jurisdictions")
-      .select("name, metadata, parent:parent_id(name)")
+      .select("id, name, metadata, parent:parent_id(name)")
       .eq("id", id)
       .eq("type", "district")
       .maybeSingle<DistrictMetaRow>(),
@@ -154,6 +156,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return {
     title,
     description: `Boundary, representatives, and election info for ${title} (${chamber} chamber).`,
+    // FIX-1306: from the loaded row's id, not the request param.
+    ...canonicalForEntity("district", data.id),
     // Empty-leaf districts (no officials/proposals/etc. → not in the cache) are
     // noindex,nofollow; content-bearing ones (and any cache hiccup → fail open)
     // stay indexed.

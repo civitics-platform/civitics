@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadCaseFile } from "../_lib/load";
+import { canonicalForEntity } from "@/lib/canonical";
 import {
   citationTier,
   relationshipKindLabel,
@@ -38,6 +39,8 @@ export async function generateMetadata({
   return {
     title: `${investigation.title} | Investigations`,
     description: investigation.question ?? investigation.scope_note ?? undefined,
+    // FIX-1306: from the loaded row's id, not params.id.
+    ...canonicalForEntity("investigation", investigation.id),
   };
 }
 

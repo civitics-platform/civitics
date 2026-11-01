@@ -15,6 +15,7 @@ import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip"
 import { getSlowMode } from "@/lib/slow-mode";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
+import { canonicalForEntity, entityPath, SITE_ORIGIN } from "@/lib/canonical";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
@@ -50,6 +51,8 @@ export async function generateMetadata(
       title: `${data.title} | Civitics`,
       description,
     },
+    // FIX-1306: from the loaded row's id, not params.id.
+    ...canonicalForEntity("proposal", data.id),
   };
 }
 
@@ -335,7 +338,6 @@ export default async function ProposalDetailPage({
   }, {});
 
   // ── JSON-LD structured data (schema.org/Legislation) ─────────────────────
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://civitics.com";
   const proposalJsonLd = {
     "@context": "https://schema.org",
     "@type": "Legislation",
@@ -343,7 +345,8 @@ export default async function ProposalDetailPage({
     description: p.summary_plain
       ? p.summary_plain.slice(0, 300)
       : `${typeLabel} · ${statusBadge.label}`,
-    url: `${baseUrl}/proposals/${p.id}`,
+    // FIX-1306: the same URL as the canonical.
+    url: `${SITE_ORIGIN}${entityPath("proposal", p.id)}`,
     legislationType: typeLabel,
     ...(p.introduced_at ? { datePublished: p.introduced_at } : {}),
     ...(p.comment_period_end ? { expires: p.comment_period_end } : {}),

@@ -9,6 +9,7 @@ import {
 } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
+import { canonicalForEntity, entityPath, SITE_ORIGIN } from "@/lib/canonical";
 import {
   foldInboundRollup,
   inboundStats,
@@ -233,6 +234,8 @@ export async function generateMetadata(
       title: `${entity.display_name} | Civitics`,
       description,
     },
+    // FIX-1306: from the loaded entity's id, not params.id.
+    ...canonicalForEntity("donor", entity.id),
   };
 }
 
@@ -547,12 +550,12 @@ export default async function DonorProfilePage({
   const typeBadgeCls = ENTITY_TYPE_BADGE[entity.entity_type] ?? "bg-paper-2 text-ink-soft";
 
   const isIndividual = entity.entity_type === "individual";
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://civitics.com";
   const donorJsonLd = {
     "@context": "https://schema.org",
     "@type": isIndividual ? "Person" : "Organization",
     name: entity.display_name,
-    url: `${baseUrl}/donors/${entity.id}`,
+    // FIX-1306: the same URL as the canonical.
+    url: `${SITE_ORIGIN}${entityPath("donor", entity.id)}`,
     description: `${typeLabel} · ${formatMoney(entity.total_donated_cents)} donated`,
   };
 

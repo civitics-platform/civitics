@@ -15,6 +15,7 @@ import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { fetchChunkedByIds } from "@/lib/paginate";
 import { meetingsEnabled } from "@/lib/meetings-flag";
+import { canonicalForEntity } from "@/lib/canonical";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
 export const revalidate = 300;
@@ -106,16 +107,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { data } = await withDbTimeout(
     supabase
       .from("meetings")
-      .select("title, meeting_type, scheduled_at")
+      .select("id, title, meeting_type, scheduled_at")
       .eq("id", id)
       .maybeSingle(),
     3000,
     "meetings:metadata"
   );
   if (!data) return { title: "Meeting" };
-  const m = data as { title: string | null; meeting_type: string; scheduled_at: string };
+  const m = data as { id: string; title: string | null; meeting_type: string; scheduled_at: string };
   const t = m.title ?? `${typeLabel(m.meeting_type)} meeting · ${formatDateTime(m.scheduled_at)}`;
-  return { title: t };
+  // FIX-1306: from the loaded row's id, not the request param.
+  return { title: t, ...canonicalForEntity("meeting", m.id) };
 }
 
 type AgendaItem = {

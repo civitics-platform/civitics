@@ -8,6 +8,7 @@ import type { Metadata } from "next";
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
+import { canonicalFor } from "@/lib/canonical";
 import { ProposalCard, type ProposalCardData } from "./components/ProposalCard";
 import { FeaturedSection } from "./components/FeaturedSection";
 import { AGENCY_FULL_NAMES } from "./components/agencyNames";
@@ -121,7 +122,10 @@ export async function generateMetadata({
     // and appends it (FIX-1087; "· Civitics" here rendered "… · Civitics | Civitics").
     title: "Proposals",
     description: "Bills, regulations, and rules open for public comment.",
-    ...(isDefaultView ? {} : { robots: { index: false, follow: true } }),
+    // FIX-1306: the default view canonicalises to itself; a filtered view is
+    // noindex and names no canonical (noindex + a canonical elsewhere is a mixed
+    // signal).
+    ...(isDefaultView ? canonicalFor("/proposals") : { robots: { index: false, follow: true } }),
   };
 }
 
