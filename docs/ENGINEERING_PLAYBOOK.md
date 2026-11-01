@@ -835,6 +835,12 @@ identifier is recorded, so `GITHUB_RUN_ID` cannot be joined after the fact.
 for workflow work; liveness comes from `pg_stat_activity`, never a status column.
 *FIX-944, FIX-971 (open) · cron audit §6b*
 
+**Except a body that catches its own cancel.** `refresh_contract_flow_rollups()`
+handles `query_canceled`, closes its row `failed` with `canceled true`, and
+RETURNs, so `cron.job_run_details` and the dispatcher's reap read `succeeded`
+for a run the budget killed. For such a body the outcome is its terminal
+`data_sync_log` row. *FIX-1371 · cc-257*
+
 **Addendum — liveness, outcome and progress are THREE questions with three
 sources.** The rule above separates the first two. 2026-08-08 established the
 third as independent of both: jobid 24 run 195 read `failed` in

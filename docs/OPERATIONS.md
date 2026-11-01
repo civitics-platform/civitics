@@ -1094,6 +1094,57 @@ DUE, and all three were terminal 30 min later:
   `scripts/fix1370-revert-return-group-donor-rollup-refresh.sql`. Pause first if
   that row's one-shot is armed, as each header says.
 
+### An atomic unit under a `by` row: what a budget cancel does, and the ladder (FIX-1371)
+
+cc-257 returned the last parked weekly, `contract-flow-rollups-refresh`, as
+`by 0 14 * * 4` (group `mvs`, cap 64, budget 9000). Its body,
+`refresh_contract_flow_rollups()` (`c699dc7d…`, FIX-1295 M3), is ATOMIC: a
+`running` row COMMITted first, then ONE sub-block that rebuilds
+`contract_recipient_rollup` and `contract_agency_sector_rollup` and flips
+`contract_flow_rollups_state`. The first dispatched run armed 2026-11-01
+00:19:00Z (ttd −2 d 10:19), ran 00:21:00–01:07:32Z and closed `complete`,
+500 / 1,201 rows, in 2,791.6 s. That is 1.47× the 256MB era's 1,904 s, and
+fe-crawl co-ran 00:43–00:49Z. MemAvailable low was 242 MB, swap peak 547 MB.
+It reaped `succeeded: CALL`, 2,791,654 ms.
+
+- **A budget cancel loses the run, never the data.** The one-shot's
+  `cron_job_budget` row (9000 s) and the `*/2` watchdog cancel the backend;
+  the sub-block's `EXCEPTION WHEN query_canceled` rolls both tables back as
+  they were and closes the running row `failed`, with `canceled true`,
+  `stage_in_flight` and `elapsed_seconds`.
+- **The body swallows the cancel, so the outcome is the `data_sync_log` row.**
+  After the cancel the procedure RETURNs normally: `cron.job_run_details` reads
+  `succeeded` and so does the reap (`succeeded: CALL unit_ms …`). Only an
+  ERROR re-RAISEs and reaps `failed: …`. Read the terminal `data_sync_log` row,
+  not the reap text, to know how the run ended.
+- **The I6 ladder re-arms it anyway.** For a row with a pipeline, every
+  `reaped` row armed after the pipeline's last `complete|partial` counts,
+  whatever its text. A DUE, unwindowed `by` row that did not complete re-arms
+  at reap + `rearm_cooldown_seconds` (1800 s), then + 3600 s, + 7200 s … capped
+  at 24 h. Each attempt is a full scan of the contract FR rows. The tick reads
+  `cooldown: <job> (n non-advancing reap(s), last '<reap text>' at …; re-arm
+  at …)`. `dispatcher-r10` seeds this on the clone.
+- **In a supervised session the operator is the brake.** A `failed` row means
+  STOP: run `scripts/fix1371-revert-return-contract-flow-rollups-refresh.sql`
+  through `db-query --prod --call --yes-i-mean-prod --file` (pause first if
+  the one-shot is armed, as its header says). There is no second attempt that
+  night. Unattended, the ladder is the net. `job_registry.by_window_minutes`
+  is the one-UPDATE dial that bounds the retries to a window after the slot.
+  It is NOT written: it is a decision for after a Thursday that misbehaves,
+  and a window lapses the slot when the box is busy all through it (rule 391).
+- **The in-body START gate is redundant under the tick.**
+  `box_backoff_gate('contract-flow-rollups-refresh', 1800)` runs before the
+  advisory lock. Under a dispatched one-shot the tick has already admitted the
+  box (`box_is_saturated` plus the memory rungs), so the gate returns `clear`
+  at once and the running row carries no `gate` key (none on the first
+dispatched run). A wait would sit
+  inside the budget (1,800 + the 5,891 s max = 7,691 < 9,000). Removing it is
+  a body change, for the s7 chunking prompt (`docs/cc/projects/forker.md` s7,
+  dispatcher.md s14).
+- **Progress has no cursor.** The stage is a plpgsql variable, so the only
+  live view is `pg_stat_activity` for the CALL (`IO/DataFileRead` /
+  `DataFilePrefetch` on the FR scan) and `box_health_mem`.
+
 ### Upgrade Path
 
 | Trigger | Upgrade | Cost |

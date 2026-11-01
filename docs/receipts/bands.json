@@ -52,7 +52,7 @@
   "contract-flow-rollups-refresh": {
     "lo_s": 0,
     "hi_s": 8839,
-    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max 5,892.2 s (09-17, before FIX-1194's box gate; the other four firings 1,889.5-1,920.1 s); ceil(1.5 × 5892.2) = 8839. LOOSE: a 1.5x regression of the typical 1,904 s (2,856 s) reads in-band. Re-base once 09-17 leaves the 30-d window (after 10-17) — the formula then gives ceil(1.5 × 1920.1) = 2881. Receipt for FIX-1295 M3."
+    "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. Census §1.1 max 5,892.2 s (09-17, before FIX-1194's box gate; the other four firings 1,889.5-1,920.1 s); ceil(1.5 × 5892.2) = 8839. LOOSE: a 1.5x regression of the typical 1,904 s (2,856 s) reads in-band. Re-base once 09-17 leaves the 30-d window (after 10-17) — the formula then gives ceil(1.5 × 1920.1) = 2881. Receipt for FIX-1295 M3. cc-257 (FIX-1371): the first dispatched run, and the first of the 64MB + parallel 0 body (M3), 2026-11-01 00:21:00-01:07:32Z complete in 2,791.6 s, in-band; 1.47× the 256MB era's 1,904 s, fe-crawl co-running 6 min. NOT re-based on one point: the old era's 2881 would read this run out-of-band, and ceil(1.5 × 2791.6) = 4188 is one wall at a new work_mem. Re-base when three dispatched walls exist (11-01, Thu 11-05, Thu 11-12)."
   },
 
   "group-donor-rollup-refresh": {

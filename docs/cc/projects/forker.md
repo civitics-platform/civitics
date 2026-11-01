@@ -56,7 +56,12 @@ the threshold is designed after seven banked days.
 
 **Contract-flow chunking (s7)** is its own design. P1-A gave that procedure a
 `running` row and a cancel handler, but its two rebuilds are still one statement
-each, so a cancel still costs the whole run.
+each, so a cancel still costs the whole run. cc-257 read 6 (prod, 2026-10-31):
+both statements scan every `relationship_type = 'contract'` FR row in a heap
+of 672,581 pages (5,255 MB of 13 GB, 15.66 M reltuples; the FIX-1118
+contract + grant index 4.99 M) to write 500 + 1,146 rows (264 / 352 kB). The
+walls: 1,848–1,949 s typical, 5,891 s on 09-17, and 2,791.6 s for the first
+dispatched run of the 64MB body (FIX-1371, 2026-11-01), 1.47× the 256MB era.
 
 **Auto-restart (s11, FIX-1285 → FIX-1286)** bounds the wedge rather than
 preventing it. Three starved boxes (08-31, 09-22, 10-06) left the front door at
