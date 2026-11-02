@@ -1,0 +1,60 @@
+{
+  "cc": "261",
+  "prompt": "cc-prompt-261-code-only-registry-snapshot-in-receipts-memory-md-micro-docs-hygiene-bundle-bands-census.md",
+  "started_at": "2026-11-02T01:47:06Z",
+  "finished_at": "2026-11-02T02:12:00Z",
+  "head_before": "b7494cb3",
+  "head_after": "8ceeef4a",
+  "commits": [
+    {
+      "sha": "03655b39",
+      "subject": "[skip vercel] chore(fixes): file FIX-1373 — the cc-261 hygiene bundle (Pro Small → Micro, the FIX-1133 banners, the 3 h ceiling, claimProdSession fails closed, db-query tests in CI, the archive path, the unbanded dispatched jobs)"
+    },
+    {
+      "sha": "cfb5eb04",
+      "subject": "feat(registry): FIX-1325 — the receipts JSON carries a live job_registry snapshot and check:job-registry compares the seed fences with it: a RETURN/MOVE prints RETURNED, a migration-made change prints UPDATED with its file, unexplained live drift is red (cc-261)"
+    },
+    {
+      "sha": "9723a1d7",
+      "subject": "[skip vercel] chore(memory): FIX-1344 — the Claude Code auto-memory MEMORY.md rewritten K-only per cc-245 §4: 14,726 → 5,562 B, 128 → 50 lines, 119 → 39 entries; the two memories that contradicted the repo rewritten first (cc-261)"
+    },
+    {
+      "sha": "00523f32",
+      "subject": "fix(hygiene): FIX-1373 items a–f — Pro Small → Micro, the VACUUM-incident cites → FIX-1133, the pg_cron ceiling 6 h → the 3 h postgres-role value, claimProdSession() fails closed on a lock taken first, the db-query suite in tests.yml, fixes-archive's Windows display path (cc-261; the bands item is owed, so FIX-1373 stays open)"
+    },
+    {
+      "sha": "8ceeef4a",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-261's closes — FIX-1325, FIX-1344 (local-only); FIX-1373 stays open (the bands census is owed)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1325",
+    "FIX-1344"
+  ],
+  "fixes_filed": [
+    "FIX-1373"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none. No prod contact of any kind: the read-only db-query --prod bands census was SKIPPED (the run started 2026-11-02T01:47Z, past the prompt's Sun 21:00Z cutoff). The receipts run and every SQL read were LOCAL (127.0.0.1:54322).",
+  "ci": "green",
+  "stopped_items": [
+    "Item 4 — the bands census, the bands.json keys and Item 5's README 'no band yet' line. The STOP row 'read 4 before 21:00Z Sun' fired: /cc started at 2026-11-02T01:47:06Z, 4 h 47 min past the cutoff. Skipped and owed. FIX-1373's bullet names the bands, so FIX-1373 is left OPEN and its hygiene commit carries no Fixes: trailer.",
+    "Item 1(c) — the RETURNED list from the first REAL snapshot. The 11-02 prod receipts (b7494cb3, 9d52c1a6) were written before this code landed, so no committed file carries job_registry. The list below is the real tree checked against the LOCAL clone's snapshot. The prod list is owed.",
+    "Item 1(b) — two red rules built narrower than the prompt wrote them (see 'What contradicted the prompt'). (1) A non-rule column that differs is red only when no migration UPDATE explains it; as written, 40 rows would be red on day one. (2) A fence with no snapshot row is a WARN, not red; as written, every PR that seeds a job would fail CI until prod's next receipts."
+  ],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": [
+    {
+      "fix": "FIX-1325",
+      "what": "the first prod receipts JSON carrying job_registry (the Mon 11-02 21:00Z nightly's receipts job or its late fallback, file 2026-11-03.json): check:job-registry prints RETURNED for the returned/moved rows (21 on the clone, nightly included) and nothing red; a red line names prod drift no migration explains",
+      "after": "2026-11-03T01:00Z"
+    },
+    {
+      "fix": "FIX-1373",
+      "what": "the bands census skipped by the 21:00Z STOP: read-only db-query --prod over dispatch_log (decision = 'reaped' AND reason LIKE 'succeeded%' since 10-14) for every dispatched job_registry row without a bands.json key; bands.json keys at [0, ceil(1.5 × max)] for ≥ 3 walls (crawls banded per unit); the rest on a README 'no band yet' line with counts; then FIX-1373 closes",
+      "after": "2026-11-02T08:00Z"
+    }
+  ]
+}
