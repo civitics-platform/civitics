@@ -1147,6 +1147,71 @@ dispatched run). A wait would sit
   live view is `pg_stat_activity` for the CALL (`IO/DataFileRead` /
   `DataFilePrefetch` on the FR scan) and `box_health_mem`.
 
+### The monthly sweeps under `by` rows: a swallowed cancel closes `partial`, an ADVANCING row (FIX-1374)
+
+`20261102000000_fix1374_return_five_monthly_sweeps.sql` (cc-258) returns the
+five monthly orphan sweeps as `by <their cron slot>`:
+`donation-edge-orphan-sweep` `30 11 1 * *` and
+`entity-connection-stats-orphan-sweep` `30 13 1 * *` (group `ec`),
+`financial-entity-totals-reconcile` `0 12 1 * *` (`fe-totals`),
+`donor-rollup-orphan-sweep` `30 12 1 * *` and `donor-party-rollup-orphan-sweep`
+`0 13 1 * *` (`rollups`). Priority 5, cap 64, **`budget_seconds` NULL**. The
+file is on `main`; **its prod push was HELD on 2026-11-02** (below), so on
+prod the five still read `at …` until it is pushed.
+
+- **The cancel path is the opposite of contract-flow's.** Each body (FIX-1295
+  M3: 64MB + parallel 0 in-body, no START gate) COMMITs a `running` row, then
+  runs ONE sub-block (fe-totals: three, A/B/C, each its own COMMIT). `WHEN
+  query_canceled` rolls the statement back (nothing half-deleted) and closes
+  the row **`partial`**, `canceled true`, `cancel_detail`, `elapsed_seconds`;
+  the procedure RETURNs, so the cron run and the reap read `succeeded`.
+  `partial` is ADVANCING: it is the pick's anchor and it ends the I6 ladder,
+  so **a cancelled sweep satisfies its slot until the next 1st** — no re-arm,
+  no `cooldown:` row. (contract-flow's cancel closes `failed`, non-advancing,
+  and the ladder re-arms it.) `WHEN OTHERS` closes the row `failed`, and the
+  procedure still RETURNs; `failed` is non-advancing, so an error re-arms at
+  reap + 1800 s. `dispatcher-r11` seeds both side by side on the clone.
+- **So never cancel a slow sweep to retry it.** The cancel ends the month's
+  attempt. A NULL budget arms NO `cron_job_budget` row (`dispatch_one_unit`:
+  `IF v_pick_budget IS NOT NULL`), so the only cancel is the `postgres` role's
+  3 h `statement_timeout`, per statement. If a sweep ever needs a bound,
+  `budget_seconds` is the one-UPDATE dial; it is not written.
+- **The chain the tick builds** (`dispatcher-r11`, the clone at prod's dials,
+  MemAvailable 450): tick 1 arms donation-edge (the most negative ttd) with
+  the other four `queued (…)`; tick 2 arms fe-totals beside it (`live
+  (donation-edge…)`, `group busy: ec (entity-connection-stats…)`); tick 3
+  reads `units: 2 live of 2` for the two rollups rows and **`group busy: ec`
+  for ecs — `group busy` outranks `units` (first reason wins)**; after
+  donation-edge's reap the next tick arms donor-rollup ahead of ecs (ttd
+  order). The crawls (priority 2) cut in whenever due.
+- **Reading the walls.** The bands (bands.json, n=1, the 10-01 256MB walls ×
+  1.5: 204 / 234 / 156 / 436 / 140 s) are R5's bar for the M3 step; the first
+  dispatched walls are FIX-1295's sweep receipts. Every pre-M3 body set 256MB
+  in-body. On the clone the five run in seconds; that is not prod's cost.
+- **Why the 11-02 push was held.** Prod stalled twice before it: 03:54–04:27Z
+  and again from 05:01Z. pg_cron logged `job startup timeout` every minute,
+  load1 reached 19–31, and the front door's 5xx count rose to 118 in the
+  04:00Z bucket, while MemAvailable stayed 245–570 MB and swap ≤ 620 MB. So it
+  was an IO stall, not the swap-ceiling wedge (playbook C1: sustained IO
+  drains Pro Micro's burst credits). Each began minutes after a modest unit
+  started (`platform-counts-daily` + an ec-crawl unit; then
+  `donor-rollup-refresh`). The dispatcher skipped correctly (`box: stale` /
+  `box: fork_failures`), but it cannot stop a sweep already running. Push the
+  file on a box that has stayed clear for hours, not minutes.
+- **A backgrounded gate loop outlives the agent's task stop.** On Windows,
+  stopping the harness task that ran `session:wait-for-gate:prod … --then
+  "node ../../scripts/db-push-prod.mjs …"` left the node tree alive, and it
+  kept polling, ready to push at its first `ok=true`. Find the
+  `wait-for-gate` node process by its command line and `taskkill /T /F` its
+  pnpm root, then confirm the next poll line never appears.
+- **Revert**: `scripts/fix1374-revert-return-five-monthly-sweeps.sql` through
+  `db-query --prod --call --yes-i-mean-prod --file` (pause first if a `disp-`
+  one-shot of any of the five is armed). The five rules back to `at`, nothing
+  else.
+- **Bands for dispatched rows** come from the census in
+  `docs/receipts/README.md` §"Dispatched jobs: the bands census (FIX-1373)":
+  ≥ 3 reaped `succeeded` walls since 10-14 → `[0, ceil(1.5 × max)]`.
+
 ### Upgrade Path
 
 | Trigger | Upgrade | Cost |
