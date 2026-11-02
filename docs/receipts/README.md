@@ -115,8 +115,9 @@ rows read `yield: <peer> live | due in <iv>`). So `crawl_gate`'s `peer_due`,
 stop moving by design** — a zero delta there is not a quiet day. The overlap
 column still reads the spans and is still the receipt. The nightly's START is
 a dispatched unit from the same night (FIX-1336): its runs read `dispatched_by
-dispatcher`, the registry row `nightly` has no band, and a §9 dispatched
-firing for it is band-`missing` by design.
+dispatcher`. A §9 dispatched firing for the registry row `nightly` read
+`no-band` until cc-258 gave it one (FIX-1373: 0–10573 s, the GHA run's wall,
+one band for a weekday run and a drop night).
 
 Section 11 is not filler. `57014` cancellation counts live in `postgres_logs`,
 which the Supabase Logs API serves and SQL cannot reach; GHA step logs age out.
@@ -171,15 +172,17 @@ Precedence, and the reason for it:
    `fr-vacuum-analyze` joins them from 2026-10-17 for a different reason: it
    MOVED to the dispatcher (FIX-1320, cc-235) rather than being parked, so its
    firings are now `disp-fr-vacuum-analyze-<epoch>` one-shots, judged in
-   `dispatched[]` by registry job name (FIX-1318; `no-band` until bands.json
-   carries an entry), and `vm-probe-pre-fr` (02:55Z) no longer necessarily
+   `dispatched[]` by registry job name (FIX-1318; band-judged since cc-258,
+   FIX-1373: 0–260 s), and `vm-probe-pre-fr` (02:55Z) no longer necessarily
    precedes it — the floor firing drifts later each cycle (FIX-1323), so "what
    the vacuum FOUND" pairs with it for a day or two, then drifts apart.
    `ec-crawl`, `fe-crawl` and `rule-taggers-weekly` keep their parked cron
    rows' verdicts from 2026-10-18 (their pre-park firings until those age out,
    then `inactive`) because they RETURNED through the registry (FIX-1327,
    FIX-1328, cc-237) and the cron rows stay parked; their dispatched firings
-   appear in §9's Dispatched list as `disp-<job>-<epoch>` one-shots, `no-band`.
+   appear in §9's Dispatched list as `disp-<job>-<epoch>` one-shots. Since
+   cc-258 (FIX-1373) the two crawls are band-judged PER UNIT (`ec-crawl` 0–1769
+   s, `fe-crawl` 0–685 s); `rule-taggers-weekly` is still `no-band` (below).
    `rule-taggers-daily` joins them from 2026-10-20: it RETURNED as `by 30 6 * *
    *` (FIX-1334, cc-239) with its cron row still parked, so the cron row reads
    `inactive` once its pre-park firings age out, and its dispatched firings
@@ -191,8 +194,8 @@ Precedence, and the reason for it:
    are parked and read `**no**`, still band-comparing their pre-park firings
    for 14 days. Their firings become `disp-<job>-<epoch>` one-shots in
    §9's Dispatched list. **votes is band-judged** (bands.json has
-   `votes-vacuum-analyze`, 0–29 s). **xsr is `no-band`** until a first
-   dispatched wall seeds one. `officials-vacuum-analyze` was NOT moved (its
+   `votes-vacuum-analyze`, 0–29 s). **xsr is `no-band`** until three
+   dispatched walls exist (two by 2026-11-02, below). `officials-vacuum-analyze` was NOT moved (its
    1,000-tuple trigger, cc-240) and keeps its Mon cron row.
 5. **`missing`** — an **active** job with no firing in the lookback window.
    Reserved for that: four prod jobs are permanently disabled
@@ -248,6 +251,29 @@ been made because nothing has yet been missed by the loose ceiling.
 2. Add the entry with `lo_s`, `hi_s` and a `source` naming the window and `n`.
 3. Commit it on its own. A band change is a claim about what normal is, and it
    should be reviewable as one.
+
+### Dispatched jobs: the bands census (FIX-1373)
+
+A dispatched `job_registry` row is band-judged in §9 by its registry job name,
+so every dispatched row needs a key or reads `no-band`. The census that seeds
+them is a read-only prod query (`db-query --prod`): `dispatch_log` rows with
+`decision = 'reaped' AND reason LIKE 'succeeded%'` since the dispatcher's start
+(2026-10-14), per job, `unit_ms / 1000` as the wall. A reap whose unit's
+`data_sync_log` row (the job's pipeline, `started_at` in [armed_for − 90 s,
+the reap]) is only `skipped` is not a wall. **Three or more walls → a key at
+`[0, ceil(1.5 × max)]`**; fewer → the line below, with the count. A crawl's key
+is a per-unit band (one `disp-` one-shot is one unit); the nightly's unit is
+the GHA run. Exclude an outlier only by name, with its reason, in the
+`source` (the donor-party full-mode precedent).
+
+**No band yet** (cc-258 census, 2026-10-14 → 2026-11-02; each reads `no-band`
+until it has three walls): `agency-staffing-rollup-refresh` 1 (71.0 s),
+`refresh-derived-mvs-weekly` 1 (1,166.6 s), `rule-taggers-weekly` 2 (493.4 /
+750.6 s), `xsr-vacuum-analyze` 2 (2.0 / 2.1 s), `dpr-vacuum-analyze` 0. Keyed
+already and left as they are: `ec-vacuum-analyze` (8 walls, max 127.8 s, in
+its 0–140), `fe-vacuum-analyze` (5, max 95.7 s, in 0–140),
+`votes-vacuum-analyze` (2, max 3.0 s, in 0–29), `donor-party-rollup-refresh`
+(1, 198.5 s, above its 0–119 crawl-mode band by its catch-up design, cc-254).
 
 ### Re-basing a band after a mechanism change
 

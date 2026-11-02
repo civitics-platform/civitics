@@ -89,5 +89,47 @@
     "lo_s": 0,
     "hi_s": 234,
     "source": "cc-211 — census 30-d max × 1.5 (R5's verdict bar), 2026-10-10. PROVISIONAL, n=1: one firing in 30 d, 155.4 s (10-01); ceil(1.5 × 155.4) = 234. Receipt for FIX-1295 M3 (11-01)."
+  },
+
+  "ec-crawl": {
+    "lo_s": 0,
+    "hi_s": 1769,
+    "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
+  },
+
+  "fe-crawl": {
+    "lo_s": 0,
+    "hi_s": 685,
+    "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+  },
+
+  "fe-inbound-rollup-refresh": {
+    "lo_s": 0,
+    "hi_s": 205,
+    "source": "cc-258 census, FIX-1373. Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=15, p50 0.1 s, max 136.5 s (11-02 02:17Z, after the drop night; 10-26 108.7 s the same); ceil(1.5 × 136.462) = 205. A Monday unit after a drop night is the costly one."
+  },
+
+  "fr-vacuum-analyze": {
+    "lo_s": 0,
+    "hi_s": 260,
+    "source": "cc-258 census, FIX-1373. Prod dispatch_log reaped `succeeded: VACUUM` 2026-10-19 → 2026-11-02, n=15, p50 9.6 s, max 172.9 s (10-26 03:25Z; 11-02 03:23Z 165.9 s — the drop-night floor firings); ceil(1.5 × 172.857) = 260."
+  },
+
+  "nightly": {
+    "lo_s": 0,
+    "hi_s": 10573,
+    "source": "cc-258 census, FIX-1373. The unit is the GHA run (runner github_actions, N2, FIX-1336): prod dispatch_log reaped `succeeded%` 2026-10-23 → 2026-11-01, n=10, p50 1,115.1 s, max 7,048.3 s (Sun 11-01, the drop night; Sun 10-25 7,036.8 s); ceil(1.5 × 7048.316) = 10573. ONE band for a weekday run and a drop night: a weekday nightly 3× its p50 still reads in-band (the donor-rollup-refresh limitation, one band per job)."
+  },
+
+  "refresh-derived-mvs-daily": {
+    "lo_s": 0,
+    "hi_s": 525,
+    "source": "cc-258 census, FIX-1373. The JOB band (the unit band refresh-derived-mvs-daily:rebuild_entity_search_index stays). Prod dispatch_log reaped `succeeded%` 2026-10-27 → 2026-11-01, n=7, p50 220.1 s, max 349.5 s (11-01 06:03Z); ceil(1.5 × 349.465) = 525."
+  },
+
+  "vote-stats-refresh": {
+    "lo_s": 0,
+    "hi_s": 37,
+    "source": "cc-258 census, FIX-1373. Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=15, p50 16.1 s, max 24.0 s (10-20 03:33Z); ceil(1.5 × 24.030) = 37."
   }
 }
