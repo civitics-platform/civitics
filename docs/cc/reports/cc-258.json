@@ -1,0 +1,107 @@
+{
+  "cc": "258",
+  "prompt": "cc-prompt-258-return-five-monthly-sweeps-by-first-of-month-chain-in-session-fix1295-full-record-bands-census.md",
+  "started_at": "2026-11-02T04:21:59Z",
+  "finished_at": "2026-11-02T05:25:00Z",
+  "head_before": "752701c8",
+  "head_after": "3a57470a",
+  "commits": [
+    {
+      "sha": "31a6c76e",
+      "subject": "[skip vercel] docs(fixes): cc-258 files FIX-1374"
+    },
+    {
+      "sha": "ac62570d",
+      "subject": "[skip vercel] feat(db): FIX-1374 — RETURN the five monthly sweeps at … 1 * * → by … 1 * * in one file (donation-edge 30 11 / fe-totals 0 12 / donor-rollup 30 12 / donor-party 0 13 / ecs 30 13; groups ec ×2, rollups ×2, fe-totals; priority 5, cap 64, budget NULL; the FIX-1295 M3 bodies' first prod runs); the five FIX-1311 holds kept (cc-258)"
+    },
+    {
+      "sha": "9e46d555",
+      "subject": "chore(fixes): record FIX-1324 on prod — the Sun 11-01 21:05Z nightly (run 41350163858, head 0f574f4f, cc-260's deploy) walks each roll session once: one summary line per House and Senate session, zero tagName lines, zero per-roll lines; House stops 3 past its last roll (365, 317), Senate reads HTTP 403 while FIX-1372 holds (cc-258)"
+    },
+    {
+      "sha": "151cb5de",
+      "subject": "chore(fixes): evidence for FIX-1360 — the Sun 11-01 drop night's two receipts jobs did NOT race: the dispatched run's receipts commit 9d52c1a6 landed ~23:04Z, the fallback (run 41365140490, schedule 00:04Z) stood its phases down and its receipts job pushed 9d52c1a..b7494cb on attempt 1 (\\\"Current branch main is up to date\\\"); the retry path is UNEXERCISED, no record row (cc-258)"
+    },
+    {
+      "sha": "53f379c0",
+      "subject": "[skip vercel] docs(receipts): FIX-1373 — bands for seven dispatched rows from the cc-258 prod census (ec-crawl 0–1769 per unit, fe-crawl 0–685 per unit, fe-inbound 0–205, fr-vacuum 0–260, nightly 0–10573, refresh-derived-mvs-daily 0–525, vote-stats 0–37); the README's census procedure and its \\\"no band yet\\\" line (cc-258)"
+    },
+    {
+      "sha": "e51eded3",
+      "subject": "[skip vercel] docs(ops): FIX-1374 — the monthly sweeps under by rows: a swallowed cancel closes partial, an ADVANCING row (no ladder, the slot satisfied until the next 1st — never cancel a slow sweep to retry it; budget NULL = the role's 3 h is the only cancel); the chain the tick builds (group busy outranks units); why the 11-02 prod push was HELD (two IO stalls) and the gate loop that outlived the harness's task stop (OPERATIONS); dispatcher.md s12b-11 (owed) + s12b's remaining list + the monthly table (cc-258)"
+    },
+    {
+      "sha": "37912b2c",
+      "subject": "chore(fixes): record FIX-1373 on prod — the bands census its last item owed: a read-only prod dispatch_log census (reaped succeeded% since 10-14) seeded seven keys at [0, ceil(1.5 × max)] in 53f379c0 and the README's \\\"no band yet\\\" line for the five under three walls; items a–f landed in 00523f32 (cc-261) (cc-258)"
+    },
+    {
+      "sha": "3a57470a",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-258's closes — FIX-1324, FIX-1373 (prod), FIX-1374 (local-only; the prod push HELD 11-02, owed)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1374",
+    "FIX-1324",
+    "FIX-1373"
+  ],
+  "fixes_filed": [
+    "FIX-1374"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 — the class-P push and the supervised chain: HELD by Craig's call (AskUserQuestion, 05:10Z). Prod stalled twice before the gate opened: 03:54–04:27Z and again from 05:01Z (still stalled at 05:16Z). pg_cron logged `job startup timeout` every minute, load1 reached 19–31 and the front door's 5xx rose to 118 in the 04:00Z bucket, while MemAvailable stayed 245–570 MB and swap ≤ 620 MB: an IO stall, not the swap wedge. The gate itself never opened (04:48:51Z → 05:08:51Z: d:startup_timeout, then a read-error poll, then d:startup_timeout(→06:08) + e:live_writers). No claim, no migration, no write: prod head stays 20261101000000 / 538 and the five rows still read `at … 1 * *`. FIX-1374 derives closed local-only from ac62570d; its prod push is owed.",
+    "The harness's TaskStop on the backgrounded `session:wait-for-gate:prod … --then \\\"node ../../scripts/db-push-prod.mjs --workdir ../..\\\"` did NOT kill its node tree on Windows: the loop wrote its 05:08:51Z poll after the stop. Killed by PID (taskkill /T /F on the pnpm root 23260 → 24000 → tsx 19632 → wait-for-gate 12400, plus its child 7524) after Craig approved the lookup; 0 wait-for-gate processes after.",
+    "Permission denial (auto-mode classifier), logged and not worked around: the read-only process listing `powershell.exe -NoProfile -Command Get-CimInstance Win32_Process` filtered to node.exe command lines matching wait-for-gate or db-push-prod, at ~05:09Z. Craig then approved exactly that lookup + a PID kill through AskUserQuestion, and it ran.",
+    "Item 3 — FIX-1295's FULL record (M2+M3): NOT written. No sweep ran, so the M3 sweep walls do not exist; FIX-1295 stays local-only. No evidence commit either (nothing new was measured).",
+    "Item 3 — FIX-1374's `Verified: prod` record: not written (no push, no chain).",
+    "Item 3 — FIX-1293: a MISS, no record. 3 of the 12 status ticks in [11-01 21:00Z, 11-02 03:00Z] ran ec_crawl_health ≥ 8 s with dirty_set null (21:31Z 8,387 ms, 22:03Z 12,495 ms, 00:31Z 8,749 ms); the rest 239–5,954 ms, not ≪ 8 s. The same ticks were slow in every section (pipelines 24–38 s), so it reads as box load during the landing, not the body (prod md5 e6741c01 = the clone).",
+    "Item 4 — bands.json's five sweep sentences: NOT updated (no dispatched wall). The FIX-1373 keys, the README, OPERATIONS and dispatcher.md landed."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1374",
+      "what": "the gated class-P push of 20261102000000 on a box clear for hours (dry run = the one file; read-back: five by rules, holds kept, crons inactive, pins + the five body md5s unchanged; head 539), then the in-session chain: five complete rows, each wall vs its n=1 band (204 / 234 / 156 / 436 / 140 s), temp_bytes before/after",
+      "after": "2026-11-02T12:00Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "the M3 sweep receipts: the five sweeps' first dispatched (64MB + parallel 0) walls vs their 10-01 256MB walls (135.5 / 155.3 / 103.4 / 290.4 / 92.8 s) — all ≤ 1.5× → the full record (with contract-flow's 1.47×); any above → evidence only + a FIX per regressed body",
+      "after": "2026-11-02T12:00Z"
+    },
+    {
+      "fix": "FIX-1374",
+      "what": "the Dec 1 slots (the first unattended monthly firings): each row armed on the first admitted tick ≥ its slot (11:30 / 12:00 / 12:30 / 13:00 / 13:30Z), complete, wall in band, no cron firing, no cooldown row; the holds converted by then (cc-259)",
+      "after": "2026-12-01T18:00Z"
+    },
+    {
+      "fix": "FIX-1360",
+      "what": "a drop night whose dispatched and fallback receipts jobs push within the same minute: the ::warning:: 'lost a race — regenerating' line and a second attempt that lands (the Sun 11-01 fallback pushed ~61 min after the dispatched commit — unexercised)",
+      "after": "2026-11-08T23:30Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "the next FEC landing's status ticks: section_times.ec_crawl_health ≪ 8 s on EVERY tick with dirty_set non-null (11-01's landing had 3 ticks ≥ 8 s under box-wide load)",
+      "after": "2026-11-08T21:00Z"
+    },
+    {
+      "fix": "FIX-1345",
+      "what": "the Mon 10:00Z housekeep bot's MOVING commit (bullets closed ≥ 7 d moved to fixes-archive.md); this run ended before 10:00Z",
+      "after": "2026-11-02T10:00Z"
+    },
+    {
+      "fix": "FIX-1325",
+      "what": "the first prod receipts JSON carrying job_registry (2026-11-03.json): check:job-registry prints RETURNED for the returned/moved rows and nothing red",
+      "after": "2026-11-03T01:00Z"
+    },
+    {
+      "fix": "FIX-1306",
+      "what": "Craig's receipt: a prod page's <link rel=canonical> read past Cloudflare (browser view-source) and NEXT_PUBLIC_SITE_URL's host; nothing was pasted this run",
+      "after": "2026-11-01T00:29Z"
+    }
+  ]
+}
