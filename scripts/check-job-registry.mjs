@@ -39,6 +39,31 @@
 // own one-shot ARM jobs (FIX-1308, C1), alive for a minute and unscheduled
 // after the run; one may be alive when the nightly reads the receipts.
 //
+// FIX-1325 — THE LIVE SNAPSHOT. A fence is where a row STARTED. The RETURN /
+// MOVE migrations (FIX-1316 on) and FIX-1357's cap re-derivation UPDATE rows
+// after their seed, so the fences alone still read donor-rollup-refresh as
+// `at 0 9,12 * * *`. The nightly's receipts job writes `job_registry`
+// (snapshot_at + thirteen scheduling columns, every row) into
+// docs/receipts/<day>.json; the NEWEST file carrying it is compared with the
+// fences BY JOB:
+//   RETURNED (info) a fence `at …` whose live rule is by / stale_after /
+//                   dead_tuples — the deadline-rule comparisons above then use
+//                   the live rule
+//   UPDATED  (info) any other column that differs, explained by a migration
+//                   that UPDATEs public.job_registry, SETs the column and names
+//                   the job (the newest such file is quoted)
+//   (viii)  red     a column that differs and NO migration explains — a hand
+//                   write on prod, or a migration that missed the job; both
+//                   values
+//   (ix)    red     a live row no fence seeds (FIX-1307's failure, seen live)
+//   WARN            a fence with no live row: a migration not on prod yet. The
+//                   snapshot trails the tree by up to a day, so red here would
+//                   fail every PR that seeds a job.
+// Columns added after the fences (phase_lock, by_window_minutes, yield_to,
+// anchor_cadence) are compared with their ADD COLUMN defaults. No snapshot in
+// any file → the fences-only check plus one "no live snapshot yet" line.
+// `--fences-only` skips the snapshot outright.
+//
 // Membership is the UNION of every fence: a later migration that schedules a
 // new job adds its rows in the same one-row-per-line fence shape.
 //
@@ -175,6 +200,131 @@ export function parseWorkflowSchedule(text) {
   return { crons, error: null };
 }
 
+/**
+ * FIX-1325 — the snapshot's columns, after `job`. The first eight are in every
+ * fence's INSERT list; the last four were added later, so a fence row reads
+ * their ADD COLUMN default: phase_lock (20261020000000_fix1329),
+ * by_window_minutes + yield_to (20261023000000_fix1336), anchor_cadence
+ * (20261029000000_fix1361).
+ */
+export const SNAPSHOT_COLUMNS = [
+  "deadline_rule", "unit_shape", "priority", "cost_class", "cap_mb", "exclusion_group",
+  "budget_seconds", "gates", "phase_lock", "by_window_minutes", "yield_to", "anchor_cadence",
+];
+const COLUMN_DEFAULTS = { gates: [], phase_lock: false, yield_to: [] };
+const ARRAY_COLUMNS = new Set(["gates", "yield_to"]);
+const RETURNED_RULE_RE = /^(by|stale_after|dead_tuples)\b/;
+
+/** One column's value in a comparable form: arrays as their `{a,b}` literal. */
+function canon(col, v) {
+  if (v === undefined) v = COLUMN_DEFAULTS[col] ?? null;
+  if (ARRAY_COLUMNS.has(col)) {
+    if (Array.isArray(v)) return `{${v.join(",")}}`;
+    if (v === null) return "{}";
+  }
+  return v === null ? "NULL" : String(v);
+}
+
+/**
+ * Every `UPDATE public.job_registry … ;` in one migration's text: the columns
+ * its SET list assigns and the job literals it names. The end is found outside
+ * string literals and `--` comments, so `note || '; RETURNED …'` does not cut
+ * the statement short. A statement that names no job (`WHERE job = r.job`,
+ * driven by a VALUES list) takes every job the FILE names.
+ */
+export function registryUpdates(text, file, jobs) {
+  const fileJobs = jobs.filter((j) => text.includes(`'${j}'`));
+  const out = [];
+  for (const m of text.matchAll(/\bUPDATE\s+(?:public\.)?job_registry\b/gi)) {
+    let i = m.index + m[0].length;
+    let inStr = false;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (inStr) {
+        if (c === "'") { if (text[i + 1] === "'") i++; else inStr = false; }
+      } else if (c === "'") inStr = true;
+      else if (c === "-" && text[i + 1] === "-") { const nl = text.indexOf("\n", i); i = nl === -1 ? text.length : nl; }
+      else if (c === ";") break;
+    }
+    const stmt = text.slice(m.index, i);
+    const bare = stmt.replace(/'(?:[^']|'')*'/g, "''").replace(/--[^\n]*/g, "");
+    const set = /\bSET\b([\s\S]*?)(?:\bWHERE\b|$)/i.exec(bare)?.[1] ?? "";
+    const cols = new Set([...set.matchAll(/(?:^|,)\s*([a-z_][a-z_0-9]*)\s*=/gi)].map((x) => x[1].toLowerCase()));
+    const named = jobs.filter((j) => stmt.includes(`'${j}'`));
+    out.push({ file, cols, jobs: named.length ? named : fileJobs });
+  }
+  return out;
+}
+
+/**
+ * The newest docs/receipts/<day>.json carrying a `job_registry` snapshot, newest
+ * file first. A file whose read failed (`not_capturable`) is passed over and
+ * said, never read as an empty registry.
+ */
+export function findSnapshot(recDir, recFiles) {
+  const notes = [];
+  for (const f of [...recFiles].reverse()) {
+    const text = readFileSync(join(recDir, f), "utf8");
+    if (!text.includes('"job_registry"')) continue;
+    let reg;
+    try { reg = JSON.parse(text).job_registry; } catch { continue; }
+    if (reg && Array.isArray(reg.rows)) return { file: f, snapshotAt: reg.snapshot_at ?? null, rows: reg.rows, notes };
+    if (reg?.not_capturable) notes.push(`receipts ${f} has no job_registry snapshot: ${reg.not_capturable}`);
+  }
+  return { file: null, snapshotAt: null, rows: null, notes };
+}
+
+/**
+ * Fences vs the live snapshot (FIX-1325). Returns the RETURNED / UPDATED lines,
+ * the red problems and the warnings, and the live rule per job.
+ */
+export function compareSnapshot(registry, snapRows, migFiles, migTexts) {
+  const info = [];
+  const problems = [];
+  const warnings = [];
+  const live = new Map(snapRows.map((r) => [r.job, r]));
+  const jobs = [...new Set([...registry.keys(), ...live.keys()])];
+  const updates = migFiles.flatMap((f, n) => registryUpdates(migTexts[n], `supabase/migrations/${f}`, jobs));
+  // The newest migration at or after the fence's own that SETs `col` for `job`.
+  const explain = (job, col, fenceFile) => {
+    for (let k = updates.length - 1; k >= 0; k--) {
+      const u = updates[k];
+      if (u.file < fenceFile) break;
+      if (u.cols.has(col) && u.jobs.includes(job)) return u.file;
+    }
+    return null;
+  };
+  const short = (f) => f.replace(/^supabase\/migrations\//, "").replace(/\.sql$/, "");
+
+  for (const [job, f] of registry) {
+    const l = live.get(job);
+    if (!l) {
+      warnings.push(`fence row ${job} has no row in the live snapshot — a migration not on prod yet? (${f.file}:${f.line})`);
+      continue;
+    }
+    const updated = [];
+    for (const col of SNAPSHOT_COLUMNS) {
+      const a = canon(col, f[col]);
+      const b = canon(col, l[col]);
+      if (a === b) continue;
+      const by = explain(job, col, f.file);
+      if (col === "deadline_rule" && a.startsWith("at ") && RETURNED_RULE_RE.test(b)) {
+        info.push(`RETURNED: ${job} ${a} → ${b}${by ? ` (${short(by)})` : ""}`);
+      } else if (by) {
+        updated.push(`${col} ${a} → ${b} (${short(by)})`);
+      } else {
+        problems.push(`live drift: ${job} ${col} is ${b} live, ${a} in its fence, and no migration UPDATEs it (${f.file}:${f.line})`);
+      }
+    }
+    if (updated.length) info.push(`UPDATED: ${job} ${updated.join("; ")}`);
+  }
+  for (const job of live.keys()) {
+    if (!registry.has(job)) problems.push(`live job_registry row with no fence: ${job}`);
+  }
+  const liveRule = new Map([...live].map(([job, r]) => [job, r.deadline_rule ?? null]));
+  return { info, problems, warnings, liveRule };
+}
+
 /** Every `CREATE [OR REPLACE] FUNCTION|PROCEDURE public.<name>(` in the migrations. */
 function definedRoutines(texts) {
   const names = new Set();
@@ -186,11 +336,14 @@ function definedRoutines(texts) {
 /**
  * Run the whole check against a tree. `root` holds supabase/migrations,
  * docs/receipts and .github/workflows (the fixtures mirror that layout).
- * Returns { problems, warnings, stats }.
+ * Returns { problems, warnings, info, notes, stats }. `fencesOnly` is the
+ * pre-FIX-1325 check: the snapshot is not read.
  */
-export function checkRegistry({ root = ROOT } = {}) {
+export function checkRegistry({ root = ROOT, fencesOnly = false } = {}) {
   const problems = [];
   const warnings = [];
+  const info = [];
+  const notes = [];
   const migDir = join(root, "supabase", "migrations");
   const recDir = join(root, "docs", "receipts");
   const wfDir = join(root, ".github", "workflows");
@@ -232,6 +385,28 @@ export function checkRegistry({ root = ROOT } = {}) {
     }
   }
 
+  // (viii)/(ix) the live snapshot (FIX-1325). Without one, every rule below is
+  // the fence's, exactly as before.
+  let snap = { file: null, snapshotAt: null, rows: null };
+  let liveRule = null;
+  if (fencesOnly) {
+    notes.push("--fences-only: the live job_registry snapshot is not read");
+  } else {
+    snap = findSnapshot(recDir, recFiles);
+    notes.push(...snap.notes);
+    if (snap.rows === null) {
+      notes.push("no live snapshot yet — no docs/receipts/<day>.json carries job_registry; comparing the fences alone");
+    } else {
+      const cmp = compareSnapshot(registry, snap.rows, migFiles, migTexts);
+      info.push(...cmp.info);
+      problems.push(...cmp.problems);
+      warnings.push(...cmp.warnings);
+      liveRule = cmp.liveRule;
+    }
+  }
+  // The rule a job runs on: the live one when the snapshot has the row.
+  const ruleOf = (r) => (liveRule?.has(r.job) ? liveRule.get(r.job) : r.deadline_rule);
+
   // (iii) the scheduled workflows
   const wfFiles = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort() : [];
   const scheduled = new Map(); // file → crons
@@ -246,8 +421,9 @@ export function checkRegistry({ root = ROOT } = {}) {
     const stem = f.replace(/\.ya?ml$/, "");
     const row = ghaCalls.get(`gha:${f}`) ?? ghaCalls.get(`gha-dispatch:${stem}`);
     if (!row) { problems.push(`missing registry row for scheduled workflow ${f}`); continue; }
-    if (typeof row.deadline_rule === "string" && row.deadline_rule.startsWith("at ") && !crons.includes(row.deadline_rule.slice(3))) {
-      warnings.push(`${row.job}: deadline_rule '${row.deadline_rule}' differs from ${f}'s schedule ${crons.join(" / ")}`);
+    const rule = ruleOf(row);
+    if (typeof rule === "string" && rule.startsWith("at ") && !crons.includes(rule.slice(3))) {
+      warnings.push(`${row.job}: deadline_rule '${rule}' differs from ${f}'s schedule ${crons.join(" / ")}`);
     }
   }
 
@@ -289,29 +465,47 @@ export function checkRegistry({ root = ROOT } = {}) {
     if (!inReceipts && !inWorkflow && !inactive) {
       warnings.push(`registry row ${r.job} matches no cron job in ${recFile ?? "the receipts"} and no scheduled workflow — seeded ahead of its landing? (${where})`);
     }
-    if (inReceipts && typeof r.deadline_rule === "string" && r.deadline_rule.startsWith("at ")) {
+    const rule = ruleOf(r);
+    if (inReceipts && typeof rule === "string" && rule.startsWith("at ")) {
       const live = cronSchedules.get(r.job);
-      if (live && r.deadline_rule.slice(3) !== live) warnings.push(`${r.job}: deadline_rule '${r.deadline_rule}' differs from the receipts schedule '${live}'`);
+      if (live && rule.slice(3) !== live) warnings.push(`${r.job}: deadline_rule '${rule}' differs from the receipts schedule '${live}'`);
     }
   }
 
+  const returned = info.filter((l) => l.startsWith("RETURNED:")).length;
   return {
     problems,
     warnings,
-    stats: { rows: registry.size, fences, receipts: recFile, cronJobs: cronSchedules.size, workflows: scheduled.size },
+    info,
+    notes,
+    stats: {
+      rows: registry.size, fences, receipts: recFile, cronJobs: cronSchedules.size, workflows: scheduled.size,
+      snapshot: snap.file, snapshotAt: snap.snapshotAt, liveRows: snap.rows?.length ?? null,
+      returned, updated: info.length - returned,
+    },
   };
 }
 
 function main(argv) {
   let root = ROOT;
-  for (let i = 0; i < argv.length; i++) if (argv[i] === "--root") root = argv[++i];
-  const { problems, warnings, stats } = checkRegistry({ root });
+  let fencesOnly = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--root") root = argv[++i];
+    else if (argv[i] === "--fences-only") fencesOnly = true;
+  }
+  const { problems, warnings, info, notes, stats } = checkRegistry({ root, fencesOnly });
+  for (const n of notes) console.log(`${TAG} ${n}`);
+  for (const l of info) console.log(`${TAG} ${l}`);
   for (const w of warnings) console.log(`${TAG} WARN ${w}`);
   for (const p of problems) console.error(`${TAG} ${p}`);
+  const live = stats.snapshot
+    ? `live snapshot ${stats.snapshot} (${stats.snapshotAt ?? "no snapshot_at"}): ${stats.liveRows} row(s), ` +
+      `${stats.returned} returned, ${stats.updated} updated; `
+    : "";
   const summary =
     `${TAG} ${stats.rows} registry row(s) from ${stats.fences} fence(s); ` +
     `receipts ${stats.receipts ?? "—"}: ${stats.cronJobs} cron job(s); ` +
-    `${stats.workflows} scheduled workflow(s); ${problems.length} problem(s), ${warnings.length} warning(s).`;
+    `${stats.workflows} scheduled workflow(s); ${live}${problems.length} problem(s), ${warnings.length} warning(s).`;
   if (problems.length > 0) {
     console.error(summary);
     console.error(

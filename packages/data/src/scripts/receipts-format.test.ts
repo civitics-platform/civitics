@@ -60,6 +60,7 @@ import {
   memoryWindow,
   bankMemoryWindow,
   keptMemoryDay,
+  jobRegistrySnapshot,
 } from "./receipts-format";
 import type { BoxHealthSample } from "@civitics/db";
 
@@ -1698,4 +1699,61 @@ test("FIX-1343 stallMinutesLine: all zero is `none`; a pre-FIX-1343 file is `not
     "Stall minutes (24 h, FIX-1343): none",
   );
   assert.equal(stallMinutesLine(undefined), "Stall minutes (24 h, FIX-1343): not read.");
+});
+
+// FIX-1325 — the job_registry snapshot check-job-registry.mjs reads.
+const REGISTRY_RAW: Record<string, unknown>[] = [
+  // pg's own shapes: int2/int4 as numbers, text[] as arrays, bool as boolean.
+  {
+    job: "fe-crawl", deadline_rule: "stale_after 25 minutes", unit_shape: "resumable", priority: 2,
+    cost_class: "io", cap_mb: 64, exclusion_group: "fe-totals", budget_seconds: 1800,
+    gates: ["prod_session"], phase_lock: false, by_window_minutes: null,
+    yield_to: ["rule-taggers-daily", "refresh-derived-mvs-daily"], anchor_cadence: null,
+    note: "never carried", unit_call: "never carried",
+  },
+  {
+    job: "ecs-vacuum-analyze", deadline_rule: "at 20 11,17 * * *", unit_shape: "bare", priority: 4,
+    cost_class: "io", cap_mb: 64, exclusion_group: "ec", budget_seconds: null,
+    gates: "{}", phase_lock: false, by_window_minutes: null, yield_to: "{}", anchor_cadence: null,
+  },
+  {
+    job: "ec-crawl", deadline_rule: "stale_after 10 minutes", unit_shape: "resumable", priority: "2",
+    cost_class: "mixed", cap_mb: 64, exclusion_group: "ec", budget_seconds: 1800,
+    gates: "{prod_session}", phase_lock: true, by_window_minutes: 120,
+    yield_to: "{rule-taggers-daily,refresh-derived-mvs-daily}", anchor_cadence: "daily",
+  },
+];
+
+test("FIX-1325 jobRegistrySnapshot: the thirteen columns, every row, sorted by job in code-unit order", () => {
+  const s = jobRegistrySnapshot(REGISTRY_RAW, "2026-11-02T00:01:00.000Z");
+  assert.ok("rows" in s);
+  assert.equal(s.snapshot_at, "2026-11-02T00:01:00.000Z");
+  // A collation that ignores hyphens would put ecs- before ec-crawl's "ec-c…"; code units do not.
+  assert.deepEqual(s.rows.map((r) => r.job), ["ec-crawl", "ecs-vacuum-analyze", "fe-crawl"]);
+  assert.deepEqual(Object.keys(s.rows[0]!), [
+    "job", "deadline_rule", "unit_shape", "priority", "cost_class", "cap_mb", "exclusion_group",
+    "budget_seconds", "gates", "phase_lock", "by_window_minutes", "yield_to", "anchor_cadence",
+  ]);
+  assert.deepEqual(s.rows[0], {
+    job: "ec-crawl", deadline_rule: "stale_after 10 minutes", unit_shape: "resumable", priority: 2,
+    cost_class: "mixed", cap_mb: 64, exclusion_group: "ec", budget_seconds: 1800,
+    gates: ["prod_session"], phase_lock: true, by_window_minutes: 120,
+    yield_to: ["rule-taggers-daily", "refresh-derived-mvs-daily"], anchor_cadence: "daily",
+  });
+  // `{}` literals are empty arrays, NULL budget stays null — never 0.
+  assert.deepEqual(s.rows[1]!.gates, []);
+  assert.deepEqual(s.rows[1]!.yield_to, []);
+  assert.equal(s.rows[1]!.budget_seconds, null);
+  assert.equal("note" in s.rows[2]!, false);
+});
+
+test("FIX-1325: renderJson carries job_registry; the .md renders nothing from it; an older file round-trips", () => {
+  const old = fixture();
+  assert.equal("job_registry" in JSON.parse(renderJson(old)), false);
+  const d = { ...fixture(), job_registry: jobRegistrySnapshot(REGISTRY_RAW, "2026-11-02T00:01:00.000Z") };
+  const back = JSON.parse(renderJson(d)) as typeof d;
+  assert.deepEqual(back.job_registry, d.job_registry);
+  assert.equal(renderMarkdown(d), renderMarkdown(old));
+  const failed = { ...fixture(), job_registry: { not_capturable: "job_registry read failed: boom" } };
+  assert.deepEqual(JSON.parse(renderJson(failed)).job_registry, { not_capturable: "job_registry read failed: boom" });
 });

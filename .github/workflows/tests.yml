@@ -158,8 +158,12 @@ jobs:
       # bands.json key or a `no-band` declaration. A job missing from the
       # registry runs outside the dispatcher's box rule and nothing says so.
       # Tree-only, no DB or secrets. Fixtures: scripts/__fixtures__/job-registry.
+      # FIX-1325: the fences are also compared with the live job_registry the
+      # nightly's receipts job writes into the newest docs/receipts/<day>.json
+      # (RETURNED / UPDATED rows print; unexplained live drift is red). Its
+      # fixture suite runs first — it had never run in CI.
       - name: Job-registry parity guard (FIX-1307)
-        run: pnpm check:job-registry
+        run: pnpm check:job-registry:test && pnpm check:job-registry
 
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).

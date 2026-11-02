@@ -1301,6 +1301,78 @@ export type DispatchedReceipt =
   | { not_capturable: string }
   | { firings: DispatchedFiring[]; missed_24h: number };
 
+/**
+ * FIX-1325 — one `public.job_registry` row as the receipt carries it: the
+ * dispatcher's scheduling columns, without `note`, `unit_call` or timestamps.
+ * The seed fences in supabase/migrations say where a row STARTED; the RETURN /
+ * MOVE migrations UPDATE it afterwards, and CI has no database to see that.
+ * scripts/check-job-registry.mjs compares the fences against this copy.
+ */
+export interface JobRegistrySnapshotRow {
+  job: string;
+  deadline_rule: string | null;
+  unit_shape: string | null;
+  priority: number | null;
+  cost_class: string | null;
+  cap_mb: number | null;
+  exclusion_group: string | null;
+  budget_seconds: number | null;
+  gates: string[];
+  phase_lock: boolean | null;
+  by_window_minutes: number | null;
+  yield_to: string[];
+  anchor_cadence: string | null;
+}
+
+/** FIX-1325 — the receipt's top-level `job_registry`. */
+export type JobRegistrySnapshot =
+  | { not_capturable: string }
+  | { snapshot_at: string; rows: JobRegistrySnapshotRow[] };
+
+/** `text[]` as pg returns it (an array), or its `{a,b}` literal. */
+function textArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v !== "string" || v === "{}" || v === "") return [];
+  return v.replace(/^\{|\}$/g, "").split(",").map((s) => s.replace(/^"|"$/g, ""));
+}
+
+const snapStr = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+const snapNum = (v: unknown): number | null => {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Raw `job_registry` rows → the snapshot: every row, the thirteen columns,
+ * sorted by `job` in code-unit order (not the database collation, which
+ * ignores the hyphens), so two reads of one registry are byte-identical. Pure.
+ */
+export function jobRegistrySnapshot(
+  rows: readonly Record<string, unknown>[],
+  snapshotAt: string,
+): JobRegistrySnapshot {
+  const out = rows.map(
+    (r): JobRegistrySnapshotRow => ({
+      job: String(r["job"]),
+      deadline_rule: snapStr(r["deadline_rule"]),
+      unit_shape: snapStr(r["unit_shape"]),
+      priority: snapNum(r["priority"]),
+      cost_class: snapStr(r["cost_class"]),
+      cap_mb: snapNum(r["cap_mb"]),
+      exclusion_group: snapStr(r["exclusion_group"]),
+      budget_seconds: snapNum(r["budget_seconds"]),
+      gates: textArray(r["gates"]),
+      phase_lock: r["phase_lock"] === null || r["phase_lock"] === undefined ? null : r["phase_lock"] === true,
+      by_window_minutes: snapNum(r["by_window_minutes"]),
+      yield_to: textArray(r["yield_to"]),
+      anchor_cadence: snapStr(r["anchor_cadence"]),
+    }),
+  );
+  out.sort((a, b) => (a.job < b.job ? -1 : a.job > b.job ? 1 : 0));
+  return { snapshot_at: snapshotAt, rows: out };
+}
+
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
 const trimDetail = (s: string): string => (s.length > 120 ? s.slice(0, 119).trimEnd() + "…" : s);
 
@@ -1691,6 +1763,12 @@ export interface ReceiptsData {
   dispatched?: DispatchedReceipt;
   /** FIX-1343 — §9, the stall-minute line. Optional so an older JSON still renders. */
   stall_minutes?: StallMinutesReceipt;
+  /**
+   * FIX-1325 — the live `public.job_registry`, for check-job-registry.mjs. JSON
+   * only: the `.md` renders nothing from it. Optional so an older JSON still
+   * renders, and the checker treats a file without it as "no live snapshot".
+   */
+  job_registry?: JobRegistrySnapshot;
   not_capturable: string[];
   queries: QueryRecord[];
 }

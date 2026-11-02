@@ -262,6 +262,8 @@ history is in `docs/archive/claude-md-root-2026-10-23.md`.
 The 7-day grace keeps a bullet closed this week in its live section, where this week's worktrees append, so the move never conflicts with one; `fixes:status` still sees an archived id.
 Run `pnpm fixes:clean` / `fixes:archive` by hand only when you want it sooner, and commit immediately.
 
+**`pnpm check:job-registry`** (FIX-1307, tests.yml) has two modes. By default (FIX-1325) it also compares the seed fences with the live `job_registry` in the newest `docs/receipts/<day>.json` that carries one: `RETURNED:` and `UPDATED: … (<migration>)` lines are informational, and a live value no migration UPDATEs is red. `--fences-only` is the pre-FIX-1325 check: fences against the receipts' `cron_jobs[]` and the scheduled workflows.
+
 **Status:** OPEN if an id has no `done.log` row, or its LAST row has `reopen` in
 the sha column; CLOSED otherwise. It keys on column 3 and row order only, never
 column 4 (`verified`), which is informational. One implementation:

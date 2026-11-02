@@ -14,7 +14,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkRegistry, parseSeedFences, parseTuple, parseWorkflowSchedule } from "./check-job-registry.mjs";
+import { checkRegistry, parseSeedFences, parseTuple, parseWorkflowSchedule, registryUpdates } from "./check-job-registry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "__fixtures__", "job-registry");
@@ -139,6 +139,137 @@ console.log("check:job-registry — fixtures");
   const r = variant((root) => edit(root, SEED, (t) => t.replace(/-- job-registry-seed:begin[\s\S]*-- job-registry-seed:end\n/, "")));
   check("a tree with NO fence FAILS on every receipts job and workflow (main before cc-226)",
     has(r.problems, "no -- job-registry-seed:begin fence") && r.problems.filter((p) => p.startsWith("missing registry row")).length === 6, dump(r));
+}
+
+console.log("check:job-registry — the live snapshot (FIX-1325)");
+// The fixture's fences as the receipts job would snapshot them, before any
+// migration UPDATEs a row: every fence column copied, the late columns at their
+// ADD COLUMN defaults, gates as the array pg returns.
+const FENCE_ROWS = parseSeedFences(readFileSync(join(FIXTURE, SEED), "utf8"), "seed.sql").rows;
+const liveRows = () => FENCE_ROWS.map((r) => ({
+  job: r.job, deadline_rule: r.deadline_rule, unit_shape: r.unit_shape, priority: r.priority,
+  cost_class: r.cost_class, cap_mb: r.cap_mb, exclusion_group: r.exclusion_group,
+  budget_seconds: r.budget_seconds, gates: r.gates.replace(/^\{|\}$/g, "").split(",").filter(Boolean),
+  phase_lock: false, by_window_minutes: null, yield_to: [], anchor_cadence: null,
+}));
+/** Write `rows` (after `tweak`) as receipts `file`'s job_registry. */
+const withSnapshot = (root, tweak = (rows) => rows, file = RECEIPTS) => edit(root, file, (t) => {
+  const j = JSON.parse(t);
+  j.job_registry = { snapshot_at: "2099-01-01T00:01:00Z", rows: tweak(liveRows()) };
+  return JSON.stringify(j, null, 2);
+});
+const setCol = (job, col, v) => (rows) => rows.map((r) => (r.job === job ? { ...r, [col]: v } : r));
+const UPDATE_MIG = join("supabase", "migrations", "20990301000000_fixture_update.sql");
+{
+  const r = variant();
+  check("no receipts carries job_registry → the fences-only check, plus one 'no live snapshot yet' note",
+    r.problems.length === 0 && r.warnings.length === 0 && r.stats.snapshot === null &&
+    r.notes.length === 1 && r.notes[0].startsWith("no live snapshot yet"), dump(r) + JSON.stringify(r.notes));
+}
+{
+  const r = variant((root) => withSnapshot(root));
+  check("a snapshot equal to the fences PASSES with nothing to say",
+    r.problems.length === 0 && r.warnings.length === 0 && r.info.length === 0 &&
+    r.stats.snapshot === "2099-01-01.json" && r.stats.liveRows === 6, dump(r) + JSON.stringify(r.stats));
+}
+{
+  const r = variant((root) => withSnapshot(root, setCol("job-a", "deadline_rule", "stale_after 12 hours")));
+  check("a fence `at` whose live rule is stale_after is RETURNED — green, one line",
+    r.problems.length === 0 && r.warnings.length === 0 &&
+    JSON.stringify(r.info) === JSON.stringify(["RETURNED: job-a at 0 1 * * * → stale_after 12 hours"]) &&
+    r.stats.returned === 1, dump(r) + JSON.stringify(r.info));
+}
+{
+  // job-a's cron row moves off the fence's `at 0 1 * * *`. Fences alone, that is
+  // the deadline_rule-vs-schedule WARNING; with the live rule `by …` it is not,
+  // because the comparison now reads the rule the job actually runs on.
+  const moveCron = (root) => edit(root, RECEIPTS, (t) => t.replace('"jobname": "job-a", "jobid": 1, "schedule": "0 1 * * *"', '"jobname": "job-a", "jobid": 1, "schedule": "0 3 * * *"'));
+  const before = variant(moveCron);
+  const r = variant((root) => { moveCron(root); withSnapshot(root, setCol("job-a", "deadline_rule", "by 0 3 * * *")); });
+  check("…and the at-vs-cron comparison reads the LIVE rule: a stale fence `at` no longer warns",
+    has(before.warnings, "job-a: deadline_rule 'at 0 1 * * *' differs from the receipts schedule '0 3 * * *'") &&
+    r.problems.length === 0 && r.warnings.length === 0 && has(r.info, "RETURNED: job-a at 0 1 * * * → by 0 3 * * *"),
+    dump(before) + dump(r));
+}
+{
+  const r = variant((root) => withSnapshot(root, setCol("job-a", "cap_mb", 64)));
+  check("a cap that differs with NO migration behind it FAILS, naming both values",
+    r.problems.length === 1 &&
+    has(r.problems, "live drift: job-a cap_mb is 64 live, 128 in its fence, and no migration UPDATEs it"), dump(r));
+}
+{
+  const r = variant((root) => {
+    withSnapshot(root, setCol("job-a", "cap_mb", 64));
+    // The SET list carries a note literal with semicolons BEFORE the column:
+    // the statement must not be cut at the first `;` in a string.
+    writeFileSync(join(root, UPDATE_MIG),
+      "DO $$ BEGIN\n  UPDATE public.job_registry\n     SET note = note || '; cap 128 → 64; it''s re-derived',\n" +
+      "         cap_mb = 64 -- a comment; with a semicolon\n   WHERE job = 'job-a';\nEND $$;\n");
+  });
+  check("…the same cap with a migration that UPDATEs it PASSES as UPDATED, quoting the file",
+    r.problems.length === 0 &&
+    JSON.stringify(r.info) === JSON.stringify(["UPDATED: job-a cap_mb 128 → 64 (20990301000000_fixture_update)"]), dump(r) + JSON.stringify(r.info));
+}
+{
+  const r = variant((root) => {
+    withSnapshot(root, setCol("job-vac", "cap_mb", 32));
+    writeFileSync(join(root, UPDATE_MIG),
+      "UPDATE public.job_registry SET cap_mb = 64 WHERE job = 'job-a';\n-- job-vac is named here but not updated: 'job-vac'\n");
+  });
+  check("…an UPDATE that names a DIFFERENT job does not explain the drift",
+    has(r.problems, "live drift: job-vac cap_mb is 32 live, 64 in its fence"), dump(r));
+}
+{
+  const r = variant((root) => withSnapshot(root, setCol("job-a", "phase_lock", true)));
+  check("a late column (phase_lock) is compared with its ADD COLUMN default",
+    has(r.problems, "live drift: job-a phase_lock is true live, false in its fence"), dump(r));
+}
+{
+  const r = variant((root) => withSnapshot(root, setCol("job-a", "deadline_rule", "at 0 2 * * *")));
+  check("an `at` → `at` reschedule is not a RETURN: unexplained, it FAILS",
+    has(r.problems, "live drift: job-a deadline_rule is at 0 2 * * * live, at 0 1 * * * in its fence"), dump(r));
+}
+{
+  const r = variant((root) => withSnapshot(root, (rows) => [...rows, { ...rows[0], job: "job-ghost" }]));
+  check("a live row no fence seeds FAILS",
+    r.problems.length === 1 && has(r.problems, "live job_registry row with no fence: job-ghost"), dump(r));
+}
+{
+  const r = variant((root) => withSnapshot(root, (rows) => rows.filter((x) => x.job !== "job-vac")));
+  check("a fence with no live row is a WARNING (the snapshot trails the tree), not a failure",
+    r.problems.length === 0 && r.warnings.length === 1 && has(r.warnings, "fence row job-vac has no row in the live snapshot"), dump(r));
+}
+{
+  const root = mkdtempSync(join(tmpdir(), "job-registry-"));
+  temps.push(root);
+  cpSync(FIXTURE, root, { recursive: true });
+  withSnapshot(root, setCol("job-a", "cap_mb", 64));
+  const r = checkRegistry({ root, fencesOnly: true });
+  check("--fences-only does not read the snapshot (the drift above PASSES)",
+    r.problems.length === 0 && r.stats.snapshot === null && has(r.notes, "--fences-only"), dump(r));
+}
+{
+  const r = variant((root) => withSnapshot(root, setCol("job-a", "deadline_rule", "by 0 1 * * *"), join("docs", "receipts", "2098-12-31.json")));
+  check("the NEWEST file carrying a snapshot is read when the newest receipts has none",
+    r.stats.snapshot === "2098-12-31.json" && r.stats.receipts === "2099-01-01.json" && r.stats.returned === 1, JSON.stringify(r.stats));
+}
+{
+  const r = variant((root) => {
+    withSnapshot(root, setCol("job-a", "cap_mb", 64), join("docs", "receipts", "2098-12-31.json"));
+    edit(root, RECEIPTS, (t) => JSON.stringify({ ...JSON.parse(t), job_registry: { not_capturable: "job_registry read failed: boom" } }));
+  });
+  check("a newest file whose read failed is passed over and said — never read as an empty registry",
+    r.stats.snapshot === "2098-12-31.json" && has(r.notes, "2099-01-01.json has no job_registry snapshot: job_registry read failed: boom") &&
+    has(r.problems, "live drift: job-a cap_mb"), dump(r) + JSON.stringify(r.notes));
+}
+{
+  const u = registryUpdates(
+    "UPDATE public.job_registry SET gates = '{prod_session}', yield_to = '{a,b}' WHERE job IN ('x', 'y');\n" +
+      "FOR r IN SELECT * FROM (VALUES ('z', 1)) v(job, n) LOOP UPDATE public.job_registry SET cap_mb = r.n WHERE job = r.job; END LOOP;\n",
+    "m.sql", ["x", "y", "z"]);
+  check("registryUpdates: SET columns per statement; a literal WHERE names its jobs, a variable one takes the file's",
+    u.length === 2 && [...u[0].cols].join() === "gates,yield_to" && u[0].jobs.join() === "x,y" &&
+    [...u[1].cols].join() === "cap_mb" && u[1].jobs.join() === "x,y,z", JSON.stringify(u.map((x) => ({ cols: [...x.cols], jobs: x.jobs }))));
 }
 
 console.log("check:job-registry — the real tree");

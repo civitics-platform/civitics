@@ -16,6 +16,8 @@ steps:
   - {id: s8, kind: cc, ref: "cc-221", title: "Sunday hygiene bundle — 1283 institutions 308, 1282 worktree root, 1289 ring 900 + slot windows, db-query label", done: 2026-10-12}
   - {id: s9, kind: cc, ref: "cc-248", title: "weekly fixes-housekeep bot (Mon 10:00Z, clean --older-than 7 + archive) and session:check pulls the primary (FIX-1345)", done: 2026-10-24}
   - {id: s10, kind: op, ref: "FIX-1345", title: "the first MOVING fixes-housekeep run — a bot commit moves N >= 1 bullets to the archive, fixes:check:trunk green inside the run", after: 2026-11-02}
+  - {id: s11, kind: cc, ref: "cc-261", title: "the receipts JSON carries a live job_registry snapshot; check:job-registry compares the seed fences with it — RETURNED / UPDATED print, unexplained live drift is red (FIX-1325)", done: 2026-11-02}
+  - {id: s12, kind: op, ref: "FIX-1325", title: "the first prod receipts carrying job_registry — check:job-registry prints the RETURNED rows and nothing red", after: 2026-11-03}
 ---
 
 # The CC loop
@@ -39,3 +41,9 @@ With cc-248 (FIX-1345) `docs/FIXES.md` keeps itself small without a session
 touching it: a Monday 10:00Z bot moves bullets closed at least a week ago into
 the archive, and `session:check` catches the primary checkout up when it is
 clean and behind.
+
+With cc-261 (FIX-1325) the registry guard sees the live registry, not only
+the seed fences. The nightly's receipts job writes `job_registry` into the
+day's JSON, and `check:job-registry` reads the newest file that has it. A
+RETURN/MOVE now prints as `RETURNED`, and a column a migration changed prints
+as `UPDATED` with that file. A live value that no migration explains is red.

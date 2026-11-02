@@ -76,11 +76,13 @@ import {
   type StallMinutesReceipt,
   type UnitDispatcherReceipt,
   type DispatchedReceipt,
+  type JobRegistrySnapshot,
   BURST_THRESHOLD,
   bankMemoryWindow,
   compareToBand,
   crawlSkipsBaselineFrom,
   dispatchedFirings,
+  jobRegistrySnapshot,
   keptMemoryDay,
   memoryWindow,
   nominalDate,
@@ -809,6 +811,16 @@ WHERE decision = 'reaped'
   AND ticked_at >= now() - interval '24 hours'
 ORDER BY ticked_at, id`;
 
+// FIX-1325 — the registry's live scheduling columns, every row. The seed fences
+// are where a row STARTS; the RETURN / MOVE migrations UPDATE it afterwards, and
+// check-job-registry.mjs (CI, no database) reads this copy to see the live rule.
+// Not gated on the dispatcher: the table predates it (FIX-1307).
+const Q_JOB_REGISTRY = `
+SELECT job, deadline_rule, unit_shape, priority, cost_class, cap_mb, exclusion_group,
+       budget_seconds, gates, phase_lock, by_window_minutes, yield_to, anchor_cadence
+FROM public.job_registry
+ORDER BY job`;
+
 const Q_DISPATCH_MISSED = `
 SELECT count(*)::int AS n
 FROM public.dispatch_log
@@ -1407,6 +1419,15 @@ async function main(): Promise<void> {
             };
     }
 
+    // FIX-1325 — the live registry. A failed read says so; it is never `rows: []`,
+    // which the checker would read as every fence row missing.
+    const registryRows = await r.run<Record<string, unknown>>("job_registry", Q_JOB_REGISTRY);
+    const registryErr = r.queries.at(-1)?.error ?? null;
+    const jobRegistry: JobRegistrySnapshot =
+      registryErr !== null
+        ? { not_capturable: "job_registry read failed: " + registryErr }
+        : jobRegistrySnapshot(registryRows, new Date().toISOString());
+
     // FIX-1189 O2 — §10.
     const legRows = await r.run<Record<string, unknown>>("legislator_ids", Q_LEGISLATOR_IDS);
     const legRun = (which: string): LegislatorIdsRun | null => {
@@ -1551,6 +1572,7 @@ async function main(): Promise<void> {
       unit_dispatcher: unitDispatcher,
       dispatched,
       stall_minutes: stallMinutes,
+      job_registry: jobRegistry,
       not_capturable: NOT_CAPTURABLE,
       queries: r.queries,
     };
