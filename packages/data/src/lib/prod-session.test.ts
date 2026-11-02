@@ -26,6 +26,8 @@ import {
   readProdSessionState,
   withClient,
   ProdSessionRefused,
+  ProdSessionNotAcquired,
+  notAcquiredRefusal,
   PROD_SESSION_LABEL_KEY,
   sessionLabelValue,
   type ProdSessionState,
@@ -279,6 +281,30 @@ async function integrationGate(t: { skip: (m: string) => void }): Promise<boolea
   }
   return true;
 }
+
+// FIX-1373 — a lock taken between the preflight and the acquire. The race is
+// not reproducible against one database (the preflight reads the same pg_locks
+// the acquire contends on), so the refusal is asserted here and the call site
+// is the four lines in claimProdSession() before the holds.
+test("FIX-1373: a lock taken first is a session-held REFUSAL, so every existing handler exits 2 on it", () => {
+  const err = notAcquiredRefusal(
+    state({ held: true, claimed_by: "craig@box", reason: "cc-999 landing", age_seconds: 75 }),
+    "another holder of prod_supervised_session",
+  );
+  assert.ok(err instanceof ProdSessionNotAcquired);
+  assert.ok(err instanceof ProdSessionRefused, "runUnderProdSession / nightly-hold / wait-for-gate catch this class");
+  assert.equal(err.verdict.code, "session-held");
+  assert.equal(err.blockedBy, "another holder of prod_supervised_session");
+  assert.match(err.verdict.detail, /taken between the preflight and the acquire by craig@box \(1m15s ago\): cc-999 landing$/);
+});
+
+test("FIX-1373: no label (or a failed state read) still names the lock's own holder, never 'undefined'", () => {
+  const unlabelled = notAcquiredRefusal(null, "another holder of prod_supervised_session");
+  assert.match(unlabelled.verdict.detail, /by another holder of prod_supervised_session \(unknown age\): \(no reason given\)$/);
+  const bare = notAcquiredRefusal(null, undefined);
+  assert.match(bare.verdict.detail, /by an unlabelled holder /);
+  assert.equal(bare.blockedBy, null);
+});
 
 test("claim: the label lands on acquire and is gone after release", async (t) => {
   if (!(await localDbReachable())) {

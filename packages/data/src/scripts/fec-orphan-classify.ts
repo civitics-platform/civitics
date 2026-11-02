@@ -1003,7 +1003,7 @@ export const usd = (cents: number | bigint | string): string =>
  *
  *   1. VACUUM of the churned tables.  Owned by the *-vacuum-analyze pg_cron
  *      jobs. On prod this must NEVER be run by a script: the 2026-09-01 ad-hoc
- *      VACUUM of financial_relationships was a front-door incident (FIX-1144).
+ *      VACUUM of financial_relationships was a front-door incident (FIX-1133).
  *   2. The platform-wide search index and treemap rebuilds. Owned by the 06:00
  *      UTC daily (refresh_derived_mvs) and by treemap-individuals-global-refresh.
  *      Re-running them four hours early duplicates ~1.5h of I/O on an
@@ -1115,7 +1115,7 @@ export function printDeferredTail(
   }
   if (kind === "vacuum") {
     console.info("  On prod this is not an optimisation — a script-run VACUUM of these tables");
-    console.info("  is a front-door incident (FIX-1144). The scheduled owners are the path.");
+    console.info("  is a front-door incident (FIX-1133). The scheduled owners are the path.");
   }
   if (kind === "mvs") {
     console.info("  Not an optimisation either: the FIX-953 apply (2026-08-10/11) ran this phase");

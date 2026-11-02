@@ -165,6 +165,13 @@ jobs:
       - name: Job-registry parity guard (FIX-1307)
         run: pnpm check:job-registry:test && pnpm check:job-registry
 
+      # Blocking (FIX-1373) — the db-query.mjs prelude suite: --prod is read-only
+      # and parallel-off, --call is local-only and bounded, --claimant is quoted.
+      # A broken prelude is a prod write path, and this suite was in no workflow.
+      # Pure Node, no DB or secrets (it tests the strings, not a connection).
+      - name: db-query guard
+        run: pnpm db-query:test
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests

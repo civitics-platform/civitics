@@ -31,6 +31,7 @@
 import {
   claimProdSession,
   formatAge,
+  notAcquiredRefusal,
   readProdSessionState,
   withClient,
   ProdSessionRefused,
@@ -113,7 +114,9 @@ async function main(): Promise<void> {
 
   let lock: NamedSessionLock;
   try {
-    lock = await claimProdSession({ reason, expectedMinutes: expected, force });
+    // allowUnacquired: this CLI prints its own refusal for a lock taken first
+    // (below); the library would otherwise throw ProdSessionNotAcquired (FIX-1373).
+    lock = await claimProdSession({ reason, expectedMinutes: expected, force, allowUnacquired: true });
   } catch (err) {
     if (err instanceof ProdSessionRefused) {
       console.error(`\n✗ REFUSED — ${err.verdict.detail}`);
@@ -130,8 +133,10 @@ async function main(): Promise<void> {
 
   if (!lock.acquired) {
     // Only reachable if the lock was taken between the preflight and the
-    // acquire — a race the preflight cannot close and does not need to.
-    console.error(`\n✗ REFUSED — the session lock was taken first: ${lock.blockedBy ?? "unknown"}`);
+    // acquire — a race the preflight cannot close and does not need to. Nothing
+    // was held and no hold was set (FIX-1373); name the holder from its label.
+    const holder = await withClient(dbUrl, readProdSessionState).catch(() => null);
+    console.error(`\n✗ REFUSED — ${notAcquiredRefusal(holder, lock.blockedBy).verdict.detail}`);
     process.exit(2);
   }
 

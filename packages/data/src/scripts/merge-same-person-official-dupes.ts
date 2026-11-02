@@ -158,7 +158,7 @@ const CHURNED_TABLES = ["financial_relationships", "entity_connections", "offici
  */
 async function runVacuum(client: Client, defer = false): Promise<void> {
   // FIX-1153 — the scheduled *-vacuum-analyze jobs own this on prod;
-  // a script-run VACUUM of these tables is a front-door incident (FIX-1144).
+  // a script-run VACUUM of these tables is a front-door incident (FIX-1133).
   if (defer) {
     printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;
@@ -1418,7 +1418,7 @@ async function verifyManifestInDb(
 // --rollups-only to finish.
 //
 // This exists because the first prod attempt held all of it inside the merge
-// transaction and exhausted Pro Small's burst I/O — see the comment at the
+// transaction and exhausted Pro Micro's burst I/O — see the comment at the
 // former call site.
 // ---------------------------------------------------------------------------
 
@@ -2697,7 +2697,7 @@ async function main(): Promise<void> {
 
     // ── Rollups do NOT run here ──────────────────────────────────────────
     // They used to. On prod that made ONE transaction hold ~2 hours of
-    // sustained write I/O, which exhausted Pro Small's burst credits: the
+    // sustained write I/O, which exhausted Pro Micro's burst credits: the
     // homepage went to 18.7s, a count(*) on a 31k-row table passed 600s, and
     // financial_entity_donation_totals_rebuild alone ran 66+ minutes against
     // the 10 it took in the rehearsal. The run had to be cancelled server-side.

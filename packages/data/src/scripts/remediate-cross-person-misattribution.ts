@@ -190,7 +190,7 @@ async function budgeted(client: Client, label: string, sql: string, budgetS: num
 
 async function runVacuum(client: Client, defer = false): Promise<void> {
   // FIX-1153 — on prod the scheduled *-vacuum-analyze jobs own this entirely;
-  // a script-run VACUUM of these tables is a front-door incident (FIX-1144).
+  // a script-run VACUUM of these tables is a front-door incident (FIX-1133).
   if (defer) {
     printDeferredTail("vacuum", await readOwnerSchedulesOnce(client));
     return;

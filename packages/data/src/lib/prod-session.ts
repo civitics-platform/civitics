@@ -227,8 +227,52 @@ export interface ProdSessionOptions {
    * passes its own `nightly_cron:<phase>` row.
    */
   exemptWriters?: readonly string[];
+  /**
+   * FIX-1373 — return an UNACQUIRED lock instead of throwing
+   * {@link ProdSessionNotAcquired}. For a caller that prints its own refusal
+   * (claim-prod-session.ts); it must check `acquired` itself. Nothing is held
+   * and no hold is set either way.
+   */
+  allowUnacquired?: boolean;
   /** Override the DSN (tests). */
   dbUrl?: string;
+}
+
+/**
+ * FIX-1373 (cc-261) — thrown by claimProdSession() when the advisory lock was
+ * NOT acquired: another claimant took it between the preflight read and the
+ * `pg_try_advisory_lock`, the race the preflight cannot close. A
+ * ProdSessionRefused with the `session-held` verdict, so every caller that
+ * handles a preflight refusal (exit 2, "wait, or talk to the holder") handles
+ * this one the same way. Before it the library returned the unacquired lock,
+ * withProdSession() ran `fn` unserialized against the holder, and the claim set
+ * the guarded holds — which its release then CLEARED from under the holder.
+ */
+export class ProdSessionNotAcquired extends ProdSessionRefused {
+  readonly blockedBy: string | null;
+  constructor(detail: string, blockedBy: string | null) {
+    super({ ok: false, code: "session-held", detail });
+    this.name = "ProdSessionNotAcquired";
+    this.blockedBy = blockedBy;
+  }
+}
+
+/**
+ * The refusal for a lock taken first, naming the holder from
+ * `prod_session_state()` (re-read after the failed acquire) and falling back to
+ * the lock's own `blockedBy` when the label is missing or the read failed. Pure.
+ */
+export function notAcquiredRefusal(
+  state: ProdSessionState | null,
+  blockedBy: string | undefined,
+): ProdSessionNotAcquired {
+  const who = state?.claimed_by ?? blockedBy ?? "an unlabelled holder";
+  const why = state?.reason ?? "(no reason given)";
+  const age = state?.age_seconds == null ? "unknown age" : `${formatAge(state.age_seconds)} ago`;
+  return new ProdSessionNotAcquired(
+    `the session lock was taken between the preflight and the acquire by ${who} (${age}): ${why}`,
+    blockedBy ?? null,
+  );
 }
 
 /**
@@ -236,8 +280,9 @@ export interface ProdSessionOptions {
  *
  * Preflight → acquire → run → release in `finally`. Throws
  * {@link ProdSessionRefused} before `fn` is ever called when the preflight
- * refuses; every other failure mode fails open and runs `fn` unserialized with
- * a loud line.
+ * refuses, or when another claimant took the lock first
+ * ({@link ProdSessionNotAcquired}, FIX-1373); an infrastructure failure fails
+ * open and runs `fn` unserialized with a loud line.
  */
 export async function withProdSession<T>(
   opts: ProdSessionOptions,
@@ -460,6 +505,16 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
     // would let the preflight and the hold land on different databases.
     dbUrl,
   });
+
+  // FIX-1373 — fail CLOSED on a lock another claimant holds, BEFORE the holds:
+  // they belong to the holder, and this claim's release would clear them.
+  // (`acquired` is true on the fail-OPEN paths — an unreachable lock connection
+  // — so this fires only on a live holder.)
+  if (!lock.acquired) {
+    if (opts.allowUnacquired === true) return lock;
+    const holder = await withClient(dbUrl, readProdSessionState).catch(() => null);
+    throw notAcquiredRefusal(holder, lock.blockedBy);
+  }
 
   // AFTER the lock, BEFORE it is returned. Holding before the lock is taken
   // would suppress instruments for a claim that then gets refused; holding

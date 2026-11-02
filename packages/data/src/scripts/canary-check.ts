@@ -1659,7 +1659,7 @@ Triage: the missing/killed sections above usually explain it. If the ` +
           : "") +
         `\n\nCause on this instance: cron.use_background_workers=off, so pg_cron ` +
         `opens a fresh libpq connection per firing with a ~10s window. Under ` +
-        `sustained load on Pro Small that window is blown and the firing is ` +
+        `sustained load on Pro Micro that window is blown and the firing is ` +
         `dropped silently — no queue, no retry.\n` +
         `Triage: SELECT * FROM cron.job_run_details ORDER BY start_time DESC; ` +
         `then look for what was saturating the box at that minute (a job burning ` +

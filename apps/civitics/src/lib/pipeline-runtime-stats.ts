@@ -128,8 +128,8 @@ export type PipelineBudgetRef = {
   ghaWorkflow?: string;
 };
 
-/** The 6 h cluster statement_timeout every unbudgeted pg_cron job inherits. */
-export const PGCRON_CEILING_SECONDS = 6 * 60 * 60;
+/** The 3 h `postgres`-role statement_timeout every unbudgeted pg_cron job inherits (FIX-1185). */
+export const PGCRON_CEILING_SECONDS = 3 * 60 * 60;
 
 /**
  * data_sync_log `pipeline` label → runner + budget source.
@@ -275,7 +275,7 @@ export function resolveBudget(
       if (secs != null && (best == null || secs > best)) best = secs;
     }
     if (best != null) return { seconds: best, source: "cron_job_budget" };
-    return { seconds: PGCRON_CEILING_SECONDS, source: "6h pg_cron ceiling" };
+    return { seconds: PGCRON_CEILING_SECONDS, source: "3h postgres-role ceiling (FIX-1185)" };
   }
 
   if (ref.runner === "github_actions" && ref.ghaTimeoutMinutes != null) {

@@ -17,7 +17,7 @@
  *   # local Docker (active .env.local points local)
  *   pnpm --filter @civitics/data data:backfill-contract-flow-rollups
  *
- *   # prod — off-peak preferred; ~1-2min aggregation on the Small instance.
+ *   # prod — off-peak preferred; ~1-2min aggregation on the Micro instance.
  *   pnpm --filter @civitics/data data:backfill-contract-flow-rollups:prod
  *
  * Reads NEXT_PUBLIC_SUPABASE_URL (+ SUPABASE_DB_PASSWORD for prod) from the

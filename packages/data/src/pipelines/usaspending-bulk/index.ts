@@ -55,7 +55,7 @@
  *     held (runUsaSpendingBulkCi);
  *   - the tail: VACUUM (ANALYZE) external_source_refs when a category
  *     completes. NOT financial_relationships / financial_entities — their
- *     owners are the 03:00Z / 04:50Z pg_cron vacuums (FIX-1144).
+ *     owners are the 03:00Z / 04:50Z pg_cron vacuums (FIX-1133).
  *
  * Run standalone — src/scripts/usaspending-bulk.ts (every standalone run takes
  * the claim, local too, FIX-950):
@@ -874,7 +874,7 @@ function sleep(ms: number): Promise<void> {
  * external_source_refs has NO vacuum owner, so the landing vacuums it.
  * financial_relationships and financial_entities DO — jobid 38
  * `fr-vacuum-analyze` 03:00Z and `fe-vacuum-analyze` 04:50Z — and a script
- * VACUUM of FR on prod is FIX-1144's front-door incident, so they are left to
+ * VACUUM of FR on prod is FIX-1133's front-door incident, so they are left to
  * them. A fresh client: VACUUM cannot run inside a transaction block, and the
  * direct client is autocommit.
  */
@@ -883,7 +883,7 @@ async function vacuumExternalSourceRefs(): Promise<Record<string, unknown>> {
   try {
     await withDirectClient((client) => client.query("VACUUM (ANALYZE) public.external_source_refs"));
     const seconds = +((Date.now() - t0) / 1000).toFixed(1);
-    console.info(`  [tail] VACUUM (ANALYZE) external_source_refs — ${seconds}s (FR/FE: their owners, FIX-1144)`);
+    console.info(`  [tail] VACUUM (ANALYZE) external_source_refs — ${seconds}s (FR/FE: their owners, FIX-1133)`);
     return { ok: true, seconds };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -18,7 +18,7 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, relative } from "node:path";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 import { parseFixBullet, SECTION_RE, COMPLETED_RE } from "./lib/fixes-md.mjs";
 
@@ -147,6 +147,9 @@ console.log("fixes:archive —", DRY ? "DRY RUN" : "APPLIED");
 console.table({
   bulletsArchived: bulletCount,
   subsectionsArchived: subsectionCount,
-  archiveFile: ARCHIVE_PATH.replace(REPO_ROOT, ".").replace(/\\/g, "/"),
+  // FIX-1373: `relative`, not `.replace(REPO_ROOT, …)` — on Windows git prints
+  // REPO_ROOT with `/` and `resolve` gives ARCHIVE_PATH `\`, so the replace
+  // never matched and the absolute path printed.
+  archiveFile: "./" + relative(REPO_ROOT, ARCHIVE_PATH).replace(/\\/g, "/"),
   archiveBlockDate: today,
 });

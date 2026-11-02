@@ -72,7 +72,7 @@ export type RateLimitBucket =
   // High-cardinality LEAF route families (FIX-683): /jurisdictions/*,
   // /districts/*, /officials/* — the ~10k empty district/county/official shells a
   // non-compliant crawler walks id-by-id, each cold-reading get_jurisdiction_page
-  // /get_official_page (the 8s statement-timeout cancels on Pro Small). A stricter
+  // /get_official_page (the 8s statement-timeout cancels on Pro Micro). A stricter
   // per-IP bucket than entity_pages, applied to JUST these three families.
   // Mutually exclusive with entity_pages (one check per request — keeps the
   // Upstash free-tier command budget cheap), so a leaf hit counts only here.

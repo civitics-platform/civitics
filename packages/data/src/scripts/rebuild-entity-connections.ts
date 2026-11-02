@@ -258,13 +258,14 @@ async function main(): Promise<void> {
         // aggregate's HashAggregate and the recipient_count GROUP BY don't
         // thrash at prod's tiny default (work_mem=3.4MB → 9 hash batches /
         // 23MB temp on a 1/16 sample). One off-peak single-connection session,
-        // safe on the 2GB Pro Small.
+        // judged safe for a 2GB Pro Small; the box is the 1 GB Micro (904 MB),
+        // where FIX-1295 stepped the scheduled 256MB bodies down.
         await client.query("SET work_mem = '256MB'");
         // FIX-590 — pause autovacuum on entity_connections for the full rebuild.
         // The donations prepare() DELETE leaves ~2.7M dead tuples; with FIX-331's
         // aggressive autovacuum_vacuum_scale_factor=0.05 that trips autovacuum
         // MID-rebuild, and its VACUUM I/O competes with the window INSERTs on the
-        // cache-starved Pro Small. On the 2026-06-14 full run that turned donation
+        // cache-starved Pro Micro. On the 2026-06-14 full run that turned donation
         // windows 14-16 from ~4min into 40-57min each (3h08m donations total →
         // 4h budget blown). Disable for the run; re-enable + one manual VACUUM
         // ANALYZE after (success path below) and a belt-and-braces re-enable in

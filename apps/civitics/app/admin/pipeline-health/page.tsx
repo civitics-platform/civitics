@@ -213,7 +213,8 @@ export default async function PipelineHealthPage() {
                     Amber at 60% of budget, red at 85% — proportional, so a 30-minute job
                     and a 5-hour one are judged by how close they are to being cancelled.
                     A pg_cron job with no row in <code>cron_job_budget</code> inherits the
-                    6h cluster <code>statement_timeout</code>; Actions pipelines show a
+                    3h <code>postgres</code>-role <code>statement_timeout</code> (FIX-1185);
+                    Actions pipelines show a
                     budget only where the workflow&rsquo;s <code>timeout-minutes</code> is
                     unambiguous. {/* FIX-1083: the old note claimed RSS "will populate once
                     Stage 7b instrumentation lands". It landed — every Node pipeline

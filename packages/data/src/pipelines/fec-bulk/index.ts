@@ -2452,7 +2452,7 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // Nothing here writes it.)
     // ── total_donated_cents / total_received_cents: MOVED to pg_cron (FIX-702/726) ─
     // The heavy full-table rebuilds (rebuild_financial_entity_donation_totals /
-    // _received_totals) that used to run HERE saturated Pro Small during the
+    // _received_totals) that used to run HERE saturated Pro Micro during the
     // FIX-701 re-capture → live-site RPC timeouts (the FIX-726 incident). Both are
     // now incremental, dirty-scoped, chunked+committed pg_cron jobs aggregating
     // financial_relationships directly:

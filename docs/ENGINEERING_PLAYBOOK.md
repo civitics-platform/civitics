@@ -226,7 +226,7 @@ on the creep days. **The creep is in swap, not MemAvailable.**
 ### C1. "What must be ATOMIC?" decides transaction boundaries — not "what belongs together".
 
 The first attempt at the FIX-933 merge held the money move *and* every rollup in
-one transaction: ~2 h of sustained write I/O exhausted Pro Small's burst credits —
+one transaction: ~2 h of sustained write I/O exhausted Pro Micro's burst credits —
 homepage 18.7 s, `count(*)` on a 31k-row table past 600 s, one rebuild at **66+
 minutes against the 10 it took in rehearsal**. The shipped split: money move atomic
 at **~12 min**, rollups after `COMMIT`, the rebuild chunked at 5,000 donors — 66+
@@ -443,7 +443,7 @@ for choosing the autovacuum lever.
 A USASpending landing writes three tables. `financial_relationships` and
 `financial_entities` have daily scheduled owners (`fr-vacuum-analyze` 03:00Z,
 `fe-vacuum-analyze` 04:50Z — `docs/receipts/2026-10-10.md` §2), and a script
-`VACUUM` of FR on prod is FIX-1133's front-door incident (the script banners cite it as FIX-1144).
+`VACUUM` of FR on prod is FIX-1133's front-door incident (cc-261 corrected the script banners that cited FIX-1144).
 `external_source_refs` has NO owner — 580k rows, last autovacuum 2026-09-29
 (FIX-1291's reading). So the pipeline's tail vacuums ONLY the table nobody owns
 (`VACUUM (ANALYZE) external_source_refs` when a category completes), and the

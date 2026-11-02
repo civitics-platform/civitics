@@ -77,7 +77,7 @@ export const SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS = 30_000;
  *
  * The payload used to start all 13 sections simultaneously, and getDatabase's
  * eleven counts were only a fraction of the PostgREST requests racing each
- * other on a Small instance. The cost of that contention is measurable and it
+ * other on a Micro instance. The cost of that contention is measurable and it
  * is not the queries: `SELECT count(*) FROM votes` is 261 ms via psql and
  * 555 ms through PostgREST, and a faithful replay of getDatabase's whole
  * 11-way fan-out from outside the lambda finished in 559 ms. Inside
