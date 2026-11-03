@@ -647,16 +647,22 @@ export type { CronWatchdogVerdict, UnitAction } from "./cron-watchdog-verdict";
 // FIX-1125 / FIX-1194 P1-B — the box's memory series, kept OFF the box (Upstash
 // ring) and mirrored on it. runBoxHealth is the /api/cron/box-health firing;
 // readBoxHealthRing is what data:box-health:series and the receipts read.
+// FIX-1375 — the disk counters and rates each sample now carries.
 export {
   BOX_HEALTH_COMMANDS_PER_SAMPLE,
+  BOX_HEALTH_HEAD_READS_PER_SAMPLE,
   BOX_HEALTH_RING_KEY,
   BOX_HEALTH_RING_LEN,
+  DISK_RATE_MAX_GAP_S,
+  diskRates,
   offBoxCommands,
   parseBoxHealthSample,
+  parseDiskRaw,
+  readBoxHealthHead,
   readBoxHealthRing,
   runBoxHealth,
   sampleSummary,
   upstashCredsFromEnv,
   writeBoxHealthOffBox,
 } from "./box-health-store";
-export type { BoxHealthRun, BoxHealthSample, OnBoxStamp, RingRead } from "./box-health-store";
+export type { BoxHealthRun, BoxHealthSample, DiskRates, DiskRaw, OnBoxStamp, RingRead } from "./box-health-store";

@@ -13,6 +13,11 @@
  * MAX_RATE_GAP_S gives null rather than a rate across the hole: a rate
  * spanning an outage would average the ramp away.
  *
+ * The disk columns (FIX-1375, cc-262) are NOT re-derived here: the route rates
+ * them at write time on the exporter's clock (box-health-store.ts says why the
+ * route's clock is wrong for them), so each sample carries its own. A sample
+ * before the deploy, or one the route could not rate, reads null.
+ *
  * Pure. No network, no DB.
  */
 
@@ -30,6 +35,12 @@ export type SeriesRow = {
   load1: number | null;
   swapin_per_s: number | null;
   swapout_per_s: number | null;
+  /** FIX-1375 — the /data device's MB/s (10^6) and busy %, as the route rated them. */
+  read_mbps: number | null;
+  write_mbps: number | null;
+  io_time_pct: number | null;
+  /** FIX-1375 — every whole disk's read + write MB/s: the instance's burst budget is shared. */
+  all_mbps: number | null;
   scrape_ms: number;
 };
 
@@ -82,6 +93,13 @@ function rowsBetween(newestFirst: BoxHealthSample[], since: number, until: numbe
       load1: s.load1 ?? null,
       swapin_per_s: rate(prev?.pswpin, s.pswpin, dt),
       swapout_per_s: rate(prev?.pswpout, s.pswpout, dt),
+      read_mbps: s.disk_read_mbps ?? null,
+      write_mbps: s.disk_write_mbps ?? null,
+      io_time_pct: s.io_time_pct ?? null,
+      all_mbps:
+        s.disk_all_read_mbps !== undefined && s.disk_all_write_mbps !== undefined
+          ? Math.round((s.disk_all_read_mbps + s.disk_all_write_mbps) * 100) / 100
+          : null,
       scrape_ms: s.scrape_ms,
     };
   });
@@ -127,7 +145,29 @@ export type MemoryDay = {
   mem_available_mb: { min: number | null; p50: number | null };
   swap_used_mb: { max: number | null };
   gaps: number;
+  /** FIX-1375 — the day's disk rates. Optional so a pre-FIX-1375 banked day still parses. */
+  io?: IoDay;
 };
+
+/**
+ * FIX-1375 (cc-262) — the day's disk series, banked beside the memory one. The
+ * `io:` rung's thresholds are sized from these, so each number is one a dial
+ * could be written on: the /data device's read / write MB/s, every disk's MB/s
+ * (the burst budget's numerator), busy % at p95 / max, and the minutes the
+ * device was ≥ IO_BUSY_PCT busy. `rated` is how many samples carried a rate:
+ * 0 until the sampler's first day, and the line says "missing" then.
+ */
+export type IoDay = {
+  rated: number;
+  read_mbps: RateSummary;
+  write_mbps: RateSummary;
+  all_mbps: RateSummary;
+  io_time_pct: { p95: number | null; max: number | null };
+  minutes_busy: number;
+};
+
+/** FIX-1375 — "busy" for minutes_busy: the gp3 IOPS ceiling reads 97–101 % (cc-262 calibration). */
+export const IO_BUSY_PCT = 90;
 
 function nearestRank(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;
@@ -154,6 +194,26 @@ export function memoryDay(rows: SeriesRow[], stats: SeriesStats): MemoryDay {
     mem_available_mb: { min: stats.min_mb, p50: stats.median_mb },
     swap_used_mb: { max: swapUsed.length === 0 ? null : Math.max(...swapUsed) },
     gaps,
+    io: ioDay(rows),
+  };
+}
+
+/** FIX-1375 — each busy sample counts the interval since the previous one, capped like a rate. */
+export function ioDay(rows: SeriesRow[]): IoDay {
+  let busyS = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const pct = rows[i]!.io_time_pct;
+    const dt = (Date.parse(rows[i]!.at) - Date.parse(rows[i - 1]!.at)) / 1000;
+    if (pct !== null && pct >= IO_BUSY_PCT && dt > 0 && dt <= MAX_RATE_GAP_S) busyS += dt;
+  }
+  const io = summarise(rows.map((r) => r.io_time_pct));
+  return {
+    rated: rows.filter((r) => r.io_time_pct !== null).length,
+    read_mbps: summarise(rows.map((r) => r.read_mbps)),
+    write_mbps: summarise(rows.map((r) => r.write_mbps)),
+    all_mbps: summarise(rows.map((r) => r.all_mbps)),
+    io_time_pct: { p95: io.p95, max: io.max },
+    minutes_busy: Math.round(busyS / 60),
   };
 }
 
@@ -170,7 +230,7 @@ export function formatSeries(rows: SeriesRow[], stats: SeriesStats, hours: numbe
           (stats.mem_total_mb !== null ? ` of ${stats.mem_total_mb}` : ""),
   );
   if (rows.length === 0) return out.join("\n");
-  const head = ["at (UTC)", "avail_mb", "avail%", "swap_mb", "load1", "swpin/s", "swpout/s", "scrape_ms"];
+  const head = ["at (UTC)", "avail_mb", "avail%", "swap_mb", "load1", "swpin/s", "swpout/s", "rd_MB/s", "wr_MB/s", "io%", "scrape_ms"];
   const body = rows.map((r) => [
     r.at.replace("T", " ").replace(/\.\d+Z$/, "Z"),
     String(r.mem_avail_mb),
@@ -179,6 +239,9 @@ export function formatSeries(rows: SeriesRow[], stats: SeriesStats, hours: numbe
     dash(r.load1),
     dash(r.swapin_per_s),
     dash(r.swapout_per_s),
+    dash(r.read_mbps),
+    dash(r.write_mbps),
+    dash(r.io_time_pct),
     String(r.scrape_ms),
   ]);
   const w = head.map((h, i) => Math.max(h.length, ...body.map((b) => b[i]!.length)));

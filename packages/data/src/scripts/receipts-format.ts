@@ -945,6 +945,26 @@ export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
         n0(md.swap_used_mb.max) + " MB; gaps " + md.gaps + " (intervals over 6 min, not rated).",
     );
   }
+  // FIX-1375 (cc-262) — the disk series, banked inside memory_day as `io`.
+  if (md !== null && md.samples > 0) {
+    const io = md.io;
+    out.push("");
+    if (io === undefined || io.rated === 0) {
+      out.push(
+        "IO (24 h): **missing** — no sample in the window carries disk rates (the sampler shipped with cc-262 on " +
+          "2026-11-03; a day banked before it has none). FIX-1375's `io:` rung is sized from this line.",
+      );
+    } else {
+      const r = (s: { p50: number | null; p95: number | null; max: number | null }) =>
+        n0(s.p50) + " / " + n0(s.p95) + " / " + n0(s.max);
+      out.push(
+        "IO (24 h, banked as `forker.memory_day.io`, /data): read MB/s p50/p95/max **" + r(io.read_mbps) +
+          "**, write " + r(io.write_mbps) + "; all disks " + r(io.all_mbps) + " MB/s; io_time p95/max **" +
+          n0(io.io_time_pct.p95) + " / " + n0(io.io_time_pct.max) + " %**; **" + io.minutes_busy +
+          " min** at io_time ≥ 90 %; rated " + io.rated + " of " + md.samples + " samples.",
+      );
+    }
+  }
   // FIX-1289 — which window, and who banked it.
   const w = f.window ?? null;
   if (w !== null) {

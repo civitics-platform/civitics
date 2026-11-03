@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { BoxHealthSample } from "@civitics/db";
-import { MAX_RATE_GAP_S, formatSeries, memoryDay, seriesRows, seriesStats } from "./box-health-series";
+import { IO_BUSY_PCT, MAX_RATE_GAP_S, formatSeries, ioDay, memoryDay, seriesRows, seriesStats } from "./box-health-series";
 
 const MB = 1024 * 1024;
 const REAL: BoxHealthSample = {
@@ -76,8 +76,8 @@ test("FIX-1125: the printout — a summary line, then a table", () => {
   const text = formatSeries(rows, seriesStats(rows, [s(2), REAL]), 1);
   const lines = text.split("\n");
   assert.match(lines[0]!, /^\[box-health\] 2 samples .* mem_avail_mb min 399 .* median 399 \/ max 399 of 904$/);
-  assert.match(lines[1]!, /^at \(UTC\)\s+avail_mb\s+avail%\s+swap_mb\s+load1\s+swpin\/s\s+swpout\/s\s+scrape_ms$/);
-  assert.match(lines[2]!, /^2026-09-24 01:34:00Z\s+399\s+44\.1\s+545\s+0\.14\s+—\s+—\s+493$/);
+  assert.match(lines[1]!, /^at \(UTC\)\s+avail_mb\s+avail%\s+swap_mb\s+load1\s+swpin\/s\s+swpout\/s\s+rd_MB\/s\s+wr_MB\/s\s+io%\s+scrape_ms$/);
+  assert.match(lines[2]!, /^2026-09-24 01:34:00Z\s+399\s+44\.1\s+545\s+0\.14\s+—\s+—\s+—\s+—\s+—\s+493$/);
   assert.equal(formatSeries([], seriesStats([]), 6), "[box-health] no samples in the last 6 h");
 });
 
@@ -114,5 +114,33 @@ test("FIX-1194 / FIX-1125 (cc-183): memoryDay — swap rates p50/p95/max, MemAva
     samples: 0, first_at: null, last_at: null,
     swapin_per_s: { p50: null, p95: null, max: null }, swapout_per_s: { p50: null, p95: null, max: null },
     mem_available_mb: { min: null, p50: null }, swap_used_mb: { max: null }, gaps: 0,
+    io: {
+      rated: 0, read_mbps: { p50: null, p95: null, max: null }, write_mbps: { p50: null, p95: null, max: null },
+      all_mbps: { p50: null, p95: null, max: null }, io_time_pct: { p95: null, max: null }, minutes_busy: 0,
+    },
   });
+});
+
+// ── FIX-1375: the disk columns ───────────────────────────────────────────────
+
+test("FIX-1375: rows carry the route's disk rates; a pre-sampler row reads null; ioDay sums busy minutes", () => {
+  const disk = (pct: number, rd: number): Partial<BoxHealthSample> => ({
+    disk_read_mbps: rd, disk_write_mbps: 0.3, io_time_pct: pct, disk_all_read_mbps: rd + 4, disk_all_write_mbps: 0.5,
+  });
+  // Oldest → newest: a pre-sampler sample, then 2-min samples, one after a 10-min gap.
+  const newestFirst = [s(16, disk(99, 28.2)), s(6, disk(97.9, 25.8)), s(4, disk(100, 28.7)), s(2, disk(1.2, 0.98)), REAL];
+  const rows = seriesRows(newestFirst, { hours: 24, now: new Date(at(17)) });
+  assert.equal(rows[0]!.io_time_pct, null, "a sample before FIX-1375 carries no rates");
+  assert.equal(rows[0]!.read_mbps, null);
+  assert.equal(rows[1]!.read_mbps, 0.98);
+  assert.equal(rows[2]!.all_mbps, 33.2, "every disk's read + write");
+  const io = ioDay(rows);
+  assert.equal(io.rated, 4);
+  // 4 min and 6 min each count their 2-min interval; 16 min sits after a 10-min gap and counts nothing.
+  assert.equal(io.minutes_busy, 4);
+  assert.deepEqual(io.io_time_pct, { p95: 100, max: 100 });
+  assert.equal(io.read_mbps.max, 28.7);
+  assert.ok(IO_BUSY_PCT === 90);
+  assert.deepEqual(memoryDay(rows, seriesStats(rows, newestFirst)).io, io, "banked inside memory_day");
+  assert.match(formatSeries(rows, seriesStats(rows, newestFirst), 24), /rd_MB\/s +wr_MB\/s +io%/);
 });

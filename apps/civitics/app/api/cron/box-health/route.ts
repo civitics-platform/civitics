@@ -57,8 +57,9 @@
 
 export const dynamic = "force-dynamic";
 
-// Bounded under Vercel's limit: a 10 s scrape, a 5 s Upstash write, the RPC's
-// 10 s race, and the dispatcher's two 2 s races (FIX-1308) — 29 s worst case.
+// Bounded under Vercel's limit: a 10 s scrape, the 1 s ring-head read for the
+// disk rates (FIX-1375), a 5 s Upstash write, the RPC's 10 s race, and the
+// dispatcher's two 2 s races (FIX-1308) — 30 s worst case, every timeout at once.
 export const maxDuration = 30;
 
 import { NextResponse, type NextRequest } from "next/server";

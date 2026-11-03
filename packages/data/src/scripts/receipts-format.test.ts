@@ -949,6 +949,31 @@ test("FIX-1194 (cc-183): §9 — the banked memory series renders when the ring 
   );
 });
 
+test("FIX-1375 (cc-262): §9 — the IO line reads `missing` until a banked day carries rated disk samples", () => {
+  const mem_day = {
+    available: true as const, n: 720, first_at: MEMORY_DAY.first_at, last_at: MEMORY_DAY.last_at,
+    min_mb: 176, min_at: "2026-10-03T04:54:22.198Z", median_mb: 457, max_mb: 589, mem_total_mb: 904,
+  };
+  const before = boxHealthLines({ ...quiet, mem_day, memory_day: MEMORY_DAY }, AS_OF).join("\n");
+  assert.match(before, /IO \(24 h\): \*\*missing\*\* — no sample in the window carries disk rates/);
+  const zero = { ...MEMORY_DAY, io: { rated: 0, read_mbps: { p50: null, p95: null, max: null }, write_mbps: { p50: null, p95: null, max: null }, all_mbps: { p50: null, p95: null, max: null }, io_time_pct: { p95: null, max: null }, minutes_busy: 0 } };
+  assert.match(boxHealthLines({ ...quiet, mem_day, memory_day: zero }, AS_OF).join("\n"), /IO \(24 h\): \*\*missing\*\*/);
+  // cc-262's calibration numbers, as a banked day would carry them.
+  const io = {
+    rated: 700,
+    read_mbps: { p50: 0.01, p95: 28.15, max: 58.86 },
+    write_mbps: { p50: 0.04, p95: 2.02, max: 2.7 },
+    all_mbps: { p50: 0.4, p95: 36.6, max: 63.1 },
+    io_time_pct: { p95: 97.9, max: 100 },
+    minutes_busy: 62,
+  };
+  const after = boxHealthLines({ ...quiet, mem_day, memory_day: { ...MEMORY_DAY, io } }, AS_OF).join("\n");
+  assert.match(
+    after,
+    /IO \(24 h, banked as `forker\.memory_day\.io`, \/data\): read MB\/s p50\/p95\/max \*\*0\.01 \/ 28\.15 \/ 58\.86\*\*, write 0\.04 \/ 2\.02 \/ 2\.7; all disks 0\.4 \/ 36\.6 \/ 63\.1 MB\/s; io_time p95\/max \*\*97\.9 \/ 100 %\*\*; \*\*62 min\*\* at io_time ≥ 90 %; rated 700 of 720 samples\./,
+  );
+});
+
 test("FIX-1194 (cc-183): renderJson — forker.memory_day is the banked object, or an explicit null", () => {
   const d = fixture();
   d.forker = { ...d.forker, mem_day: { available: false, reason: "r" }, memory_day: null };

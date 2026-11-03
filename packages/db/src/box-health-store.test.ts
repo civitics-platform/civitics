@@ -20,8 +20,11 @@ import { join } from "node:path";
 import {
   BOX_HEALTH_COMMANDS_PER_SAMPLE,
   BOX_HEALTH_RING_KEY,
+  DISK_RATE_MAX_GAP_S,
+  diskRates,
   offBoxCommands,
   parseBoxHealthSample,
+  parseDiskRaw,
   readBoxHealthRing,
   runBoxHealth,
   sampleSummary,
@@ -30,6 +33,9 @@ import {
 import { METRICS_URL } from "./supabase-prometheus";
 
 const FIXTURE = readFileSync(join(__dirname, "__fixtures__", "supabase-metrics-2026-09-24.txt"), "utf8");
+// FIX-1375 — two real scrapes one exporter refresh apart (cc-262, 11-03 02:36:15Z / 02:37:17Z).
+const DISK_A = readFileSync(join(__dirname, "__fixtures__", "supabase-metrics-2026-11-03-a.txt"), "utf8");
+const DISK_B = readFileSync(join(__dirname, "__fixtures__", "supabase-metrics-2026-11-03-b.txt"), "utf8");
 const SRC = readFileSync(join(__dirname, "box-health-store.ts"), "utf8");
 
 const UPSTASH = "https://example-upstash.io";
@@ -41,11 +47,15 @@ const ENV = {
 
 type Call = { url: string; init: RequestInit & { cache?: string } };
 
-/** A fetch that answers the metrics URL with `body` and Upstash with `upstash`. */
+/**
+ * A fetch that answers the metrics URL with `body`, the ring-head LINDEX with
+ * `head` (FIX-1375; a JSON string or null), and every other Upstash call with `upstash`.
+ */
 function fakeFetch(opts: {
   metrics?: { status: number; body: string } | Error;
   upstash?: unknown;
   upstashStatus?: number;
+  head?: string | null;
   log?: string[];
 }): { fetchImpl: typeof fetch; calls: Call[] } {
   const calls: Call[] = [];
@@ -59,6 +69,9 @@ function fakeFetch(opts: {
       return new Response(m.body, { status: m.status });
     }
     opts.log?.push(url.endsWith("/pipeline") ? "upstash:pipeline" : "upstash");
+    if (!url.endsWith("/pipeline") && String(init?.body ?? "").startsWith('["LINDEX"')) {
+      return new Response(JSON.stringify({ result: opts.head ?? null }), { status: 200 });
+    }
     return new Response(JSON.stringify(opts.upstash ?? [{ result: 42 }, { result: "OK" }]), {
       status: opts.upstashStatus ?? 200,
     });
@@ -114,7 +127,7 @@ test("FIX-1125: ambiguity is REFUSED for a required metric and DROPPED for an op
 
 // ── the firing ───────────────────────────────────────────────────────────────
 
-test("FIX-1125: one firing — metrics, then LPUSH/LTRIM/SET in ONE pipeline, then the on-box stamp", async () => {
+test("FIX-1125: one firing — metrics, then LPUSH/LTRIM in ONE pipeline, then the on-box stamp", async () => {
   const log: string[] = [];
   const { fetchImpl, calls } = fakeFetch({ log });
   let stamped: BoxHealthSample | null = null;
@@ -126,6 +139,7 @@ test("FIX-1125: one firing — metrics, then LPUSH/LTRIM/SET in ONE pipeline, th
       return { at: "2026-09-24T01:36:00.123+00:00", error: null };
     },
   });
+  // FIX-1375: this fixture carries no diskstats, so no ring-head read is spent on it.
   assert.deepEqual(log, ["metrics", "upstash:pipeline", "on_box"], "off-box FIRST, on-box second");
   assert.equal(r.ok, true);
   assert.equal(r.off_box.ok, true);
@@ -146,6 +160,8 @@ test("FIX-1125: one firing — metrics, then LPUSH/LTRIM/SET in ONE pipeline, th
 
   assert.equal(stamped!.mem_total_bytes, 948195328);
   assert.match(r.line, /^\[cron\/box-health\] mem_avail_mb=399 mem_total_mb=904 avail_pct=44\.1 swap_used_mb=545 load1=0\.14 /);
+  // The 09-24 fixture carries no diskstats (trimmed before FIX-1375): the memory sample still lands.
+  assert.match(r.line, / disk=missing\(0 filesystem series at \/data\) /);
   assert.match(r.line, /off_box=ok ring=42 on_box=ok at=2026-09-24T01:36:00\.123\+00:00\(db\) /);
 });
 
@@ -249,4 +265,119 @@ test("FIX-1125 cc-153: a pipeline answering the OLD three replies is refused, no
   const r = await runBoxHealth({ env: ENV, fetchImpl, now, stampOnBox: async () => ({ at: null, error: "x" }) });
   assert.equal(r.ok, false);
   assert.match(r.line, /off_box=FAILED\(upstash pipeline: expected 2 replies/);
+});
+
+// ── FIX-1375: the disk counters and rates ────────────────────────────────────
+
+/** Σ node_cpu_seconds_total / ncpu, computed independently of the parser. */
+function exporterClock(body: string): number {
+  const rows = body.split("\n").filter((l) => l.startsWith("node_cpu_seconds_total{") && l.includes('service_type="db"'));
+  const cpus = new Set(rows.map((l) => l.match(/cpu="(\d+)"/)![1]));
+  return rows.reduce((s, l) => s + Number(l.slice(l.lastIndexOf(" ") + 1)), 0) / cpus.size;
+}
+
+function counter(body: string, name: string, device: string): number {
+  const line = body.split("\n").find((l) => l.startsWith(name + "{") && l.includes(`device="${device}"`))!;
+  return Number(line.slice(line.lastIndexOf(" ") + 1));
+}
+
+test("FIX-1375: the real 11-03 scrape parses to the /data device's counters, the all-device totals and the exporter clock", () => {
+  const p = parseBoxHealthSample(DISK_A, "2026-11-03T02:36:15.732Z", 300);
+  assert.ok(p.ok, JSON.stringify(p));
+  assert.equal(p.disk_missing, null);
+  const s = p.sample;
+  assert.equal(s.disk_device, "nvme1n1", "the device node_filesystem_size_bytes mounts at /data");
+  assert.equal(s.disk_read_bytes, counter(DISK_A, "node_disk_read_bytes_total", "nvme1n1"));
+  assert.equal(s.disk_io_time_s, counter(DISK_A, "node_disk_io_time_seconds_total", "nvme1n1"));
+  assert.equal(
+    s.disk_all_read_bytes,
+    counter(DISK_A, "node_disk_read_bytes_total", "nvme1n1") + counter(DISK_A, "node_disk_read_bytes_total", "nvme0n1"),
+    "both whole disks: the root volume carries swap",
+  );
+  assert.equal(s.disk_clock_s, exporterClock(DISK_A));
+  assert.ok(s.mem_total_bytes > 0, "the memory keys are unchanged");
+  assert.equal(s.io_time_pct, undefined, "a parse alone rates nothing");
+});
+
+test("FIX-1375: two scrapes rate on the EXPORTER's clock — every rate is the counter delta over Δclock", () => {
+  const a = parseBoxHealthSample(DISK_A, "2026-11-03T02:36:15.732Z", 300);
+  const b = parseBoxHealthSample(DISK_B, "2026-11-03T02:37:17.199Z", 300);
+  assert.ok(a.ok && b.ok);
+  const dt = exporterClock(DISK_B) - exporterClock(DISK_A);
+  assert.ok(dt > 50 && dt < 75, `one exporter refresh apart, got ${dt}`);
+  const r = diskRates(a.sample, b.sample);
+  const d = (name: string, dev = "nvme1n1") => counter(DISK_B, name, dev) - counter(DISK_A, name, dev);
+  assert.equal(r.disk_read_mbps, Math.round((d("node_disk_read_bytes_total") / 1e6 / dt) * 100) / 100);
+  assert.equal(r.disk_write_mbps, Math.round((d("node_disk_written_bytes_total") / 1e6 / dt) * 100) / 100);
+  assert.equal(r.io_time_pct, Math.min(100, Math.round((1000 * d("node_disk_io_time_seconds_total")) / dt) / 10));
+  assert.equal(r.io_queue, Math.round((d("node_disk_io_time_weighted_seconds_total") / dt) * 100) / 100);
+  assert.equal(r.disk_reads_ps, Math.round((d("node_disk_reads_completed_total") / dt) * 10) / 10);
+  assert.equal(r.disk_writes_ps, Math.round((d("node_disk_writes_completed_total") / dt) * 10) / 10);
+  const all = d("node_disk_read_bytes_total") + d("node_disk_read_bytes_total", "nvme0n1");
+  assert.equal(r.disk_all_read_mbps, Math.round((all / 1e6 / dt) * 100) / 100);
+  for (const [k, v] of Object.entries(r)) assert.ok(typeof v === "number" && v >= 0, `${k}=${v}`);
+  assert.ok(r.io_time_pct! <= 100);
+});
+
+test("FIX-1375: no honest rate → the key is ABSENT (first sample, device change, same snapshot, a gap, a reset)", () => {
+  const a = parseBoxHealthSample(DISK_A, "t", 1);
+  const b = parseBoxHealthSample(DISK_B, "t", 1);
+  assert.ok(a.ok && b.ok);
+  assert.deepEqual(diskRates(null, b.sample), {}, "the first sample has no previous");
+  assert.deepEqual(diskRates({ route_at: "t" }, b.sample), {}, "a pre-FIX-1375 previous carries no counters");
+  assert.deepEqual(diskRates({ ...a.sample, disk_device: "nvme9n1" }, b.sample), {}, "never rated across a device change");
+  assert.deepEqual(diskRates(b.sample, b.sample), {}, "the same exporter snapshot twice (Δclock = 0)");
+  assert.deepEqual(
+    diskRates({ ...a.sample, disk_clock_s: b.sample.disk_clock_s! - DISK_RATE_MAX_GAP_S - 1 }, b.sample),
+    {},
+    "a gap past 6 min would average a hole away",
+  );
+  // A counter that went backwards (a node restart) drops THAT rate, not the rest, and never goes negative.
+  const reset = diskRates({ ...a.sample, disk_read_bytes: b.sample.disk_read_bytes! + 1 }, b.sample);
+  assert.equal(reset.disk_read_mbps, undefined);
+  assert.equal(typeof reset.io_time_pct, "number");
+  // Serialised, an absent rate is not a null (record_box_health_mem's numeric check would RAISE on null).
+  assert.ok(!JSON.stringify(reset).includes("null"));
+});
+
+test("FIX-1375: a body without the device or the mount → the memory sample still lands, disk_missing says why", () => {
+  const noDisk = DISK_A.split("\n").filter((l) => !l.startsWith("node_disk_")).join("\n");
+  const p = parseBoxHealthSample(noDisk, "t", 1);
+  assert.ok(p.ok, JSON.stringify(p));
+  assert.match(p.disk_missing!, /node_disk_read_bytes_total: 0 series for device nvme1n1/);
+  assert.equal(p.sample.disk_device, undefined);
+  assert.equal(typeof p.sample.mem_available_bytes, "number");
+
+  const noMount = DISK_A.split("\n").filter((l) => !l.includes('mountpoint="/data"')).join("\n");
+  assert.deepEqual(parseDiskRaw(noMount), { missing: "0 filesystem series at /data" });
+});
+
+test("FIX-1375: a firing with a previous sample at the ring head pushes the rates to the ring AND the stamp", async () => {
+  const a = parseBoxHealthSample(DISK_A, "2026-11-03T02:36:15.732Z", 300);
+  assert.ok(a.ok);
+  const log: string[] = [];
+  const { fetchImpl, calls } = fakeFetch({ metrics: { status: 200, body: DISK_B }, head: JSON.stringify(a.sample), log });
+  let stamped: BoxHealthSample | null = null;
+  const r = await runBoxHealth({
+    env: ENV, fetchImpl, now,
+    stampOnBox: async (s) => { log.push("on_box"); stamped = s; return { at: "2026-11-03T02:38:00+00:00", error: null }; },
+  });
+  assert.equal(r.ok, true);
+  assert.deepEqual(log, ["metrics", "upstash", "upstash:pipeline", "on_box"], "the head read, then off-box, then on-box");
+  assert.deepEqual(JSON.parse(String(calls[1]!.init.body)), ["LINDEX", BOX_HEALTH_RING_KEY, "0"], "one plain LINDEX");
+  const pushed = JSON.parse((JSON.parse(String(calls[2]!.init.body)) as string[][])[0]![2]!) as BoxHealthSample;
+  assert.equal(typeof pushed.io_time_pct, "number");
+  assert.equal(typeof pushed.disk_read_mbps, "number");
+  assert.equal(pushed.disk_clock_s, exporterClock(DISK_B), "the raw counters ride along for the next delta");
+  assert.equal(stamped!.io_time_pct, pushed.io_time_pct);
+  assert.match(r.line, / disk=r[\d.]+\/w[\d.]+MB\/s all=r[\d.]+\/w[\d.]+MB\/s io=[\d.]+% q=[\d.]+ /);
+
+  // An empty ring (or a failed LINDEX) costs the rates, never the sample.
+  const first = fakeFetch({ metrics: { status: 200, body: DISK_B }, head: null });
+  const r2 = await runBoxHealth({ env: ENV, fetchImpl: first.fetchImpl, now, stampOnBox: async () => ({ at: null, error: "x" }) });
+  assert.equal(r2.ok, true);
+  assert.match(r2.line, / disk=unrated\(no previous sample\) /);
+  const pushed2 = JSON.parse((JSON.parse(String(first.calls[2]!.init.body)) as string[][])[0]![2]!) as BoxHealthSample;
+  assert.equal(pushed2.io_time_pct, undefined);
+  assert.equal(typeof pushed2.disk_read_bytes, "number");
 });

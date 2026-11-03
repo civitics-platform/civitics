@@ -1,0 +1,74 @@
+# cc-262: a real scrape of the prod metrics endpoint at 2026-11-03T02:36:15.732Z, trimmed to the families box-health reads.
+# HELP node_memory_SwapFree_bytes Memory information field SwapFree_bytes.
+# TYPE node_memory_SwapFree_bytes gauge
+node_memory_SwapFree_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 6.02537984e+08
+# HELP node_filesystem_size_bytes Filesystem size in bytes.
+# TYPE node_filesystem_size_bytes gauge
+node_filesystem_size_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="/dev/nvme0n1p2",device_error="",fstype="ext4",mountpoint="/"} 1.5641890816e+10
+node_filesystem_size_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="/dev/nvme1n1",device_error="",fstype="ext4",mountpoint="/data"} 5.6950861824e+10
+# HELP node_load1 1m load average.
+# TYPE node_load1 gauge
+node_load1{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0.16
+# HELP node_vmstat_oom_kill /proc/vmstat information field oom_kill.
+# TYPE node_vmstat_oom_kill untyped
+node_vmstat_oom_kill{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 0
+# HELP node_vmstat_pswpout /proc/vmstat information field pswpout.
+# TYPE node_vmstat_pswpout untyped
+node_vmstat_pswpout{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 9.7158982e+07
+# HELP node_memory_MemAvailable_bytes Memory information field MemAvailable_bytes.
+# TYPE node_memory_MemAvailable_bytes gauge
+node_memory_MemAvailable_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 4.0247296e+08
+# HELP node_memory_MemTotal_bytes Memory information field MemTotal_bytes.
+# TYPE node_memory_MemTotal_bytes gauge
+node_memory_MemTotal_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 9.48191232e+08
+# HELP node_disk_reads_completed_total The total number of reads completed successfully.
+# TYPE node_disk_reads_completed_total counter
+node_disk_reads_completed_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 9.1853149e+07
+node_disk_reads_completed_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 8.7187482e+07
+# HELP node_vmstat_pgmajfault /proc/vmstat information field pgmajfault.
+# TYPE node_vmstat_pgmajfault untyped
+node_vmstat_pgmajfault{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 5.4076887e+07
+# HELP node_vmstat_pswpin /proc/vmstat information field pswpin.
+# TYPE node_vmstat_pswpin untyped
+node_vmstat_pswpin{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 9.3525189e+07
+# HELP node_memory_SwapTotal_bytes Memory information field SwapTotal_bytes.
+# TYPE node_memory_SwapTotal_bytes gauge
+node_memory_SwapTotal_bytes{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db"} 1.073737728e+09
+# HELP node_cpu_seconds_total Seconds the CPUs spent in each mode.
+# TYPE node_cpu_seconds_total counter
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="idle"} 662104.58
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="iowait"} 47878.34
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="irq"} 0
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="nice"} 15.17
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="softirq"} 538.23
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="steal"} 749.81
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="system"} 8127.4
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="0",mode="user"} 14132.35
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="idle"} 662019.93
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="iowait"} 47902.22
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="irq"} 0
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="nice"} 13.55
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="softirq"} 551.08
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="steal"} 746.96
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="system"} 8150.2
+node_cpu_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",cpu="1",mode="user"} 14128.19
+# HELP node_disk_io_time_seconds_total Total seconds spent doing I/Os.
+# TYPE node_disk_io_time_seconds_total counter
+node_disk_io_time_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 39288.063
+node_disk_io_time_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 45139.195
+# HELP node_disk_read_bytes_total The total number of bytes read successfully.
+# TYPE node_disk_read_bytes_total counter
+node_disk_read_bytes_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 1.908371278336e+12
+node_disk_read_bytes_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 1.922215159808e+12
+# HELP node_disk_writes_completed_total The total number of writes completed successfully.
+# TYPE node_disk_writes_completed_total counter
+node_disk_writes_completed_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 3.5982998e+07
+node_disk_writes_completed_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 2.0972387e+07
+# HELP node_disk_written_bytes_total The total number of bytes written successfully.
+# TYPE node_disk_written_bytes_total counter
+node_disk_written_bytes_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 4.13482187776e+11
+node_disk_written_bytes_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 4.33783169024e+11
+# HELP node_disk_io_time_weighted_seconds_total The weighted # of seconds spent doing I/Os.
+# TYPE node_disk_io_time_weighted_seconds_total counter
+node_disk_io_time_weighted_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme0n1"} 285800.706
+node_disk_io_time_weighted_seconds_total{supabase_project_ref="xsazcoxinpgttgquwvuf",supabase_identifier="xsazcoxinpgttgquwvuf",service_type="db",device="nvme1n1"} 490365.574
