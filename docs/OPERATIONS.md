@@ -977,6 +977,36 @@ The server itself stays at `max_parallel_workers_per_gather 1` and
   `work_mem` or a body's `SET work_mem` moves — the headroom dial reads them
   (the table is in `20261028001000`'s header; `fix1357-caps.test.ts` pins it).
 
+### Disk IO budget (FIX-1375)
+
+The Micro instance bursts disk IO from a daily budget. Its baseline is 87 Mbps
+(~10.9 MB/s) and its burst 2,085 Mbps. Supabase → Reports → Database → **Disk
+IO consumed** shows the UTC day's percentage. Quiet days read **1 %**. The
+drop-night Sunday read **17 %** (11-01). The Monday after read **88 %** by
+05:40Z and stayed 88 % (11-02). The post-landing tail costs ~5× the landing.
+The 11-02 figure never reached 100 % although the box throttled for 4 h, so
+read the dashboard as a lagging, aggregated number, not a live gauge.
+
+**The throttle signature:** pg_cron `job startup timeout`s in bursts, with
+clean 15-minute gaps between them. load1 ≫ 2 vCPUs (16–31), ring samples go
+missing, and units run 6–28× their walls (rule-taggers-daily 5,180 s against
+p50 186 s). Memory stays FLAT: MemAvailable 212–447 MB, swap ≤ 620 MB. That
+flat memory is what tells it apart from the swap wedge (playbook C13). The
+disk series in the box-health sample (FIX-1375, since 11-03) reads it
+directly. `pnpm --filter @civitics/data data:box-health:series` shows
+`rd_MB/s`, `wr_MB/s` and `io%` per 2-min sample, and receipts §9 has the
+day's IO line. An IO-bound unit at full burst reads ~28 MB/s at io_time
+~100 % and ~3,000 reads/s (the gp3 volume's IOPS ceiling). Idle is < 0.1 MB/s
+at < 1 %. A throttle is the same ~100 % at a fraction of the MB/s and IOPS.
+
+**The no-push rule (until the `io:` rung lands):** no class-P push and no
+class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
+`entity_connection_stats_windows` pass completes (11:31Z on 11-02, 12.5 h
+after the landing). None during a second pass either (Mon ~23:00Z → Tue). In
+practice that means Sunday 21:00Z → Tuesday ~06:00Z. A `job startup timeout`
+or a ring sample with load1 > 8 in the last 3 h is a STOP
+(`docs/cc/PROMPT_TEMPLATE.md`, FIX-1377). → `docs/audits/2026-11-02-io-budget-census.md`.
+
 ### A registry row that shares its pipeline (FIX-1361) and the weekly's nets (FIX-1363)
 
 A `by` / `stale_after` row's clock is its pipeline's newest complete|partial

@@ -279,6 +279,16 @@ the check. History: the 05:45–09:00 UTC blackout clause was retired by cc-243
   whose wall exceeded its job's interval.
 - **(d) Watchdogs.** Both `*/2` jobs 60/60 in the last 60 min, no
   `job startup timeout` on any job, and no budgeted job left `running`.
+- **(d′) The IO throttle's memory is 3 h, not 60 min (FIX-1377, cc-262).** Every
+  class-P and class-B STOP table carries the row **"a `job startup timeout` on
+  any job, OR a box-health ring sample with load1 > 8, within the last 3 h → no
+  push / no op"**. Read it from `cron.job_run_details` and
+  `data:box-health:series --hours 3`. The 11-02 throttle ran 03:51 → 08:07Z, but
+  its startup timeouts came in bursts with clean 15-min buckets between them
+  (04:45, 05:45Z). A 60-min window reopened mid-throttle, and the dispatcher
+  armed a heavy unit into each gap. `prod_op_gate` (d) still reads 60 min until
+  FIX-1377's code half (with FIX-1375's `io:` input) lands. Until then this row
+  is the prompt's own check, run before the gate.
 - **(e) Interlock.** `prod_session_state()` clear, `live_writers` empty.
 - **(f) Front door, in RENDERS (FIX-1232).** Renders lost (57014 statement
   timeouts grouped by second, so one page's 4–6 fanned-out reads count once)

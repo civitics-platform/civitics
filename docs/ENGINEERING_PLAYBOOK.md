@@ -46,6 +46,9 @@ FIX-1363). New rule **D11**.
 **Extended 2026-10-30** with the second weekly's RETURN (cc-254, FIX-1365).
 New rule **D12**.
 
+**Extended 2026-11-03** with the IO-budget census (cc-262, FIX-1375 / FIX-1376 /
+FIX-1377). New rule **C13**.
+
 ---
 
 ## A. Data-shape regimes
@@ -769,6 +772,42 @@ measured on 2026-10-28 (FIX-1356):
 postdates the commit. The revert restores the exact prior array: RESET where
 there was no entry, SET where there was one.
 *FIX-1356 · `20261028000000_fix1356_parallel_zero_hash_mem_one.sql` · cc-252*
+
+### C13. The box has two failure classes. The IO throttle has flat memory, and a gate that reads only memory arms work into it.
+
+The swap wedge (10-25, cc-250) is memory: swap at its 1 GiB ceiling,
+MemAvailable in tens of MB, fork failures. The IO throttle (11-02, cc-262) is
+disk. It brings bursts of pg_cron `job startup timeout`, load1 16–31 on 2 vCPUs,
+missing box-health samples, and units at 6–28× their walls. Through all of it
+MemAvailable sat at 212–447 MB and swap ≤ 620 MB. The throttle came the morning
+after a landing, when the ec-crawl's `entity_connection_stats_windows` pass
+runs ~7× its quiet cost (~250 s against ~35 s a window). Each window reads
+~8.8 GB from `/data` at the gp3 volume's 3,000-IOPS ceiling, and
+`refresh_platform_counts()` seq-scanned `entity_connections` three times on top
+of it. Three receipts, the same statements each time:
+
+- **08-31:** refresh_derived_mvs ran 21,919 s and was cancelled at
+  `rebuild_entity_search_index`.
+- **09-01:** entity_connections_rebuild was cancelled at
+  `entity_connection_stats_windows window 1/16` after 2,113 s.
+- **11-02:** the same `rebuild_entity_search_index` cancel came at 1,519 s, and
+  ecs window 3/16 at 2,054 s.
+
+The throttle lasted 4 h 15 min, not the 30 min of its first burst, because
+`box_is_saturated` reads probe age, fork failures and memory. It cleared in two
+clean 15-min buckets and armed donor-rollup-refresh (2,230 s, **0 of 32
+chunks**), refresh-derived-mvs-daily (cancelled) and rule-taggers-daily
+(5,180 s) one after another into the stall.
+
+**Apply:** a box-health rung needs an IO input, not only a memory one. The disk
+series is in the 2-min sample since 11-03 (FIX-1375; the rung and the mirror's
+whitelist are owed). Rate it on the **exporter's** clock: the metrics endpoint
+refreshes once a minute, so a route-clock rate reads io_time at 184 %. Count
+**both** devices, because swap lives on the root volume, whose reads since boot
+equal `/data`'s. A STOP that remembers 60 min of startup timeouts reopens
+mid-throttle. It needs 3 h. No IO-heavy push from the drop night until the
+first post-landing ecs pass completes (~12.5 h).
+*FIX-1375 / FIX-1376 / FIX-1377 · `docs/audits/2026-11-02-io-budget-census.md` · cc-262*
 
 ---
 
