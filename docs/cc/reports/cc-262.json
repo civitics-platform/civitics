@@ -1,0 +1,74 @@
+{
+  "cc": "262",
+  "prompt": "cc-prompt-262-io-budget-census-post-landing-throttle-disk-rates-in-box-health-io-rung-design-platform-counts.md",
+  "started_at": "2026-11-03T01:33:34Z",
+  "finished_at": "2026-11-03T03:40:00Z",
+  "head_before": "e7d1c351",
+  "head_after": "b5ada7e1",
+  "commits": [
+    {
+      "sha": "124e1bf9",
+      "subject": "[skip vercel] docs(fixes): cc-262 files FIX-1375, FIX-1376, FIX-1377"
+    },
+    {
+      "sha": "5d23037f",
+      "subject": "feat(box-health): FIX-1375 — the disk-rate series in the 2-minute box-health sample (cc-262)"
+    },
+    {
+      "sha": "94acb7a1",
+      "subject": "[skip vercel] docs(audit): FIX-1375 — the IO-budget census: 11-02's post-landing throttle (03:51→08:07Z) attributed, the calibration, the io: rung design; OPERATIONS \\\"Disk IO budget\\\", playbook C13, the 3 h STOP row (FIX-1377 docs half), dispatcher.md s25 + s12b-11 (cc-262)"
+    },
+    {
+      "sha": "af46101c",
+      "subject": "chore(fixes): record FIX-1306 on prod — www canonical with NEXT_PUBLIC_SITE_URL deleted (cc-262)"
+    },
+    {
+      "sha": "5ef9a451",
+      "subject": "chore(fixes): record FIX-1345 on prod — the Mon 11-02 fixes-housekeep bot's MOVING commit: run 41516133205 moved 8 bullets in 34f3af8b (cc-262)"
+    },
+    {
+      "sha": "814adc44",
+      "subject": "chore(fixes): record FIX-1325 on prod — check:job-registry on the first live job_registry snapshot (2026-11-03.json): 21 RETURNED, 0 problems (cc-262)"
+    },
+    {
+      "sha": "b5ada7e1",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-262's records — FIX-1306, FIX-1325, FIX-1345 (prod); files FIX-1375, FIX-1376, FIX-1377 open (42 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1306",
+    "FIX-1345",
+    "FIX-1325"
+  ],
+  "fixes_filed": [
+    "FIX-1375",
+    "FIX-1376",
+    "FIX-1377"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none (the Vercel deploy EpRxVCnff8LXbrVBuX1xGSYgaap2 of 5d23037f only; every prod read via db-query --prod, the metrics endpoint GET and the Upstash LRANGE)",
+  "ci": "green",
+  "stopped_items": [
+    "Read 7 (Logs API postgres_logs / edge_logs per 5 min, Vercel runtime logs for /api/cron/box-health 03:50–04:30Z): SKIPPED for time. The stall signature per bucket comes from cron.job_run_details instead; the 118 front-door 5xx is cc-258's read.",
+    "Read 9's live calibration on the Tue 00:47Z weekly: MISSED — the session opened 01:33Z, after the weekly reaped (01:11Z, 1,235.9 s). Calibrated on the ec-crawl's second-pass ecs windows (the same IO-bound class) instead.",
+    "Read 4's end-of-session pg_statio re-read (the delta): not taken.",
+    "`vercel inspect --wait`: not run — `pnpm dlx vercel ls` hung past 120 s and was stopped (TaskStop). Deploy readiness taken from the GitHub commit status on 5d23037f: Vercel success, 'Deployment has completed', 02:56:00Z (EpRxVCnff8LXbrVBuX1xGSYgaap2); the ring's samples carry disk keys from 02:58:22Z.",
+    "Item 1 deviates from the prompt on one point: rates are OMITTED, not null, on the first sample. record_box_health_mem's numeric check raises on a null once cc-259 whitelists the keys, and a failing stamp reads as box: stale.",
+    "Item 1's mirror half: record_box_health_mem WHITELISTS (drops unlisted keys; read at 03:25Z, 0 disk keys stored, stamp still landing). Per the prompt this is a one-line migration (extend c_numeric) for cc-259's push, noted under FIX-1375; not built here."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1375",
+      "what": "24 h of disk-rate samples in the ring (read/write MB/s, io_time %, queue) with the receipts §9 IO line populated on 2026-11-04; the rung's thresholds re-read against the Tue 14:00Z treemap + 15:00Z donor-party walls; cc-255's before-curve carries them",
+      "after": "2026-11-04T01:00Z"
+    },
+    {
+      "fix": "FIX-1376",
+      "what": "the Tue 03:53Z and Wed 03:53Z platform-counts walls vs relallvisible/relpages at 03:50Z — the day-after-landing effect quantified on a normal day",
+      "after": "2026-11-04T05:00Z"
+    }
+  ]
+}
