@@ -1,0 +1,119 @@
+{
+  "cc": "259",
+  "prompt": "cc-prompt-259-fix1338-rate-denominator-work-done-source-widened-four-hold-conversions-tuesday-records.md",
+  "started_at": "2026-11-04T01:01:50Z",
+  "finished_at": "2026-11-04T01:40:00Z",
+  "head_before": "7efdebf1",
+  "head_after": "356a1370",
+  "commits": [
+    {
+      "sha": "ab3bd835",
+      "subject": "[skip vercel] docs(fixes): cc-259 files FIX-1378"
+    },
+    {
+      "sha": "bc621642",
+      "subject": "[skip vercel] feat(db): FIX-1338 — check_pipeline_rate_regression() rates WORK DONE (metadata.desired_rows when a body stamps it, digits-only and > 0, else rows written) and admits no-source rows on a job_registry pipeline; each element names its recent window's denominator (cc-259)"
+    },
+    {
+      "sha": "bddf76c0",
+      "subject": "[skip vercel] feat(db): FIX-1375 mirror whitelist — record_box_health_mem()'s c_numeric gains the sampler's eight disk rates and nine raw counters; disk_device stays ignored, a null rate RAISEs by design (cc-259)"
+    },
+    {
+      "sha": "eaa00cdb",
+      "subject": "[skip vercel] feat(db): FIX-1378 — the four cutover holds convert to cadence rows on their Tue 11-03 slot receipts: run_rule_taggers → 24 h (gated in SQL on FIX-1338's verdict), donor-party / treemap / agency-staffing → 168 h; RAISE on sustained_regression only (cc-259)"
+    },
+    {
+      "sha": "86092473",
+      "subject": "[skip vercel] test(dispatcher): FIX-1378 — annotate three r12 bindings tsc reads as implicit any (TS7022); the pre-push typecheck refused the branch push (cc-259)"
+    },
+    {
+      "sha": "c8d0fa28",
+      "subject": "chore(fixes): record FIX-1363 on prod — the Tue 11-03 00:47Z weekly slot: refresh-derived-mvs-weekly armed 00:47:00Z (by 47 0 * * 2 → 00:00:00, MemAvailable 402 / swap 497), ran 00:49:00.18 → 01:09:35.87Z complete, 6 / 6 units, 1,235.7 s, budget_hit false; reaped 01:11:00Z succeeded: CALL unit_ms 1235864 = 1.06× the in-session 1,166,603; the daily armed its own 06:01:00Z slot (cc-259)"
+    },
+    {
+      "sha": "c1e28c64",
+      "subject": "chore(fixes): record FIX-1361 on prod — no by-row lapse across Tue 11-03: each of the four shared-pipeline rows armed at its own slot on its own cadence anchor (mvs-weekly 00:47:00Z, mvs-daily 06:01:00Z, taggers-daily 06:31:00Z, taggers-weekly 16:03:00Z), all four complete and reaped succeeded (cc-259)"
+    },
+    {
+      "sha": "d98e24c4",
+      "subject": "chore(fixes): record FIX-1356 on prod — 7 days of postgres_logs after the push (10-28 01:23Z → 11-03 12:00Z, seven slices) carry 0 DSM-refusal lines (the control predicate returned 275, so the source is live); the class stays absent. The Mon 11-02 stall-minute line is WORSE (165 min, 270 startup timeouts vs none the Monday before), which is cc-262's IO throttle, not a DSM finding (cc-259)"
+    },
+    {
+      "sha": "73255213",
+      "subject": "chore(fixes): record FIX-1368 on prod — the Tue 11-03 14:00Z slot: treemap-individuals-global-refresh armed 14:01:00Z (by 0 14 * * 2 → -00:01:00, MemAvailable 426 / swap 468), ran 14:03:00.11 → 14:19:15.37Z complete, a fresh sweep (resumed false, resume_cursor -1), 975.3 s (band 0–1492), slowest chunk 31 s, 3,071 rows; reaped 14:21:00Z succeeded: CALL unit_ms 975338; donor-party still ran the same afternoon (cc-259)"
+    },
+    {
+      "sha": "97d9c3c3",
+      "subject": "chore(fixes): record FIX-1365 on prod — the Tue 11-03 15:00Z slot: donor-party-rollup-refresh armed 15:01:00Z, the first tick ≥ the slot (by 0 15 * * 2 → -00:01:00, MemAvailable 430 / swap 490), ran 15:03:00.09 → 15:04:33.37Z complete, mode crawl, caught_up true, 3 units, 6,030 dirty donors, 10,819 rows, 93.3 s (band 0–119); reaped 15:05:00Z succeeded: CALL unit_ms 93312; rule-taggers-weekly's 16:00Z slot unaffected (cc-259)"
+    },
+    {
+      "sha": "12c75627",
+      "subject": "[skip vercel] docs(ops): FIX-1338 / FIX-1378 / FIX-1375 — OPERATIONS adds the canary's rate line (denominator, membership, hold demotion, the cutover-hold conversion recipe), a held migration riding every later push (rule 411), and the mirror's disk keys; playbook D4 and C13 addenda; PROMPT_TEMPLATE's class-P line on the dry run's whole-folder list; dispatcher.md s12b-6…11, s12b, s21, s25 (cc-259)"
+    },
+    {
+      "sha": "356a1370",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-259 — FIX-1338 and FIX-1378 close local-only (their prod half is cc-263's Sat 11-07 push); records FIX-1356, FIX-1361, FIX-1363, FIX-1365, FIX-1368 (prod); files FIX-1378 (41 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1338",
+    "FIX-1378",
+    "FIX-1363",
+    "FIX-1361",
+    "FIX-1356",
+    "FIX-1368",
+    "FIX-1365"
+  ],
+  "fixes_filed": [
+    "FIX-1378"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none (reads only; db-push-prod --dry-run listed and applied nothing). The landing of 86092473 triggered Vercel production deploy 9yawUeUpbGXQevnRvaQYX49mZkAs (completed 01:31:16Z). The app code was unchanged, but the ignoreCommand built because the range held untagged receipts-bot commits and packages/data tests",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1369's record NOT written. The Tue 00:05Z slot was complete and incremental, but its wall was 62.8 s (elapsed_seconds 63) against the owed ≤ 60 s. It stays owed. Its conversion file (20261104004000) IS written, because the conversion's gate is a complete terminal row (the prompt's STOP row), and that row exists.",
+    "FIX-1258's record NOT written. The Tue 16:05Z weekly's phase_seconds.scan read 65.0 against the owed < 63.4 (10-27 read 64.8). entity_tags reads relpages 130,321 / all-visible 0.663 at 01:0xZ against the owed ~124.4k / ≥ 99 %. It stays owed.",
+    "Read 9's filtered run (pnpm --filter @civitics/data test -- dispatcher canary detector box-health) ran the WHOLE package: run-tests.mjs ignores the args. Result: 1,882 tests, 1,819 pass, 0 fail, 63 skipped (the clone-gated cases). The clone-gated suites were then run one by one with CIVITICS_CLONE_TESTS=1, all green.",
+    "The first branch push was refused by the pre-push @civitics/data typecheck (TS7022 ×3 in dispatcher-r12.test.ts). Fixed in a new commit (86092473), never amended, never --no-verify."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1338",
+      "what": "the prod half: file 1 applied in cc-263's Sat 11-07 push (the read-back NOTICE with md5 a76c935d and run_rule_taggers on denominator desired_rows; the canary's rate line reading the taggers not sustained); then the next three nightly §9 rate lines with no pipeline newly sustained under D3 without a quoted cause",
+      "after": "2026-11-08T01:00Z"
+    },
+    {
+      "fix": "FIX-1378",
+      "what": "the prod half: files 2–5 applied in cc-263's push (the four rows held false, cadence 24/168/168/168, the verdicts quoted in the notes); then the canary's first post-conversion verdicts (the Sun 11-08 nightly §9): in cadence, no freshness finding",
+      "after": "2026-11-09T01:00Z"
+    },
+    {
+      "fix": "FIX-1375",
+      "what": "the mirror half: file 6 applied in cc-263's push (record_box_health_mem md5 b6a472e5); pipeline_state.box_health_mem carries io_time_pct within one 2-min tick of the push; the io: rung is the later prompt",
+      "after": "2026-11-08T01:00Z"
+    },
+    {
+      "fix": "FIX-1370",
+      "what": "carried from cc-256: the Wed 11-04 03:10Z group-donor slot; its conversion + record ride cc-255",
+      "after": "2026-11-04T06:00Z"
+    },
+    {
+      "fix": "FIX-1369",
+      "what": "the Tue 11-10 00:05Z agency-staffing slot: mode incremental, complete, wall ≤ 60 s (11-03 read 62.8 s, a 2.8 s miss), or a band re-cut that sources the bound",
+      "after": "2026-11-10T00:05Z"
+    },
+    {
+      "fix": "FIX-1258",
+      "what": "the Tue 11-10 16:00Z rule-taggers-weekly with phase_seconds.scan < 63.4 (11-03 read 65.0) and entity_tags relpages ~124.4k / all-visible ≥ 99 % (11-04 read 130,321 / 0.663 — re-bloated)",
+      "after": "2026-11-10T16:00Z"
+    },
+    {
+      "fix": "FIX-1376",
+      "what": "the Wed 11-04 03:53Z platform-counts wall vs relallvisible/relpages at 03:50Z (cc-255's read); Tue 11-03 read 183.7 s with EC all-visible 0.848 that morning",
+      "after": "2026-11-04T05:00Z"
+    }
+  ]
+}
