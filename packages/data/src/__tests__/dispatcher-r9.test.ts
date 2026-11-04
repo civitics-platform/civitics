@@ -331,8 +331,12 @@ async function begin(c: Client): Promise<void> {
   await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE");
 }
 
+// FIX-1378 (cc-259) converted two of the holds these files assert; its revert puts FIX-1311's holds back first.
+const CUTOVER = () => read(path.join(ROOT, "scripts", "fix1378-revert-convert-cutover-holds.sql"));
+
 /** Apply every file inside the caller's transaction, from the un-RETURNed rows. */
 async function applyFresh(c: Client): Promise<void> {
+  await c.query(CUTOVER());
   for (const r of ROWS) await c.query(r.revert());
   for (const r of ROWS) await c.query(r.file());
 }
@@ -374,6 +378,7 @@ test("clone: each file applies under the gate's own session hold; RAISEs on a hu
   const attempt = async (r: Row, setup: string, params: unknown[] = []): Promise<string | null> => {
     await begin(c);
     try {
+      await c.query(CUTOVER());
       await c.query(r.revert());
       await c.query(setup, params);
       await c.query(r.file());

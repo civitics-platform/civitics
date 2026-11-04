@@ -45,6 +45,8 @@ const DP = () => one("_fix1365_return_donor_party_rollup_refresh_crawl_first.sql
 const ANCHOR = () => one("_fix1361_dispatcher_anchor_cadence_and_headroom_rung_after_live.sql");
 const BODY = () => one("_fix1295_work_mem_m2.sql");
 const REVERT = () => read(path.join(ROOT, "scripts", "fix1365-revert-return-donor-party-rollup.sql"));
+// FIX-1378 (cc-259) converted the hold this file asserts; its revert puts FIX-1311's hold back first.
+const CUTOVER = () => read(path.join(ROOT, "scripts", "fix1378-revert-convert-cutover-holds.sql"));
 
 const md5 = (s: string) => crypto.createHash("md5").update(s, "utf8").digest("hex");
 function prosrc(src: string, sig: string, quote: string): string {
@@ -171,6 +173,7 @@ async function clone(t: { skip: (m: string) => void }): Promise<Client | null> {
 
 /** Apply the file inside the caller's transaction, from the un-RETURNed row. */
 async function applyFresh(c: Client): Promise<void> {
+  await c.query(CUTOVER());
   await c.query(REVERT());
   await c.query(DP());
 }
@@ -212,6 +215,7 @@ test("clone: the file applies under the gate's own session hold; RAISEs on a hum
   const attempt = async (setup: string, params: unknown[] = []): Promise<string | null> => {
     await c.query("BEGIN");
     try {
+      await c.query(CUTOVER());
       await c.query(REVERT());
       await c.query(setup, params);
       await c.query(DP());
