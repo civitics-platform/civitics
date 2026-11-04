@@ -254,7 +254,8 @@ A class-P prompt carries `when: after <dependency landing>` and no window /
 lapse / hard-stop rows; its STOP table keeps the box rows (`held`, the census,
 io) and drops the clock rows. A file with a class-B statement makes the whole
 push class B; the prompt names each file's class and the dry run's file list is
-the check. History: the 05:45–09:00 UTC blackout clause was retired by cc-243
+the check. The dry run lists EVERY pending file in the workdir — a prompt that
+holds a file must say what rides with it (cc-259). History: the 05:45–09:00 UTC blackout clause was retired by cc-243
 (FIX-1124 part 2), the clocked vacuum spacing by cc-247 (FIX-1342).
 
 - **(a) Unguarded owners, derived from the database.** A pg_cron job that does

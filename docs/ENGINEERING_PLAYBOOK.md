@@ -809,6 +809,10 @@ mid-throttle. It needs 3 h. No IO-heavy push from the drop night until the
 first post-landing ecs pass completes (~12.5 h).
 *FIX-1375 / FIX-1376 / FIX-1377 · `docs/audits/2026-11-02-io-budget-census.md` · cc-262*
 
+The mirror half of FIX-1375 landed as `20261104005000`, pushed with cc-263.
+`record_box_health_mem` now stores the eight rates and the nine raw counters.
+The rung still reads nothing. *cc-259*
+
 ---
 
 ## D. Scheduled work
@@ -977,6 +981,14 @@ pipeline a human just paused.
 its `schedule:`) carries its hold row in the same commit; the schedule's return
 deletes it in the same commit. *FIX-1291 ·
 `20261010050000_fix1291_reaper_heartbeat_usaspending_hold.sql`*
+
+**Addendum — 2026-11-04, a rate's denominator follows the body's WRITE MODE.**
+A merge-mode body rates on its scan, not its delta. `run_rule_taggers` went
+merge-mode and wrote 0–1 rows on a quiet day, so a 62 s run rated
+62,000 s/1k against a baseline from the DELETE-all era. The scan over
+`desired_rows` is the work. On prod (cc-259 read 4) the baseline P90 moved from
+50.35 to 1.06 s/1k, and recent_min from 6.76 to 0.14. The verdict did not
+change, and the baseline needed no reset. *FIX-1338 · `20261104000000`*
 
 ### D5. Guard constants are tuned to a table size and go stale when the table steps.
 

@@ -323,6 +323,18 @@ pnpm db:push:prod
 - Filename format: `YYYYMMDDHHMMSS_description.sql` — the 14-digit timestamp the CLI orders by; this repo names the FIX (`20261026000000_fix1349_move_ec_fe_vacuums.sql`)
 - Never `DROP TABLE`, `TRUNCATE`, or `DELETE` without explicit confirmation
 
+**A held migration on main rides every later push (rule 411, cc-259).**
+`supabase db push` has no exclude flag. `--include-all` only widens the set,
+and `scripts/db-push-prod.mjs --workdir` applies EVERY pending file in the
+folder. So once a file is on `main` but its push is held, either it holds
+every push behind it, or the next push carries it deliberately. In that case
+the push's dry run lists it, and its STOP table names what it fires on
+landing. The worked case: `20261102000000_fix1374_…` was held on 11-02 (the
+box was IO-throttled). Its five sweeps are `by … 1 * *` with the 1st already
+past, so they would RETURN and arm the moment it landed. cc-259's six files
+therefore landed on `main` with no push, and cc-263 (Sat 11-07) pushes all
+seven in one gated class-P push.
+
 ### Current Migration State
 
 All migrations live in `supabase/migrations/`. As of 2026-04-22 the chain spans three eras:
@@ -566,6 +578,40 @@ The table's own COMMENT still says "Read only by
 is now stale in two ways: `canary-prod-session.ts` reads it, and
 `claimProdSession()` writes it. The comment is migration text and is left as it
 is rather than rewritten in place; this paragraph is the correction.
+
+### The canary's rate line (FIX-978, FIX-1315, FIX-1338) and converting a cutover hold
+
+`check_pipeline_rate_regression()` rates each pipeline's `complete` runs in
+seconds per 1k rows of work, and judges the last 3 against its own 90-day
+P90 × 2. `sustained_regression` means even the best recent run is above the
+line; it escalates only with ≥ 5 baseline runs.
+
+- **The denominator follows the body's write mode (FIX-1338, from
+  `20261104000000`).** Work is `metadata.desired_rows` when the body stamps
+  it (digits only, > 0), else `rows_inserted + rows_updated`. A merge-mode
+  body writes only its delta, and its cost is the scan over the desired set.
+  Each element names its recent window's `denominator`: `desired_rows`,
+  `rows_written` or `mixed`. A new merge-mode body should stamp
+  `desired_rows`. Then it rates correctly with no change to the check.
+- **Membership.** A row is rated when it stamps `source = 'pg_cron'`, OR it
+  stamps no source and its pipeline has a `job_registry` row. Any other stamp
+  stays out, registry or not. `agency_staffing_rollup_refresh` stamps
+  `pg_cron/backfill`, so the check never rates it.
+- **A hold demotes, it does not hide (FIX-1315).** `canary-rate.ts` reports a
+  held or retired pipeline's regression at `report`. When the hold converts,
+  the same key escalates again on its next run.
+- **Converting a cutover hold.** A FIX-1311 cutover hold converts to a
+  cadence row (`held_since` / `hold_reason` NULL, `cadence_hours` N, never
+  deleted) on two conditions. Its first dispatched slot must land a complete
+  terminal row (the receipt), and the rate verdict must not be
+  `sustained_regression`. The conversion file reads the verdict IN SQL, from
+  the body the same push installs first, and quotes it in the note.
+  `cadence_hours` mirrors the registry rule (24 for a daily, 168 for a
+  weekly, 744 for a monthly) until the canary reads `job_registry.deadline_rule`
+  (FIX-1317). The shape is `20261027001000_fix1355_…`, then
+  `20261104001000`–`20261104004000` (FIX-1378). The revert,
+  `scripts/fix1378-revert-convert-cutover-holds.sql`, restores FIX-1311's
+  text byte-for-byte.
 
 ### Merging `financial_entities` rows — the FK-rewrite sequence (FIX-271, FIX-381)
 
@@ -998,6 +1044,9 @@ directly. `pnpm --filter @civitics/data data:box-health:series` shows
 day's IO line. An IO-bound unit at full burst reads ~28 MB/s at io_time
 ~100 % and ~3,000 reads/s (the gp3 volume's IOPS ceiling). Idle is < 0.1 MB/s
 at < 1 %. A throttle is the same ~100 % at a fraction of the MB/s and IOPS.
+The on-box mirror (`pipeline_state.box_health_mem`) lists the eight rate keys
+and the nine raw counters from `20261104005000` (FIX-1375's mirror half,
+pushed with cc-263). Until that push it drops them as `ignored_keys`.
 
 **The no-push rule (until the `io:` rung lands):** no class-P push and no
 class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
