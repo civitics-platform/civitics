@@ -234,7 +234,7 @@ test("clone: from the FIX-1311 hold each file converts exactly its row, twice; t
         assert.equal(await registry(c), reg, "job_registry unchanged");
 
         await c.query(REVERT());
-        const back = (await holds(c)).find((h) => h.pipeline === r.pipeline)!;
+        const back: Hold = (await holds(c)).find((h) => h.pipeline === r.pipeline)!;
         assert.equal(back.hold_reason, captured.hold_reason, "hold_reason byte-for-byte");
         assert.equal(back.note, captured.note, "note byte-for-byte");
         assert.equal(back.cadence_hours, null);
@@ -296,7 +296,7 @@ test("clone: a seeded sustained_regression RAISEs and leaves the hold a hold", a
             [r.pipeline, h, JSON.stringify(r.pipeline === "run_rule_taggers" ? { source: "pg_cron", desired_rows: 720256 } : { source: "pg_cron" })],
           );
         }
-        const el = ((await c.query<{ r: { pipelines: { pipeline: string; verdict: string }[] } }>(
+        const el: { pipeline: string; verdict: string } | undefined = ((await c.query<{ r: { pipelines: { pipeline: string; verdict: string }[] } }>(
           "SELECT public.check_pipeline_rate_regression() AS r",
         )).rows[0]!.r.pipelines).find((e) => e.pipeline === r.pipeline);
         assert.equal(el?.verdict, "sustained_regression", `${r.pipeline}: the seed reads sustained`);
@@ -308,7 +308,7 @@ test("clone: a seeded sustained_regression RAISEs and leaves the hold a hold", a
           await c.query("ROLLBACK TO SAVEPOINT s");
         }
         assert.match(msg ?? "", new RegExp(`\\[fix1378\\] ${r.pipeline} reads sustained_regression`));
-        const row = (await holds(c)).find((h) => h.pipeline === r.pipeline)!;
+        const row: Hold = (await holds(c)).find((h) => h.pipeline === r.pipeline)!;
         assert.notEqual(row.held_since, null, "still held");
         assert.equal(row.cadence_hours, null);
       } finally {
