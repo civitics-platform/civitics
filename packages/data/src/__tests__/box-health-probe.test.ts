@@ -21,6 +21,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
@@ -429,6 +430,83 @@ test("FIX-1125: record_box_health_mem() validates, drops unknown keys, stamps th
         await assert.rejects(call(p), (e: { code?: string }) => e.code === "22023" || e.code === "22007" || e.code === "22008", name);
       });
     }
+  } finally {
+    await c.end();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1375 (cc-259) — the mirror stores the sampler's disk keys.
+// ---------------------------------------------------------------------------
+
+const DISK_RATES = [
+  "disk_read_mbps", "disk_write_mbps", "io_time_pct", "io_queue",
+  "disk_reads_ps", "disk_writes_ps", "disk_all_read_mbps", "disk_all_write_mbps",
+] as const;
+const DISK_COUNTERS = [
+  "disk_clock_s", "disk_read_bytes", "disk_written_bytes", "disk_reads", "disk_writes",
+  "disk_io_time_s", "disk_io_weighted_s", "disk_all_read_bytes", "disk_all_written_bytes",
+] as const;
+const WL_FILE = "20261104005000_fix1375_box_health_mem_whitelist_disk_rates.sql";
+const WL_MD5 = "b6a472e5ccabbf65e4f05106563ce6f4";
+
+test("FIX-1375: the whitelist file is the latest definer; signature, DEFINER, search_path, grants, the md5 guard", () => {
+  assert.equal(path.basename(latest("record_box_health_mem")), WL_FILE);
+  const src = fs.readFileSync(path.join(MIGRATIONS, WL_FILE), "utf8");
+  const h = header(src, "record_box_health_mem");
+  assert.match(h, /record_box_health_mem\(p jsonb\)\s+RETURNS jsonb\s+LANGUAGE plpgsql\s+VOLATILE\s+SECURITY DEFINER\s+SET search_path TO 'public', 'pg_catalog'/);
+  assert.equal((h.match(/\bSET\s+\w+/g) ?? []).length, 1, "search_path is the only SET");
+  assert.match(src, /REVOKE ALL ON FUNCTION public\.record_box_health_mem\(jsonb\) FROM PUBLIC, anon, authenticated;/);
+  assert.match(src, /GRANT EXECUTE ON FUNCTION public\.record_box_health_mem\(jsonb\) TO service_role;/);
+  assert.match(src, /IF v_md5 = '98fba835ce2f00e9d04dc3658060f934' THEN/, "the guard admits fix1194's body");
+  assert.match(src, new RegExp(`ELSIF v_md5 = '${WL_MD5}' THEN`), "and its own (a re-apply)");
+  const b = body(src, "record_box_health_mem").slice("AS $function$".length);
+  assert.equal(crypto.createHash("md5").update(b, "utf8").digest("hex"), WL_MD5, "the md5 the guard names is this body's");
+});
+
+test("FIX-1375: c_numeric = fix1194's ten + the eight rates + the nine counters; no string key; nothing else changed", () => {
+  const src = fs.readFileSync(path.join(MIGRATIONS, WL_FILE), "utf8");
+  const arr = /c_numeric\s+CONSTANT text\[\] := ARRAY\[([\s\S]*?)\];/.exec(body(src, "record_box_health_mem"));
+  assert.ok(arr, "c_numeric");
+  const keys = [...arr![1]!.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1]);
+  const ten = ["mem_available_bytes", "mem_total_bytes", "swap_total_bytes", "swap_free_bytes", "load1", "pswpin", "pswpout", "pgmajfault", "oom_kill", "scrape_ms"];
+  assert.deepEqual(keys, [...ten, ...DISK_RATES, ...DISK_COUNTERS]);
+  assert.ok(!keys.includes("disk_device") && !keys.includes("disk_missing"), "the strings stay in ignored_keys");
+  // Every listed disk key is one the route emits (box-health-store.ts names it).
+  const store = fs.readFileSync(path.join(__dirname, "..", "..", "..", "db", "src", "box-health-store.ts"), "utf8");
+  for (const k of [...DISK_RATES, ...DISK_COUNTERS]) assert.ok(store.includes(`${k}:`), `box-health-store.ts emits ${k}`);
+  // fix1194's body with the array widened and one comment added: nothing else.
+  const strip = (s: string) =>
+    body(s, "record_box_health_mem")
+      .replace(/c_numeric\s+CONSTANT text\[\] := ARRAY\[[\s\S]*?\];/, "c_numeric")
+      .replace(/^[ \t]*--[^\n]*\n/gm, "");
+  assert.equal(strip(src), strip(SRC));
+});
+
+test("FIX-1375 clone: disk rates are stored, disk_device is ignored, a null rate RAISEs 22023", async (t) => {
+  const c = await connect(t);
+  if (!c) return;
+  try {
+    const live = (await c.query<{ m: string }>(
+      "SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = 'record_box_health_mem' AND pronamespace = 'public'::regnamespace",
+    )).rows[0]?.m;
+    if (live !== WL_MD5) {
+      t.skip(`the clone's record_box_health_mem is ${live}, not ${WL_FILE}'s — apply it first`);
+      return;
+    }
+    const call = (p: unknown) => c.query<{ r: Record<string, unknown> }>("SELECT public.record_box_health_mem($1::jsonb) AS r", [JSON.stringify(p)]);
+    const good = { mem_available_bytes: 418258944, mem_total_bytes: 948195328, load1: 0.14, route_at: "2026-09-24T01:34:29.602Z" };
+    await inTx(c, async () => {
+      const r = (await call({ ...good, io_time_pct: 97.9, disk_read_mbps: 27.71, disk_device: "nvme1n1" })).rows[0]!.r;
+      assert.deepEqual(r["ignored_keys"], ["disk_device"]);
+      const v = (await c.query<{ value: Record<string, unknown> }>("SELECT value FROM public.pipeline_state WHERE key = 'box_health_mem'")).rows[0]!.value;
+      assert.equal(v["io_time_pct"], 97.9);
+      assert.equal(v["disk_read_mbps"], 27.71);
+      assert.ok(!("disk_device" in v), "a string key is not stored");
+    });
+    await inTx(c, async () => {
+      await assert.rejects(call({ ...good, io_time_pct: null }), (e: { code?: string }) => e.code === "22023", "a null rate RAISEs by design");
+    });
   } finally {
     await c.end();
   }
