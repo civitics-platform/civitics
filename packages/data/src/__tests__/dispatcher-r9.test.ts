@@ -332,11 +332,14 @@ async function begin(c: Client): Promise<void> {
 }
 
 // FIX-1378 (cc-259) converted two of the holds these files assert; its revert puts FIX-1311's holds back first.
+// FIX-1380 (cc-255) converted group-donor's; its revert does the same for that row.
 const CUTOVER = () => read(path.join(ROOT, "scripts", "fix1378-revert-convert-cutover-holds.sql"));
+const CUTOVER_GD = () => read(path.join(ROOT, "scripts", "fix1380-revert-convert-group-donor-hold.sql"));
 
 /** Apply every file inside the caller's transaction, from the un-RETURNed rows. */
 async function applyFresh(c: Client): Promise<void> {
   await c.query(CUTOVER());
+  await c.query(CUTOVER_GD());
   for (const r of ROWS) await c.query(r.revert());
   for (const r of ROWS) await c.query(r.file());
 }
@@ -379,6 +382,7 @@ test("clone: each file applies under the gate's own session hold; RAISEs on a hu
     await begin(c);
     try {
       await c.query(CUTOVER());
+      await c.query(CUTOVER_GD());
       await c.query(r.revert());
       await c.query(setup, params);
       await c.query(r.file());
