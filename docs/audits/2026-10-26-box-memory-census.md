@@ -281,6 +281,40 @@ work_mem = '128MB'` as a plain SET that survives its COMMITs
 headroom per hash node. cc-186 counted 24 procedures with an in-body `SET
 work_mem` and 5 more in `proconfig`.
 
+## M4′ — after `shared_buffers` 128 MB (FIX-1379; stub)
+
+The lever landed at the planned restart. The new postmaster started
+2026-11-05 01:59:17.383927Z (cc-255). The after-numbers are **owed at ~34.5 h
+uptime (~11-06 12:00Z), cc-<next>**, the same uptime as M4 above, so the
+comparison is like for like. They are:
+- `pg_shmem_allocations`;
+- the buffercache cold share of 16,384;
+- the pool's swap share (128 − resident Shmem);
+- evictions/h against 26.7× the pool;
+- `pg_stat_database` hit % against 87.10;
+- the swap floor at +12 / +24 / +48 h against the 10-25 → 11-04 curve
+  (cc-255 read 3(e));
+- the IO after-curve, per `2026-11-02-io-budget-census.md` §For cc-255.
+
+cc-255's two points around the restart (prod; M4's method, 10 d 12 h uptime
+before, not the census's 34.5 h):
+
+| read | before (01:58:36–01:58:56Z) | after (01:59:35–02:00:05Z, +18–48 s) |
+|---|---|---|
+| `pg_shmem_allocations` | 70 · 322,256,896 B (307.3 MiB) | 70 · 183,894,016 B (**175.4 MiB**) |
+| Buffer Blocks | 256 MB | 128 MB |
+| buffercache usagecount 0/1/2/3/4/5 | 3,976 / 10,384 / 3,564 / 1,283 / 5,218 / 8,343 (0 unused, 196 dirty) | 3,909 unused · 2,842 / 4,083 / 3,346 / 338 / 1,866 (69 dirty) |
+| cold share (usagecount ≤ 1) | 14,360 of 32,768 = **43.8 %** | 2,842 of 16,384 = 17.3 % (a fresh pool) |
+| resident Shmem (metrics endpoint) | 84.9 MiB → ≥ 171 MiB of the pool in swap | 121.3 MiB |
+| swap used / MemAvailable (kernel) | 493 / 440.0 MiB | **298** / 331.6 MiB |
+| `pg_stat_io` client normal evictions | 107,371,464 since 10-25 13:25:53Z (≈ 13.0× the pool/h over 252.5 h) | counters carried over (D13) |
+| `pg_stat_database` hit % | 91.45 | 91.45 (cumulative, carried over) |
+
+The 11-05 before-read's cold share (43.8 %) and hit % (91.45) are better
+than the census's 57.9 % / 87.10 % at 34.5 h. The pool's swap share is worse
+(≥ 171 MiB against ≥ 141). Read the M4′ numbers against the census row, not
+against this one.
+
 ## Verdict (D6)
 
 **How much of the box is Postgres memory we can shape, and how much is the

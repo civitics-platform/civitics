@@ -49,6 +49,9 @@ New rule **D12**.
 **Extended 2026-11-03** with the IO-budget census (cc-262, FIX-1375 / FIX-1376 /
 FIX-1377). New rule **C13**.
 
+**Extended 2026-11-05** with the planned restart (cc-255, FIX-1379: the
+`shared_buffers` halving). New rule **D13**.
+
 ---
 
 ## A. Data-shape regimes
@@ -1273,6 +1276,44 @@ unit_budget`. Quote the mode the body picks with prod's dial, not the default.
 If only the windowed path fits the lag, the RETURN waits for a supervised cycle
 or a resized one. Lengthening the age only lengthens the loop.
 *FIX-1365 · FIX-1212 · FIX-1216 · FIX-1249 · cc-254 (read 3)*
+
+### D13. A CLEAN restart keeps pgss, every `pg_stat_*` and the UNLOGGED tables. Only a crash erases them.
+
+The 10-25 reboot was UNCLEAN (crash recovery). It erased pg_stat_statements
+and every `pg_stat_*` counter, emptied `fec_emit_keys` (2.75 M → 0) and
+`fec_emit_runs`, and dropped the `_drb_*` staging (cc-250 §4). The planned
+restart on 11-05 (cc-255, FIX-1379: the `postgres-config update` that set
+`shared_buffers` 128 MB) was clean. Postmaster 2026-10-25 13:25:53.305Z →
+**2026-11-05 01:59:17.384Z**, 5.5 s after the update call. The first poll
+answered at 01:59:21Z. Reads 01:58:36Z → 01:59:35Z:
+
+| read | before | after |
+|---|---|---|
+| `pg_stat_statements_info.stats_reset` | 2026-10-25 13:25:52.563285Z | **the same** |
+| pgss rows / calls | 1,558 / 2,153,184 | 1,569 / 2,154,096 |
+| `pg_stat_database` (postgres) blks_hit / blks_read | 1,750,183,225 / 163,719,433 | 1,751,826,858 / 163,868,697 |
+| `pg_stat_bgwriter` / `pg_stat_checkpointer` / `pg_stat_io` stats_reset | 2026-10-25 13:25:53.578037Z | **the same** (num_requested 11 → 12, the shutdown checkpoint) |
+| `fec_emit_keys` / `fec_emit_runs` | 5,086,338 / 10 | **5,086,338 / 10** |
+| `_drb_fe` / `_drb_targets` (`_drb_chunk_fe`, `_drb_donor`, `ec_donations_incr_dirty` 0) | 5,287,831 / 665 | **5,287,831 / 665** |
+| entity_tags relallvisible / relpages / n_dead_tup | 51,554 / 130,634 / 238,227 | **the same** (EC, FR, FE likewise) |
+
+PG 15+ writes the stats file at a clean shutdown and reads it back at
+startup, and an UNLOGGED table is truncated only by crash recovery. A planned
+restart therefore costs none of the instruments a census reads, and none of
+the staging a resumable unit holds. What it does reset: the buffer pool (a
+fresh pool of 16,384 had 3,909 unused at +46 s), the claim's advisory lock (a
+FIX-950 claim's backend gets `57P01 terminating connection due to
+administrator command`, and its holds stay until the next claim sweeps them),
+and every live connection.
+
+**Apply:** before a planned restart, nothing needs re-staging and no census
+needs re-basing. A before/after read across it compares like with like. After
+an UNPLANNED one, check `pg_stat_statements_info.stats_reset` first: if it
+moved, the restart crashed, and cc-250 §4's list applies (the FIX-1106 audit
+refuses until the nightly re-emits; the next donor-rollup unit redoes its
+staging). Hold a claim across a restart with `--hold-seconds` AFTER the
+database is back. A claim held through the restart dies with its backend.
+*FIX-1379 · FIX-950 · FIX-1177 · cc-250 §4 · cc-255 (premise 384)*
 
 ---
 

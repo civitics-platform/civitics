@@ -596,7 +596,8 @@ line; it escalates only with ≥ 5 baseline runs.
 - **Membership.** A row is rated when it stamps `source = 'pg_cron'`, OR it
   stamps no source and its pipeline has a `job_registry` row. Any other stamp
   stays out, registry or not. `agency_staffing_rollup_refresh` stamps
-  `pg_cron/backfill`, so the check never rates it.
+  `pg_cron/backfill`, so the check never rates it. It sits outside D3 until
+  FIX-1317 decides membership (Craig 11-03 #2 (a)).
 - **A hold demotes, it does not hide (FIX-1315).** `canary-rate.ts` reports a
   held or retired pipeline's regression at `report`. When the hold converts,
   the same key escalates again on its next run.
@@ -612,6 +613,17 @@ line; it escalates only with ≥ 5 baseline runs.
   `20261104001000`–`20261104004000` (FIX-1378). The revert,
   `scripts/fix1378-revert-convert-cutover-holds.sql`, restores FIX-1311's
   text byte-for-byte.
+  - Converted so far:
+    - refresh-derived-mvs-daily 24 (FIX-1355, on prod).
+    - run_rule_taggers 24, and donor-party / treemap / agency-staffing 168 (FIX-1378).
+    - group-donor 168 (`20261104006000`, FIX-1380, cc-255). Its revert is
+      `scripts/fix1380-revert-convert-group-donor-hold.sql`.
+    - The last six ride cc-263's Sat 11-07 push.
+  - Left: contract-flow (after its Thu 11-05 slot) and the five monthly sweeps
+    (744 h, after their push and first dispatched runs).
+  - **A rate step is not always a slowdown.** group-donor's s/1k rose ~10× on
+    10-07 because rows written fell 542k → 47,208 at the same ~100 s wall. Read
+    the rows beside the verdict before you call one a regression.
 
 ### Merging `financial_entities` rows — the FK-rewrite sequence (FIX-271, FIX-381)
 
@@ -1047,6 +1059,38 @@ at < 1 %. A throttle is the same ~100 % at a fraction of the MB/s and IOPS.
 The on-box mirror (`pipeline_state.box_health_mem`) lists the eight rate keys
 and the nine raw counters from `20261104005000` (FIX-1375's mirror half,
 pushed with cc-263). Until that push it drops them as `ignored_keys`.
+
+**The `shared_buffers` halving's IO before-curve (FIX-1379, cc-255; the
+verdict is the census's M4′, owed ~11-06 12:00Z).** The halving trades RAM
+for `/data` reads: root reads (swap and file faults) may fall while `/data`
+reads rise. Measures are p50 / p95 / max:
+
+| window | /data read MB/s | all-disk read MB/s | io_time % | min ≥ 90 % | reads/s | rated |
+|---|---|---|---|---|---|---|
+| 11-03 02:58Z → 11-04 01:06Z (cc-259, the first 24 h) | 0.04 / 18.95 / 133.65 | 0.88 / 30.83 / 151.53 (all-disk total) | 0.2 / 28.5 / 100 | 10 | — | 663 of 664 |
+| 11-04 00:14Z → 11-05 00:12Z (cc-255 read 3(k)) | 0.04 / 1.57 / 102.33 | 0.63 / 9.17 / 117.53 | 0.1 / 3.7 / 87.8 | 0 | 1.7 / 72.9 / 2,566.1 | 718 of 719 |
+| 11-05 01:00Z → 01:58Z (the last hour before the restart) | 0.01 / 0.25 / 0.52 | 0.43 / 6.48 / 12.86 | 0.1 / 0.7 / 1.9 | 0 | 0.9 / 9.2 / 35.4 | 30 of 30 |
+| **after:** 11-05 02:00Z → 02:46Z (the first 47 min at 128 MB) | 0.1 / 2.5 / 23 | 1.33 / 13.97 / 28.29 | 0.2 / 8.4 / 17.3 | 0 | 2.3 / 149.2 / 185.6 | 24 of 24 |
+
+The first sample after the boot (02:00:22Z) is the pool refilling: /data 23
+MB/s, all-disk 28.29, io_time 17.3 %, 185.6 reads/s. By 02:06Z it was back at
+idle. **Swap refilled in minutes, not hours:** 298 MB at 02:00:22Z, 484 at
+02:02Z, 518 at 02:04Z, then 365–495 through 02:46Z. Before the restart it was
+493. At 02:46Z resident Shmem was 64.3 MiB, so ≥ 63.7 MiB of the 128 MB pool
+already sat in swap (≥ 171 MiB of 256 before). One hour says nothing about
+the floor or the creep. The verdict is M4′'s, owed ~11-06 12:00Z.
+
+- **Since the host's boot**, read 01:58:22Z: root has read **2.253 TB** and
+  /data 2.193 TB, with swap-in 453.1 GB. cc-262 read 1.89 / 1.88 TB at
+  11-02. **The planned restart did not reboot the host.** The raw counters
+  ran on across it (/data read bytes 2,193,289,869,312 at 01:58:22Z →
+  2,195,620,628,480 at 02:00:22Z), so the sampler rated straight through
+  with no counter-reset gap.
+- **The receipts' §9 IO lines:**
+  - 11-04: 0.04 / 22.66 / 133.65; io_time 47.8 / 100 %; 10 min ≥ 90 %.
+  - 11-05: 0.04 / 1.57 / 102.33; io_time 3.7 / 74.4 %; 0 min ≥ 90 %.
+- **The dashboard's daily Disk IO consumed (Craig, 11-05):** 11-02 88 %,
+  11-03 9 %, 11-04 1 %, 11-05 1 %.
 
 **The no-push rule (until the `io:` rung lands):** no class-P push and no
 class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
@@ -1710,7 +1754,39 @@ does not re-derive: re-check it after any resize.
   the instant. Before that, 256 MB came from Supabase's generated
   `generated-optimizations.conf`, not an override, and the override list was
   `max_worker_processes = 12` alone. The revert is
-  `scripts/fix1379-revert-shared-buffers-256.md`.
+  `scripts/fix1379-revert-shared-buffers-256.md`. The 11-05 result:
+  `pg_settings` reads 16384 × 8 kB from
+  `/etc/postgresql-custom/custom-overrides.conf`, and `postgres-config get`
+  lists `max_worker_processes 12` and `shared_buffers 128MB`.
+
+### Prod restarts
+
+`pg_postmaster_start_time()` is the record. A restart is CLEAN when
+`pg_stat_statements_info.stats_reset` does not move across it, and UNCLEAN
+(crash recovery) when it does. Playbook D13 has what each kind keeps.
+
+| instant (UTC) | kind | cause | downtime |
+|---|---|---|---|
+| 2026-08-31 23:01:12Z | project restart | cleared the front-door wedge (FIX-1130) | — |
+| 2026-10-08 23:42Z | — | not recorded here (the memory census names the instant, §M1) | — |
+| 2026-10-25 13:25:53Z | **unclean**, crash recovery | the swap-ceiling wedge | cc-250 §2 has the timeline |
+| **2026-11-05 01:59:17Z** | **clean, planned** | lever 7: `postgres-config update --config shared_buffers=128MB` (FIX-1379, cc-255) | **≤ 9.2 s**: the update call ran 01:59:11.8 → 01:59:15.7Z; the new postmaster started 01:59:17.4Z; the first 15 s poll (01:59:21Z) answered with the new start and `128MB`, so no refused connection was ever observed |
+
+**The planned-restart recipe** (cc-255; `scripts/fix1379-revert-shared-buffers-256.md`
+is the same steps):
+1. The (d′) 3 h STOP row must be clear (PROMPT_TEMPLATE, FIX-1377).
+2. `platform_dials.pause = true`, then wait for `live` `[]` and no running row.
+3. The before-reads.
+4. The config change. The CLI call returns before the restart completes.
+5. Poll `pg_postmaster_start_time()`.
+6. The after-reads.
+7. A `--hold-seconds` claim to sweep the dead claim's holds.
+8. `pause = false`.
+
+On 11-05, pause → unpause took 2 min 48 s (01:57:46 → 02:00:34Z). The
+FIX-950 claim does NOT survive the restart: its backend gets `57P01` and the
+process exits with its six guarded holds still set. `pause` is what holds the
+dispatcher across it.
 
 ### Dashboards
 
