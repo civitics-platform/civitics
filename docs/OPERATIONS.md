@@ -1702,6 +1702,16 @@ plain restart does not pick it up — delete the key, then set it. Verify with
 `source = configuration file`). An override persists across compute resizes and
 does not re-derive: re-check it after any resize.
 
+- **`delete` restarts too** unless it carries `--no-restart` (CLI 2.78.1
+  `postgres-config delete --help`). When the key is not an override yet, pass
+  `--no-restart` on the delete so the update is the one restart.
+- **`shared_buffers` (FIX-1379, cc-255):** 256 MB → **128 MB**, set at Craig's
+  planned restart on Wed 11-04 evening PT (11-05 UTC), so §Prod restarts holds
+  the instant. Before that, 256 MB came from Supabase's generated
+  `generated-optimizations.conf`, not an override, and the override list was
+  `max_worker_processes = 12` alone. The revert is
+  `scripts/fix1379-revert-shared-buffers-256.md`.
+
 ### Dashboards
 
 | Service | URL |
