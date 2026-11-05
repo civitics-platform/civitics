@@ -1,0 +1,76 @@
+{
+  "cc": "255",
+  "prompt": "cc-prompt-255-shared-buffers-128-planned-restart-premise-384-m4-after-numbers.md",
+  "started_at": "2026-11-05T00:06:40Z",
+  "finished_at": "2026-11-05T02:50:15Z",
+  "head_before": "87983683",
+  "head_after": "9b40c91c",
+  "commits": [
+    {
+      "sha": "4984de45",
+      "subject": "[skip vercel] docs(fixes): cc-255 files FIX-1379, FIX-1380, FIX-1381"
+    },
+    {
+      "sha": "e362332d",
+      "subject": "[skip vercel] docs(ops): FIX-1379 runbook — the shared_buffers 256 -> 128 MB op and its revert as a file, before the op (cc-255)"
+    },
+    {
+      "sha": "a635bc67",
+      "subject": "[skip vercel] feat(db): FIX-1380 — group-donor-rollup-refresh's cutover hold converts to cadence_hours 168 on its Wed 11-04 03:10Z slot receipt (armed 03:11Z, complete 123.9 s, 581 cohorts / 47,208 rows); RAISE on sustained_regression only; the eighth file of cc-263's manifest (cc-255)"
+    },
+    {
+      "sha": "5c23ba17",
+      "subject": "chore(fixes): record FIX-1366 on prod — the Wed 11-04 02:00Z floor: dpr-vacuum-analyze armed 02:01:00Z (dead_tuples > 60% of trigger + floor 7 days → -00:00:59), reaped 02:05:00Z succeeded: VACUUM unit_ms 11724; donor_party_rollup_mv last_vacuum 02:03:09.74Z, n_dead_tup 0; cron jobid 31 has no run after 10-30, so the park held (cc-255)"
+    },
+    {
+      "sha": "b401aa35",
+      "subject": "chore(fixes): record FIX-1370 on prod — the Wed 11-04 03:10Z slot: group-donor-rollup-refresh armed 03:11:00Z (by 10 3 * * 3 → -00:01:00, MemAvailable 443 / swap 500, excluded none), ran 03:13:00.07 → 03:15:03.92Z complete, 581 cohorts, 47,208 donor_rows, 123.9 s (band 0–442); reaped 03:17:00Z succeeded: CALL unit_ms 123897; it gated 20261104006000 (FIX-1380) (cc-255)"
+    },
+    {
+      "sha": "9649cfef",
+      "subject": "chore(fixes): record FIX-1379 on prod — shared_buffers 256 → 128 MB: postgres-config delete --no-restart 01:59:02.7 → 01:59:05.8Z, update --config shared_buffers=128MB 01:59:11.8 → 01:59:15.7Z restarted the database; new postmaster 2026-11-05 01:59:17.383927Z (was 2026-10-25 13:25:53.305Z), pg_settings 16384 × 8 kB, source configuration file, /etc/postgresql-custom/custom-overrides.conf; first poll answered 01:59:21Z; a CLEAN restart, pgss / pg_stat_* / UNLOGGED kept (cc-255)"
+    },
+    {
+      "sha": "47fcb086",
+      "subject": "[skip vercel] docs(ops): FIX-1379 / FIX-1380 / FIX-1381 — playbook D13 (a CLEAN restart keeps pgss, pg_stat_* and the UNLOGGED tables; the claim dies with its backend); OPERATIONS §Prod restarts (new) + the shared_buffers line's result + §Disk IO budget's before/after table + the conversion list (group-donor, five done) + agency-staffing outside D3 until FIX-1317; census §M4′ stub; dispatcher.md s15d, s12b-9, s12b-11, s12b, s25 (cc-255)"
+    },
+    {
+      "sha": "9b40c91c",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-255 — FIX-1379 closes prod (shared_buffers 128 MB, the new postmaster 01:59:17Z), FIX-1380 closes local-only (its prod half is cc-263's Sat 11-07 push); records FIX-1366 and FIX-1370 (prod); files FIX-1379, FIX-1380, FIX-1381 (42 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1380",
+    "FIX-1366",
+    "FIX-1370",
+    "FIX-1379"
+  ],
+  "fixes_filed": [
+    "FIX-1379",
+    "FIX-1380",
+    "FIX-1381"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "The three prescribed writes, by client clock. (1) platform_dials.pause = true 01:57:40.9 → 01:57:46.4Z (UPDATE 1; read back t); the 01:59:00Z tick reads paused. (2) supabase --experimental postgres-config delete --config shared_buffers --no-restart 01:59:02.7 → 01:59:05.8Z (the CLI listed max_worker_processes 12: a no-op), then update --config shared_buffers=128MB 01:59:11.8 → 01:59:15.7Z (it listed max_worker_processes 12 + shared_buffers 128MB) — the database restarted: postmaster 2026-10-25 13:25:53.305061Z → 2026-11-05 01:59:17.383927Z; the first 15 s poll (01:59:21Z) answered with the new start and 128MB, so no refused-connection window was observed (downtime ≤ 9.2 s from the update call); pg_settings shared_buffers 16384 × 8kB, source configuration file, sourcefile /etc/postgresql-custom/custom-overrides.conf. (3) pause = false 02:00:29.2 → 02:00:34.6Z (read back f); 10 ticks to 02:19Z, fe-crawl armed 02:13Z and reaped succeeded, fe-inbound armed 02:19Z. The claim bracket: session:claim-prod held 01:58:08Z (6 guarded holds) and died on 57P01 at the restart without releasing; a --hold-seconds 5 claim 02:00:15 → 02:00:22.9Z swept and cleared the 6 holds and the label. Also, with Craig's approval (11-05 ~01:5xZ): two --prod --call --yes-i-mean-prod reads of pg_buffercache inside BEGIN; CREATE EXTENSION; reads; ROLLBACK (01:58:56Z and 02:00:03Z), pg_extension 0 rows after each — no durable change. Nets: the front-door watchdog read mode arm, state_store ok, down_ticks 0 (00:00:28Z) — live, needing 4 DOWN ticks; it never ticked DOWN. The UNLOGGED tables kept their rows (premise 384), so nothing re-stages. db-push-prod --dry-run from the primary listed EIGHT and applied nothing: 20261102000000_fix1374_return_five_monthly_sweeps.sql, 20261104000000_fix1338_rate_regression_work_done_denominator.sql, 20261104001000_fix1378_convert_run_rule_taggers_hold_cadence_24.sql, 20261104002000_fix1378_convert_donor_party_rollup_refresh_hold_cadence_168.sql, 20261104003000_fix1378_convert_treemap_individuals_global_refresh_hold_cadence_168.sql, 20261104004000_fix1378_convert_agency_staffing_rollup_refresh_hold_cadence_168.sql, 20261104005000_fix1375_box_health_mem_whitelist_disk_rates.sql, 20261104006000_fix1380_convert_group_donor_rollup_refresh_hold_cadence_168.sql. The a635bc67 landing built a Vercel deployment (6FXYDZgVKCtZ4emf2GAH5dxoujgB, completed 00:23:18Z; the range held the untagged receipts-bot commit 87983683 and packages/data tests); 47fcb086 and 9b40c91c were canceled by the Ignored Build Step.",
+  "ci": "green",
+  "stopped_items": [
+    "The FIX-950 claim was NOT held across the restart, as the prompt asked. The lock is session-scoped. Its backend got 57P01 'terminating connection due to administrator command', and the pg client's unhandled error event exited the process (code 1) before its release ran, leaving 6 guarded holds and a stale label. Carried on: pause held the dispatcher through the restart, and a --hold-seconds 5 claim right after swept the leftovers through the normal release. 0 holds and no label remained.",
+    "The poll's refused-connection window, which the prompt counts as the measured downtime, could not be measured. The CLI returned at 01:59:15.7Z, after the new postmaster had already been cut over (start 01:59:17.38Z), and the first poll at 01:59:21Z answered. Downtime is bounded at ≤ 9.2 s from the update call, not measured.",
+    "The delete ran with --no-restart, a flag the prompt's step 4 does not carry. CLI 2.78.1's delete restarts the database unless given it, so the prescribed form would have been a second restart, at 256 MB, before the update. shared_buffers was not an override, so the delete was a no-op either way."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1379",
+      "what": "M4's five numbers at ~34.5 h after the 01:59:17Z postmaster (pg_shmem_allocations ~175 MiB, the buffercache cold share of 16,384, the pool's swap share = 128 − resident Shmem vs ≥ 171 before, evictions/h vs 26.7× the pool, hit % vs 87.10); the swap floor at +12/+24/+48 h vs the 10-25 → 11-04 curve; the IO after-curve vs read 3(k) (/data + all-disk MB/s, io_time p95/max, minutes ≥ 90 %, reads/s, root vs /data bytes, the 11-05 and 11-06 §9 IO lines, the dashboard %) — the lever's verdict on both budgets and the tier memo's input",
+      "after": "2026-11-06T12:00Z"
+    },
+    {
+      "fix": "FIX-1380",
+      "what": "the prod half: 20261104006000 applied in cc-263's Sat 11-07 push (group_donor_rollup_refresh held false, cadence 168, the Wed receipt and the verdict quoted in the note — expected insufficient_data under FIX-1338's body, 4 baseline runs); then the canary's first post-conversion verdict (the Sun 11-08 nightly §9): in cadence, no freshness finding",
+      "after": "2026-11-09T01:00Z"
+    }
+  ]
+}
