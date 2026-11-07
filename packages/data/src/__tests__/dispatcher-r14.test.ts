@@ -22,6 +22,8 @@
  * seeded sustained_regression; a human hold RAISEs and the session's own hold is
  * admitted; the revert restores FIX-1311's hold_reason and note byte-for-byte
  * against a row captured before the apply.
+ * FIX-1383 (the same run's tenth file, the sweeps' 744 h conversions) follows, on
+ * the same fixture: text anchors, then the clone (it already carries fix1374).
  */
 
 import { test } from "node:test";
@@ -316,6 +318,201 @@ test("clone: a human hold RAISEs; the session's own hold is admitted", async (t)
       await attempt("UPDATE public.rollup_watch_overrides SET hold_reason = 'prod session held: cc-263 clone test', note = 'x' WHERE pipeline = $1"),
       null,
       "the session's own hold is admitted",
+    );
+  } finally {
+    await c.end();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1383 — the sweeps' 744 h conversions, the tenth file of cc-263, pushed alone
+// ---------------------------------------------------------------------------
+
+/** The chain's `complete` rows: the file's VALUES list, not the prompt's. */
+const SWEEPS: [pipeline: string, job: string, rule: string][] = [
+  ["donation_edge_orphan_sweep", "donation-edge-orphan-sweep", "by 30 11 1 * *"],
+  ["financial_entity_totals_reconcile", "financial-entity-totals-reconcile", "by 0 12 1 * *"],
+  ["donor_rollup_orphan_sweep", "donor-rollup-orphan-sweep", "by 30 12 1 * *"],
+  ["donor_party_rollup_orphan_sweep", "donor-party-rollup-orphan-sweep", "by 0 13 1 * *"],
+  ["entity_connection_stats_orphan_sweep", "entity-connection-stats-orphan-sweep", "by 30 13 1 * *"],
+];
+const NOTE_MD5S: Record<string, string> = {
+  donation_edge_orphan_sweep: "3a15dbd19f239e2227bd15c8f8b077c1",
+  financial_entity_totals_reconcile: "c42acc47de09a7193acd23a6113bf176",
+  donor_rollup_orphan_sweep: "db7d506a714da4d5e580db8f4aebffad",
+  donor_party_rollup_orphan_sweep: "0b7f31ed835e71e27fdf8cea6fcc266a",
+  entity_connection_stats_orphan_sweep: "eb7847f437b9511cb8fe917b3c0d4c78",
+};
+const FILE_744 = () => read(path.join(MIGRATIONS, one("_fix1383_convert_five_monthly_sweeps_hold_cadence_744.sql")));
+const REVERT_744 = () => read(path.join(ROOT, "scripts", "fix1383-revert-convert-five-sweeps-holds.sql"));
+
+test("FIX-1383: one UPDATE in a loop over exactly the chain's complete rows, at 744 h", () => {
+  const sql = stripComments(FILE_744());
+  assert.ok(sql.includes("c_hours CONSTANT int := 744;"));
+  assert.equal((sql.match(/\bUPDATE\b/g) ?? []).length, 1, "one UPDATE");
+  assert.match(sql, /UPDATE public\.rollup_watch_overrides\s+SET held_since\s+= NULL,\s+hold_reason\s+= NULL,\s+cadence_hours = c_hours,/);
+  assert.match(sql, /WHERE pipeline = r\.pipeline\s+AND retired_at IS NULL/);
+  assert.match(sql, /IF v_n <> 1 THEN\s+RAISE EXCEPTION '\[fix1383\] % conversion touched % rows, expected 1'/);
+  for (const [p, j, rule] of SWEEPS) assert.ok(sql.includes(`('${p}', '${j}', '${rule}',`), p);
+  assert.equal((sql.match(/_orphan_sweep'|financial_entity_totals_reconcile'/g) ?? []).length, SWEEPS.length, "exactly the listed pipelines");
+  assert.ok(FILE_744().includes("note          = format('FIX-1383 (cc-263) — "), "the note's prefix the read-back matches");
+  assert.doesNotMatch(sql, /recipient_count_reconcile/, "FIX-736's retired row is not named");
+});
+
+test("FIX-1383: no job_registry, pipeline_state, cron or dial write; no routine; no DELETE/INSERT", () => {
+  const sql = stripComments(FILE_744());
+  assert.doesNotMatch(sql, /UPDATE public\.job_registry|INSERT INTO|DELETE FROM|pipeline_state|platform_dials|cron\.(schedule|alter_job|unschedule)/);
+  assert.doesNotMatch(sql, /CREATE (OR REPLACE )?(FUNCTION|PROCEDURE)/);
+});
+
+test("FIX-1383: the guards — FIX-1311's hold WITH FIX-1374's appendix or the session's own; RAISE on sustained_regression only", () => {
+  const sql = stripComments(FILE_744()).replace(/\s+/g, " ");
+  assert.ok(
+    sql.includes(
+      "IF NOT ((v_row.held_since IS NOT NULL AND v_row.hold_reason LIKE 'parked for the dispatcher cutover%' " +
+        "AND v_row.cadence_hours IS NULL AND v_row.note LIKE 'FIX-1311 (cc-232)%' AND v_row.note LIKE '%RETURNED%(FIX-1374)%') " +
+        "OR v_row.hold_reason LIKE 'prod session held: %') OR v_row.retired_at IS NOT NULL THEN",
+    ),
+  );
+  assert.ok(sql.includes("— a human hold is resolved by a human"));
+  assert.ok(sql.includes("IF v_el->>'verdict' = 'sustained_regression' THEN RAISE EXCEPTION '[fix1383] % reads sustained_regression"));
+  assert.equal((sql.match(/sustained_regression/g) ?? []).length, 2, "no other verdict refuses");
+  assert.ok(sql.includes("WHEN v_el IS NULL THEN 'no rated rows'"));
+  assert.ok(sql.includes("v_el := NULL;"), "a row with no element never inherits the last row's");
+});
+
+test("FIX-1383: the pins are the current four; every v_missing append is ::text; freshness is printed", () => {
+  const sql = FILE_744();
+  for (const p of [
+    "ac8dbcddf71978e73d28c999433156b7",
+    "d6a9073bcc4d9084b9d7994324a89b18",
+    "4c30523742e280a4b48ea2ec390654d6",
+    "1d3507cd4b71439f0cfff51cde49b9d8",
+  ]) assert.ok(sql.includes(`'${p}'`), `pin ${p}`);
+  assert.ok(sql.includes("RAISE EXCEPTION '[fix1383] read-back failed: %'"));
+  assert.ok(sql.includes("v_fresh := public.check_rollup_freshness(r.pipeline, c_hours);"));
+  const code = stripComments(sql);
+  assert.doesNotMatch(code, /IF v_fresh/, "freshness never RAISEs");
+  assert.doesNotMatch(code, /v_missing \|\| '[^']*'(?!::text)/, "no bare literal appended to a text[]");
+  for (const m of code.matchAll(/v_missing := v_missing \|\| format\(([\s\S]*?)\)::text;/g)) assert.ok(m[1]);
+  assert.equal((code.match(/v_missing := v_missing \|\|/g) ?? []).length, (code.match(/\)::text;/g) ?? []).length, "every append casts");
+});
+
+test("FIX-1383: it is the newest file, one after cc-263's nine", () => {
+  const all = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  assert.equal(all[all.length - 1], one("_fix1383_convert_five_monthly_sweeps_hold_cadence_744.sql"));
+  assert.equal(all[all.length - 2], one(SUFFIX));
+});
+
+test("FIX-1383 revert: matches the FIX-1383 note only, and each restore text hashes to the note read after push 1", () => {
+  const sql = stripComments(REVERT_744());
+  assert.equal((sql.match(/\bUPDATE\b/g) ?? []).length, 1);
+  assert.match(sql, /AND note LIKE 'FIX-1383 \(cc-263\)%';/);
+  assert.ok(sql.includes("c_reason CONSTANT text := 'parked for the dispatcher cutover (cc-232, FIX-1311); returns via job_registry';"));
+  assert.match(sql, /IF md5\(r\.note\) IS DISTINCT FROM r\.note_md5 THEN/);
+  const rows = [...sql.matchAll(/\('(\w+)',\s+'((?:[^']|'')*)',\s+'([0-9a-f]{32})'\)/g)];
+  assert.equal(rows.length, SWEEPS.length);
+  for (const m of rows) {
+    const note = (m[2] as string).replace(/''/g, "'");
+    assert.equal(md5(note), m[3], `${m[1]}: the constant hashes to its md5`);
+    assert.equal(m[3], NOTE_MD5S[m[1] as string], `${m[1]}: the md5 is the one read on prod`);
+    assert.match(note, /^FIX-1311 \(cc-232\) — .*RETURNED 2026-11-07 \(FIX-1374\) — hold kept, conversion to cadence_hours 744 owed \(cc-259\)$/);
+  }
+  assert.doesNotMatch(sql, /job_registry\s+SET|cron\.(schedule|alter_job)|DELETE FROM/);
+});
+
+/** The clone's RETURN note carries its apply's date; the revert's text carries prod's. */
+const onProdDate = (note: string) => note.replace("RETURNED 2026-11-02 (FIX-1374)", "RETURNED 2026-11-07 (FIX-1374)");
+
+test("clone FIX-1383: from the RETURN's hold the file converts exactly its rows, twice; the revert restores them", async (t) => {
+  const c = await clone(t);
+  if (!c) return;
+  try {
+    await begin(c);
+    try {
+      await c.query(REVERT_744()); // the clone carries the applied file; start from the hold
+      const before = await holds(c);
+      for (const [p] of SWEEPS) {
+        await c.query(
+          `INSERT INTO public.data_sync_log (pipeline, started_at, completed_at, rows_inserted, rows_updated, status, metadata)
+           VALUES ($1, now() - interval '30 minutes', now() - interval '25 minutes', 0, 0, 'complete', '{"source": "pg_cron"}'::jsonb)`,
+          [p],
+        );
+      }
+      const reg = await registry(c);
+      await c.query(FILE_744());
+      await c.query(FILE_744()); // idempotent: the second run NOTICEs, 0 rows
+      const after = await holds(c);
+      const names = SWEEPS.map(([p]) => p);
+      for (const p of names) {
+        const row = after.find((h) => h.pipeline === p)!;
+        assert.equal(row.held_since, null, p);
+        assert.equal(row.hold_reason, null, p);
+        assert.equal(Number(row.cadence_hours), 744, p);
+        assert.match(row.note, /^FIX-1383 \(cc-263\) — /);
+        assert.ok(row.note.includes("(no rated rows)"), `${p}: a sweep's rows written are its deletes`);
+      }
+      assert.deepEqual(after.filter((h) => !names.includes(h.pipeline)), before.filter((h) => !names.includes(h.pipeline)), "every other override row unchanged");
+      assert.equal(await registry(c), reg, "job_registry unchanged");
+
+      await c.query(REVERT_744());
+      const back = await holds(c);
+      for (const p of names) {
+        const was = before.find((h) => h.pipeline === p)!;
+        const now = back.find((h) => h.pipeline === p)!;
+        assert.equal(now.hold_reason, was.hold_reason, `${p}: hold_reason byte-for-byte`);
+        assert.equal(now.note, onProdDate(was.note), `${p}: note byte-for-byte, on prod's date`);
+        assert.equal(now.cadence_hours, null);
+        assert.notEqual(now.held_since, null, `${p}: a hold again`);
+      }
+    } finally {
+      await c.query("ROLLBACK");
+    }
+  } finally {
+    await c.end();
+  }
+});
+
+test("clone FIX-1383: a human hold RAISEs; a bare FIX-1311 note without the appendix RAISEs; the session's own hold is admitted; sustained_regression RAISEs", async (t) => {
+  const c = await clone(t);
+  if (!c) return;
+  const p0 = SWEEPS[0]![0];
+  const attempt = async (setup: string, params: unknown[]): Promise<string | null> => {
+    await begin(c);
+    try {
+      await c.query(REVERT_744());
+      await c.query(setup, params);
+      await c.query(FILE_744());
+      return null;
+    } catch (e) {
+      return (e as Error).message;
+    } finally {
+      await c.query("ROLLBACK");
+    }
+  };
+  try {
+    assert.match(
+      (await attempt("UPDATE public.rollup_watch_overrides SET hold_reason = 'Craig: hands off' WHERE pipeline = $1", [p0])) ?? "",
+      /\[fix1383\] \w+ override is not FIX-1311's takeover hold/,
+    );
+    assert.match(
+      (await attempt("UPDATE public.rollup_watch_overrides SET note = split_part(note, '; ', 1) WHERE pipeline = $1", [p0])) ?? "",
+      /\[fix1383\] \w+ override is not FIX-1311's takeover hold with FIX-1374's appendix/,
+    );
+    assert.equal(
+      await attempt("UPDATE public.rollup_watch_overrides SET hold_reason = 'prod session held: cc-263 clone test', note = 'x' WHERE pipeline = $1", [p0]),
+      null,
+      "the session's own hold is admitted",
+    );
+    assert.match(
+      (await attempt(
+        `INSERT INTO public.data_sync_log (pipeline, started_at, completed_at, rows_inserted, rows_updated, status, metadata)
+         SELECT $1, now() - make_interval(hours => h), now() - make_interval(hours => h) + make_interval(secs => s), n, 0, 'complete', '{"source": "pg_cron"}'::jsonb
+           FROM (VALUES (240, 10, 50000), (200, 10, 50000), (160, 10, 50000), (120, 10, 50000), (80, 10, 50000), (40, 10, 50000),
+                        (3, 3600, 1000), (2, 3600, 1000), (1, 3600, 1000)) AS v(h, s, n)`,
+        [p0],
+      )) ?? "",
+      /\[fix1383\] \w+ reads sustained_regression/,
     );
   } finally {
     await c.end();

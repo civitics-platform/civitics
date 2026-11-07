@@ -63,6 +63,8 @@ const M3 = () => one("_fix1295_work_mem_m3.sql");
 
 const FILE = () => one("_fix1374_return_five_monthly_sweeps.sql");
 const REVERT = () => read(path.join(ROOT, "scripts", "fix1374-revert-return-five-monthly-sweeps.sql"));
+// FIX-1383 (cc-263) converted the holds this file asserts; its revert puts the RETURN's holds back first.
+const CUTOVER = () => read(path.join(ROOT, "scripts", "fix1383-revert-convert-five-sweeps-holds.sql"));
 
 /** The five rows in slot order, with the bodies prod runs (cc-258 read 4: prod = clone). */
 const ROWS = [
@@ -249,6 +251,7 @@ async function begin(c: Client): Promise<void> {
 
 /** Apply the file inside the caller's transaction, from the un-RETURNed rows. */
 async function applyFresh(c: Client): Promise<void> {
+  await c.query(CUTOVER());
   await c.query(REVERT());
   await c.query(FILE());
 }
@@ -259,6 +262,7 @@ test("clone: the file applies from the un-RETURNed rows, twice; a sixth `at … 
   try {
     await begin(c);
     try {
+      await c.query(CUTOVER());
       await c.query(REVERT());
       // A sixth monthly row on its own pipeline: the file must not touch it.
       await c.query(
@@ -320,6 +324,7 @@ test("clone: the file applies under the gate's own session hold; RAISEs on a hum
   const attempt = async (setup: string, params: unknown[] = []): Promise<string | null> => {
     await begin(c);
     try {
+      await c.query(CUTOVER());
       await c.query(REVERT());
       await c.query(setup, params);
       await c.query(FILE());
