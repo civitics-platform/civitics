@@ -306,6 +306,7 @@ test("clone: two rows share a pipeline; the daily's row is newer than the weekly
   if (!c) return;
   const tick = async (anchor: string | null) => {
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await isolate(c, 500);
       await c.query(
@@ -347,6 +348,7 @@ test("clone: a due row that is LIVE reads `live`, not `headroom:`, at a MemAvail
   if (!c) return;
   try {
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await isolate(c, 200);  // 200 − 128 = 72 < 150: the rung fails for both rows
       await c.query(

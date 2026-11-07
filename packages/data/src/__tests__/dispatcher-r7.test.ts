@@ -183,6 +183,7 @@ test("clone: the file applies from the un-RETURNed row; a dial fixture's other k
   if (!c) return;
   try {
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await c.query(
         `INSERT INTO public.pipeline_state (key, value) VALUES ('donor_party_crawl', '{"full_rebuild_lag_days": 30, "unit_budget_seconds": 900}')
@@ -214,6 +215,7 @@ test("clone: the file applies under the gate's own session hold; RAISEs on a hum
   if (!c) return;
   const attempt = async (setup: string, params: unknown[] = []): Promise<string | null> => {
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await c.query(CUTOVER());
       await c.query(REVERT());
@@ -268,6 +270,7 @@ test("clone: with the watermark 16 d behind the body's own target, the live body
     // The decision, as the body computes it (20261010010000:477-528), against the clone's own target.
     const decide = async (dial: number | null): Promise<string> => {
       await c.query("BEGIN");
+      await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
       try {
         await c.query(
           `INSERT INTO public.pipeline_state (key, value)
@@ -310,6 +313,7 @@ test("clone: one manual tick at MemAvailable 300 arms the RETURNed row as DUE si
   const SWAP_TOTAL = 1073737728;
   try {
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await applyFresh(c);
       // Every other dispatched row parked for the tick; donor-party is the only candidate.

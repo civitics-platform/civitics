@@ -15,7 +15,7 @@
  *   - the hold guard is FIX-1311's takeover hold or the push's own session
  *     hold; the verdict guard RAISEs on sustained_regression only;
  *   - the registry row asserted is read 7's; the pins are the current four;
- *   - it sorts last, after FIX-1375's, and the eight files from fix1374 on are
+ *   - it sorts after FIX-1375's, and the eight files from fix1374 on open
  *     cc-263's manifest in version order;
  *   - the revert matches the FIX-1380 note and restores an md5-pinned note.
  * Clone tests (CIVITICS_CLONE_TESTS=1, inside BEGIN … ROLLBACK): from the
@@ -124,12 +124,11 @@ test("FIX-1380: the registry row asserted is read 7's; the four pins are current
   assert.doesNotMatch(stripComments(sql), /v_missing \|\| '[^']*'(?!::text)/, "no bare literal appended to a text[] (cc-259 §8)");
 });
 
-test("FIX-1380: the file sorts last, and fix1374 → fix1380 is cc-263's eight-file manifest in version order", () => {
+test("FIX-1380: fix1374 → fix1380 opens cc-263's manifest in version order (r14 pins the ninth file)", () => {
   const all = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(all[all.length - 1], one(SUFFIX), "the newest file");
   const at = all.indexOf("20261102000000_fix1374_return_five_monthly_sweeps.sql");
   assert.ok(at > 0);
-  assert.deepEqual(all.slice(at), [
+  assert.deepEqual(all.slice(at, at + 8), [
     "20261102000000_fix1374_return_five_monthly_sweeps.sql",
     one("_fix1338_rate_regression_work_done_denominator.sql"),
     one("_fix1378_convert_run_rule_taggers_hold_cadence_24.sql"),

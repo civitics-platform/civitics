@@ -62,6 +62,8 @@ const PIPELINE = "contract_flow_rollups_rebuild";
 const SLOT = "0 14 * * 4";
 const FILE = () => one("_fix1371_return_contract_flow_rollups_refresh.sql");
 const REVERT = () => read(path.join(ROOT, "scripts", "fix1371-revert-return-contract-flow-rollups-refresh.sql"));
+// FIX-1382 (cc-263) converted the hold this file asserts; its revert puts FIX-1311's hold back first.
+const CUTOVER = () => read(path.join(ROOT, "scripts", "fix1382-revert-convert-contract-flow-hold.sql"));
 
 /** The live body (cc-257 read 4: prod = clone), last CREATEd by FIX-1295 M3. */
 const BODY = {
@@ -218,6 +220,7 @@ async function begin(c: Client): Promise<void> {
 
 /** Apply the file inside the caller's transaction, from the un-RETURNed row. */
 async function applyFresh(c: Client): Promise<void> {
+  await c.query(CUTOVER());
   await c.query(REVERT());
   await c.query(FILE());
 }
@@ -266,6 +269,7 @@ test("clone: the file applies under the gate's own session hold; RAISEs on a hum
   const attempt = async (setup: string, params: unknown[] = []): Promise<string | null> => {
     await begin(c);
     try {
+      await c.query(CUTOVER());
       await c.query(REVERT());
       await c.query(setup, params);
       await c.query(FILE());

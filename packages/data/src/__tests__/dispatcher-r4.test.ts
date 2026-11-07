@@ -361,6 +361,7 @@ test("clone: box_is_saturated — memory at the ceiling, clear below it, fail-op
     const sat = async () =>
       (await c.query("SELECT public.box_is_saturated(p_include_watchdog_wall := false) AS b")).rows[0].b;
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await fixtures(c, { swapMb: CEILING + 2, availMb: 400 });
       let b = await sat();
@@ -391,6 +392,7 @@ test("clone: the tick — headroom excludes the 256-cap row and arms the 64-cap 
   /** One tick on an isolated registry: only the two test rows are eligible. */
   const tick = async (o: { swapMb: number; availMb: number; ageS?: number }) => {
     await c.query("BEGIN");
+    await c.query("LOCK TABLE public.job_registry IN SHARE ROW EXCLUSIVE MODE"); // r9's lesson: 40P01 on job_registry
     try {
       await c.query("UPDATE public.job_registry SET deadline_rule = 'at 0 0 1 1 *' WHERE deadline_rule NOT LIKE 'at %'");
       await c.query(
