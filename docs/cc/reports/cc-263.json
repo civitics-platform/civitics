@@ -1,0 +1,150 @@
+{
+  "cc": "263",
+  "prompt": "cc-prompt-263-m4-after-numbers-nine-file-class-p-push-sweeps-chain-fix1295-contract-flow-conversion-five-sweeps-744.md",
+  "started_at": "2026-11-07T00:32:18Z",
+  "finished_at": "2026-11-07T02:33:39Z",
+  "head_before": "6288d222",
+  "head_after": "6c724b3a",
+  "commits": [
+    {
+      "sha": "dcd2e8fe",
+      "subject": "[skip vercel] docs(fixes): cc-263 files FIX-1382, FIX-1383, FIX-1384"
+    },
+    {
+      "sha": "acbda0b0",
+      "subject": "[skip vercel] feat(db): FIX-1382 — contract-flow-rollups-refresh's cutover hold converts to cadence_hours 168 on its Thu 11-05 14:00Z slot receipt (armed 14:01Z, complete 2,995 s, 500 recipients / 1,201 agency-sector rows); RAISE on sustained_regression only; the ninth file of cc-263's manifest (cc-263)"
+    },
+    {
+      "sha": "2c03feac",
+      "subject": "[skip vercel] docs(fixes): cc-263 files FIX-1385"
+    },
+    {
+      "sha": "a81e5c9f",
+      "subject": "[skip vercel] feat(db): FIX-1383 — the five monthly sweeps' cutover holds convert to cadence_hours 744 on their first dispatched walls (the 11-07 chain: five complete, 99.6 / 583.5 / 146.0 / 200.6 / 67.4 s, 0 rows each); RAISE on sustained_regression only; the tenth file of cc-263, pushed alone (cc-263)"
+    },
+    {
+      "sha": "16f0b0d2",
+      "subject": "chore(fixes): record FIX-1371 on prod — the Thu 11-05 14:00Z slot: contract-flow-rollups-refresh armed 14:01:00Z (by 0 14 * * 4 → -00:01:00, MemAvailable 351 / swap 403, excluded none), complete 14:03:00 → 14:52:55Z, 500 / 1,201, 2,995.0 s (≤ 4,188, band 0–8839), reaped 14:53:00Z succeeded: CALL unit_ms 2995068 (cc-263)"
+    },
+    {
+      "sha": "f998008d",
+      "subject": "chore(fixes): record FIX-1379 on prod — M4′ at 46.6 h: 175.4 MiB allocated, cold 42.7 %, the pool's swap share ≥ 45.4 MiB, 14.4× the pool/h, hit 93.33 %, all better than the census; the floor ~430 MB, ~50 MB lower, re-formed within the hour; MemAvailable flat (cc-263)"
+    },
+    {
+      "sha": "7f5be039",
+      "subject": "chore(fixes): record FIX-1374 on prod — the RETURN landed 01:05:51Z, five rows by … 1 * *; the chain armed 01:07:00Z → reaped 01:27:01Z, five complete, 99.6 / 583.5 / 146.0 / 200.6 / 67.4 s, 0 rows each, crons 23 / 14 / 15 / 18 / 19 no run after 10-01 (cc-263)"
+    },
+    {
+      "sha": "db079ed8",
+      "subject": "chore(fixes): record FIX-1338 on prod — check_pipeline_rate_regression md5 a76c935d: 13 pipelines rated, 0 regressions; run_rule_taggers ok, denominator desired_rows, recent_min 0.1984 / threshold 2.1673 s/1k, 84 baseline / 3 recent runs (cc-263)"
+    },
+    {
+      "sha": "f5f47b09",
+      "subject": "chore(fixes): record FIX-1378 on prod — four rows held false: run_rule_taggers 24 (ok 0.1984 / 2.1673), donor-party 168 (insufficient_data 8.6222 / 60.9669), treemap 168 (ok 303.3356 / 682.5174), agency-staffing 168 (no rated rows), the notes as landed (cc-263)"
+    },
+    {
+      "sha": "07b897f0",
+      "subject": "chore(fixes): record FIX-1380 on prod — group_donor_rollup_refresh held false, cadence 168, the note quoting insufficient_data, recent_min 2.1496 / threshold 0.8803 s/1k, denominator rows_written (cc-263)"
+    },
+    {
+      "sha": "11d4fa50",
+      "subject": "chore(fixes): record FIX-1382 on prod — contract_flow_rollups_rebuild held false, cadence 168, the note quoting ok, recent_min 1156.4999 / threshold 3396.0501 s/1k, denominator rows_written; head 20261106000000 / 547 (cc-263)"
+    },
+    {
+      "sha": "2f73e7a2",
+      "subject": "chore(fixes): record FIX-1383 on prod — five rows held false, cadence 744, no rated rows ×5; push 2 claimed 01:44:34Z, 5.8 s; head 20261107000000 / 548 (cc-263)"
+    },
+    {
+      "sha": "5c662376",
+      "subject": "chore(fixes): evidence for FIX-1375 on prod — record_box_health_mem md5 b6a472e5 from 01:05:5xZ; the first stamped sample 01:06:23Z carries io_time_pct 1, the rate keys and the raw counters (cc-263)"
+    },
+    {
+      "sha": "aa54a46f",
+      "subject": "chore(fixes): evidence for FIX-1295 on prod — the M2 + M3 table: four sweeps in band, fe-totals 3.76× (FIX-1385), contract-flow 1.57× confounded (FIX-1384); the full record waits on the 11-12 read (cc-263)"
+    },
+    {
+      "sha": "c0a829c7",
+      "subject": "[skip vercel] docs(ops): FIX-1379 / FIX-1382 / FIX-1383 / FIX-1384 / FIX-1385 — census §M4′ filled, the verdict and the floor rows; OPERATIONS §Disk IO budget's after rows + daily rates + a sweep chain's IO shape, the conversion list (eleven done), the sweeps' chain table, §Prod restarts' M4′ line; playbook D13's M3 confound line; bands.json's first dispatched walls; dispatcher.md s12b-10, s12b-11, new s12b-12, s12b, s15d done, s25; PROMPT_TEMPLATE's two-push sentence (cc-263)"
+    },
+    {
+      "sha": "6c724b3a",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-263 — FIX-1382 and FIX-1383 close (local + prod records); records FIX-1371, FIX-1379, FIX-1374, FIX-1338, FIX-1378, FIX-1380 on prod; evidence on FIX-1375 and FIX-1295; files FIX-1382, FIX-1383, FIX-1384, FIX-1385 (44 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1382",
+    "FIX-1383"
+  ],
+  "fixes_filed": [
+    "FIX-1382",
+    "FIX-1383",
+    "FIX-1384",
+    "FIX-1385"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261102000000_fix1374_return_five_monthly_sweeps.sql",
+    "20261104000000_fix1338_rate_regression_work_done_denominator.sql",
+    "20261104001000_fix1378_convert_run_rule_taggers_hold_cadence_24.sql",
+    "20261104002000_fix1378_convert_donor_party_rollup_refresh_hold_cadence_168.sql",
+    "20261104003000_fix1378_convert_treemap_individuals_global_refresh_hold_cadence_168.sql",
+    "20261104004000_fix1378_convert_agency_staffing_rollup_refresh_hold_cadence_168.sql",
+    "20261104005000_fix1375_box_health_mem_whitelist_disk_rates.sql",
+    "20261104006000_fix1380_convert_group_donor_rollup_refresh_hold_cadence_168.sql",
+    "20261106000000_fix1382_convert_contract_flow_rollups_refresh_hold_cadence_168.sql",
+    "20261107000000_fix1383_convert_five_monthly_sweeps_hold_cadence_744.sql"
+  ],
+  "prod_writes": "TWO gated class-P pushes, both from the primary's packages/data, in the foreground, with --poll-seconds 60 --max-wait-minutes 8 added. PUSH 1: dry run listed exactly nine in version order; receipt wait 0.2 s (01:05:46.601Z → 01:05:46.806Z), claim 01:05:51.267Z → 01:06:00.007Z = 8.7 s, polls 1, blocked_tokens [], census pass (1 render / 60 min, ratio 0.51, edge 0 of 1,579), 6 guarded holds held and cleared, 0 skipped rows and 0 ticks inside the claim. Head 20261106000000 / 547. PUSH 2: dry run listed exactly one; receipt wait 0.2 s (01:44:30.876Z → 01:44:31.078Z), claim 01:44:34.663Z → 01:44:40.455Z = 5.8 s, polls 1, blocked_tokens [], census pass (4 renders / 60 min, ratio 2.02, edge 2 of 271 = 0.74 %), 12 guarded holds held and cleared, 0 skipped rows and 0 ticks inside the claim. Head 20261107000000 / 548. Every read-back NOTICE passed: fix1374 five rules by, five holds kept, five crons inactive, five body md5s; fix1338 md5 a76c935d, 13 rated, 0 regressions, run_rule_taggers ok desired_rows; fix1378 ×4; fix1375 md5 b6a472e5; fix1380; fix1382 ok; fix1383 no rated rows ×5. The four pins read back unchanged in every file and at 01:06:24Z and 01:44:55Z. The first dispatched chain of the five sweeps armed by the dispatcher as designed (0 rows written by any). Two --prod --call --yes-i-mean-prod rolled-back pg_buffercache reads, 00:35:22Z and 02:31:34Z, pg_extension 0 after each, no durable change. No pause write, no dial write, no revert, no vercel curl, no force-push.",
+  "ci": "green",
+  "stopped_items": [
+    "Read 3(f)/(g): --hours 48 could not run. data:box-health:series caps at 30 h and the ring holds 900 samples, so a 30 h row stands in and the +12 h point came from dispatch_log.box armed rows, n 2.",
+    "Read 3(f): the 11-06 §9 line's swap max 728 MB could not be placed before or after the restart; its window is older than the ring.",
+    "Read 3(g): the 11-06 §9 line's 12 min at io_time ≥ 90 % could not be listed; the attribution to contract-flow stays inference, and FIX-1384's bullet says so.",
+    "Read 3(g): the dashboard's Disk IO consumed for 11-06 and 11-07: not read. Asked once in-session, no reply before the close.",
+    "Read 8: the whole package is green SERIALLY (1,916 tests, 1,895 pass, 0 fail, 21 skipped). The default concurrent run with the clone on fails 1–3 clone tests in dispatcher-r9, gated: prod_session, a race with prod-session.test.ts (the FIX-1263 class). Not fixed, not filed."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1379",
+      "what": "the 7-day after-curve (11-05 → 11-12): dispatch_log.box day rows + the §9 IO lines + root-vs-/data daily read rate vs the 10-25 → 11-04 curve — does the floor creep again under the 128 pool; the tier memo's second input",
+      "after": "2026-11-12T12:00Z"
+    },
+    {
+      "fix": "FIX-1382",
+      "what": "the canary's first post-conversion verdict in cadence (the Sun 11-08 nightly §9: no freshness finding for contract_flow_rollups_rebuild); then the Thu 11-12 14:00Z slot armed on the first admitted tick, complete",
+      "after": "2026-11-09T01:00Z"
+    },
+    {
+      "fix": "FIX-1384",
+      "what": "the 11-12 14:00Z contract-flow wall on a warm 128 MB pool: ≤ 2,856 s (1.5× the 256MB era) → FIX-1295's full record lands and this FIX closes as no-op; above → the design (s7 chunking / budget / this body's SET to 128MB)",
+      "after": "2026-11-12T16:00Z"
+    },
+    {
+      "fix": "FIX-1374",
+      "what": "the Dec 1 slots (the first unattended monthly firings): each row armed on the first admitted tick ≥ its slot, complete, wall in its n=2 band, no cron firing, no cooldown row",
+      "after": "2026-12-01T18:00Z"
+    },
+    {
+      "fix": "FIX-1385",
+      "what": "the Dec 1 12:00Z fe-totals wall, alone on the box: ≤ 234 s closes this as no-op; above, the dial written or this body's SET back to 256MB",
+      "after": "2026-12-01T18:00Z"
+    },
+    {
+      "fix": "FIX-1383",
+      "what": "the five rows converted tonight: the canary's first post-conversion verdicts in cadence (744 h; the Sun 11-08 nightly §9). None was left out",
+      "after": "2026-11-09T01:00Z"
+    },
+    {
+      "fix": "FIX-1338",
+      "what": "the next three nightly §9 rate lines (11-08 / 11-09 / 11-10) with no pipeline newly sustained under D3 without a quoted cause",
+      "after": "2026-11-11T01:00Z"
+    },
+    {
+      "fix": "FIX-1375",
+      "what": "the io: rung (the rung prompt) reading the mirror's io_time_pct / all-disk MB/s that landed tonight",
+      "after": "2026-11-08T01:00Z"
+    }
+  ]
+}
