@@ -281,20 +281,65 @@ work_mem = '128MB'` as a plain SET that survives its COMMITs
 headroom per hash node. cc-186 counted 24 procedures with an in-body `SET
 work_mem` and 5 more in `proconfig`.
 
-## M4′ — after `shared_buffers` 128 MB (FIX-1379; stub)
+## M4′ — after `shared_buffers` 128 MB (FIX-1379)
 
 The lever landed at the planned restart. The new postmaster started
-2026-11-05 01:59:17.383927Z (cc-255). The after-numbers are **owed at ~34.5 h
-uptime (~11-06 12:00Z), cc-<next>**, the same uptime as M4 above, so the
-comparison is like for like. They are:
-- `pg_shmem_allocations`;
-- the buffercache cold share of 16,384;
-- the pool's swap share (128 − resident Shmem);
-- evictions/h against 26.7× the pool;
-- `pg_stat_database` hit % against 87.10;
-- the swap floor at +12 / +24 / +48 h against the 10-25 → 11-04 curve
-  (cc-255 read 3(e));
-- the IO after-curve, per `2026-11-02-io-budget-census.md` §For cc-255.
+2026-11-05 01:59:17.383927Z (cc-255). cc-263 read the after-numbers at 46.6 h
+uptime (00:34–00:36Z on 11-07), before its push, not at the 34.5 h this stub
+first named. M4's method is unchanged.
+
+| read | census (34.5 h, 256 MB) | cc-255 (+48 s) | **cc-263 (46.6 h, 128 MB)** | vs the census |
+|---|---|---|---|---|
+| `pg_shmem_allocations` | 70 · 307.3 MiB | 70 · 175.4 MiB | **70 · 183,894,016 B = 175.4 MiB** (Buffer Blocks 128 MB · anon 34 MB · XLOG Ctl 7,881 kB · 1,276 kB · Descriptors 1,024 kB) | better, by design |
+| cold share (usagecount ≤ 1) | 57.9 % of 32,768 (148 MiB) | 17.3 % of a fresh pool | **7,000 of 16,384 = 42.7 %** (54.7 MiB; 0 unused, 150 dirty) | better |
+| the pool's swap share | ≥ 141 MiB (55 % of the pool) | — | **≥ 45.4 MiB (35 %)**: Shmem 82.6, SwapCached 63.2, swap 382.1, MemAvailable 386.5 MiB at 00:34:35Z | better |
+| client evictions/h | ≈ 874,000 = 26.7× the pool/h | 13.0× (cumulative) | **≈ 236,000 = 14.4× the pool/h** | better, raw and in turns |
+| hit % | 87.10 | 91.45 (cumulative) | **93.33 since the restart** (91.64 cumulative) | better |
+
+**The method.** The clean restart carried the counters (D13), so every rate is a
+DELTA against cc-255's after row at 02:00Z, never the cumulative: evictions
+118,367,830 − 107,372,417 = 10,995,413 in 46.59 h; `blks_hit` +202,808,805 /
+`blks_read` +14,499,678. A half pool turns twice as fast at equal evictions,
+so both the raw rate and the turns are quoted. `128 − Shmem` carries the same
+bias as the census's figure (Shmem includes ~47 MiB of non-pool shared memory),
+so the comparison holds. The census window opened on the 10-25 crash recovery,
+so it was a heavier window than a clean one; some of "better" is that.
+
+Usagecount 0 / 1 / 2 / 3 / 4 / 5: 3,714 / 3,286 / 672 / 470 / 667 / 7,575. The
+top holders are `financial_entities` 3,601 (usage ≤ 1: 3,591), `cron.job_run_details`
+2,876, `officials` 2,347, `data_sync_log` 1,676. The hot set still fits. The
+census's 63 MB cold index walk is gone from the top ten.
+
+**The swap floor against cc-255's curve** (`dispatch_log.box`, the armed rows):
+
+| day (UTC) | n | swap avg / P50 / P95 / max | swap min | MemAvail P50 / P05 / min | load1 max |
+|---|---|---|---|---|---|
+| 11-05 (≥ 02:00Z) | 58 | 429.0 / 429.5 / 505.8 / 527 | 344 | 384.5 / 278.0 / 255 | 1.18 |
+| 11-06 | 61 | 434.1 / 431 / 506.0 / 560 | 355 | 393 / 314.0 / 268 | 1.02 |
+
+| point | swap median / min / max | MemAvailable median | source |
+|---|---|---|---|
+| +12 h, quiet 13:00–13:55Z on 11-05 | 405.5 / 394 / 417 (n 2) | 358.5 | `dispatch_log.box`; the ring no longer reaches it |
+| +24 h, 01:30–02:30Z on 11-06 | 425 / 376 / 551 | 395 | ring |
+| quiet 00:00–00:40Z on 11-07, before the push | 422.5 / 381 / 567 | 382 | ring |
+| +48 h, 01:30–02:30Z on 11-07, just after the sweep chain | 456 / 406 / 497 | 436 | ring |
+
+The quiet pre-push window is the floor point; the +48 h row sits in the chain's
+aftermath. A post-chain histogram at 02:31Z, not an M4′ number, read 8,069 of
+16,384 = 49.2 % cold.
+
+**The IO after-curve** is in OPERATIONS §Disk IO budget. In one line: quiet-day
+/data reads did not rise (p95 1.7 against 1.57 MB/s), root reads fell 4 %, and
+swap-in fell 12 %.
+
+**The verdict (FIX-1379).** All five numbers read better than the census. The
+floor formed at ~430 MB, against 473–489 on the last days before the lever and
+435–460 at the same uptime after the 10-25 restart. So halving the pool handed
+back ~50 MB of swap at the floor, not the ~128 MiB it freed, and the floor
+re-formed within the first hour. MemAvailable did not rise: its P50 reads
+384–393 against 403–410 on 11-03 and 11-04. **The tier memo's line: the lever
+bought a lower floor and a much quieter pool, not free RAM. Whether it stops the
+creep is the 7-day curve's question, owed after 11-12 12:00Z.**
 
 cc-255's two points around the restart (prod; M4's method, 10 d 12 h uptime
 before, not the census's 34.5 h):

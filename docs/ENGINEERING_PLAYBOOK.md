@@ -1313,7 +1313,10 @@ moved, the restart crashed, and cc-250 §4's list applies (the FIX-1106 audit
 refuses until the nightly re-emits; the next donor-rollup unit redoes its
 staging). Hold a claim across a restart with `--hold-seconds` AFTER the
 database is back. A claim held through the restart dies with its backend.
-*FIX-1379 · FIX-950 · FIX-1177 · cc-250 §4 · cc-255 (premise 384)*
+**The pool's reset is a confound, so name it before reading an M3 ratio:**
+contract-flow's second 64MB run read 1.57× the 256MB era, 12 h after the restart
+on a cold half pool, so it is no verdict either way (FIX-1384, the 11-12 slot).
+*FIX-1379 · FIX-950 · FIX-1177 · cc-250 §4 · cc-255 (premise 384) · cc-263*
 
 ---
 

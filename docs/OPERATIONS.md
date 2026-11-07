@@ -610,7 +610,9 @@ line; it escalates only with ≥ 5 baseline runs.
   `cadence_hours` mirrors the registry rule (24 for a daily, 168 for a
   weekly, 744 for a monthly) until the canary reads `job_registry.deadline_rule`
   (FIX-1317). The shape is `20261027001000_fix1355_…`, then
-  `20261104001000`–`20261104004000` (FIX-1378). The revert,
+  `20261104001000`–`20261104004000` (FIX-1378). The conversion is gated on
+  the row, not the wall: a `complete` row above its band still converts and
+  gets its own FIX (FIX-1384, FIX-1385). The revert,
   `scripts/fix1378-revert-convert-cutover-holds.sql`, restores FIX-1311's
   text byte-for-byte.
   - Converted so far:
@@ -618,9 +620,13 @@ line; it escalates only with ≥ 5 baseline runs.
     - run_rule_taggers 24, and donor-party / treemap / agency-staffing 168 (FIX-1378).
     - group-donor 168 (`20261104006000`, FIX-1380, cc-255). Its revert is
       `scripts/fix1380-revert-convert-group-donor-hold.sql`.
-    - The last six ride cc-263's Sat 11-07 push.
-  - Left: contract-flow (after its Thu 11-05 slot) and the five monthly sweeps
-    (744 h, after their push and first dispatched runs).
+    - contract-flow 168 (`20261106000000`, FIX-1382, cc-263). Its revert is
+      `scripts/fix1382-revert-convert-contract-flow-hold.sql`.
+    - The five monthly sweeps 744 (`20261107000000`, FIX-1383, cc-263). Its
+      revert is `scripts/fix1383-revert-convert-five-sweeps-holds.sql`.
+    - All eleven of those are on prod since 11-07.
+  - Left of the FIX-1311 holds: officials and the MV vacuum series, which MOVE
+    rather than convert.
   - **A rate step is not always a slowdown.** group-donor's s/1k rose ~10× on
     10-07 because rows written fell 542k → 47,208 at the same ~100 s wall. Read
     the rows beside the verdict before you call one a regression.
@@ -1056,12 +1062,12 @@ directly. `pnpm --filter @civitics/data data:box-health:series` shows
 day's IO line. An IO-bound unit at full burst reads ~28 MB/s at io_time
 ~100 % and ~3,000 reads/s (the gp3 volume's IOPS ceiling). Idle is < 0.1 MB/s
 at < 1 %. A throttle is the same ~100 % at a fraction of the MB/s and IOPS.
-The on-box mirror (`pipeline_state.box_health_mem`) lists the eight rate keys
-and the nine raw counters from `20261104005000` (FIX-1375's mirror half,
-pushed with cc-263). Until that push it drops them as `ignored_keys`.
+The on-box mirror (`pipeline_state.box_health_mem`) carries the eight rate keys
+and the nine raw counters since `20261104005000` (FIX-1375's mirror half)
+reached prod on 11-07. The first stamped sample is 01:06:23Z (`io_time_pct` 1).
 
-**The `shared_buffers` halving's IO before-curve (FIX-1379, cc-255; the
-verdict is the census's M4′, owed ~11-06 12:00Z).** The halving trades RAM
+**The `shared_buffers` halving's IO curve (FIX-1379; cc-255's before, cc-263's
+after; the verdict is the census's M4′).** The halving trades RAM
 for `/data` reads: root reads (swap and file faults) may fall while `/data`
 reads rise. Measures are p50 / p95 / max:
 
@@ -1071,6 +1077,8 @@ reads rise. Measures are p50 / p95 / max:
 | 11-04 00:14Z → 11-05 00:12Z (cc-255 read 3(k)) | 0.04 / 1.57 / 102.33 | 0.63 / 9.17 / 117.53 | 0.1 / 3.7 / 87.8 | 0 | 1.7 / 72.9 / 2,566.1 | 718 of 719 |
 | 11-05 01:00Z → 01:58Z (the last hour before the restart) | 0.01 / 0.25 / 0.52 | 0.43 / 6.48 / 12.86 | 0.1 / 0.7 / 1.9 | 0 | 0.9 / 9.2 / 35.4 | 30 of 30 |
 | **after:** 11-05 02:00Z → 02:46Z (the first 47 min at 128 MB) | 0.1 / 2.5 / 23 | 1.33 / 13.97 / 28.29 | 0.2 / 8.4 / 17.3 | 0 | 2.3 / 149.2 / 185.6 | 24 of 24 |
+| **after:** 11-05 18:56Z → 11-07 00:58Z (30 h, all the ring holds; cc-263) | 0.08 / 1.7 / 97.53 | 0.71 / 9.8 / 103.16 | 0.2 / 3 / 100 | 2 | 2 / 74.42 / 3,057.5 | 899 of 899 |
+| **after:** 11-06 00:58Z → 11-07 00:58Z (24 h; cc-263) | 0.08 / 1.69 / 97.53 | 0.71 / 9.48 / 103.16 | 0.2 / 2.81 / 100 | 2 | 2.1 / 73.7 / 3,057.5 | 720 of 720 |
 
 The first sample after the boot (02:00:22Z) is the pool refilling: /data 23
 MB/s, all-disk 28.29, io_time 17.3 %, 185.6 reads/s. By 02:06Z it was back at
@@ -1078,7 +1086,32 @@ idle. **Swap refilled in minutes, not hours:** 298 MB at 02:00:22Z, 484 at
 02:02Z, 518 at 02:04Z, then 365–495 through 02:46Z. Before the restart it was
 493. At 02:46Z resident Shmem was 64.3 MiB, so ≥ 63.7 MiB of the 128 MB pool
 already sat in swap (≥ 171 MiB of 256 before). One hour says nothing about
-the floor or the creep. The verdict is M4′'s, owed ~11-06 12:00Z.
+the floor or the creep. The verdict is M4′'s.
+
+**What the two days read (cc-263).** Quiet-day /data reads did not rise, so the
+page cache took the load the pool gave up. The two minutes ≥ 90 % in the 30 h
+row are one sample, 11-06 21:14Z, the nightly's start. The 11-06 line's 12
+minutes cannot be placed: its window closed 20:58Z on 11-05 and the ring holds
+only 30 h, so they fell out of it before the read. contract-flow's sorts remain
+the likely cause by inference only. Daily rates since the host's boot:
+
+| read per day | before (11-03 → 11-05) | after (11-05 02:46Z → 11-07 00:58Z) |
+|---|---|---|
+| root | ~183 GB | **~176 GB** |
+| /data | ~156 GB | **~108 GB** |
+| swap-in | ~36.9 GB | **~32.4 GB** |
+
+Root and /data stand at 2.599 / 2.404 TB. The two windows are not like for
+like: the before window held Tuesday's weeklies and the after window held
+contract-flow. Swap-in is only ~18 % of root's reads, so the swap read is not
+the whole of root's budget.
+
+**A sweep chain's IO shape (11-07, cc-263).** Two sweeps at once reach the gp3
+3,000-IOPS ceiling at full burst: five samples, 01:14 → 01:22Z, read io_time
+96–100 %, 2,207–3,061 reads/s, /data 26–45 MB/s, queue 20–49. That is ten
+minutes ≥ 90 % with load1 ≤ 2.41, MemAvailable ≥ 219, swap ≤ 445 and 0 startup
+timeouts in 86 cron runs, so no throttle. The Dec 1 slots are 30 minutes apart
+and should not overlap.
 
 - **Since the host's boot**, read 01:58:22Z: root has read **2.253 TB** and
   /data 2.193 TB, with swap-in 453.1 GB. cc-262 read 1.89 / 1.88 TB at
@@ -1089,8 +1122,10 @@ the floor or the creep. The verdict is M4′'s, owed ~11-06 12:00Z.
 - **The receipts' §9 IO lines:**
   - 11-04: 0.04 / 22.66 / 133.65; io_time 47.8 / 100 %; 10 min ≥ 90 %.
   - 11-05: 0.04 / 1.57 / 102.33; io_time 3.7 / 74.4 %; 0 min ≥ 90 %.
+  - 11-06: 0.09 / 14.18 / 134.01; io_time 31.2 / 93.4 %; 12 min ≥ 90 %.
+  - 11-07: 0.07 / 1.72 / 97.53; io_time 3 / 78.8 %; 0 min ≥ 90 %.
 - **The dashboard's daily Disk IO consumed (Craig, 11-05):** 11-02 88 %,
-  11-03 9 %, 11-04 1 %, 11-05 1 %.
+  11-03 9 %, 11-04 1 %, 11-05 1 %. 11-06 and 11-07 were not read.
 
 **The no-push rule (until the `io:` rung lands):** no class-P push and no
 class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
@@ -1279,8 +1314,20 @@ five monthly orphan sweeps as `by <their cron slot>`:
 `financial-entity-totals-reconcile` `0 12 1 * *` (`fe-totals`),
 `donor-rollup-orphan-sweep` `30 12 1 * *` and `donor-party-rollup-orphan-sweep`
 `0 13 1 * *` (`rollups`). Priority 5, cap 64, **`budget_seconds` NULL**. The
-file is on `main`; **its prod push was HELD on 2026-11-02** (below), so on
-prod the five still read `at …` until it is pushed.
+prod push was held on 2026-11-02 (below) and landed on 2026-11-07 at
+01:05:51Z (cc-263). The first dispatched chain closed five `complete` in 20
+minutes (first arm 01:07:00Z, last reap 01:27:01Z):
+
+| sweep | wall s (10-01, 256MB) | band | deleted / zeroed |
+|---|---|---|---|
+| donation-edge | 99.6 (135.5) | 0–204 | 0 |
+| fe-totals | **583.5** (155.3) | 0–234, **above: 3.76×**, FIX-1385 | 0 |
+| donor-rollup | 146.0 (103.4) | 0–156 | 0 |
+| donor-party | 200.6 (290.4) | 0–436 | 0 |
+| ecs | 67.4 (92.8) | 0–140 | 0 |
+
+fe-totals co-ran the other three on the chain, which the 30-minute cron slots
+never allowed, so its ratio is confounded. Its Dec 1 12:00Z slot runs alone.
 
 - **The cancel path is the opposite of contract-flow's.** Each body (FIX-1295
   M3: 64MB + parallel 0 in-body, no START gate) COMMITs a `running` row, then
@@ -1311,7 +1358,7 @@ prod the five still read `at …` until it is pushed.
   1.5: 204 / 234 / 156 / 436 / 140 s) are R5's bar for the M3 step; the first
   dispatched walls are FIX-1295's sweep receipts. Every pre-M3 body set 256MB
   in-body. On the clone the five run in seconds; that is not prod's cost.
-- **Why the 11-02 push was held.** Prod stalled twice before it: 03:54–04:27Z
+- **Why the 11-02 push was held, until 11-07.** Prod stalled twice before it: 03:54–04:27Z
   and again from 05:01Z. pg_cron logged `job startup timeout` every minute,
   load1 reached 19–31, and the front door's 5xx count rose to 118 in the
   04:00Z bucket, while MemAvailable stayed 245–570 MB and swap ≤ 620 MB. So it
@@ -1787,6 +1834,10 @@ On 11-05, pause → unpause took 2 min 48 s (01:57:46 → 02:00:34Z). The
 FIX-950 claim does NOT survive the restart: its backend gets `57P01` and the
 process exits with its six guarded holds still set. `pause` is what holds the
 dispatcher across it.
+
+M4′ read at 46.6 h (cc-263): all five census numbers better, the floor ~50 MB
+lower and re-formed within the hour, MemAvailable flat, the creep still open
+(census §M4′).
 
 ### Dashboards
 
