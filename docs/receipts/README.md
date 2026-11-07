@@ -91,6 +91,45 @@ fallback, a re-dispatch — keeps the committed `memory_day` and `mem_day`, and
 file is rewritten as before (FIX-1218). Files before FIX-1289 carry no
 `window`: their `memory_day` is the 24 h ending at whichever run wrote last.
 
+**Section 9 banks instants and a root budget** (FIX-1386, cc-265). The ring is
+30 h and a count cannot be placed once its samples age out, so
+`forker.memory_day.io` carries:
+
+- **`busy_instants`:** every sample with `io_time_pct` ≥ 90, oldest first, as
+  `{at, io_time_pct, read_mbps, all_mbps, reads_ps}` (/data MB/s and reads/s;
+  all disks' MB/s). The cap is 90, a 3-h throttle at the 2-min cadence. Past it
+  the middle goes, the first 45 and last 45 stay, and
+  `busy_instants_truncated` says how many went. §9 prints the first 8.
+- **`swap_max_at`, `mem_available_min_at`:** the earliest sample at the day's
+  swap peak and MemAvailable floor.
+- **`root`:** `{hours, root_read_gb, data_read_gb, swap_in_gb, majfault_gb,
+  swap_in_share_pct, rated, reason}`, from the window's first and last samples
+  carrying the raw counters. `rated` counts those samples, and §9 reads
+  `missing` when there are fewer than two.
+
+How to read `root`:
+
+- **Clock:** `hours` is the span between the two samples on `route_at`. The
+  per-sample rates stay on the exporter's clock. A day-long delta does not
+  need it: the two differed by 0.15 h in 24 on cc-265's read.
+- **Units:** GB is 10^9, the same scale as the route's MB/s.
+- **Two disks are assumed:** root is Δ(`disk_all_read_bytes` −
+  `disk_read_bytes`), all disks minus /data. The Micro has nvme0n1 root and
+  nvme1n1 /data. A third device would make it "every disk but /data".
+- **Page size:** swap-in is Δ`pswpin` × 4,096 B (x86_64).
+- **`majfault_gb` is a floor on bytes, and not a file-only number.** It is
+  Δ`pgmajfault` × 4,096 B, but pgmajfault counts faults while pswpin counts
+  pages. One fault can read many pages (file read-around, swap clusters), and
+  swap-in faults are in the count too. On cc-265's day pswpin ran 1.84×
+  pgmajfault. So `majfault_gb` cannot confirm or refute "the rest of root's
+  reads are file-backed", and §9 labels that clause a hypothesis.
+- **Resets:** a counter that went backwards anywhere in the window nulls its
+  numbers and `reason` says where. A /data device change nulls both disk
+  numbers.
+
+A day banked before cc-265 has none of these keys, and FIX-1289 keeps it that
+way. §9 prints `n/a (banked before cc-265)` for it.
+
 **Section 9's crawl skip counters are banked here too** (FIX-1124, cc-189).
 `ec-crawl` and `fe-crawl` record every skip in
 `pipeline_state.<ec_crawl|fe_crawl>.skips` as a LIFETIME total. Only the two

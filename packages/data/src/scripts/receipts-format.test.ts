@@ -974,6 +974,73 @@ test("FIX-1375 (cc-262): §9 — the IO line reads `missing` until a banked day 
   );
 });
 
+// ── FIX-1386 (cc-265): §9 banks its instants and a root budget ──────────────
+
+const ROOT = {
+  hours: 24, root_read_gb: 174, data_read_gb: 106.4, swap_in_gb: 31.7, majfault_gb: 17.2,
+  swap_in_share_pct: 18.2, rated: 720, reason: null,
+};
+const IO_1386 = {
+  rated: 700,
+  read_mbps: { p50: 0.01, p95: 28.15, max: 58.86 },
+  write_mbps: { p50: 0.04, p95: 2.02, max: 2.7 },
+  all_mbps: { p50: 0.4, p95: 36.6, max: 63.1 },
+  io_time_pct: { p95: 97.9, max: 100 },
+  minutes_busy: 12,
+  busy_instants: [
+    { at: "2026-11-06T04:10:22.000Z", io_time_pct: 97, read_mbps: 27.3, all_mbps: 31.8, reads_ps: 3061 },
+    { at: "2026-11-06T04:12:22.000Z", io_time_pct: 100, read_mbps: 2.04, all_mbps: 6, reads_ps: 214.5 },
+  ],
+  busy_instants_truncated: 0,
+  swap_max_at: "2026-11-06T11:58:22.000Z",
+  mem_available_min_at: "2026-11-06T12:34:22.000Z",
+  root: ROOT,
+};
+const md1386 = (io: unknown) => ({ ...MEMORY_DAY, io }) as never;
+
+test("FIX-1386: §9 — busy instants, the extremes' instants and the Root budget", () => {
+  const text = boxHealthLines({ ...quiet, memory_day: md1386(IO_1386) }, AS_OF).join("\n");
+  assert.match(text, /rated 700 of 720 samples\. Busy instants: 04:10Z \(97 %, 27\.3 MB\/s, 3,061 r\/s\) · 04:12Z \(100 %, 2 MB\/s, 215 r\/s\)\. Swap max at 11:58Z; MemAvailable min at 12:34Z\./);
+  assert.match(
+    text,
+    /Root budget \(24 h, banked as `forker\.memory_day\.io\.root`\): root read \*\*174 GB\*\* · \/data 106\.4 GB · swap-in 31\.7 GB \(18\.2 % of root\) · major faults 17\.2 GB at one 4 KiB page per fault, a floor — hypothesis, not measured: the rest of root's reads are file-backed \(binaries, libraries, logs, WAL on root\?\)\./,
+  );
+});
+
+test("FIX-1386: §9 — no busy sample reads none; past eight the rest are counted", () => {
+  const quietDay = boxHealthLines({ ...quiet, memory_day: md1386({ ...IO_1386, busy_instants: [] }) }, AS_OF).join("\n");
+  assert.match(quietDay, /Busy instants: none\. Swap max at/);
+  const many = Array.from({ length: 11 }, (_, i) => ({ ...IO_1386.busy_instants[0]!, at: "2026-11-06T04:" + String(10 + i) + ":22.000Z" }));
+  const full = boxHealthLines({ ...quiet, memory_day: md1386({ ...IO_1386, busy_instants: many }) }, AS_OF).join("\n");
+  assert.match(full, /04:17Z \(97 %, 27\.3 MB\/s, 3,061 r\/s\) · \+ 3 more in the JSON\./);
+  assert.doesNotMatch(full, /04:18Z/);
+  const capped = boxHealthLines({ ...quiet, memory_day: md1386({ ...IO_1386, busy_instants: many, busy_instants_truncated: 5 }) }, AS_OF).join("\n");
+  assert.match(capped, /\+ 3 more in the JSON, 5 dropped at the cap\./);
+});
+
+test("FIX-1386: §9 — a day banked before cc-265 keeps its line and says so", () => {
+  const { busy_instants: _b, busy_instants_truncated: _t, swap_max_at: _s, mem_available_min_at: _m, root: _r, ...old } = IO_1386;
+  const text = boxHealthLines({ ...quiet, memory_day: md1386(old) }, AS_OF).join("\n");
+  assert.match(text, /rated 700 of 720 samples\. Instants: n\/a \(banked before cc-265\)\./);
+  assert.match(text, /Root budget: n\/a \(banked before cc-265\)\./);
+});
+
+test("FIX-1386: §9 — rated 0 is missing; a reset prints n/a and the reason", () => {
+  const zero = {
+    ...IO_1386,
+    root: {
+      ...ROOT, hours: null, root_read_gb: null, data_read_gb: null, swap_in_gb: null, majfault_gb: null,
+      swap_in_share_pct: null, rated: 0, reason: "no sample in the window carries the raw counters",
+    },
+  };
+  const missing = boxHealthLines({ ...quiet, memory_day: md1386(zero) }, AS_OF).join("\n");
+  assert.match(missing, /Root budget \(24 h\): \*\*missing\*\* — no sample in the window carries the raw counters\./);
+  const reset = { ...IO_1386, root: { ...ROOT, swap_in_gb: null, swap_in_share_pct: null, reason: "pswpin went backwards at 2026-11-06T04:10:22.000Z" } };
+  const text = boxHealthLines({ ...quiet, memory_day: md1386(reset) }, AS_OF).join("\n");
+  assert.match(text, /swap-in n\/a · major faults 17\.2 GB/);
+  assert.match(text, /\(pswpin went backwards at 2026-11-06T04:10:22\.000Z\)\./);
+});
+
 test("FIX-1194 (cc-183): renderJson — forker.memory_day is the banked object, or an explicit null", () => {
   const d = fixture();
   d.forker = { ...d.forker, mem_day: { available: false, reason: "r" }, memory_day: null };

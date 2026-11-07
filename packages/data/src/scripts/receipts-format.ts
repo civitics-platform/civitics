@@ -24,7 +24,7 @@
 import { BINDING_ACTIONS } from "../pipelines/congress/legislator-ids";
 import { nextCronOccurrence, restrictsDayOfMonthOrMonth } from "../lib/cron-next";
 import type { BoxHealthSample } from "@civitics/db";
-import { memoryDay, seriesStats, windowRows, type MemoryDay } from "../lib/box-health-series";
+import { memoryDay, seriesStats, windowRows, type IoDay, type MemoryDay, type RootDay } from "../lib/box-health-series";
 
 /**
  * Verdict vocabulary.
@@ -852,6 +852,47 @@ export function stampLivenessVerdict(
 
 const n0 = (v: unknown): string => (v === null || v === undefined ? "—" : String(v));
 
+/** FIX-1386 — how many busy instants §9 prints; the JSON carries the rest. */
+const BUSY_INSTANTS_INLINE = 8;
+
+const hhmm = (iso: string | null | undefined): string => (iso ? iso.slice(11, 16) + "Z" : "—");
+
+/** FIX-1386 — the IO line's instants. A day banked before cc-265 has none, and FIX-1289 keeps it so. */
+function instantsText(io: IoDay): string {
+  const all = io.busy_instants;
+  if (all === undefined) return "Instants: n/a (banked before cc-265).";
+  const shown = all.slice(0, BUSY_INSTANTS_INLINE).map((b) => {
+    const mbps = b.read_mbps === null ? "—" : String(Math.round(b.read_mbps * 10) / 10);
+    const reads = b.reads_ps === null ? "—" : Math.round(b.reads_ps).toLocaleString("en-US");
+    return hhmm(b.at) + " (" + Math.round(b.io_time_pct) + " %, " + mbps + " MB/s, " + reads + " r/s)";
+  });
+  const more = all.length - shown.length;
+  const dropped = io.busy_instants_truncated ?? 0;
+  if (more > 0 || dropped > 0) {
+    shown.push("+ " + more + " more in the JSON" + (dropped > 0 ? ", " + dropped + " dropped at the cap" : ""));
+  }
+  return (
+    "Busy instants: " + (all.length === 0 ? "none" : shown.join(" · ")) + ". Swap max at " +
+    hhmm(io.swap_max_at) + "; MemAvailable min at " + hhmm(io.mem_available_min_at) + "."
+  );
+}
+
+/** FIX-1386 — the Root budget bullet. The file-backed clause is a hypothesis and says so. */
+function rootBudgetText(root: RootDay | undefined): string {
+  if (root === undefined) return "Root budget: n/a (banked before cc-265).";
+  if (root.hours === null) return "Root budget (24 h): **missing** — " + root.reason + ".";
+  const gb = (v: number | null) => (v === null ? "n/a" : v + " GB");
+  return (
+    "Root budget (" + Math.round(root.hours * 10) / 10 + " h, banked as `forker.memory_day.io.root`): root read **" +
+    gb(root.root_read_gb) + "** · /data " + gb(root.data_read_gb) + " · swap-in " + gb(root.swap_in_gb) +
+    (root.swap_in_share_pct === null ? "" : " (" + root.swap_in_share_pct + " % of root)") +
+    " · major faults " + gb(root.majfault_gb) +
+    (root.majfault_gb === null ? "" : " at one 4 KiB page per fault, a floor") +
+    " — hypothesis, not measured: the rest of root's reads are file-backed (binaries, libraries, logs, WAL on root?)." +
+    (root.reason === null ? "" : " (" + root.reason + ").")
+  );
+}
+
 /**
  * FIX-1194 P1-B / FIX-1125 — the §9 "Box health" lines. Pure, so the section is
  * testable without a database or Upstash.
@@ -961,8 +1002,10 @@ export function boxHealthLines(f: ForkerSection, asOf: string): string[] {
         "IO (24 h, banked as `forker.memory_day.io`, /data): read MB/s p50/p95/max **" + r(io.read_mbps) +
           "**, write " + r(io.write_mbps) + "; all disks " + r(io.all_mbps) + " MB/s; io_time p95/max **" +
           n0(io.io_time_pct.p95) + " / " + n0(io.io_time_pct.max) + " %**; **" + io.minutes_busy +
-          " min** at io_time ≥ 90 %; rated " + io.rated + " of " + md.samples + " samples.",
+          " min** at io_time ≥ 90 %; rated " + io.rated + " of " + md.samples + " samples. " + instantsText(io),
       );
+      out.push("");
+      out.push(rootBudgetText(io.root));
     }
   }
   // FIX-1289 — which window, and who banked it.

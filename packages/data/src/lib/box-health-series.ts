@@ -18,14 +18,46 @@
  * route's clock is wrong for them), so each sample carries its own. A sample
  * before the deploy, or one the route could not rate, reads null.
  *
+ * FIX-1386 (cc-265) — the ring is 30 h and a banked day keeps counts, so a
+ * count could not be placed once its samples aged out (cc-263's 728 MB and its
+ * 12 busy minutes). `ioDay()` now banks the instants, and `rootDay()` the day's
+ * root reads. The per-sample rates stay on the exporter's clock; `rootDay()` is
+ * a day-long DELTA between two samples, so its `hours` is on their `route_at`.
+ * Over read 2's day the two clocks differed by 0.15 h in 24.
+ *
+ * ROOT IS ALL DISKS MINUS /data. `disk_all_read_bytes` sums every whole disk,
+ * and the Micro has two: nvme0n1 root and nvme1n1 /data (rule 415). A third
+ * device would make `root_read_gb` "every disk but /data".
+ *
+ * MAJOR FAULTS ARE COUNTED, NOT MEASURED. `majfault_gb` is Δpgmajfault × 4,096 B
+ * (the x86_64 page), the same conversion as `swap_in_gb`, but pgmajfault counts
+ * FAULTS and pswpin counts PAGES. A file fault reads around the faulting page
+ * and a swap fault reads a cluster, so bytes per fault is ≥ one page and
+ * `majfault_gb` is a FLOOR on what faults read. pgmajfault also counts swap-in
+ * faults, so it overlaps `swap_in_gb` and is not a file-only number. On read
+ * 2's day pswpin ran 1.84× pgmajfault, which one page per fault cannot do.
+ *
  * Pure. No network, no DB.
  */
 
 import type { BoxHealthSample } from "@civitics/db";
 
 const MB = 1024 * 1024;
+/** The same 10^n scale as the route's MB/s: 1 GB here is 1,000 of those MB. */
+const GB = 1e9;
+/** x86_64. pswpin and pgmajfault are in pages / faults; the budget is in bytes. */
+const PAGE_BYTES = 4096;
 /** Three missed 2-minute firings. Past this, adjacent samples are not "consecutive". */
 export const MAX_RATE_GAP_S = 6 * 60;
+
+/** FIX-1386 — the raw counters the root budget differences. */
+export type RootCounters = {
+  pswpin: number;
+  pgmajfault: number;
+  disk_device: string;
+  disk_read_bytes: number;
+  disk_all_read_bytes: number;
+};
 
 export type SeriesRow = {
   at: string;
@@ -41,6 +73,9 @@ export type SeriesRow = {
   io_time_pct: number | null;
   /** FIX-1375 — every whole disk's read + write MB/s: the instance's burst budget is shared. */
   all_mbps: number | null;
+  /** FIX-1386 — the /data device's reads/s, and the counters. Banked and in --json; not in the table. */
+  reads_ps: number | null;
+  counters: RootCounters | null;
   scrape_ms: number;
 };
 
@@ -60,6 +95,20 @@ function rate(prev: number | undefined, cur: number | undefined, seconds: number
   const d = cur - prev;
   if (d < 0) return null;
   return Math.round((d / seconds) * 10) / 10;
+}
+
+function rootCounters(s: BoxHealthSample): RootCounters | null {
+  const { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes } = s;
+  if (
+    pswpin === undefined ||
+    pgmajfault === undefined ||
+    disk_device === undefined ||
+    disk_read_bytes === undefined ||
+    disk_all_read_bytes === undefined
+  ) {
+    return null;
+  }
+  return { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes };
 }
 
 /** Newest-first samples → oldest-first rows inside the last `hours`. */
@@ -100,6 +149,8 @@ function rowsBetween(newestFirst: BoxHealthSample[], since: number, until: numbe
         s.disk_all_read_mbps !== undefined && s.disk_all_write_mbps !== undefined
           ? Math.round((s.disk_all_read_mbps + s.disk_all_write_mbps) * 100) / 100
           : null,
+      reads_ps: s.disk_reads_ps ?? null,
+      counters: rootCounters(s),
       scrape_ms: s.scrape_ms,
     };
   });
@@ -156,6 +207,9 @@ export type MemoryDay = {
  * (the burst budget's numerator), busy % at p95 / max, and the minutes the
  * device was ≥ IO_BUSY_PCT busy. `rated` is how many samples carried a rate:
  * 0 until the sampler's first day, and the line says "missing" then.
+ *
+ * FIX-1386 — the instants, so a line can be placed after the ring has moved on.
+ * All optional: a day banked before cc-265 has none and FIX-1289 keeps it so.
  */
 export type IoDay = {
   rated: number;
@@ -164,10 +218,46 @@ export type IoDay = {
   all_mbps: RateSummary;
   io_time_pct: { p95: number | null; max: number | null };
   minutes_busy: number;
+  /** Every sample at IO_BUSY_PCT or over, oldest first, at most BUSY_INSTANTS_CAP. */
+  busy_instants?: BusyInstant[];
+  /** How many were dropped from the middle to fit the cap. */
+  busy_instants_truncated?: number;
+  /** The earliest sample at the day's swap peak / MemAvailable floor. */
+  swap_max_at?: string | null;
+  mem_available_min_at?: string | null;
+  root?: RootDay;
+};
+
+export type BusyInstant = {
+  at: string;
+  io_time_pct: number;
+  read_mbps: number | null;
+  all_mbps: number | null;
+  reads_ps: number | null;
+};
+
+/**
+ * FIX-1386 — where the day's root reads went, in GB (10^9), from the window's
+ * first and last counter-carrying samples. `rated` counts those samples. A
+ * counter that went backwards anywhere in the window nulls its numbers and
+ * `reason` says where: the two ends alone would hide a reset the counter has
+ * since climbed past. The header above says what each number can claim.
+ */
+export type RootDay = {
+  hours: number | null;
+  root_read_gb: number | null;
+  data_read_gb: number | null;
+  swap_in_gb: number | null;
+  majfault_gb: number | null;
+  swap_in_share_pct: number | null;
+  rated: number;
+  reason: string | null;
 };
 
 /** FIX-1375 — "busy" for minutes_busy: the gp3 IOPS ceiling reads 97–101 % (cc-262 calibration). */
 export const IO_BUSY_PCT = 90;
+/** FIX-1386 — a 3-h throttle at the 2-minute cadence. */
+export const BUSY_INSTANTS_CAP = 90;
 
 function nearestRank(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;
@@ -207,6 +297,7 @@ export function ioDay(rows: SeriesRow[]): IoDay {
     if (pct !== null && pct >= IO_BUSY_PCT && dt > 0 && dt <= MAX_RATE_GAP_S) busyS += dt;
   }
   const io = summarise(rows.map((r) => r.io_time_pct));
+  const instants = busyInstants(rows);
   return {
     rated: rows.filter((r) => r.io_time_pct !== null).length,
     read_mbps: summarise(rows.map((r) => r.read_mbps)),
@@ -214,7 +305,117 @@ export function ioDay(rows: SeriesRow[]): IoDay {
     all_mbps: summarise(rows.map((r) => r.all_mbps)),
     io_time_pct: { p95: io.p95, max: io.max },
     minutes_busy: Math.round(busyS / 60),
+    busy_instants: instants.kept,
+    busy_instants_truncated: instants.dropped,
+    swap_max_at: earliestExtreme(rows, (r) => r.swap_used_mb),
+    mem_available_min_at: earliestExtreme(rows, (r) => -r.mem_avail_mb),
+    root: rootDay(rows),
   };
+}
+
+/** Past the cap the middle goes: the first and last instants bound the episode. */
+function busyInstants(rows: SeriesRow[]): { kept: BusyInstant[]; dropped: number } {
+  const all = rows.flatMap((r) =>
+    r.io_time_pct !== null && r.io_time_pct >= IO_BUSY_PCT
+      ? [{ at: r.at, io_time_pct: r.io_time_pct, read_mbps: r.read_mbps, all_mbps: r.all_mbps, reads_ps: r.reads_ps }]
+      : [],
+  );
+  if (all.length <= BUSY_INSTANTS_CAP) return { kept: all, dropped: 0 };
+  const head = Math.ceil(BUSY_INSTANTS_CAP / 2);
+  return {
+    kept: [...all.slice(0, head), ...all.slice(all.length - (BUSY_INSTANTS_CAP - head))],
+    dropped: all.length - BUSY_INSTANTS_CAP,
+  };
+}
+
+/** The first row at `value`'s maximum, or null when no row has one. */
+function earliestExtreme(rows: SeriesRow[], value: (r: SeriesRow) => number | null): string | null {
+  let at: string | null = null;
+  let best = -Infinity;
+  for (const r of rows) {
+    const v = value(r);
+    if (v !== null && v > best) {
+      best = v;
+      at = r.at;
+    }
+  }
+  return at;
+}
+
+/** FIX-1386 — the day's root reads. Pure; see RootDay and the file header. */
+export function rootDay(rows: SeriesRow[]): RootDay {
+  const carrying = rows.flatMap((r) => (r.counters === null ? [] : [{ at: r.at, c: r.counters }]));
+  const unrated = (reason: string): RootDay => ({
+    hours: null,
+    root_read_gb: null,
+    data_read_gb: null,
+    swap_in_gb: null,
+    majfault_gb: null,
+    swap_in_share_pct: null,
+    rated: carrying.length,
+    reason,
+  });
+  if (carrying.length === 0) return unrated("no sample in the window carries the raw counters");
+  if (carrying.length === 1) return unrated("one sample in the window carries the raw counters; nothing to difference");
+
+  const first = carrying[0]!;
+  const last = carrying[carrying.length - 1]!;
+  const reasons: string[] = [];
+  const delta = (name: string, read: (c: RootCounters) => number): number | null => {
+    for (let i = 1; i < carrying.length; i++) {
+      if (read(carrying[i]!.c) < read(carrying[i - 1]!.c)) {
+        reasons.push(`${name} went backwards at ${carrying[i]!.at}`);
+        return null;
+      }
+    }
+    return read(last.c) - read(first.c);
+  };
+
+  const moved = carrying.find((x) => x.c.disk_device !== first.c.disk_device);
+  if (moved) reasons.push(`the /data device changed ${first.c.disk_device} → ${moved.c.disk_device} at ${moved.at}`);
+  const rootBytes = moved ? null : delta("root reads", (c) => c.disk_all_read_bytes - c.disk_read_bytes);
+  const dataBytes = moved ? null : delta("/data reads", (c) => c.disk_read_bytes);
+  const swapPages = delta("pswpin", (c) => c.pswpin);
+  const faults = delta("pgmajfault", (c) => c.pgmajfault);
+
+  const gb = (bytes: number | null) => (bytes === null ? null : Math.round((bytes / GB) * 10) / 10);
+  const swapBytes = swapPages === null ? null : swapPages * PAGE_BYTES;
+  return {
+    hours: Math.round((Date.parse(last.at) - Date.parse(first.at)) / 36_000) / 100,
+    root_read_gb: gb(rootBytes),
+    data_read_gb: gb(dataBytes),
+    swap_in_gb: gb(swapBytes),
+    majfault_gb: gb(faults === null ? null : faults * PAGE_BYTES),
+    swap_in_share_pct:
+      swapBytes === null || rootBytes === null || rootBytes === 0 ? null : Math.round((1000 * swapBytes) / rootBytes) / 10,
+    rated: carrying.length,
+    reason: reasons.length === 0 ? null : reasons.join("; "),
+  };
+}
+
+export const SERIES_RING_NOTE = "the ring holds ~30 h (900 samples at ~2 min); a larger value reads what is there";
+export const SERIES_USAGE = `usage: data:box-health:series [--hours N (default 24; ${SERIES_RING_NOTE})] [--json]`;
+
+export type SeriesArgs =
+  | { kind: "run"; hours: number; json: boolean; note: string | null }
+  | { kind: "help"; usage: string }
+  | { kind: "error"; error: string };
+
+/** The script's argv. A bare `--` is what `pnpm run <script> -- --hours 3` passes through. Pure. */
+export function parseSeriesArgs(argv: string[]): SeriesArgs {
+  let hours = 24;
+  let json = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--") continue;
+    if (a === "--json") json = true;
+    else if (a === "--hours") hours = Number(argv[++i]);
+    else if (a.startsWith("--hours=")) hours = Number(a.slice("--hours=".length));
+    else if (a === "--help" || a === "-h") return { kind: "help", usage: SERIES_USAGE };
+    else return { kind: "error", error: `unknown argument ${JSON.stringify(a)}` };
+  }
+  if (!Number.isFinite(hours) || hours <= 0) return { kind: "error", error: "--hours must be a positive number" };
+  return { kind: "run", hours, json, note: hours > 30 ? SERIES_RING_NOTE : null };
 }
 
 const dash = (v: number | null) => (v === null ? "—" : String(v));
