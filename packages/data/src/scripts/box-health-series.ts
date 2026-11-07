@@ -9,7 +9,8 @@
  * with ONE LRANGE (one command), and opens no Postgres connection. When the box
  * is down or the snapshot route has stopped writing, as it had 15:30–22:00 on
  * 09-22, this still answers. The ring holds 30 h (900 samples, FIX-1289), so
- * run it inside a day of the event.
+ * run it inside a day of the event. `--json` rows carry the raw counters too
+ * (FIX-1386); the printed table does not.
  *
  * Needs UPSTASH_REDIS_REST_URL / _TOKEN. All three .env.local files carry them,
  * and there is one Upstash database, so the ring is the same whichever file
@@ -17,33 +18,20 @@
  */
 
 import { readBoxHealthRing, upstashCredsFromEnv, BOX_HEALTH_RING_LEN } from "@civitics/db";
-import { formatSeries, seriesRows, seriesStats } from "../lib/box-health-series";
-
-function parseArgs(argv: string[]): { hours: number; json: boolean } {
-  let hours = 24;
-  let json = false;
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (a === "--json") json = true;
-    else if (a === "--hours") hours = Number(argv[++i]);
-    else if (a.startsWith("--hours=")) hours = Number(a.slice("--hours=".length));
-    else if (a === "--help" || a === "-h") {
-      console.info("usage: data:box-health:series [--hours N (default 24, max 30)] [--json]");
-      process.exit(0);
-    } else {
-      console.error(`[box-health] unknown argument ${JSON.stringify(a)}`);
-      process.exit(2);
-    }
-  }
-  if (!Number.isFinite(hours) || hours <= 0) {
-    console.error("[box-health] --hours must be a positive number");
-    process.exit(2);
-  }
-  return { hours, json };
-}
+import { formatSeries, parseSeriesArgs, seriesRows, seriesStats } from "../lib/box-health-series";
 
 async function main(): Promise<void> {
-  const { hours, json } = parseArgs(process.argv.slice(2));
+  const args = parseSeriesArgs(process.argv.slice(2));
+  if (args.kind === "help") {
+    console.info(args.usage);
+    process.exit(0);
+  }
+  if (args.kind === "error") {
+    console.error(`[box-health] ${args.error}`);
+    process.exit(2);
+  }
+  const { hours, json, note } = args;
+  if (note !== null) console.error(`[box-health] ${note}`);
   const creds = upstashCredsFromEnv(process.env);
   if (!creds) {
     console.error("[box-health] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set — nothing to read.");
