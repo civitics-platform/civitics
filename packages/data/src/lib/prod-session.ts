@@ -234,6 +234,11 @@ export interface ProdSessionOptions {
    * and no hold is set either way.
    */
   allowUnacquired?: boolean;
+  /**
+   * FIX-1387 — called first when the lock's connection dies, before the lost
+   * release. For a caller with timers of its own (claim-prod-session.ts).
+   */
+  onLost?: () => void;
   /** Override the DSN (tests). */
   dbUrl?: string;
 }
@@ -292,6 +297,7 @@ export async function withProdSession<T>(
   // FIX-1337 (cc-243): a SIGTERM'd claimant (the GHA runner cancelling the
   // nightly's fec phase) never reaches `finally`, and its hold rows outlived it
   // until the next claim's self-heal. Release on the signal too — once.
+  // FIX-1387: the error event's path is inside the claim, under this one.
   const guard = releaseOnSignals(() => lock.release());
   try {
     return await fn();
@@ -438,7 +444,7 @@ export function sessionLabelValue(
  * The claim half of {@link withProdSession}, exposed for the foreground CLI
  * (which holds the session and does no work of its own).
  */
-export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedSessionLock> {
+export async function claimProdSession(opts: ProdSessionOptions): Promise<ProdSessionLock> {
   const dbUrl = opts.dbUrl ?? buildDbUrl();
   const expected = opts.expectedMinutes ?? DEFAULT_EXPECTED_MINUTES;
 
@@ -497,13 +503,39 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
 
   const value = sessionLabelValue(opts.reason, expected, verdict);
 
-  const lock = await acquireNamedSessionLock(PROD_SESSION_LOCK_NAME, {
+  // FIX-1387 — the lost path. It lives on the claim, so every claimant has it.
+  // `lock` is assigned before the hook can fire: the listener goes on with the
+  // held lock, and the only await between them is this statement's.
+  const releases = sessionReleases(
+    async () => {
+      const cleared = await clearGuardedHolds(dbUrl).catch((err: unknown) => {
+        console.warn(
+          `  [prod-session] could not clear holds (${errText(err)}) — the next ` +
+            "claim will, and canary-prod-session reports prod_session_hold_stale " +
+            "until something does",
+        );
+        return 0;
+      });
+      if (cleared > 0) console.info(`  [prod-session] cleared ${cleared} hold(s)`);
+      await lock.release();
+    },
+    // No lock.release() here: on the ticker's path the client may be half-open
+    // and a query on it would never settle. The exit that follows closes it.
+    (cause) => releaseLostSession({ dbUrl, reason: opts.reason, label: value }, cause),
+  );
+
+  const lock: NamedSessionLock = await acquireNamedSessionLock(PROD_SESSION_LOCK_NAME, {
     logTag: "prod-session",
     ref: "FIX-950",
     label: { key: PROD_SESSION_LABEL_KEY, value },
     // The SAME dsn the preflight read. Letting the lock re-resolve buildDbUrl()
     // would let the preflight and the hold land on different databases.
     dbUrl,
+    // Exit 1 is what the unhandled event did. The release is what is new.
+    onLost: (err) => {
+      opts.onLost?.();
+      void releases.releaseLost(err).finally(() => process.exit(1));
+    },
   });
 
   // FIX-1373 — fail CLOSED on a lock another claimant holds, BEFORE the holds:
@@ -511,7 +543,7 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
   // (`acquired` is true on the fail-OPEN paths — an unreachable lock connection
   // — so this fires only on a live holder.)
   if (!lock.acquired) {
-    if (opts.allowUnacquired === true) return lock;
+    if (opts.allowUnacquired === true) return { ...lock, releaseLost: async () => { /* nothing held */ } };
     const holder = await withClient(dbUrl, readProdSessionState).catch(() => null);
     throw notAcquiredRefusal(holder, lock.blockedBy);
   }
@@ -540,19 +572,96 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
     get blockedBy() {
       return lock.blockedBy;
     },
-    async release() {
-      const cleared = await clearGuardedHolds(dbUrl).catch((err: unknown) => {
-        console.warn(
-          `  [prod-session] could not clear holds (${errText(err)}) — the next ` +
-            "claim will, and canary-prod-session reports prod_session_hold_stale " +
-            "until something does",
-        );
-        return 0;
-      });
-      if (cleared > 0) console.info(`  [prod-session] cleared ${cleared} hold(s)`);
-      await lock.release();
-    },
+    release: releases.release,
+    releaseLost: releases.releaseLost,
   };
+}
+
+/** A held session, and the second way out of one. */
+export interface ProdSessionLock extends NamedSessionLock {
+  /**
+   * FIX-1387 — the lock's backend is gone: clear this claimant's holds and label
+   * through a fresh client. Shares release()'s once, so a signal and an error
+   * event cannot both run.
+   */
+  releaseLost(cause: unknown): Promise<void>;
+}
+
+/** FIX-1387 — whichever release comes first is the only one that runs. */
+export function sessionReleases(
+  normal: () => Promise<void>,
+  lost: (cause: unknown) => Promise<void>,
+): Pick<ProdSessionLock, "release" | "releaseLost"> {
+  let once: Promise<void> | null = null;
+  return {
+    release: () => (once ??= normal()),
+    releaseLost: (cause) => (once ??= lost(cause)),
+  };
+}
+
+/** How long the lost path keeps trying for a fresh connection. The 11-05 restart took ≤ 9.2 s. */
+export const LOST_RELEASE_BUDGET_MS = 60_000;
+const LOST_RELEASE_RETRY_MS = 5_000;
+const LOST_RELEASE_CONNECT_TIMEOUT_MS = 5_000;
+
+/** What killed the lock connection, for the exit line: a class 57 SQLSTATE or "connection lost". Pure. */
+export function lostCause(err: unknown): string {
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  return typeof code === "string" && /^57P\d\d$/.test(code) ? code : "connection lost";
+}
+
+/**
+ * FIX-1387 — the release for a claim whose lock client died (cc-255: a 57P01
+ * from the planned restart exited the process before the release, leaving six
+ * holds and the label). There is nothing to unlock: the advisory lock went with
+ * the backend. What is left is rows, so this clears them on a NEW client, and it
+ * retries, because the event that kills the lock usually refuses the next
+ * connection too. Never throws. Prints one line whichever way it ends.
+ */
+export async function releaseLostSession(
+  claim: { dbUrl: string; reason: string; label: Record<string, unknown> },
+  cause: unknown,
+  deps: {
+    run?: typeof withClient;
+    sleep?: (ms: number) => Promise<void>;
+    now?: () => number;
+    budgetMs?: number;
+    retryMs?: number;
+  } = {},
+): Promise<void> {
+  const run = deps.run ?? withClient;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = deps.now ?? Date.now;
+  const budgetMs = deps.budgetMs ?? LOST_RELEASE_BUDGET_MS;
+  const retryMs = deps.retryMs ?? LOST_RELEASE_RETRY_MS;
+  const name = lostCause(cause);
+  const deadline = now() + budgetMs;
+  let lastError = "no connection";
+  for (;;) {
+    try {
+      const done = await run(claim.dbUrl, (c) => clearClaimantResidue(c, claim.reason, claim.label), {
+        connectTimeoutMs: LOST_RELEASE_CONNECT_TIMEOUT_MS,
+        quiet: true,
+      });
+      if (done !== null) {
+        console.error(
+          `✗ [prod-session] the lock connection died (${name}): cleared ${done.holds} hold(s) ` +
+            `${done.label ? "and the label" : "(no label of this claim's left)"} through a fresh connection. ` +
+            "Scheduled writers are NO LONGER deferring; re-claim before continuing (FIX-1387).",
+        );
+        return;
+      }
+    } catch (err) {
+      lastError = errText(err);
+    }
+    if (now() + retryMs > deadline) break;
+    await sleep(retryMs);
+  }
+  console.error(
+    `✗ [prod-session] the lock connection died (${name}) and no fresh connection cleared this claim's ` +
+      `holds and label within ${Math.round(budgetMs / 1000)} s (${lastError}). The next claim sweeps them; ` +
+      "canary-prod-session reports prod_session_hold_stale until then (FIX-1387).",
+  );
 }
 
 
@@ -676,36 +785,83 @@ export async function clearGuardedHolds(dbUrl: string): Promise<number> {
         WHERE hold_reason LIKE $1`,
       [SESSION_HOLD_PREFIX + "%"],
     );
-    await client.query(
-      `DELETE FROM public.rollup_watch_overrides
-        WHERE note = $1
-          AND held_since    IS NULL
-          AND retired_at    IS NULL
-          AND cadence_hours IS NULL`,
-      [SESSION_HOLD_NOTE],
-    );
+    await deleteInertHoldRows(client);
     return res.rowCount ?? 0;
   });
   return n ?? 0;
+}
+
+async function deleteInertHoldRows(client: Pick<Client, "query">): Promise<void> {
+  await client.query(
+    `DELETE FROM public.rollup_watch_overrides
+      WHERE note = $1
+        AND held_since    IS NULL
+        AND retired_at    IS NULL
+        AND cadence_hours IS NULL`,
+    [SESSION_HOLD_NOTE],
+  );
+}
+
+/**
+ * FIX-1387 — the lost path's clear: THIS claimant's rows, never a sweep.
+ *
+ * clearGuardedHolds() clears every session hold, which is right for a claim that
+ * holds the lock or is about to take it. The lost path holds nothing: its lock is
+ * gone, and another claim may have been taken in the seconds it spent waiting for
+ * a connection. So a hold goes only on an exact `hold_reason`, and only while the
+ * label is this claim's or absent. Another claim's label means that claim already
+ * swept these holds and set its own, even under the same reason. The label is
+ * compared whole: `claimed_at` and `pid` make it unique.
+ *
+ * Safe to run twice: the second run matches nothing.
+ */
+export async function clearClaimantResidue(
+  client: Pick<Client, "query">,
+  reason: string,
+  label: Record<string, unknown>,
+): Promise<{ holds: number; label: boolean }> {
+  const mine = JSON.stringify(label);
+  const held = await client.query(
+    `UPDATE public.rollup_watch_overrides
+        SET held_since = NULL, hold_reason = NULL, updated_at = now()
+      WHERE hold_reason = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM public.pipeline_state
+           WHERE key = $2 AND value <> $3::jsonb
+        )`,
+    [SESSION_HOLD_PREFIX + reason, PROD_SESSION_LABEL_KEY, mine],
+  );
+  await deleteInertHoldRows(client);
+  const dropped = await client.query(
+    `DELETE FROM public.pipeline_state WHERE key = $1 AND value = $2::jsonb`,
+    [PROD_SESSION_LABEL_KEY, mine],
+  );
+  return { holds: held.rowCount ?? 0, label: (dropped.rowCount ?? 0) > 0 };
 }
 
 /** Open a client, run `fn`, always close. Returns null on a connect failure. */
 export async function withClient<T>(
   dbUrl: string,
   fn: (client: Client) => Promise<T | null>,
+  opts: { connectTimeoutMs?: number; quiet?: boolean } = {},
 ): Promise<T | null> {
   let client: Client;
   try {
     const { Client: PgClient } = await import("pg");
-    client = new PgClient({ connectionString: dbUrl });
+    client = new PgClient({ connectionString: dbUrl, connectionTimeoutMillis: opts.connectTimeoutMs });
     await client.connect();
   } catch (err) {
-    console.warn(
-      `  [prod-session] preflight connection failed (${errText(err)}) — ` +
-        "treating the interlock as UNKNOWN and proceeding (FIX-950)",
-    );
+    if (!opts.quiet) {
+      console.warn(
+        `  [prod-session] preflight connection failed (${errText(err)}) — ` +
+          "treating the interlock as UNKNOWN and proceeding (FIX-950)",
+      );
+    }
     return null;
   }
+  // A backend killed under this client rejects the query in flight, and then
+  // pg emits `error` when the socket closes. Unheard, that ends the process.
+  client.on("error", () => { /* the query's rejection is the report */ });
   try {
     await client.query("SET statement_timeout = '30s'");
     return await fn(client);
