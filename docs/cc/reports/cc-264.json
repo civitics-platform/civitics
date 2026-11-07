@@ -1,0 +1,132 @@
+{
+  "cc": "264",
+  "prompt": "cc-prompt-264-io-rung-box-is-saturated-gate-d-3h-class-p-platform-counts-estimated-pg-buffercache-fix1381-decide.md",
+  "started_at": "2026-11-07T05:50:44Z",
+  "finished_at": "2026-11-07T06:45:30Z",
+  "head_before": "979ab09b",
+  "head_after": "7d15dbab",
+  "commits": [
+    {
+      "sha": "8e6b37d8",
+      "subject": "[skip vercel] docs(fixes): cc-264 files FIX-1389"
+    },
+    {
+      "sha": "682a7f71",
+      "subject": "test(dispatcher): cc-264's tests, red until the next five commits land"
+    },
+    {
+      "sha": "e2d35311",
+      "subject": "feat(db): FIX-1375 — the io: rung, box_is_saturated reads a busy streak the mirror keeps (cc-264)"
+    },
+    {
+      "sha": "6094b6b1",
+      "subject": "feat(db): FIX-1377 + FIX-1353 — prod_op_gate (d) 3 h for class B, 10 min + the live box for class P, the io: keys for both (cc-264)"
+    },
+    {
+      "sha": "220ce8f4",
+      "subject": "feat(db): FIX-1376 — refresh_platform_counts estimates the four big tables, the rollup reads pg_stats (cc-264)"
+    },
+    {
+      "sha": "22cc9461",
+      "subject": "feat(db): FIX-1389 — install pg_buffercache in the extensions schema (cc-264)"
+    },
+    {
+      "sha": "7087741d",
+      "subject": "feat(db): FIX-1381 — entity-tags-vacuum-analyze joins the registry; T1 tripped (cc-264)"
+    },
+    {
+      "sha": "428a95bb",
+      "subject": "chore(db): regenerate types (the four io_ dials, connection_type_counts.method, and the drift since FIX-1329)"
+    },
+    {
+      "sha": "212d0eee",
+      "subject": "[skip vercel] docs(ops): FIX-1375 / FIX-1376 / FIX-1377 / FIX-1353 / FIX-1381 / FIX-1389 — the two moved pins, the (d′) row, OPERATIONS' io: rung and pool read, playbook C13, dispatcher s23 / s25 / s26 / s27, the census's as-built note (cc-264)"
+    },
+    {
+      "sha": "30362d5a",
+      "subject": "chore(fixes): record FIX-1375 on prod — the rung live from 06:28:32Z: box_is_saturated aaf6cc65, record_box_health_mem de9ebee7, four dials at 90 / 3 / 12 / 60; 0 box: skips (cc-264)"
+    },
+    {
+      "sha": "98f40177",
+      "subject": "chore(fixes): record FIX-1377 and FIX-1353 on prod — prod_op_gate 6488601c; (1) and (5400) both ok, windows 10 min and 3 h (cc-264)"
+    },
+    {
+      "sha": "162fdc89",
+      "subject": "chore(fixes): record FIX-1376 on prod — refresh_platform_counts 0e5c3e7c, refresh_connection_type_counts a188f729, connection_type_counts.method present; no row changes until 03:53Z (cc-264)"
+    },
+    {
+      "sha": "fa9a3a0b",
+      "subject": "chore(fixes): record FIX-1389 on prod — pg_buffercache 1.5 in extensions; 16,384 buffers read plain, no API role can read it (cc-264)"
+    },
+    {
+      "sha": "4410374e",
+      "subject": "chore(fixes): record FIX-1381 on prod — the row armed on the first free tick; first VACUUM 50.4 s, dead 119,228 → 0, all-visible 0.672 → 1.000, relpages 133,889 → 130,321 (cc-264)"
+    },
+    {
+      "sha": "7d15dbab",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-264 — FIX-1375, FIX-1377, FIX-1353, FIX-1376, FIX-1389 and FIX-1381 close (local + prod records); files FIX-1389 (42 open, cc-265's three still to land)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1375",
+    "FIX-1377",
+    "FIX-1353",
+    "FIX-1376",
+    "FIX-1389",
+    "FIX-1381"
+  ],
+  "fixes_filed": [
+    "FIX-1389"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261108000000_fix1375_io_rung_box_is_saturated_mirror_streak_dials.sql",
+    "20261108001000_fix1377_fix1353_prod_op_gate_d_3h_class_b_10m_live_box_class_p_io_input.sql",
+    "20261108002000_fix1376_platform_counts_estimated_four_tables_connection_type_mcv.sql",
+    "20261108003000_fix1389_install_pg_buffercache.sql",
+    "20261108004000_fix1381_entity_tags_vacuum_analyze_registry_row.sql"
+  ],
+  "prod_writes": "ONE gated class-P push from the primary's packages/data, in the foreground: session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8. Dry run before it: exactly the five files, version order. Gate receipt: wait 0.5 s (06:28:23.230Z → 06:28:23.731Z), claim 06:28:28.575Z → 06:28:32.839Z = 4.3 s, polls 1, blocked_tokens []. The five facts: opened on poll 1; no b: or a:nightly_next_start token; the bracket above; 0 data_sync_log rows started in the claim; 0 dispatch_log ticks in it. Holds: 17 held, 17 cleared, read 7's 17; 0 session holds left. Read-backs, all ok. File A: record_box_health_mem de9ebee7, box_is_saturated aaf6cc65, dials 90 / 3 / 12 / 60, the pair and prod_op_gate unchanged at that point, the synthetic series rolled back. File B: prod_op_gate 6488601c, both classes blocked only by their own e:session_held inside the claim, both ok at 06:29:03Z after release. File C: refresh_platform_counts 0e5c3e7c, refresh_connection_type_counts a188f729, method rows exact 13, no row changed. File D: pg_buffercache 1.5 in extensions, 16,384 buffers, no API role can read it. File E: entity-tags-vacuum-analyze one row. The row then ran as a dispatched unit, not a session write: armed 06:29:00.83Z, VACUUM 06:31:00.06 → 06:31:50.46Z, reaped 06:33:00Z. pg_buffercache histogram read read-only, in the report. No revert ran, no pause or dial was written.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 6's read of readings.io through get_dispatcher_status()->'box': cannot hold without moving a pin the prompt forbids; dispatch_log.box was read instead.",
+    "D1's 'never touches a running unit' does not hold: the chunk loops of donor_rollup_rebuild_bulk and refresh_agency_staffing_rollup read the verdict. Stopped and asked; Craig ruled inherit and document.",
+    "The 11-02 replay could not run: no io_time_pct sample exists before 11-03, so it stands as the census's inference. The ring's replay ran instead.",
+    "Read 5's prod exact counts were not run, as the prompt directs; prod's comparison is the last exact rows.",
+    "T3 was not built: T1 had already decided Item 5."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1375",
+      "what": "the rung's first real throttle, the Mon 11-09 post-landing ecs pass: box: io_saturated / io_throttled skip rows with dispatch_log.box readings, which arms were refused vs admitted, the 15-min buckets vs 11-02's, no heavy unit armed into a throttle; and whether a donor_rollup_rebuild_bulk run self-tripped its chunk backoff (a partial reading io_saturated, then the 12 h wait)",
+      "after": "2026-11-09T12:00Z"
+    },
+    {
+      "fix": "FIX-1377",
+      "what": "the next class-P push's [gate] output through the re-cut (d), and the first class-B wait that meets the 3 h window; the detail strings name their window",
+      "after": "2026-11-10T00:00Z"
+    },
+    {
+      "fix": "FIX-1353",
+      "what": "same event as FIX-1377's: a class-P push on a box with a startup timeout 11-180 min old is NOT held by (d)",
+      "after": "2026-11-10T00:00Z"
+    },
+    {
+      "fix": "FIX-1376",
+      "what": "cron 48's Mon 11-09 03:53Z wall inside the post-landing pass at or under 60 s (11-02: cancelled at 2,066 s); the four estimated rows vs the last exact rows (delta at or under 2 %); connection_type_counts estimated, revolving_door kept",
+      "after": "2026-11-09T05:00Z"
+    },
+    {
+      "fix": "FIX-1389",
+      "what": "one read-only pg_buffercache histogram on prod in a later session, the M4-class read, plain",
+      "after": "2026-11-08T12:00Z"
+    },
+    {
+      "fix": "FIX-1381",
+      "what": "the Tue 11-10 16:00Z taggers-weekly scan under 63.4 s, FIX-1258's receipt moved here; relpages and all-visible at that read. Its first dispatched VACUUM read inside this run",
+      "after": "2026-11-10T17:00Z"
+    }
+  ]
+}
