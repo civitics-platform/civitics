@@ -1827,13 +1827,20 @@ is the same steps):
 4. The config change. The CLI call returns before the restart completes.
 5. Poll `pg_postmaster_start_time()`.
 6. The after-reads.
-7. A `--hold-seconds` claim to sweep the dead claim's holds.
+7. If `prod session held:` rows remain, a `--hold-seconds 5` claim sweeps them.
 8. `pause = false`.
 
 On 11-05, pause → unpause took 2 min 48 s (01:57:46 → 02:00:34Z). The
-FIX-950 claim does NOT survive the restart: its backend gets `57P01` and the
-process exits with its six guarded holds still set. `pause` is what holds the
-dispatcher across it.
+FIX-950 claim does NOT survive the restart: its backend gets `57P01`, and that
+day the process exited with its six guarded holds still set. `pause` is what
+holds the dispatcher across it.
+
+Since FIX-1387 (cc-265) a `57P01` releases. The lock client's `error` event
+clears that claim's holds and label on a fresh connection, retrying for up to
+60 s, and the process exits 1 with one line naming the SQLSTATE. A claim whose
+hold the ticker finds gone takes the same path. The proof so far is local: a
+real `pg_terminate_backend` on the lock's backend. The next planned restart is
+the prod receipt, and step 7's sweep stays the manual net.
 
 M4′ read at 46.6 h (cc-263): all five census numbers better, the floor ~50 MB
 lower and re-formed within the hour, MemAvailable flat, the creep still open

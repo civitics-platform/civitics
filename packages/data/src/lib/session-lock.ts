@@ -58,6 +58,13 @@ export interface AcquireNamedLockOptions {
   label?: SessionLockLabel;
   /** Optional richer description of the holder for the refusal message. */
   describeHolder?: (client: Client) => Promise<string>;
+  /**
+   * FIX-1387 — the held lock's connection died: the pg client's `error` event,
+   * from a 57P01 or a dropped socket. Called once; the advisory lock went with
+   * the backend. With no hook there is no listener, so the event stays unhandled
+   * and ends the process, which is what the FEC lock wants: it has no residue.
+   */
+  onLost?: (err: unknown) => void;
   /** Override the DSN. Defaults to buildDbUrl(). */
   dbUrl?: string;
 }
@@ -148,18 +155,38 @@ async function writeLabel(
   }
 }
 
-function makeHeldLock(
+export function makeHeldLock(
   client: Client,
   name: string,
   opts: AcquireNamedLockOptions,
 ): NamedSessionLock {
   const tag = `  [${opts.logTag}]`;
   let released = false;
+  let lost = false;
+  const { onLost } = opts;
+  if (onLost) {
+    // Stays attached past the first event: pg emits a second `error` when the
+    // socket closes behind a FATAL, and an unhandled one would end the process
+    // in the middle of the lost release.
+    client.on("error", (err: unknown) => {
+      if (released || lost) return;
+      lost = true;
+      onLost(err);
+    });
+  }
   return {
     acquired: true,
     async release() {
       if (released) return;
       released = true;
+      if (lost) {
+        // The dead client is never reused. Not awaited: end() on a socket that
+        // has gone can throw, and nothing here depends on it finishing.
+        try {
+          void client.end().catch(() => { /* best effort */ });
+        } catch { /* best effort */ }
+        return;
+      }
       if (opts.label) {
         try {
           await client.query(`DELETE FROM public.pipeline_state WHERE key = $1`, [opts.label.key]);

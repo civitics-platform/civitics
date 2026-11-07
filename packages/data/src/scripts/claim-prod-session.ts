@@ -19,7 +19,8 @@
  * hold IS the process: to release it, stop the process. The one residue a crash
  * can leave is the `pipeline_state.prod_session` LABEL, which is documentation,
  * is reported by the canary as `prod_session_label_stale`, defers nothing, and
- * is overwritten by the next claim.
+ * is overwritten by the next claim. A dead lock connection is not that crash:
+ * FIX-1387 clears the label and the holds on a fresh connection, then exits 1.
  *
  * ── THE PREFLIGHT IS THE OTHER HALF OF THE INTERLOCK ────────────────────────
  * This refuses to claim while a heavy writer is live (D4). That is rule 43's
@@ -36,10 +37,10 @@ import {
   withClient,
   ProdSessionRefused,
   DEFAULT_EXPECTED_MINUTES,
+  type ProdSessionLock,
   type ProdSessionState,
 } from "../lib/prod-session";
 import { buildDbUrl } from "../lib/heavy-rebuild";
-import type { NamedSessionLock } from "../lib/session-lock";
 
 const TICK_MS = 60_000;
 
@@ -112,11 +113,20 @@ async function main(): Promise<void> {
   console.info(`[prod-session] target: ${target}`);
   console.info(`[prod-session] reason: ${reason}`);
 
-  let lock: NamedSessionLock;
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  let lock: ProdSessionLock;
   try {
     // allowUnacquired: this CLI prints its own refusal for a lock taken first
     // (below); the library would otherwise throw ProdSessionNotAcquired (FIX-1373).
-    lock = await claimProdSession({ reason, expectedMinutes: expected, force, allowUnacquired: true });
+    // onLost: on the lock client's error event the library clears this claim's
+    // holds and exits 1 (FIX-1387), so the ticker has nothing left to report.
+    lock = await claimProdSession({
+      reason,
+      expectedMinutes: expected,
+      force,
+      allowUnacquired: true,
+      onLost: () => clearInterval(ticker),
+    });
   } catch (err) {
     if (err instanceof ProdSessionRefused) {
       console.error(`\n✗ REFUSED — ${err.verdict.detail}`);
@@ -161,7 +171,7 @@ async function main(): Promise<void> {
   // is the only way to notice that the lock's own connection died underneath
   // us — otherwise this process would go on printing that it holds the box
   // while holding nothing, which is strictly worse than not claiming at all.
-  const ticker = setInterval(() => {
+  ticker = setInterval(() => {
     void withClient(dbUrl, readProdSessionState)
       .then((s) => {
         if (s && !s.held) {
@@ -171,7 +181,9 @@ async function main(): Promise<void> {
               "  Scheduled writers are NO LONGER deferring. Re-claim before continuing.",
           );
           clearInterval(ticker);
-          process.exit(1);
+          // FIX-1387 — the error event's release, for a connection that died without one.
+          void lock.releaseLost(new Error("prod_session_state() reports held=false")).finally(() => process.exit(1));
+          return;
         }
         console.info(statusLine(s, expected));
       })

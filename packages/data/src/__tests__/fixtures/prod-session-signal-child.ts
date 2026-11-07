@@ -5,6 +5,7 @@
  * HELD, and waits. The parent sends SIGTERM (POSIX); on Windows, where
  * child.kill() terminates without running any handler, the child raises the
  * signal on itself when SELF_SIGNAL=1 — the handler path is the same.
+ * FIX-1387 — CHILD_REASON names the claim, for the 57P01 case's own hold rows.
  */
 import { ProdSessionRefused, withProdSession } from "../../lib/prod-session";
 
@@ -12,7 +13,8 @@ async function main(): Promise<void> {
   const dbUrl = process.argv[2];
   if (!dbUrl) throw new Error("usage: prod-session-signal-child.ts <dsn>");
   try {
-    await withProdSession({ reason: "cc-243 signal test", expectedMinutes: 1, dbUrl }, async () => {
+    const reason = process.env["CHILD_REASON"] ?? "cc-243 signal test";
+    await withProdSession({ reason, expectedMinutes: 1, dbUrl }, async () => {
       process.stdout.write("HELD\n");
       if (process.env["SELF_SIGNAL"] === "1") process.emit("SIGTERM" as NodeJS.Signals);
       await new Promise((r) => setTimeout(r, 60_000));

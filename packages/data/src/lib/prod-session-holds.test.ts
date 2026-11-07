@@ -113,6 +113,16 @@ test("invariant 2: the clear touches ONLY session-prefixed holds", () => {
   assert.equal(SESSION_HOLD_PREFIX, "prod session held: ");
 });
 
+test("invariant 2b (FIX-1387): the lost clear takes an exact reason, under no other claimant's label", () => {
+  const src = statements();
+  const fn = /export async function clearClaimantResidue[\s\S]*?\n}\n/.exec(src);
+  assert.ok(fn, "the lost clear must be findable");
+  assert.match(fn[0], /WHERE hold_reason = \$1/, "this claimant's rows, by the whole reason");
+  assert.doesNotMatch(fn[0], /LIKE/, "a LIKE here is a sweep, and the lost path no longer owns the box");
+  assert.match(fn[0], /NOT EXISTS \([\s\S]*?value <> \$3::jsonb/, "another claim's label stops the clear");
+  assert.match(fn[0], /DELETE FROM public\.pipeline_state WHERE key = \$1 AND value = \$2::jsonb/, "only this claim's label goes");
+});
+
 test("invariant 3: the delete removes only session-created rows that now declare NOTHING", () => {
   const src = statements();
   const del = /DELETE FROM public\.rollup_watch_overrides[\s\S]*?cadence_hours IS NULL/.exec(src);
