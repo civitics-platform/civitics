@@ -16,7 +16,7 @@
  * Runs via:  tsx --test src/lib/prod-session.test.ts
  */
 
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import {
   classifyPreflight,
@@ -247,6 +247,24 @@ test("describeWriters: names the mechanism and survives a null age", () => {
 
 const LOCAL_DSN = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
+/**
+ * FIX-1388 — the two real-claim tests take the real lock, label and hold rows.
+ * pg_locks is visible across any other file's open transaction, so they raced
+ * dispatcher-r9's clone cases. run-tests.mjs runs clone-gated files in a serial
+ * second pass.
+ */
+function cloneClass(t: TestContext): boolean {
+  if (process.env["CIVITICS_CLONE_TESTS"] === "1") return true;
+  t.skip("set CIVITICS_CLONE_TESTS=1: this takes the real session lock on the shared clone");
+  return false;
+}
+
+async function reachableOrSkip(t: TestContext): Promise<boolean> {
+  if (await localDbReachable()) return true;
+  t.skip("local Docker DB not reachable");
+  return false;
+}
+
 async function localDbReachable(): Promise<boolean> {
   try {
     const { Client } = await import("pg");
@@ -307,10 +325,7 @@ test("FIX-1373: no label (or a failed state read) still names the lock's own hol
 });
 
 test("claim: the label lands on acquire and is gone after release", async (t) => {
-  if (!(await localDbReachable())) {
-    t.skip("local Docker DB not reachable");
-    return;
-  }
+  if (!cloneClass(t) || !(await reachableOrSkip(t))) return;
 
   const lock = await claimProdSession({
     reason: "prod-session.test.ts",
@@ -341,10 +356,7 @@ test("claim: the label lands on acquire and is gone after release", async (t) =>
 });
 
 test("claim: a second claim while one is held is REFUSED, and --force cannot take it", async (t) => {
-  if (!(await localDbReachable())) {
-    t.skip("local Docker DB not reachable");
-    return;
-  }
+  if (!cloneClass(t) || !(await reachableOrSkip(t))) return;
 
   const first = await claimProdSession({
     reason: "first holder",
