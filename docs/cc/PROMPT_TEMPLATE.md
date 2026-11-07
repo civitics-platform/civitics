@@ -202,12 +202,19 @@ restating it. Each line is a rule that has cost a real session.
 - For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
   the prompt names it.
 - **The dispatcher's bodies** — what a dispatcher prompt's read 2/3 pins, from
-  cc-254 on (2026-10-29 00:18:16Z, FIX-1361 `20261029000000`, cc-253):
-  `md5(prosrc)` of `dispatch_one_unit` **`d6a9073bcc4d9084b9d7994324a89b18`** /
-  `get_dispatcher_status` **`4c30523742e280a4b48ea2ec390654d6`** /
-  `box_is_saturated` **`ac8dbcddf71978e73d28c999433156b7`** (and `prod_op_gate`
-  `1d3507cd4b71439f0cfff51cde49b9d8`, unchanged; cc-253 re-read all four after
-  its pushes). Lineage: `64c8271e7601095d275c68eff5187931` (FIX-1354
+  cc-265 on (2026-11-07 06:28:32Z, FIX-1375 `20261108000000` + FIX-1377 `20261108001000`,
+  cc-264): `md5(prosrc)` of `dispatch_one_unit`
+  **`d6a9073bcc4d9084b9d7994324a89b18`** / `get_dispatcher_status`
+  **`4c30523742e280a4b48ea2ec390654d6`** / `box_is_saturated`
+  **`aaf6cc6552df532eff4a9b21e9780670`** (`ac8dbcddf71978e73d28c999433156b7`
+  fix1354 → fix1375's rung) / `prod_op_gate`
+  **`6488601cf8c09287d540989c0e0fd074`** (`1d3507cd4b71439f0cfff51cde49b9d8`
+  fix1342 → fix1377). Fifteen older migrations assert the two old md5s in their
+  read-backs; they are history, and a clone test re-applies them through
+  `withCurrentPins()`, so a new pin move adds a line to `PIN_LINEAGE`
+  (`packages/data/src/__tests__/lib/migration-text.ts`). The dispatcher pair is
+  from cc-254 on (2026-10-29 00:18:16Z, FIX-1361 `20261029000000`, cc-253).
+  Lineage: `64c8271e7601095d275c68eff5187931` (FIX-1354
   `20261027000000`, cc-251) is now only FIX-1361's revert target
   (`scripts/fix1361-revert-dispatcher-anchor-rung.sql`); the N2 pair
   `7b4e3f66105a49d030c41539e4cd2d56` / `2716fcca9ba97b683963cd499bc78136` and
@@ -246,7 +253,7 @@ and its database.
 
 | class | what | gate | window |
 |---|---|---|---|
-| **P — push** | `db-push-prod` of DDL / `CREATE OR REPLACE` / row `UPDATE`s on registry, cron, dials or `pipeline_state`; expected wall < 60 s; no rewrite, CONCURRENTLY, VACUUM or MV build | `held=false`, then from the PRIMARY's `packages/data`: `pnpm run session:wait-for-gate:prod -- --expected-minutes 1 --census stop --reason "…" --then "node ../../scripts/db-push-prod.mjs --workdir ../.."` (`prod_op_gate(60)`: (a)'s three phase states, (b), (d), (e), (f); the census); the dry run first | none — the first open gate |
+| **P — push** | `db-push-prod` of DDL / `CREATE OR REPLACE` / row `UPDATE`s on registry, cron, dials or `pipeline_state`; expected wall < 60 s; no rewrite, CONCURRENTLY, VACUUM or MV build | `held=false`, then from the PRIMARY's `packages/data`: `pnpm run session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --reason "…" --then "node ../../scripts/db-push-prod.mjs --workdir ../.."` (the poll and the max keep the wait inside the Bash tool's 10-min limit) (`prod_op_gate(60)`: (a)'s three phase states, (b), (d), (e), (f); the census); the dry run first | none — the first open gate |
 | **B — bulk op** | a data set, CIC / DROP CONCURRENTLY, pg_repack, a backfill, an MV swap, anything with `--apply` and a manifest | (a)–(g) below in full under its own claim; the io cap and `box_is_saturated` | a condition the runner waits on |
 | **S — scheduled bulk** | weeklies, dailies, the crawls, USASpending — dispatcher rows | the dispatcher's own gates (budget row, phase lock, io cap, cooldown/backoff, group, `prod_session`) | the row's deadline rule |
 
@@ -288,9 +295,9 @@ re-reads the (d′) row and the dry run before each (cc-263). History: the 05:45
   `data:box-health:series --hours 3`. The 11-02 throttle ran 03:51 → 08:07Z, but
   its startup timeouts came in bursts with clean 15-min buckets between them
   (04:45, 05:45Z). A 60-min window reopened mid-throttle, and the dispatcher
-  armed a heavy unit into each gap. `prod_op_gate` (d) still reads 60 min until
-  FIX-1377's code half (with FIX-1375's `io:` input) lands. Until then this row
-  is the prompt's own check, run before the gate.
+  armed a heavy unit into each gap. Since cc-264 `prod_op_gate` (d) reads the
+  mirror's `io:` keys and 3 h (class B) / the live box + 10 min (class P); the
+  STOP row stays as the human read.
 - **(e) Interlock.** `prod_session_state()` clear, `live_writers` empty.
 - **(f) Front door, in RENDERS (FIX-1232).** Renders lost (57014 statement
   timeouts grouped by second, so one page's 4–6 fanned-out reads count once)

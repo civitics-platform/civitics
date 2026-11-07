@@ -351,6 +351,17 @@ io_time ~100 % with all-disk MB/s at ≤ ~11 and reads/s ≪ 3,000 is the bucket
   FIX-1353's narrowing is safe only once the `io:` input is in
   `box_is_saturated`, so build FIX-1353 after FIX-1375's rung, or with it.
 
+**As built (cc-264, 2026-11-07).** The placement above contradicts itself: the rung
+"excludes every ARM, as `box: memory` does" cannot also sit "after `headroom:`,
+before `io: vacuum live`", because `box: memory` is `box_is_saturated`'s verdict at
+`dispatch_one_unit` step 4, before any row, and those two are per-row reasons. It was
+built box-level: after `memory`, before `watchdog_wall`, as the reasons
+`io_throttled` and `io_saturated`, with the streak kept by `record_box_health_mem`.
+"Never touches a running unit" holds for cancels only: `box_backoff_gate` and two
+units' chunk loops read the same verdict (Craig ruled inherit and document). The 11-02
+replay above is inferred from the walls, because no `io_time_pct` sample exists before
+11-03. → `docs/OPERATIONS.md` §Disk IO budget.
+
 ## 9. How many hours after a landing
 
 The landing ended 23:03Z (nightly reaped 23:05Z). The throttle ran 03:56 →

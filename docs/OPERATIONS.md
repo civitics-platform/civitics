@@ -1127,7 +1127,53 @@ and should not overlap.
 - **The dashboard's daily Disk IO consumed (Craig, 11-05):** 11-02 88 %,
   11-03 9 %, 11-04 1 %, 11-05 1 %. 11-06 and 11-07 were not read.
 
-**The no-push rule (until the `io:` rung lands):** no class-P push and no
+**The `io:` rung (FIX-1375, cc-264).** `box_is_saturated()` reads two reasons
+from the on-box mirror, checked after `memory` and before `watchdog_wall`:
+
+- **`io_throttled`:** `io_throttle_until` is in the future.
+- **`io_saturated`:** `io_busy_streak` ≥ `io_samples`.
+
+The tick's skip row reads `box: io_throttled` / `box: io_saturated`. Only a
+fresh mirror reads them; a stale or absent one leaves the rung silent. The route
+needs no code: `record_box_health_mem()` derives both keys from its previous row,
+and a caller cannot set either. A sample with no `io_time_pct` carries the streak.
+
+| dial (`platform_dials`) | default | meaning |
+|---|---|---|
+| `io_time_pct_ceiling` | 90 | a rated sample at or over this counts. The IOPS ceiling reads 97–100 %, idle < 1 %. |
+| `io_samples` | 3 | consecutive samples, ~6 min. One ecs window is ~4 min, so this catches the second window, not the first. |
+| `io_mbps_floor` | 12 | all-disk MB/s at or under this, with the streak standing, is the throttle signature. The baseline is ~10.9 MB/s. |
+| `io_throttle_hold_min` | 60 | how long the hold outlasts the last such sample. A throttle ends when the bucket refills. |
+
+**The brake:** `UPDATE public.platform_dials SET io_time_pct_ceiling = 101;`. The
+sampler clamps at 100, so the streak stays 0 from the next sample. A hold already
+set stands until it expires. Full revert: `scripts/fix1377-revert-prod-op-gate-d.sql`
+first, then `scripts/fix1375-revert-io-rung.sql`.
+
+**Who it reaches.** It excludes every arm at the tick's step 4, and no cancel path
+reads it. But it is a `box_is_saturated()` reason, so every reader inherits it, as
+they do `memory` and `stale`: `box_backoff_gate()` at the start of the donor,
+agency, contract-flow and weekly-tagger units, and the chunk loops of
+`donor_rollup_rebuild_bulk` (partial; `stale_after 12 hours` makes the rest wait
+12 h) and `refresh_agency_staffing_rollup` (no cursor; the next firing redoes the
+dirty set). A running chunked unit backs off at its next chunk boundary. Its own IO
+can trip that. Read `dispatch_log.box` for `readings.io`:
+`get_dispatcher_status()->'box'` projects memory only.
+
+**What the replay says.** Fri 11-07 01:14–01:22Z's sweep chain read 95.9–100 % at
+31–51 MB/s. The streak reaches 3 at 01:18Z and clears at 01:24Z, and `io_throttled`
+never fires. donor-party's 01:17:11Z arm is admitted; fe-crawl's 01:21:11Z and the
+ecs sweep's 01:23:00Z wait for the first tick after 01:24Z. On 11-02 the census reads
+it as refusing the 04:47–04:57Z, 06:01Z and 06:37Z arms and leaving 03:51Z alone.
+That one is inferred from the walls: the sampler started 11-03.
+
+**The gate.** `prod_op_gate` (d) reads the same keys for both classes:
+`d:io_throttled` to the hold's instant, `d:io_saturated` for 10 min. Class B remembers
+startup timeouts 3 h (`d:startup_timeout`, latest + 3 h). Class P remembers 10 min and
+reads the live box (`d:box_<reason>`, 10 min). Over 14 d, the 10-25 wedge day out,
+(d)'s startup-timeout hours read 7.1 at 60 min, 13.1 at 3 h and 4.0 at 10 min.
+
+**The no-push rule (until the `io:` rung has its first real receipt):** no class-P push and no
 class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
 `entity_connection_stats_windows` pass completes (11:31Z on 11-02, 12.5 h
 after the landing). None during a second pass either (Mon ~23:00Z → Tue). In
@@ -1838,6 +1884,10 @@ dispatcher across it.
 M4′ read at 46.6 h (cc-263): all five census numbers better, the floor ~50 MB
 lower and re-formed within the hour, MemAvailable flat, the creep still open
 (census §M4′).
+
+`pg_buffercache` is installed (FIX-1389, cc-264), so an M4-class pool read is a
+plain `SELECT` from `extensions.pg_buffercache`. Rule 429's rolled-back
+`CREATE EXTENSION` is retired.
 
 ### Dashboards
 

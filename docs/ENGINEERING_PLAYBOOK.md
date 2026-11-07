@@ -814,7 +814,11 @@ first post-landing ecs pass completes (~12.5 h).
 
 The mirror half of FIX-1375 landed as `20261104005000`, pushed with cc-263.
 `record_box_health_mem` now stores the eight rates and the nine raw counters.
-The rung still reads nothing. *cc-259*
+*cc-259*
+
+The rung is live, the IO-side twin of the memory rules: `io_throttled` and
+`io_saturated` in `box_is_saturated`, and every reader of that function inherits
+them, including the chunk loops of two running units. *FIX-1375 · cc-264*
 
 ---
 
