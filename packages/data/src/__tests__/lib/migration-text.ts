@@ -28,3 +28,26 @@ export function header(src: string, signature: string): string {
 
 /** `--` comments removed, so an anchor never matches prose. */
 export const stripComments = (s: string) => s.replace(/--[^\n]*/g, "");
+
+/**
+ * The pins that moved after files already asserted them: old md5 → the live body.
+ * cc-264: box_is_saturated (fix1354 → the io: rung) and prod_op_gate (fix1342 → the
+ * (d) re-cut). A migration's read-back is history and is never edited, but a clone
+ * test re-applies that file against the clone's CURRENT bodies, so its read-back
+ * must assert them. Add a line when a pin moves.
+ */
+export const PIN_LINEAGE: Readonly<Record<string, string>> = {
+  ac8dbcddf71978e73d28c999433156b7: "aaf6cc6552df532eff4a9b21e9780670",
+  "1d3507cd4b71439f0cfff51cde49b9d8": "6488601cf8c09287d540989c0e0fd074",
+};
+
+export const atCurrentPins = (sql: string): string =>
+  Object.entries(PIN_LINEAGE).reduce((s, [was, now]) => s.split(was).join(now), sql);
+
+/** A pg client whose every SQL string runs at the current pins (see PIN_LINEAGE). */
+export function withCurrentPins<T extends { query: unknown }>(client: T): T {
+  const query = (client.query as (...a: unknown[]) => unknown).bind(client);
+  client.query = (sql: unknown, ...rest: unknown[]) =>
+    query(typeof sql === "string" ? atCurrentPins(sql) : sql, ...rest);
+  return client;
+}

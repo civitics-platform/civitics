@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { read, stripComments, withCurrentPins } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -155,7 +155,7 @@ test("clone: the move and its revert, inside one rolled-back transaction", async
     t.skip("set CIVITICS_CLONE_TESTS=1 to read the migrated clone");
     return;
   }
-  const c = new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 });
+  const c = withCurrentPins(new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 }));
   await c.connect();
   const state = async () => {
     const r = (await c.query("SELECT deadline_rule, gates, phase_lock FROM public.job_registry WHERE job = $1", [JOB])).rows[0];

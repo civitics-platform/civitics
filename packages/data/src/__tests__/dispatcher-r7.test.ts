@@ -29,7 +29,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { read, stripComments, withCurrentPins } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -166,7 +166,7 @@ async function clone(t: { skip: (m: string) => void }): Promise<Client | null> {
     t.skip("set CIVITICS_CLONE_TESTS=1 to run against the migrated clone");
     return null;
   }
-  const c = new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 });
+  const c = withCurrentPins(new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 }));
   await c.connect();
   return c;
 }

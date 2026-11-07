@@ -216,6 +216,16 @@ test("blockToken omits the arrow when there is no retry_after", () => {
   assert.equal(blockToken({ check: "e", name: "live_writers", detail: "", retry_after: null }), "e:live_writers");
 });
 
+test("cc-264: (d)'s new blocks render through blockToken with no TS change", () => {
+  const token = (name: string) => blockToken({ check: "d", name, detail: "", retry_after: "2026-11-09T05:40:00Z" });
+  assert.equal(token("startup_timeout"), "d:startup_timeout(→05:40)");
+  assert.equal(token("io_throttled"), "d:io_throttled(→05:40)");
+  assert.equal(token("io_saturated"), "d:io_saturated(→05:40)");
+  assert.equal(token("box_memory"), "d:box_memory(→05:40)");
+  assert.equal(token("box_stale"), "d:box_stale(→05:40)");
+  assert.equal(token("box_fork_failures"), "d:box_fork_failures(→05:40)");
+});
+
 test("formatGateLine: no next_poll on the last chance", () => {
   const l = formatGateLine(blocked("2026-09-23T05:00:00Z"), new Date("2026-09-23T05:00:00Z"), null);
   assert.doesNotMatch(l, /next_poll/);

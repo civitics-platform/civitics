@@ -448,10 +448,13 @@ const DISK_COUNTERS = [
   "disk_io_time_s", "disk_io_weighted_s", "disk_all_read_bytes", "disk_all_written_bytes",
 ] as const;
 const WL_FILE = "20261104005000_fix1375_box_health_mem_whitelist_disk_rates.sql";
+/** cc-264's rung is the latest definer: this whitelist plus the streak (its pin: dispatcher-r15.test.ts). */
+const RUNG_FILE = "20261108000000_fix1375_io_rung_box_is_saturated_mirror_streak_dials.sql";
+const RUNG_MD5 = "de9ebee733077a59dfe2959981f8e0c3";
 const WL_MD5 = "b6a472e5ccabbf65e4f05106563ce6f4";
 
-test("FIX-1375: the whitelist file is the latest definer; signature, DEFINER, search_path, grants, the md5 guard", () => {
-  assert.equal(path.basename(latest("record_box_health_mem")), WL_FILE);
+test("FIX-1375: the rung is the latest definer; the whitelist file's signature, DEFINER, search_path, grants, the md5 guard", () => {
+  assert.equal(path.basename(latest("record_box_health_mem")), RUNG_FILE);
   const src = fs.readFileSync(path.join(MIGRATIONS, WL_FILE), "utf8");
   const h = header(src, "record_box_health_mem");
   assert.match(h, /record_box_health_mem\(p jsonb\)\s+RETURNS jsonb\s+LANGUAGE plpgsql\s+VOLATILE\s+SECURITY DEFINER\s+SET search_path TO 'public', 'pg_catalog'/);
@@ -490,7 +493,7 @@ test("FIX-1375 clone: disk rates are stored, disk_device is ignored, a null rate
     const live = (await c.query<{ m: string }>(
       "SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = 'record_box_health_mem' AND pronamespace = 'public'::regnamespace",
     )).rows[0]?.m;
-    if (live !== WL_MD5) {
+    if (live !== WL_MD5 && live !== RUNG_MD5) {
       t.skip(`the clone's record_box_health_mem is ${live}, not ${WL_FILE}'s — apply it first`);
       return;
     }

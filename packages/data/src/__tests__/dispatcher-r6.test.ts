@@ -24,7 +24,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { read, stripComments, withCurrentPins } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -91,7 +91,7 @@ test("clone: the file applies UNDER a session hold (the gate's shape), from the 
     t.skip("set CIVITICS_CLONE_TESTS=1 to run against the migrated clone");
     return;
   }
-  const c = new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 });
+  const c = withCurrentPins(new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 }));
   await c.connect();
   try {
     await c.query("BEGIN");
@@ -153,7 +153,7 @@ test("clone: the RETURNed row, the hold row's note, jobid 10 parked", async (t) 
     t.skip("set CIVITICS_CLONE_TESTS=1 to run against the migrated clone");
     return;
   }
-  const c = new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 });
+  const c = withCurrentPins(new Client({ connectionString: LOCAL_DSN, connectionTimeoutMillis: 2500 }));
   await c.connect();
   try {
     const reg = (await c.query(

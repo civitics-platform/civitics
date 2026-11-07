@@ -260,7 +260,7 @@ test("(4) clone rehearsal (r1)-(r6): classes, the dispatched skip, live and slot
   try {
     const md = (await c.query<{ m: string }>(
       "SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = 'prod_op_gate' AND pronamespace = 'public'::regnamespace")).rows[0]?.m;
-    if (md !== RECUT_MD5) {
+    if (md !== RECUT_MD5 && md !== D_RECUT_MD5) {
       t.skip(`FIX-1342 not applied on this DB (md5 ${md})`);
       return;
     }
@@ -325,6 +325,211 @@ test("(4) clone rehearsal (r1)-(r6): classes, the dispatched skip, live and slot
     await tx("(r6) 21:30Z with no nightly row since 20:00Z: nightly_due blocks both classes", async () => {
       const now = "2030-03-12 21:30:00+00";
       for (const e of [60, 5400]) assert.ok(has(await gate(now, e), "a", "nightly_due"), `(${e})`);
+    });
+  } finally {
+    await c.end();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1377 + FIX-1353 (cc-264) — (d) re-cut: 3 h for class B, the last 10 min and
+// the live box for class P, the mirror's io: keys for both.
+// ---------------------------------------------------------------------------
+
+const D_RECUT = () => one("_fix1377_fix1353_prod_op_gate_d_3h_class_b_10m_live_box_class_p_io_input.sql");
+const D_REVERT = () => read(path.join(ROOT, "scripts", "fix1377-revert-prod-op-gate-d.sql"));
+const D_RECUT_MD5 = "6488601cf8c09287d540989c0e0fd074";
+
+test("(5) the re-cut hashes to its read-back; the header is fix1342's; (a)(b)(c)(e)(f) are fix1342's to the byte", () => {
+  assert.equal(md5(prosrc(D_RECUT())), D_RECUT_MD5);
+  assert.ok(D_RECUT().includes(D_RECUT_MD5));
+  assert.ok(D_RECUT().includes(RECUT_MD5), "the guard names fix1342's");
+  assert.equal(headerOf(D_RECUT()), headerOf(RECUT()));
+  const was = prosrc(RECUT());
+  const now = prosrc(D_RECUT());
+  for (const [from, to] of [
+    ["  v_exp      := make_interval(", "  -- ══ (d) watchdogs"],
+    ["  -- ══ (e) interlock", "  RETURN jsonb_build_object("],
+  ] as const) {
+    assert.equal(section(now, from, to), section(was, from, to), `${from} … ${to}`);
+  }
+});
+
+test("(5) the windows by class, the detail names its own, retry_after = latest + the window", () => {
+  const b = stripComments(prosrc(D_RECUT()));
+  assert.match(b, /c_st_window_b\s+CONSTANT interval := interval '3 hours';/);
+  assert.match(b, /c_st_window_p\s+CONSTANT interval := interval '10 minutes';/);
+  assert.match(b, /v_st_window := CASE WHEN v_class = 'P' THEN c_st_window_p ELSE c_st_window_b END;/);
+  assert.match(b, /in the last %s, latest %s/);
+  assert.match(b, /'retry_after', v_t \+ v_st_window/);
+  assert.doesNotMatch(b, /d\.startup_timeout AND d\.start_time > p_now - interval '60 minutes'/);
+});
+
+test("(5) class P reads the live box with the NAMED argument; both read the mirror; p_now is the only clock", () => {
+  const b = stripComments(prosrc(D_RECUT()));
+  assert.match(b, /public\.box_is_saturated\(p_now := p_now, p_include_watchdog_wall := false\)/);
+  assert.doesNotMatch(b, /box_is_saturated\(false\)/, "false would bind to p_stale_seconds");
+  assert.ok(b.indexOf("IF v_class = 'P' THEN\n    v_box :=") > 0, "class P only");
+  assert.match(b, /'name', 'box_' \|\| COALESCE\(v_box->>'reason', 'unknown'\)/);
+  assert.match(b, /NOT IN \('io_saturated', 'io_throttled'\)/, "named once, by the mirror blocks");
+  assert.match(b, /IF v_io_fresh AND v_io_until > p_now THEN/);
+  assert.match(b, /IF v_io_fresh AND v_io_streak >= v_io_need THEN/);
+  assert.match(b, /'name', 'io_throttled'[\s\S]*?'retry_after', v_io_until\)/);
+  assert.match(b, /'name', 'io_saturated'[\s\S]*?'retry_after', p_now \+ c_box_retry\)/);
+  assert.doesNotMatch(b, /clock_timestamp\(\)|\bnow\(\)/);
+});
+
+test("(5) the read-back cannot assert ok under its own claim: it asserts the windows and the new readings", () => {
+  const s = D_RECUT();
+  const rb = s.slice(s.indexOf("read-back — RAISE on any miss"));
+  assert.match(rb, /public\.prod_op_gate\(1\)/);
+  assert.match(rb, /public\.prod_op_gate\(5400\)/);
+  assert.doesNotMatch(rb, /IF NOT \(v_[pb]->>'ok'\)/, "(e) reads session_held inside a gated push");
+  assert.match(rb, /aaf6cc6552df532eff4a9b21e9780670/, "file A's NEW box md5, not fix1354's");
+  assert.match(rb, /d6a9073bcc4d9084b9d7994324a89b18/);
+  assert.match(rb, /4c30523742e280a4b48ea2ec390654d6/);
+});
+
+test("(5) the revert: fix1342's body verbatim, the re-cut md5 asserted first, fix1342's after", () => {
+  const r = D_REVERT();
+  assert.equal(md5(prosrc(r)), RECUT_MD5);
+  assert.ok(r.indexOf(D_RECUT_MD5) < r.indexOf("CREATE OR REPLACE FUNCTION public.prod_op_gate("));
+});
+
+test("(6) clone: the windows, the box and the io: keys by class", async (t) => {
+  if (process.env["CIVITICS_CLONE_TESTS"] !== "1") {
+    t.skip("set CIVITICS_CLONE_TESTS=1 to run against the migrated clone");
+    return;
+  }
+  const { Client } = await import("pg");
+  const c = new Client({
+    connectionString: process.env["SUPABASE_DB_URL"] ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    connectionTimeoutMillis: 2500,
+  });
+  await c.connect();
+
+  type Block = { check: string; name: string; detail: string; retry_after: string | null };
+  type G = {
+    ok: boolean;
+    blocked_by: Block[];
+    readings: { box: { reason: string } | null; io: { fresh: boolean }; watchdogs: { startup_timeout_window: string } };
+  };
+  const NOW = "2030-03-12 12:00:00+00";
+  const P = 60;
+  const B = 5400;
+  const iso = (s: string) => new Date(s).toISOString();
+  const gate = async (expected: number, now = NOW) =>
+    (await c.query<{ g: G }>("SELECT public.prod_op_gate($1, $2::timestamptz) AS g", [expected, now])).rows[0]!.g;
+  const d = (g: G, name: string) => g.blocked_by.find((x) => x.check === "d" && x.name === name);
+
+  let runid = 9_137_700_000;
+  const timeout = async (at: string) => {
+    const job = (await c.query<{ jobid: number }>("SELECT jobid FROM cron.job ORDER BY jobid LIMIT 1")).rows[0]!.jobid;
+    await c.query(
+      `INSERT INTO cron.job_run_details
+         (jobid, runid, job_pid, database, username, command, status, return_message, start_time, end_time)
+       VALUES ($1, $2, 1, 'postgres', 'postgres', 'synthetic fix1377', 'failed', 'job startup timeout', $3::timestamptz, $3::timestamptz)`,
+      [job, runid++, at]);
+  };
+  /** A fresh probe and mirror at NOW, plus any mirror keys. Stamped directly, not through the RPC's clock. */
+  const seed = async (mirror: Record<string, unknown> = {}, probeAt = "2030-03-12 11:59:30+00") => {
+    await c.query("DELETE FROM public.pipeline_state WHERE key = 'prod_session'");
+    await c.query(
+      `INSERT INTO public.pipeline_state (key, value, updated_at)
+       VALUES ('box_health', $1::jsonb, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [JSON.stringify({ at: probeAt, startup_timeouts_10m: 0, watchdog_max_wall_10m: { unit: 0, budget: 0 } })]);
+    await c.query(
+      `INSERT INTO public.pipeline_state (key, value, updated_at)
+       VALUES ('box_health_mem', $1::jsonb, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [JSON.stringify({
+        at: "2030-03-12 11:59:00+00", mem_total_bytes: 948191232, mem_available_bytes: 450 * 1048576,
+        swap_total_bytes: 1073737728, swap_free_bytes: 600 * 1048576, ...mirror,
+      })]);
+  };
+  const tx = async (name: string, fn: () => Promise<void>) => {
+    await t.test(name, async () => {
+      await c.query("BEGIN");
+      try { await fn(); } finally { await c.query("ROLLBACK"); }
+    });
+  };
+
+  try {
+    await tx("a timeout 2 h old blocks class B to latest + 3 h, and not class P", async () => {
+      await seed();
+      await timeout("2030-03-12 10:00:00+00");
+      const b = d(await gate(B), "startup_timeout");
+      assert.ok(b, "class B");
+      assert.equal(iso(b.retry_after!), iso("2030-03-12 13:00:00+00"));
+      assert.match(b.detail, /in the last 3 h, latest 10:00:00/);
+      assert.equal(d(await gate(P), "startup_timeout"), undefined, "class P");
+    });
+
+    await tx("a timeout 5 min old blocks both, class P to latest + 10 min", async () => {
+      await seed();
+      await timeout("2030-03-12 11:55:00+00");
+      const p = d(await gate(P), "startup_timeout");
+      assert.ok(p, "class P");
+      assert.equal(iso(p.retry_after!), iso("2030-03-12 12:05:00+00"));
+      assert.match(p.detail, /in the last 10 min, latest 11:55:00/);
+      assert.ok(d(await gate(B), "startup_timeout"), "class B");
+    });
+
+    await tx("a hold 40 min out blocks both, to that instant", async () => {
+      await seed({ io_busy_streak: 0, io_throttle_until: "2030-03-12 12:40:00+00" });
+      for (const e of [P, B]) {
+        const g = await gate(e);
+        const x = d(g, "io_throttled");
+        assert.ok(x, `(${e})`);
+        assert.equal(iso(x.retry_after!), iso("2030-03-12 12:40:00+00"));
+        assert.equal(d(g, "box_io_throttled"), undefined, "named once");
+      }
+    });
+
+    await tx("a streak of 3 blocks both, now + 10 min, the detail naming N, M and the sample", async () => {
+      await seed({ io_busy_streak: 3 });
+      for (const e of [P, B]) {
+        const g = await gate(e);
+        const x = d(g, "io_saturated");
+        assert.ok(x, `(${e})`);
+        assert.equal(iso(x.retry_after!), iso("2030-03-12 12:10:00+00"));
+        assert.match(x.detail, /io_busy_streak 3 >= 3 at 11:59Z/);
+        assert.equal(d(g, "box_io_saturated"), undefined, "named once");
+      }
+    });
+
+    await tx("a stale mirror reads neither io: block", async () => {
+      await seed({ at: "2030-03-12 11:00:00+00", io_busy_streak: 9, io_throttle_until: "2030-03-12 13:00:00+00" });
+      for (const e of [P, B]) {
+        const g = await gate(e);
+        assert.equal(d(g, "io_saturated"), undefined, `(${e})`);
+        assert.equal(d(g, "io_throttled"), undefined, `(${e})`);
+        assert.equal(g.readings.io.fresh, false);
+      }
+    });
+
+    await tx("memory saturates class P through (d), and never class B", async () => {
+      await seed({ swap_free_bytes: 0 });
+      const p = await gate(P);
+      assert.ok(d(p, "box_memory"), JSON.stringify(p.blocked_by));
+      assert.equal(iso(d(p, "box_memory")!.retry_after!), iso("2030-03-12 12:10:00+00"));
+      assert.equal(d(p, "box_memory")!.detail, "box_is_saturated: memory");
+      assert.equal(p.readings.box?.reason, "memory");
+      const b = await gate(B);
+      assert.equal(d(b, "box_memory"), undefined);
+      assert.equal(b.readings.box, null);
+    });
+
+    await tx("a stale probe blocks class P as d:box_stale", async () => {
+      await seed({}, "2030-03-12 11:00:00+00");
+      assert.ok(d(await gate(P), "box_stale"));
+    });
+
+    await tx("the windows read back by class", async () => {
+      await seed();
+      assert.equal((await gate(P)).readings.watchdogs.startup_timeout_window, "10 min");
+      assert.equal((await gate(B)).readings.watchdogs.startup_timeout_window, "3 h");
     });
   } finally {
     await c.end();
