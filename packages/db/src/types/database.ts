@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   public: {
     Tables: {
       _drb_chunk_fe: {
@@ -118,6 +113,18 @@ export type Database = {
         }
         Update: {
           is_official?: boolean
+          to_id?: string
+        }
+        Relationships: []
+      }
+      _proof_recips: {
+        Row: {
+          to_id: string
+        }
+        Insert: {
+          to_id: string
+        }
+        Update: {
           to_id?: string
         }
         Relationships: []
@@ -1470,16 +1477,19 @@ export type Database = {
       connection_type_counts: {
         Row: {
           connection_type: string
+          method: string
           refreshed_at: string
           total: number
         }
         Insert: {
           connection_type: string
+          method?: string
           refreshed_at?: string
           total: number
         }
         Update: {
           connection_type?: string
+          method?: string
           refreshed_at?: string
           total?: number
         }
@@ -3996,6 +4006,7 @@ export type Database = {
       }
       job_registry: {
         Row: {
+          anchor_cadence: string | null
           budget_seconds: number | null
           by_window_minutes: number | null
           cap_mb: number | null
@@ -4018,6 +4029,7 @@ export type Database = {
           yield_to: string[]
         }
         Insert: {
+          anchor_cadence?: string | null
           budget_seconds?: number | null
           by_window_minutes?: number | null
           cap_mb?: number | null
@@ -4040,6 +4052,7 @@ export type Database = {
           yield_to?: string[]
         }
         Update: {
+          anchor_cadence?: string | null
           budget_seconds?: number | null
           by_window_minutes?: number | null
           cap_mb?: number | null
@@ -4787,6 +4800,27 @@ export type Database = {
         }
         Relationships: []
       }
+      official_redirects: {
+        Row: {
+          merged_at: string
+          new_id: string
+          old_id: string
+          reason: string
+        }
+        Insert: {
+          merged_at?: string
+          new_id: string
+          old_id: string
+          reason: string
+        }
+        Update: {
+          merged_at?: string
+          new_id?: string
+          old_id?: string
+          reason?: string
+        }
+        Relationships: []
+      }
       official_sector_affinity_rollup: {
         Row: {
           donor_count: number
@@ -5148,10 +5182,15 @@ export type Database = {
         Row: {
           headroom_target_mb: number
           id: boolean
+          io_mbps_floor: number
+          io_samples: number
+          io_throttle_hold_min: number
+          io_time_pct_ceiling: number
           max_concurrent_units: number
           max_live_caps_mb: number
           pause: boolean
           rearm_cooldown_seconds: number
+          swap_ceiling_mb: number
           tick_seconds: number
           unit_target_seconds: number
           updated_at: string
@@ -5159,10 +5198,15 @@ export type Database = {
         Insert: {
           headroom_target_mb?: number
           id?: boolean
+          io_mbps_floor?: number
+          io_samples?: number
+          io_throttle_hold_min?: number
+          io_time_pct_ceiling?: number
           max_concurrent_units?: number
           max_live_caps_mb?: number
           pause?: boolean
           rearm_cooldown_seconds?: number
+          swap_ceiling_mb?: number
           tick_seconds?: number
           unit_target_seconds?: number
           updated_at?: string
@@ -5170,10 +5214,15 @@ export type Database = {
         Update: {
           headroom_target_mb?: number
           id?: boolean
+          io_mbps_floor?: number
+          io_samples?: number
+          io_throttle_hold_min?: number
+          io_time_pct_ceiling?: number
           max_concurrent_units?: number
           max_live_caps_mb?: number
           pause?: boolean
           rearm_cooldown_seconds?: number
+          swap_ceiling_mb?: number
           tick_seconds?: number
           unit_target_seconds?: number
           updated_at?: string
@@ -7027,6 +7076,8 @@ export type Database = {
         }
         Returns: Json
       }
+      ec_stats_table_currency: { Args: never; Returns: Json }
+      ec_stats_table_is_current: { Args: never; Returns: boolean }
       enforce_cron_job_budgets: { Args: never; Returns: Json }
       enforce_derived_mvs_unit_budget: {
         Args: { p_budget_seconds?: number }
@@ -7663,6 +7714,14 @@ export type Database = {
         }[]
       }
       rebuild_browse_facet_counts: { Args: never; Returns: number }
+      rebuild_ec_donation_edges_for_donors: {
+        Args: { p_from_ids: string[] }
+        Returns: {
+          connection_type: string
+          edges_deleted: number
+          edges_inserted: number
+        }[]
+      }
       rebuild_ec_donations_full_prepare: { Args: never; Returns: undefined }
       rebuild_ec_donations_full_window: {
         Args: { p_hi: string; p_lo: string }
@@ -7790,6 +7849,15 @@ export type Database = {
         Returns: undefined
       }
       rebuild_financial_entity_size_tags: { Args: never; Returns: number }
+      rebuild_financial_entity_size_tags_delete: {
+        Args: never
+        Returns: number
+      }
+      rebuild_financial_entity_size_tags_insert: {
+        Args: never
+        Returns: Record<string, unknown>
+      }
+      rebuild_financial_entity_size_tags_scan: { Args: never; Returns: number }
       rebuild_pre_vote_timing_tags: { Args: never; Returns: number }
       rebuild_pre_vote_timing_tags_delete: { Args: never; Returns: number }
       rebuild_pre_vote_timing_tags_insert: { Args: never; Returns: number }
@@ -7806,6 +7874,10 @@ export type Database = {
         Returns: string
       }
       record_gha_dispatch: { Args: { p: Json }; Returns: Json }
+      record_vm_probe: {
+        Args: { p_label: string; p_relations: string[] }
+        Returns: Json
+      }
       refresh_agency_page_cache: { Args: never; Returns: number }
       refresh_chord_donor_state_party_flows_mv: {
         Args: never
@@ -8041,6 +8113,13 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      sync_rollup_industry_labels: {
+        Args: { p_donors: string[] }
+        Returns: {
+          rows_updated: number
+          table_name: string
+        }[]
       }
       treemap_individual_brackets_for_official: {
         Args: { p_official: string }
@@ -8353,12 +8432,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8382,11 +8461,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8407,11 +8486,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8432,11 +8511,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8449,11 +8528,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8659,3 +8738,4 @@ export const Constants = {
     },
   },
 } as const
+
