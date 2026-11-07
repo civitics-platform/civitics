@@ -122,6 +122,14 @@ console.log("check:job-registry — fixtures");
     r.problems.length === 0 && r.warnings.length === 1 && has(r.warnings, "registry row job-sel matches no cron job"), dump(r));
 }
 {
+  const r = variant((root) => {
+    edit(root, RECEIPTS, (t) => t.replace('    { "jobname": "job-sel", "jobid": 3, "schedule": "* * * * *", "active": true },\n', ""));
+    edit(root, SEED, (t) => t.replace(/('job-sel'[^\n]*?)'at [^']*'/, "$1'dead_tuples > 60% of trigger + floor 24 hours'"));
+  });
+  check("a pg_cron row on a dispatched rule needs no cron job (FIX-1381): no warning",
+    r.problems.length === 0 && !has(r.warnings, "job-sel matches no cron job"), dump(r));
+}
+{
   const r = variant((root) => edit(root, RECEIPTS, (t) => t.replace('"cron_jobs"', '"cron_jobz"')));
   check("a receipts file with no cron_jobs[] FAILS (it would otherwise compare against nothing)",
     has(r.problems, "has no cron_jobs[]"), dump(r));

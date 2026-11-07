@@ -30,8 +30,9 @@
 //   and a job seeded by two fences.
 //
 // WHAT IT WARNS ON (exit 0)
-//   (vi)  a registry job in no receipts row, no workflow, and not marked
-//         `INACTIVE on prod` in its note — a job seeded ahead of its landing
+//   (vi)  a registry job in no receipts row, no workflow, not marked
+//         `INACTIVE on prod` in its note, and not on a dispatched rule (the
+//         dispatcher arms those as one-shots) — a job seeded ahead of its landing
 //   - an `at <cron>` deadline_rule that differs from the live schedule
 //   - a `no-band` declaration on a job that bands.json does band
 //
@@ -462,10 +463,13 @@ export function checkRegistry({ root = ROOT, fencesOnly = false } = {}) {
     const inReceipts = cronSchedules.has(r.job);
     const inWorkflow = (gha && scheduled.has(gha[1])) || (dispatch && scheduled.has(`${dispatch[1]}.yml`));
     const inactive = typeof r.note === "string" && r.note.includes("INACTIVE on prod");
-    if (!inReceipts && !inWorkflow && !inactive) {
+    const rule = ruleOf(r);
+    // A pg_cron row on a dispatched rule is armed as a one-shot, so it needs no
+    // cron job. entity-tags-vacuum-analyze (FIX-1381) was born this way and never had one.
+    const dispatched = r.runner === "pg_cron" && typeof rule === "string" && !rule.startsWith("at ");
+    if (!inReceipts && !inWorkflow && !inactive && !dispatched) {
       warnings.push(`registry row ${r.job} matches no cron job in ${recFile ?? "the receipts"} and no scheduled workflow — seeded ahead of its landing? (${where})`);
     }
-    const rule = ruleOf(r);
     if (inReceipts && typeof rule === "string" && rule.startsWith("at ")) {
       const live = cronSchedules.get(r.job);
       if (live && rule.slice(3) !== live) warnings.push(`${r.job}: deadline_rule '${rule}' differs from the receipts schedule '${live}'`);
