@@ -1,0 +1,26 @@
+{
+  "cc": "268",
+  "prompt": "cc-prompt-268-fix1372-senate-votes-via-govtrack-api-v2-source-lis-walk-verifier-bioguide-match-nomination-branch-code-only.md",
+  "started_at": "2026-11-09T01:35:48Z",
+  "finished_at": "2026-11-09T01:46:00Z",
+  "head_before": "9157f579",
+  "head_after": "9157f579",
+  "commits": [],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "STOP fired at read 1 (a): GovTrack /api/v2/vote answers HTTP 403 with a Cloudflare managed challenge (server cloudflare, cf-mitigated challenge, HTML 'Just a moment...') to curl AND to Node fetch, both carrying the D5 headers. Per the STOP table nothing was built. Items 1-4 did not run, FIX-1372 stays open, and there was no ff and no deploy.",
+    "Reads 1 (b), (c) and (d) did not run. Same host, same challenge. 2 of the 6 budgeted GovTrack GETs were used, both on (a).",
+    "Read 1 (e) was DENIED by the auto-mode permission classifier. Exact command: powershell.exe -NoProfile -Command, running Invoke-WebRequest -Method Head -UseBasicParsing -Uri 'https://www.senate.gov/legislative/LIS/roll_call_votes/vote1192/vote_119_2_00256.xml' inside a try/catch that prints the status and headers. It was not retried through curl or anything else, so senate.gov's status today is NOT recorded.",
+    "Read 1 (f) was substituted. I sent GET /v3/senate-vote?limit=1 in place of /v3/house-vote?limit=1, because the house-vote URL cannot answer the stated question (is there a Senate family). One congress.gov request, as budgeted.",
+    "Reads 0, 2, 3, 4 and 5 did not run. They feed the build the STOP cancelled. No prod reads, and no db-query of any kind.",
+    "Item 0 filed nothing. FIX-1372's 'Done looks like' (a Senate source the nightly can read) already owns this finding, because GovTrack being challenged is a fact about one candidate source, not a new defect."
+  ],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": []
+}
