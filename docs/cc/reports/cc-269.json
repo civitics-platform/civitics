@@ -1,0 +1,40 @@
+{
+  "cc": "269",
+  "prompt": "cc-prompt-269-upstash-spend-census-bucketed-origin-requests-cf-ua-path-ladder-fix1304-hold-projection-edge-rule-proposal-gha-egress-probe-fix1372.md",
+  "started_at": "2026-11-09T03:38:22Z",
+  "finished_at": "2026-11-09T04:15:00Z",
+  "head_before": "aa4dfce9",
+  "head_after": "ec60c326",
+  "commits": [
+    {
+      "sha": "5b5ed677",
+      "subject": "[skip vercel] docs(audits): the Upstash spend census — 6,584 bucketed origin requests/day at ~4.1 commands each; files FIX-1390, FIX-1391 (cc-269)"
+    },
+    {
+      "sha": "eb49308b",
+      "subject": "[skip vercel] ci: FIX-1372 — a workflow_dispatch egress probe (senate.gov / GovTrack / congress.gov from a GitHub runner) (cc-269)"
+    },
+    {
+      "sha": "ec60c326",
+      "subject": "[skip vercel] docs(audits): the Upstash spend census sections 9-10 — GHA is challenged too (senate.gov 403 Akamai, GovTrack 403 cf-mitigated, congress.gov 404 keyed) + what contradicted the prompt (cc-269)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1390",
+    "FIX-1391"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "hygiene",
+  "owed": [
+    {
+      "fix": "FIX-1304",
+      "what": "the budget hold's first real engagement — civitics:limiter:budget written by the */30 probe at used >= 350,000, the edge's STATE upstash->memory warn, and the ring + the front-door arm still writing after it; settles only with the row + the instant",
+      "after": "2026-11-13T12:00Z"
+    }
+  ]
+}
