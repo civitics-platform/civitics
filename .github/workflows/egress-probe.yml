@@ -1,0 +1,113 @@
+name: egress-probe
+
+# FIX-1372 — what do the Senate-vote sources answer to a GitHub-hosted runner?
+#
+# cc-268 found every dev-box client refused: www.senate.gov 403 (Akamai) since
+# the 10-23 nightly, GovTrack's /api/v2/vote 403 `cf-mitigated: challenge` to
+# curl and to Node fetch, and api.congress.gov with no /v3/senate-vote family
+# (404 "Unknown resource"). The nightly does not run on the dev box. It runs on
+# GitHub-hosted Azure IPs, and nobody had read what those IPs are answered.
+# This prints that answer, once, on demand.
+#
+# SHAPE (cc-269 D6):
+#   - workflow_dispatch ONLY. There is no on.schedule block, so it needs no
+#     public.job_registry row: check:job-registry (iii) reads scheduled
+#     workflows only (scripts/check-job-registry.mjs, "(iii) the scheduled
+#     workflows"). Do not add a schedule without adding the row.
+#   - Non-blocking (`continue-on-error`), like hit-test.yml. A 403 is the
+#     answer being measured, not a failure.
+#   - At most TWO GETs per URL (the collector's UA, then a current Chrome UA),
+#     20 s each, no redirect-following, never a retry.
+#   - The collector's UA: packages/data/src/pipelines/congress/members.ts
+#     fetchText() calls `fetch(url)` with no headers, so Node's fetch sends
+#     `User-Agent: node`. That is the default below.
+#   - An api.congress.gov URL gets `api_key` from the CONGRESS_API_KEY secret
+#     appended at request time. The printed URL never carries it, and Actions
+#     masks the secret in the log regardless.
+#
+# Run:   gh workflow run egress-probe.yml --ref main
+# Read:  gh run view <id> --log   (the "Probe" step prints the fact block)
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Space-separated URLs to probe"
+        required: false
+        # The collector's senate.gov roll URL shape (votes.ts urlFor:
+        # .../roll_call_votes/vote{congress}{session}/vote_{congress}_{session}_{NNNNN}.xml),
+        # GovTrack's vote API, and congress.gov's (absent) senate-vote family.
+        default: "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1192/vote_119_2_00001.xml https://www.govtrack.us/api/v2/vote?congress=119&chamber=senate&session=2026&limit=1 https://api.congress.gov/v3/senate-vote?limit=1&format=json"
+      ua:
+        description: "User-Agent for the first GET (the collector's)"
+        required: false
+        default: "node"
+      browser_ua:
+        description: "User-Agent for the second GET (a current Chrome)"
+        required: false
+        default: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egress-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Non-blocking: the statuses are the deliverable, whatever they are.
+    continue-on-error: true
+
+    steps:
+      - name: Runner egress IP
+        run: |
+          ip="$(curl -sS --max-time 10 https://api.ipify.org || curl -sS --max-time 10 https://ifconfig.me || echo unknown)"
+          echo "EGRESS_IP=${ip}"
+
+      - name: Probe
+        env:
+          URLS: ${{ inputs.urls }}
+          COLLECTOR_UA: ${{ inputs.ua }}
+          BROWSER_UA: ${{ inputs.browser_ua }}
+          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+        run: |
+          set -u
+          # URLs carry `?`: split on spaces, never glob.
+          set -f
+          tmp="$(mktemp -d)"
+          n=0
+          for url in ${URLS}; do
+            n=$((n + 1))
+            fetch_url="${url}"
+            key_note=""
+            case "${url}" in
+              https://api.congress.gov/*)
+                if [ -n "${CONGRESS_API_KEY:-}" ]; then
+                  case "${url}" in *\?*) sep='&' ;; *) sep='?' ;; esac
+                  fetch_url="${url}${sep}api_key=${CONGRESS_API_KEY}"
+                  key_note=" (api_key from the CONGRESS_API_KEY secret)"
+                else
+                  key_note=" (NO CONGRESS_API_KEY secret: unauthenticated)"
+                fi
+                ;;
+            esac
+            for which in collector browser; do
+              if [ "${which}" = collector ]; then agent="${COLLECTOR_UA}"; else agent="${BROWSER_UA}"; fi
+              hdr="${tmp}/h${n}${which}"
+              body="${tmp}/b${n}${which}"
+              : > "${hdr}"
+              : > "${body}"
+              code="$(curl -sS -o "${body}" -D "${hdr}" -w '%{http_code}' --max-time 20 -A "${agent}" "${fetch_url}" 2> "${hdr}.err")" \
+                || code="curl exit $? — $(head -c 160 "${hdr}.err" | tr -d '\r\n')"
+              echo "== [${n}] ${url}${key_note}"
+              echo "   ua=${which} (${agent})"
+              echo "   status=${code}"
+              grep -i -E '^(server|cf-mitigated|cf-ray|x-akamai[a-z-]*|akamwafrefid|akamai-grn|retry-after|x-ratelimit[a-z-]*|content-type|location):' "${hdr}" \
+                | tr -d '\r' | sed 's/^/   /' || true
+              first="$(head -c 600 "${body}" | tr -d '\r' | sed -n '/[^[:space:]]/{p;q}')"
+              echo "   body1=${first:0:200}"
+            done
+          done
