@@ -17,8 +17,10 @@ before anyone could see it, because October's quota had been frozen since the
 
 Prod contact: read-only. Two `db-query --prod` reads of `platform_usage_snapshot`
 and one of `pipeline_state` (each under `SET LOCAL statement_timeout = '30s'`).
-38 Cloudflare GraphQL Analytics queries and two Cloudflare REST GETs with the
-existing token. No write anywhere: not prod, Upstash, Cloudflare or Vercel.
+38 Cloudflare GraphQL Analytics queries, two Cloudflare REST GETs with the
+existing token (security level, custom-rules entrypoint), and the zone-id lookup
+(`GET /zones?name=civitics.com`, the same call `cf-analytics.mjs` makes) once
+per script run, 10 in all. No write anywhere: not prod, Upstash, Cloudflare or Vercel.
 Scratch scripts: `cc269-cf.mjs` / `cc269-cf-analyze.mjs` / `cc269-read4.mts` in the session
 scratchpad (not committed); every number below is reproducible from the queries
 they print.
@@ -471,3 +473,91 @@ The limiter is 92 % of spend, above D3's 60 % line, so the code lever is filed.
 
 Measure one lever at a time (rule 74): the edge rule first, then 48 h, then
 FIX-1391 sized on the new B.
+
+---
+
+## §9 FIX-1372's egress facts (read 5 — the probe from `main`)
+
+`.github/workflows/egress-probe.yml` (`eb49308b`), run **42559755911**,
+2026-11-09T04:04:30Z, conclusion `success`. Two GETs per URL, 20 s each, no
+retry. The first GET used the collector's UA `node` (`members.ts` `fetchText()`
+sends no headers, and Node's fetch sends `node`); the second used Chrome/142.
+
+```
+runner egress IP        20.236.52.84 (GitHub-hosted, Azure)
+senate.gov roll XML     node → 403 · Server: AkamaiNetStorage · text/html · <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+  vote1192/vote_119_2_00001.xml   Chrome → 403 · same; no X-Akamai-* / AkamWAFRefId / Retry-After header
+GovTrack /api/v2/vote   node → 403 · cf-mitigated: challenge · server: cloudflare · cf-ray a579ef297a8575e2-SEA · "Just a moment..."
+                        Chrome → 403 · cf-mitigated: challenge · cf-ray a579ef2a0df6a365-SEA
+congress.gov            node → 404 · application/json · x-ratelimit-limit 20000 · remaining 19999 (the key is good)
+  /v3/senate-vote (api_key)       Chrome → 404 · remaining 19998
+```
+
+**What it means for the design: GHA is challenged too.** The nightly's own
+egress gets the same answer as the dev box from all three sources. senate.gov
+refuses per IP class, not per UA; GovTrack's challenge is UA-blind; congress.gov
+has no Senate-vote family whatever the key. So a fix cannot be "run it from
+the runner". FIX-1372 needs a different source or a different transport, and
+that design is Cowork's. The workflow stays in the tree for the next prompt to
+re-run (`gh workflow run egress-probe.yml --ref main`).
+
+---
+
+## §10 What contradicted the prompt
+
+1. **The unit cost is 4, not 3.** The installed `@upstash/ratelimit` v2.0.8
+   sliding window charges 4 for an allowed check and 5 for the first in a
+   window. 3 applies only when rate-limited (§1, the costs page). The week
+   measured **4.13**: 4B+F fits within ±10.2 % on every day, and 3B+F misses by
+   +22…+43 %. Fixed window is 2/3, not a flat 2, so D3's "3 → 2, −33 %" is
+   −48 % (§8).
+2. **The ring is 3 commands a sample, and cc-262's ledger was right.**
+   `BOX_HEALTH_COMMANDS_PER_SAMPLE = 2` names only the write pipeline. FIX-1375's
+   LINDEX head read (`BOX_HEALTH_HEAD_READS_PER_SAMPLE = 1`, `5d23037f`, 11-03
+   02:49Z) makes it 3, so 2,160/day.
+3. **The arm runs at `*/15`, not `*/2`.** That is 96 MGETs/day (≈ 2.9k/month), so
+   `upstash-usage.ts`'s "~25k/month" is stale. The floor also carries the
+   snapshot probe's 3 PINGs + 1 flag command per `*/30` tick (192/day), which
+   the prompt's floor omitted. F = 2,449/day.
+4. **The custom rules number 4, not 5, and `Verified bots skip (FIX-1305)` is not
+   among them.** The entrypoint was last updated 09-04T01:48:03Z. Verified bots
+   pass Under Attack anyway (Exa 99.8 % edge→origin). One Free slot is open (§5).
+5. **Under Attack's door is the verified-bot list, and the AI toggle is unlikely
+   to close it.** Cloudflare classifies Exa, Keenable and OAI-SearchBot as
+   `Search Engine Crawler`, not `AI Crawler` (§7).
+6. **The step came 10-23 23:00Z, not 11-01.** The prompt's 2× rule dated the
+   Upstash reset, because its 10-31→11-04 baseline sits inside the drizzle. The
+   drizzle ran 8 days unseen while October's quota stayed frozen from the 10-12
+   crawl (§3). For 19 days (10-12 → 10-31) the limiter, the ring and the arm
+   all sat on an exhausted quota.
+7. **The analytics joins the prompt called impossible are possible.**
+   `clientRequestPath_like` + `originResponseStatus_gt` filters with a
+   `userAgent` / `clientIP` / method dimension give per-family UA and IP ladders.
+   `verifiedBotCategory` is also readable on this Free zone.
+8. **`cf-analytics.mjs`'s hourly mode has no origin column.** It prints 200 / 403
+   / other / cache-hit. Origin-reaching needs `originResponseStatus`, the
+   `cloudflare-analytics.ts` definition, which agreed with the snapshot's 2c
+   within 3 requests a day. Retention is 8 days ("1w1d"), not ~7. The
+   10,000-row cap never bound (max 7,909 paths/day).
+9. **The keys matched.** The snapshot keys in read 2 were the prompt's
+   (`platform-snapshot.ts:259-282`). The `SET … latest` duplicate is **gone**.
+   FIX-1314's calendar reset was re-observed: 11-01T00:00:58Z, 503,289 → 0.
+10. **The hold has not engaged** (every row since 11-01: `budget clear,
+    flag_written true`). D4's record branch did not apply, and FIX-1304's
+    receipt is projected (§2b).
+11. **The 08-15 shape repeats, wider.** 0 HTTP 429 in 7 days. Every command was
+    an allow. The busiest IP ran at 0.86/min (Googlebot), and Exa runs at
+    ~0.01/min per address across a whole /24.
+12. **The door refused nothing via Cloudflare.** Origin 403 = 0 every day, so all
+    origin-reaching traffic carried the FIX-1305 header.
+13. **Open, not measured: the identifier's density.** The fitted PEXPIRE share
+    is ~13 %. Per-client-IP keys at this crawl's ~0.01/min would make nearly every
+    check the first in its window (k ≈ 5). One candidate: the limiter's key
+    (`x-forwarded-for` first hop at Vercel, `middleware.ts:152-158`) is denser
+    than Cloudflare's `clientIP`, for example if Vercel substitutes the
+    connecting Cloudflare edge IP. Then the "per-IP" buckets would be per-PoP
+    buckets. A header-echo read settles it. The FIX-1391 sizing holds either
+    way, because it is fitted on the measured 4.13.
+14. **Side note, not chased:** `/favicon.ico` answered 404 to 25,012 origin
+    requests in 7 days. That is 0 commands (outside the middleware matcher) but a
+    real origin hit per request.
