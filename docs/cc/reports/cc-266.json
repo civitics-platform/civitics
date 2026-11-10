@@ -1,0 +1,112 @@
+{
+  "cc": "266",
+  "prompt": "cc-prompt-266-mon-records-rung-first-throttle-platform-counts-wall-s9-instants-root-budget-canary-drop-night-buffercache-senate-egress-probe.md",
+  "started_at": "2026-11-10T01:23:53Z",
+  "finished_at": "2026-11-10T01:54:00Z",
+  "head_before": "bfaf776a",
+  "head_after": "7d84cc82",
+  "commits": [
+    {
+      "sha": "9c6b9364",
+      "subject": "[skip vercel] chore(fixes): file FIX-1392, FIX-1393 and FIX-1394 — the io: rung blind inside the throttle, the donor bulk's ungated staging, edgar_daily's 403 read as no_filings (cc-266)"
+    },
+    {
+      "sha": "75198125",
+      "subject": "chore(fixes): record FIX-1375 on prod — the io: rung's first real event: 4 io_saturated + 37 io_throttled skips under two holds (08:32Z, 14:23Z); one heavy arm went into a standing throttle on a stale mirror (FIX-1392) (cc-266)"
+    },
+    {
+      "sha": "d2d2a0ab",
+      "subject": "chore(fixes): record FIX-1376 on prod — cron 48 ran 4.02 s at 03:53Z Mon 11-09 inside the post-landing pass (11-02: cancelled at 2,065.9 s); no tile reads visibly wrong (cc-266)"
+    },
+    {
+      "sha": "830a16c7",
+      "subject": "chore(fixes): record FIX-1386 on prod — §9 banks instants and the Root budget on 11-08 / 11-09 / 11-10; all 40 of 11-10's busy instants join to a live unit without the ring (cc-266)"
+    },
+    {
+      "sha": "849dbae0",
+      "subject": "chore(fixes): record FIX-1389 on prod — the plain pg_buffercache histogram at 119.6 h uptime: usagecount 0-5 = 20.3 / 35.8 / 6.8 / 2.1 / 1.2 / 33.7 %, 77 dirty (cc-266)"
+    },
+    {
+      "sha": "b83c2f9d",
+      "subject": "chore(fixes): record FIX-1380 on prod — the canary's first post-conversion verdict in cadence: no finding on group_donor_rollup_refresh (168 h) in the 11-10 receipts (cc-266)"
+    },
+    {
+      "sha": "b2d99123",
+      "subject": "chore(fixes): record FIX-1382 on prod — the canary's first post-conversion verdict in cadence: no finding on contract_flow_rollups_rebuild (168 h) in the 11-10 receipts (cc-266)"
+    },
+    {
+      "sha": "36b8bcb3",
+      "subject": "chore(fixes): record FIX-1383 on prod — the canary's first post-conversion verdict in cadence: no finding on the five sweeps (744 h) in the 11-10 receipts (cc-266)"
+    },
+    {
+      "sha": "6dd15bde",
+      "subject": "chore(fixes): reopen FIX-1293 — get_ec_crawl_health itself is the cost: 13 of 18 status ticks >= 1 s through the landing, one 57014 at 04:01Z (the tile null), pgss mean 1,046 ms from two 7-day seq scans of cron.job_run_details (cc-266)"
+    },
+    {
+      "sha": "3f68d3ed",
+      "subject": "chore(fixes): record FIX-1369 on prod — the Tue 11-10 00:05Z agency-staffing slot ran incremental, complete, 1.5 s; it touched 0 agencies, so the 60 s bound is met but not exercised under load (cc-266)"
+    },
+    {
+      "sha": "e24b1718",
+      "subject": "[skip vercel] docs(ops): the io: rung's first receipt and its blind spot, the 11-09 pool read, C13's Monday buckets, dispatcher s25 / s26 / s27 lines and s28 (FIX-1372's design) (cc-266)"
+    },
+    {
+      "sha": "7d84cc82",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-266 — FIX-1375, FIX-1376, FIX-1386, FIX-1389, FIX-1380, FIX-1382, FIX-1383 and FIX-1369 prod records; FIX-1293 reopens; files FIX-1392, FIX-1393 and FIX-1394 (45 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1375",
+    "FIX-1376",
+    "FIX-1386",
+    "FIX-1389",
+    "FIX-1380",
+    "FIX-1382",
+    "FIX-1383",
+    "FIX-1369"
+  ],
+  "fixes_filed": [
+    "FIX-1392",
+    "FIX-1393",
+    "FIX-1394"
+  ],
+  "fixes_reopened": [
+    "FIX-1293"
+  ],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 10 (b) DENIED by the auto-mode permission classifier. Exact command: powershell.exe -NoProfile -ExecutionPolicy Bypass -File <scratchpad>/senate-head.ps1, a script that sends Invoke-WebRequest -Method Head six times to senate.gov (vote_menu_119_2.xml, vote1192/vote_119_2_00256.xml, the site root; UA node and Chrome/142) and once to https://www.govtrack.us/data/congress/119/votes/. Not retried through curl or anything else. senate.gov's dev-box status today and GovTrack bulk reachability are NOT recorded. cc-268's identical PowerShell HEAD was denied the same way.",
+    "Read 10 (d) not run: cc-269's GHA probe (run 42559755911, 04:04Z 11-09) already answered congress.gov (/v3/senate-vote 404, the key good). No second request was spent.",
+    "FIX-1388 NOT recorded: one tests.yml run on main since cff1f23f (42559733142 at eb49308b, success), two counting FIX-1388's own commit (42348132294). The rest are docs-only and skip tests.yml. Re-owed below.",
+    "FIX-1293 NOT recorded and REOPENED (the prompt's rule: the function itself is the cost). 13 of 18 surviving ticks were >= 1 s, and 1 x 57014 hit at 04:01Z.",
+    "FIX-1360 NOT recorded: unexercised again. The fallback (42539829794) checked out 7f4f81ea, the dispatched run's receipts commit, and pushed once (7f4f81e..9157f57).",
+    "Read 3's window was widened. The prompt framed the post-landing ecs pass as ~02:00 -> 10:00Z, but ec-crawl spent 02:41 -> 12:55Z in donations_incr_windows and ran entity_connection_stats_windows 13:11 -> 22:21Z. Read 3 covers Sun 23:00Z -> Mon 22:30Z.",
+    "Item 0's worktree slot: I created cc-266 before the reads produced the filings and kept it. The prompt names the filed id as the slot when something is filed."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1375",
+      "what": "the rung's SECOND event for the dials' calibration: the next drop night's post-landing pass (Sun 11-15) read the same way; with cc-267's dial decision (io_samples 3 -> 2 proposed) in force if it lands",
+      "after": "2026-11-16T12:00Z"
+    },
+    {
+      "fix": "FIX-1360",
+      "what": "the next drop-night fallback that collides on the receipts file — green with its regenerated receipt on main after the dispatched run's; unexercised nights are not misses",
+      "after": "2026-11-16T01:00Z"
+    },
+    {
+      "fix": "FIX-1388",
+      "what": "three tests.yml runs on main green with the two-pass runner since cff1f23f (one so far, 42559733142); quote pass 1 / pass 2",
+      "after": "2026-11-12T00:00Z"
+    },
+    {
+      "fix": "FIX-1382",
+      "what": "the Thu 11-12 14:00Z contract-flow slot armed on the first admitted tick, complete (the second half of cc-263's owed line; the canary half is recorded)",
+      "after": "2026-11-12T15:00Z"
+    }
+  ]
+}
