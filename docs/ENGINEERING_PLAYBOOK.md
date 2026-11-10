@@ -802,6 +802,11 @@ clean 15-min buckets and armed donor-rollup-refresh (2,230 s, **0 of 32
 chunks**), refresh-derived-mvs-daily (cancelled) and rule-taggers-daily
 (5,180 s) one after another into the stall.
 
+**11-09, with the `io:` rung live (cc-266):** 306 startup timeouts in 05:00–11:15Z. They came in 15-min
+buckets of 15 / 18 / 20 / 6 / 18 / 20 / 23 / 16 / 20 / 22 / 9 / 3 / 21 / 12 / 6 / 13, then clean
+09:00–09:45Z under the rung's hold, then 5 / 6 / 11 / 19 / 19 / 4. 11-02 had 270 in 03:45–08:15Z. The
+rung missed the stall because its mirror went stale inside it (FIX-1392).
+
 **Apply:** a box-health rung needs an IO input, not only a memory one. The disk
 series is in the 2-min sample since 11-03 (FIX-1375; the rung and the mirror's
 whitelist are owed). Rate it on the **exporter's** clock: the metrics endpoint

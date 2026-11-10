@@ -1167,16 +1167,26 @@ ecs sweep's 01:23:00Z wait for the first tick after 01:24Z. On 11-02 the census 
 it as refusing the 04:47–04:57Z, 06:01Z and 06:37Z arms and leaving 03:51Z alone.
 That one is inferred from the walls: the sampler started 11-03.
 
+**The first receipt (Mon 11-09, cc-266).** It fires and refuses on a fresh mirror: 4 `box: io_saturated`
+and 37 `box: io_throttled` skips, under holds set at 08:32Z and 14:23Z (ecs window 4 at 4.8–7 MB/s). The
+second hold refused every tick to 15:23Z. It was **silent through the two stalls**, 05:00–07:34Z and 10:20–11:06Z (306 startup
+timeouts; 11-02 had 270). The ring gapped 24–38 min, `mem_stale` failed open, and `fork_failures` did the
+refusing. donor-rollup-refresh armed into a standing throttle at 08:39:49Z on a 404 s mirror. The 64–89 %
+throttle samples reset the 90 % streak (FIX-1392). The match was the donor bulk's `_drb_fe` staging (FIX-1393).
+
 **The gate.** `prod_op_gate` (d) reads the same keys for both classes:
 `d:io_throttled` to the hold's instant, `d:io_saturated` for 10 min. Class B remembers
 startup timeouts 3 h (`d:startup_timeout`, latest + 3 h). Class P remembers 10 min and
 reads the live box (`d:box_<reason>`, 10 min). Over 14 d, the 10-25 wedge day out,
 (d)'s startup-timeout hours read 7.1 at 60 min, 13.1 at 3 h and 4.0 at 10 min.
 
-**The no-push rule (until the `io:` rung has its first real receipt):** no class-P push and no
+**The no-push rule (its end condition, the `io:` rung's first real receipt, was met 11-09 —
+cc-266 — but that receipt shows the rung blind inside the stall, FIX-1392, so the rule stands until
+Craig lifts it):** no class-P push and no
 class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
 `entity_connection_stats_windows` pass completes (11:31Z on 11-02, 12.5 h
-after the landing). None during a second pass either (Mon ~23:00Z → Tue). In
+after the landing; 22:21Z on 11-09, behind a `donations_incr_windows` pass
+that ran 02:41–12:55Z). None during a second pass either (Mon ~23:00Z → Tue). In
 practice that means Sunday 21:00Z → Tuesday ~06:00Z. A `job startup timeout`
 or a ring sample with load1 > 8 in the last 3 h is a STOP
 (`docs/cc/PROMPT_TEMPLATE.md`, FIX-1377). → `docs/audits/2026-11-02-io-budget-census.md`.
@@ -1895,6 +1905,11 @@ lower and re-formed within the hour, MemAvailable flat, the creep still open
 `pg_buffercache` is installed (FIX-1389, cc-264), so an M4-class pool read is a
 plain `SELECT` from `extensions.pg_buffercache`. Rule 429's rolled-back
 `CREATE EXTENSION` is retired.
+
+| read | uptime | usagecount 0 / 1 / 2 / 3 / 4 / 5 (% of 16,384) | dirty | top relation |
+|---|---|---|---|---|
+| 11-07 06:29:03Z (cc-264, post-install) | 52.5 h | 26.1 / 7.0 / 10.1 / 6.8 / 6.1 / 43.9 | — | — |
+| 11-10 01:32:54Z (cc-266) | 119.6 h | 20.3 / 35.8 / 6.8 / 2.1 / 1.2 / 33.7 | 77 | financial_entities 5,204 (99.9 % at ≤ 1, just vacuumed) |
 
 ### Dashboards
 
