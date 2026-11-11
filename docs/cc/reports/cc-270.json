@@ -1,0 +1,68 @@
+{
+  "cc": "270",
+  "prompt": "cc-prompt-270-fix1391-sliding-to-fixed-window-limiter-key-cf-connecting-ip-echo-limiter-health-route-favicon-fix1390-edge-rule-receipt-cf-analytics-origin-filter.md",
+  "started_at": "2026-11-11T00:09:17Z",
+  "finished_at": "2026-11-11T00:42:00Z",
+  "head_before": "2629989d",
+  "head_after": "2828a568",
+  "commits": [
+    {
+      "sha": "26133ab1",
+      "subject": "[skip vercel] chore(fixes): file FIX-1395 (cc-270)"
+    },
+    {
+      "sha": "ef7c82c5",
+      "subject": "[skip vercel] chore(scripts): cf-analytics --origin + --path-like; correct the ring (3) and arm (*/15) cost comments (cc-270)"
+    },
+    {
+      "sha": "c949fa20",
+      "subject": "feat(app): FIX-1391 + FIX-1395 — fixed window on the six read buckets (4.13 → ~2.13 Upstash commands/check); /api/cron/limiter-health (bearer; getLimiterHealth + the ip headers); a real favicon.ico (cc-270)"
+    },
+    {
+      "sha": "f3b689eb",
+      "subject": "chore(fixes): record FIX-1395 on prod — www /favicon.ico answers 200 image/vnd.microsoft.icon, max-age=86400, a 15,086-byte 3-image ICO; Cloudflare's cached 404 (227 origin revalidations the hour before) gives way to 200 and cache hits (cc-270)"
+    },
+    {
+      "sha": "b487df2f",
+      "subject": "[skip vercel] docs: FIX-1390 — the AI-search-crawler rule's 24 h receipt (Exa 0 / Keenable 0 origin-reaching, daily 13,548); CLOUDFLARE posture; census §11 (cc-270)"
+    },
+    {
+      "sha": "2828a568",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-270 — FIX-1390 (prod), FIX-1391 (local) and FIX-1395 (local + prod) close; files FIX-1395; logs cc-266's FIX-1293 reopen (48 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1391",
+    "FIX-1395",
+    "FIX-1390"
+  ],
+  "fixes_filed": [
+    "FIX-1395"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "fixes:status at start read 45 open, not the prompt's 41: cc-266 filed FIX-1392/1393/1394 and reopened FIX-1293 after the prompt was written. Reported and carried on, per the STOP table.",
+    "Permission DENIED by the auto-mode classifier for the favicon tool install. Exact command: mkdir -p \\\"<scratchpad>/resvg-pkg\\\" && cd \\\"<scratchpad>/resvg-pkg\\\" && echo '{\\\"name\\\":\\\"resvg-tmp\\\",\\\"private\\\":true}' > package.json && npm install --no-audit --no-fund @resvg/resvg-js@2.6.2. Not retried through pnpm dlx or any other installer. D4 completed without it: app/icon.svg (one stroked triangle, seven rects) was rasterised with Node built-ins (scratch make-favicon.mjs), and no dependency was added.",
+    "Reads 4 and 5 (the identifier, six GETs through www) NOT run as written. Cloudflare Under Attack challenges every scripted request: 403 cf-mitigated: challenge, cf-ray a58934a7fa4c77a3-SEA at 00:33:30Z, with and without the bearer (docs/CLOUDFLARE.md §5). The prompt premised dev-box reads through www. The route was read through the vercel.app alias instead (the /api/cron/* exemption), which cannot show the through-Cloudflare value.",
+    "Item 4 NOT landed (gated on read 4): no identifier FIX filed and client-ip.ts keeps x-forwarded-for. Census §10 item 13 stays OPEN, with the alias spoof test as new evidence.",
+    "D3 premise contradicted: an edge route does NOT share the middleware's module state. .next/server/middleware-manifest.json lists middleware ['/'] and functions ['/api/cron/limiter-health/route', …] as separate edge bundles, and prod returned mode null / zeros. The route shipped as the ip instrument with health_scope: route-isolate. It is NOT FIX-1304's instrument.",
+    "D7 posture row name: the live rule is named SearchBot, not 'AI search crawlers (FIX-1390)'. Recorded as live; no Cloudflare write (renaming is Craig's dashboard click).",
+    "Item 3's first commit (a4a818d2, never pushed) was refused by the pre-push FIX-1271 gate (trailer FIX-1395 not named in the subject). The identical tree was re-committed as c949fa20 with git reset --soft. No --amend, nothing rewritten on any remote."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1391",
+      "what": "k = (daily − F)/B for 11-11, the first full UTC day after the 00:32:42Z deploy (platform_usage_snapshot + cf-analytics --origin, classified with the census classifier). Expect ≤ 2.4 at cc-269's 13 % first-in-window share, ≤ 3.4 at 11-10's (sliding k 5.15, ≈ every check a first); 429s still 0 for browser-class UAs",
+      "after": "2026-11-12T06:00Z"
+    },
+    {
+      "fix": "FIX-1304",
+      "what": "the budget hold's first real engagement, re-projected for 11-18 22:11Z (k 3.15) → 11-21 13:35Z (k 2.13) at B 2,805/day. Read the snapshot's budget.state plus a flag_written hold row. If it never lands this month, the receipt rolls to the first month it does",
+      "after": "2026-11-21T14:00Z"
+    }
+  ]
+}
