@@ -561,3 +561,160 @@ re-run (`gh workflow run egress-probe.yml --ref main`).
 14. **Side note, not chased:** `/favicon.ico` answered 404 to 25,012 origin
     requests in 7 days. That is 0 commands (outside the middleware matcher) but a
     real origin hit per request.
+
+---
+
+## §11 cc-270's receipts (2026-11-11; appended, nothing above edited)
+
+Prod contact was read-only throughout. It covered Cloudflare GraphQL (the new
+`cf-analytics.mjs --origin` / `--path-like`, plus multi-dimension scratch
+queries) and one REST GET of the custom-rules entrypoint, which printed the
+expression of the new rule only. It also covered one `db-query --prod` of
+`platform_usage_snapshot` (`SET LOCAL statement_timeout = '30s'`) and GETs of
+`/favicon.ico` and `/api/cron/limiter-health`. Nothing was written to prod,
+Upstash or Cloudflare.
+
+### FIX-1390's receipt: MET
+
+**The rule as live** (entrypoint, ruleset v5, 5 rules, last updated
+2026-11-09T05:05:18Z): **`SearchBot`**, `managed_challenge`, enabled,
+`(http.user_agent contains "ExaSearchBot") or (http.user_agent contains "KeenableBot")`.
+That is §7's expression exactly. The name carries no FIX id.
+
+| window (UTC) | Exa origin | Exa edge | Keenable origin | Keenable edge |
+|---|---:|---|---:|---|
+| 11-09 00–05Z, pre-rule, quoted apart | 972 | 972, all 200 | 30 | 30 (15 × 200, 15 × 307) |
+| 11-09 05–24Z | **0** | 1,153 (1,152 × 403, 1 × 499) | **2** | 31 (29 × 403) |
+| 11-10, full day | **0** | **0**: Exa stopped asking | **0** | 20, all 403 |
+| threshold: 5 % of the 11-02→08 daily mean (§4) | 175 (of 3,505) | | 56 (of 1,129) | |
+
+- Keenable's 2 post-05Z origin requests are both in the 05:00Z hour (one 500,
+  one 307), before the rule's 05:05:18Z.
+- No browser-class UA moved to a 403. Edge 403s were 17,114 on 11-08 and 17,265
+  on 11-10, with the same top ten both days: the rotating Windows Chrome
+  133–142 family that Under Attack challenges. The rule matches two substrings
+  that no browser UA carries.
+- 429s at the origin: 0 on 11-09 and 0 on 11-10.
+- Upstash `daily` for 11-09 was **13,548** at 23:31Z (≤ ~15k ✓). 11-10 was
+  16,561.
+
+### The model's first out-of-sample days
+
+B comes from the verbatim middleware sequence. The classifier reproduces §4's
+11-08 B of 5,024 exactly.
+
+| UTC day | entity_leaf | entity_pages | api | **B** | `daily` @23:31 | full day (×1440/1411) | 4.13B + F | residual | implied k |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 11-09 | 1,157 | 1,310 | 2 | **2,469** (1,240 pre-rule / 1,229 post) | 13,548 | 13,826 | 12,646 | **+9.3 %** | 4.61 |
+| 11-10 | 991 | 1,814 | 0 | **2,805** | 16,561 | 16,901 | 14,034 | **+20.4 %** | 5.15 |
+
+- **11-09 passes** (±10 %). It is the model's first out-of-sample day, and it
+  is part pre-rule.
+- **11-10 misses by +20 %, and the miss is k, not F.** With Exa's dense /24
+  gone, nearly every remaining check is the first in its window. A sliding
+  first-in-window check is 5 commands (EVAL, GET, GET, INCRBY, PEXPIRE). The
+  ~0.15 above 5 is about the size FIX-1304's flag GETs on cold isolates would
+  be (~420/day), but that is a hypothesis, not a measurement.
+  **Consequence for [[FIX-1391]]:** at that share, the fixed window costs 3 a
+  check, not 2.13. That is −40 %, not −48 %. The owed k receipt (cc-270
+  report) says so.
+
+**Origin totals:** 8,482 on 11-09 (353/hr) and **24,256 on 11-10 (1,011/hr)**,
+against the census week's 643/hr. The 11-10 rise is not bucketed traffic. The
+rotating Windows Chrome 133–142 family from §4 (3c) reached the origin 23,151
+times on 11-10, 95 % of the day. That was 2,787 IPs in 125 countries (BR 2,532
+· IN 2,442 · VN 1,699 · US 1,331 · MX 1,028), about 8 requests an IP, almost
+all on the app's beacons: `/favicon.ico` 5,773, `/api/platform/web-vitals`
+4,208 (POST), `/icon.svg` 2,239, `/api/notifications` 2,047 (401),
+`/_vercel/insights/view` 2,000 and `/api/track-view` 1,551. Its daily origin
+count was 7,523 (11-06), 6,735 (11-07), 15,668 (11-08), 6,269 (11-09) and
+23,151 (11-10). It spends function invocations, not Upstash commands. It is
+named here for a future census and was not chased.
+
+### The re-projection (read 3)
+
+At 11-11T00:01:27Z, `used` was 262,231 of 500,000, `state` `healthy`, and
+`budget` was `{pct 70, commands 350,000, state clear, flag_written true}`. The
+hold has still never engaged.
+
+| rate | per day | → 350k | hold engages by (+3 h step + 30 min) | → 500k |
+|---|---:|---|---|---|
+| (i) post-rule, still sliding (11-10's full day) | 16,901 | 5.19 d → 11-16 04:39Z | 11-16 08:09Z | 14.07 d → 11-25 01:39Z |
+| (ii) post-swap, k 2.13 (B 2,805) | 8,424 | 10.42 d → 11-21 10:05Z | 11-21 13:35Z | past 12-01 |
+| (iii) post-swap, k 3.15 (11-10's share) | 11,285 | 7.78 d → 11-18 18:41Z | 11-18 22:11Z | past 12-01 |
+
+The swap deployed at 11-11 00:32:42Z, so (ii)–(iii) is the rest of the month.
+**The hold still lands in November, between 11-18 and 11-21**, unless B falls
+further. Once it holds, the floor alone carries the month to ~373–380k by
+12-01, and 500k is out of reach either way.
+
+### The identifier (§10 item 13): still OPEN, but narrower
+
+**Read 4 could not run as written.** Every scripted GET through
+www.civitics.com was challenged (`403`, `cf-mitigated: challenge`, `server:
+cloudflare`, `cf-ray …-SEA`, 00:33:30Z and 00:34Z), with or without the
+bearer. docs/CLOUDFLARE.md §5 holds: the request never reaches Vercel. The
+FIX-1057 header that skips Under Attack lives only in the WAF rule and a GHA
+secret.
+
+The same route through the vercel.app alias (00:34:25Z). `/api/cron/*` is
+exempt from both the alias redirect and the origin door:
+
+- `401 {"error":"Unauthorized"}` without the bearer, and `200` with it. Both
+  carry `cache-control: no-store`.
+- `ip`: `x_forwarded_for` = `x_real_ip` = `key_in_use` = the dev box's public
+  IPv4 (not recorded here), and `cf_connecting_ip` was null.
+- With client-sent TEST-NET values (`X-Forwarded-For: 192.0.2.1`,
+  `X-Real-IP: 192.0.2.3`, `CF-Connecting-IP: 192.0.2.2`), **Vercel overwrote
+  both forwarded headers with the TCP peer** (the dev box) and **passed
+  `cf-connecting-ip: 192.0.2.2` through untouched**.
+
+What this settles: Vercel sets `x-forwarded-for` from whoever opened the TCP
+connection. Behind the proxy, that is a Cloudflare edge, so the limiter's key
+is very likely the PoP. That fits §4's 13 % first-in-window share across 256
+sparse Exa IPs.
+
+What it does not settle: the value as seen through Cloudflare, which the
+criterion needs (`x_forwarded_for` ≠ `cf_connecting_ip`, and inside a
+Cloudflare range). So the identifier is **not confirmed and not refuted**. No
+FIX was filed and no keying code changed.
+
+The alias read also shows that D2's trust boundary is real. A client-sent
+`cf-connecting-ip` survives Vercel, so a request may be keyed on it only after
+it has passed the origin door in `enforce`.
+
+**How to read it:** a `workflow_dispatch` job that sends `x-civitics-probe`
+(the FIX-1057 skip) and `CRON_SECRET`, as `platform-snapshot.yml` already does,
+GETs `/api/cron/limiter-health` through www, and prints `ip`.
+
+### The health block cannot be the middleware's
+
+`/api/cron/limiter-health` (edge) returns its own isolate's
+`getLimiterHealth()`. On both alias reads that was `mode null, transitions 0,
+deny_cache_size 0, memory_keys 0, budget_hold null, budget_reads 0`. The
+build's `.next/server/middleware-manifest.json` lists `middleware: ['/']` and
+`functions: ['/api/cron/limiter-health/route', …]`. Those are two edge
+bundles, each with its own copy of `ratelimit.ts`'s module state. So the edge
+runtime does not put the route in the middleware's isolate, and the block
+cannot serve [[FIX-1304]]'s receipt. For that, the middleware would have to
+answer the path itself.
+
+### FIX-1395, the favicon (read 6)
+
+`GET https://www.civitics.com/favicon.ico` at 00:34Z returned `200`,
+`content-type: image/vnd.microsoft.icon`, `cache-control: public,
+max-age=86400, stale-while-revalidate=604800`, `cf-cache-status: EXPIRED` and
+`x-vercel-cache: MISS`. It was 15,086 bytes with magic `00 00 01 00 03 00` (an
+ICO holding 3 images), and it was not challenged.
+
+Cloudflare, `/favicon.ico`, compared:
+
+- **Hour before the deploy (23:33–00:33Z):** 233 requests, all of them 404s at
+  the edge. 227 were `revalidated` against the origin (origin 304); a cached
+  404 was being re-asked a few times a minute.
+- **First 4 minutes after (00:33Z on):** 6 at edge 200 from origin 200
+  (`expired` / `miss`, as each colo drops its 404), then 2 `hit` with origin
+  status 0.
+
+Deploy: `c949fa20` reached `main` at 00:30:58Z; the Vercel commit status went
+from `pending` to `success` at 00:32:42Z.

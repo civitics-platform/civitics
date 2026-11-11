@@ -141,7 +141,7 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Caching Level | Standard | default |
 | Bot Fight Mode | **Off** | intentional — see §2 |
 | Security level | **`under_attack` — STILL ON as of 2026-08-17** | human-set, not the loop — see §526 |
-| WAF custom rules | 4 — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta, `Probe skip (FIX-1057)` | all enabled |
+| WAF custom rules | **5** — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta, `Probe skip (FIX-1057)`, `SearchBot` (FIX-1390) | all enabled; ruleset v5, last updated 2026-11-09T05:05:18Z (API read, cc-270). **All 5 Free slots are used**: the next rule (e.g. Pending's FIX-799 skip) must replace or merge one |
 | TLS 1.3 | On | |
 | Automatic HTTPS Rewrites | On | |
 | Always Use HTTPS | **On** | corrected 2026-08-17; the doc said Off |
@@ -151,7 +151,8 @@ Snapshot. Verify in the dashboard before relying on any row.
 | DNSSEC | Not enabled | disabled for the move, never re-enabled |
 | Certificate Transparency Monitoring | **On since 2026-08-14** | free issuance alerts |
 | Transform Rule: `Origin auth (FIX-1305)` | **On since 2026-10-12** (Craig); origin check **`enforce` since 2026-10-14 02:25Z** (cc-231) | stamps `x-civitics-origin`; the origin 403s a request without it — see §"Origin auth (FIX-1305)" |
-| WAF custom rule: `Verified bots skip (FIX-1305)` | added 2026-10-12 (Craig) | Skip → Security Level only, `(cf.client.bot)` — not script-verified |
+| WAF custom rule: `Verified bots skip (FIX-1305)` | **does NOT exist** — the 10-12 row was a mis-record | the custom ruleset (API, 11-09: 4 rules, none of them this) and Transform Rules (Craig's dashboard, 11-08: only `Origin auth (FIX-1305)`) were both read. Verified bots pass Under Attack natively, so nothing was lost (cc-269 census §5, §10 item 4) |
+| WAF custom rule: `SearchBot` ([[FIX-1390]]) | added 2026-11-09 05:05:18Z (Craig) | **Managed Challenge** where `(http.user_agent contains "ExaSearchBot") or (http.user_agent contains "KeenableBot")` — expression read from the entrypoint by API (cc-270). Two crawlers Cloudflare verifies as Search Engine Crawler, which is why Under Attack passed them. 24 h receipt: both at 0 origin-reaching (docs/audits/2026-11-09-upstash-spend-census.md §11). The planned name was `AI search crawlers (FIX-1390)`; the live one carries no id |
 
 ### The 2026-08-12 526 — an expired ORIGIN certificate, renewals failing silently
 
