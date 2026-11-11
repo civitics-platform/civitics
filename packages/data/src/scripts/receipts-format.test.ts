@@ -1003,8 +1003,21 @@ test("FIX-1386: §9 — busy instants, the extremes' instants and the Root budge
   assert.match(text, /rated 700 of 720 samples\. Busy instants: 04:10Z \(97 %, 27\.3 MB\/s, 3,061 r\/s\) · 04:12Z \(100 %, 2 MB\/s, 215 r\/s\)\. Swap max at 11:58Z; MemAvailable min at 12:34Z\./);
   assert.match(
     text,
-    /Root budget \(24 h, banked as `forker\.memory_day\.io\.root`\): root read \*\*174 GB\*\* · \/data 106\.4 GB · swap-in 31\.7 GB \(18\.2 % of root\) · major faults 17\.2 GB at one 4 KiB page per fault, a floor — hypothesis, not measured: the rest of root's reads are file-backed \(binaries, libraries, logs, WAL on root\?\)\./,
+    /Root budget \(24 h, banked as `forker\.memory_day\.io\.root`\): root read \*\*174 GB\*\* · \/data 106\.4 GB · swap-in 31\.7 GB \(18\.2 % of root\) · major faults 17\.2 GB at one 4 KiB page per fault, a floor · root mean read n\/a — hypothesis, not measured: the rest of root's reads are file-backed \(binaries, libraries, logs, WAL on root\?\)\./,
   );
+});
+
+test("FIX-1397: §9 — the Root budget line prints root's mean read size and count; a partial window says so", () => {
+  const withReads = { ...IO_1386, root: { ...ROOT, root_reads: 4_967_412, mean_read_kib: 36.4, reads_hours: 24 } };
+  const text = boxHealthLines({ ...quiet, memory_day: md1386(withReads) }, AS_OF).join("\n");
+  assert.match(text, /a floor · root mean read \*\*36\.4 KiB\*\* \(4,967,412 reads\) — hypothesis/);
+  const partial = { ...IO_1386, root: { ...ROOT, root_reads: 3_000_000, mean_read_kib: 7.9, reads_hours: 20.5 } };
+  assert.match(
+    boxHealthLines({ ...quiet, memory_day: md1386(partial) }, AS_OF).join("\n"),
+    /root mean read \*\*7\.9 KiB\*\* \(3,000,000 reads, over the last 20\.5 h\)/,
+  );
+  const reset = { ...IO_1386, root: { ...ROOT, root_reads: null, mean_read_kib: null, reads_hours: 24 } };
+  assert.match(boxHealthLines({ ...quiet, memory_day: md1386(reset) }, AS_OF).join("\n"), /a floor · root mean read n\/a —/);
 });
 
 test("FIX-1386: §9 — no busy sample reads none; past eight the rest are counted", () => {

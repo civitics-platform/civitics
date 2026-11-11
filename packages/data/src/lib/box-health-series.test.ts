@@ -132,6 +132,7 @@ test("FIX-1194 / FIX-1125 (cc-183): memoryDay — swap rates p50/p95/max, MemAva
       root: {
         hours: null, root_read_gb: null, data_read_gb: null, swap_in_gb: null, majfault_gb: null,
         swap_in_share_pct: null, rated: 0, reason: "no sample in the window carries the raw counters",
+        root_reads: null, mean_read_kib: null, reads_hours: null,
       },
     },
   });
@@ -251,7 +252,44 @@ test("FIX-1386: rootDay — the window's first and last counter-carrying samples
     swap_in_share_pct: 18.2,
     rated: 3,
     reason: null,
+    root_reads: null,
+    mean_read_kib: null,
+    reads_hours: null,
   });
+});
+
+/** FIX-1397 — the read counts on top of COUNTERS / later(): root 162 M → 166 M reads across the day. */
+const READS = { disk_reads: 178_000_000, disk_all_reads: 340_000_000 };
+const READS_LATER = { disk_reads: 179_000_000, disk_all_reads: 345_000_000 };
+
+test("FIX-1397: rootDay — root reads and the mean read KiB over the counting samples", () => {
+  const rows = rowsOf([s(1440, later(READS_LATER)), s(720, later({ ...READS, disk_all_reads: 342_000_000 })), s(0, { ...COUNTERS, ...READS })], 1441);
+  const r = rootDay(rows);
+  assert.equal(r.root_read_gb, 174);
+  assert.equal(r.root_reads, 4_000_000);
+  assert.equal(r.mean_read_kib, Math.round((174e9 / 1024 / 4e6) * 10) / 10, "174 GB over 4 M reads ≈ 42.5 KiB");
+  assert.equal(r.reads_hours, 24);
+  assert.equal(r.reason, null);
+});
+
+test("FIX-1397: rootDay — a window spanning the sampler's deploy counts from its first counted sample, bytes re-differenced there", () => {
+  const mid = later({ pswpin: 123_000_000, pgmajfault: 70_000_000, disk_read_bytes: 2_400_000_000_000, disk_all_read_bytes: 4_950_000_000_000, ...READS });
+  const r = rootDay(rowsOf([s(1440, later(READS_LATER)), s(720, mid), s(0, COUNTERS)], 1441));
+  assert.equal(r.root_read_gb, 174, "the bytes keep the whole window");
+  assert.equal(r.root_reads, 4_000_000);
+  const bytes = (5_092_400_000_000 - 2_454_400_000_000) - (4_950_000_000_000 - 2_400_000_000_000);
+  assert.equal(r.mean_read_kib, Math.round((bytes / 1024 / 4e6) * 10) / 10, "the mean divides the counted window's bytes, not the day's");
+  assert.equal(r.reads_hours, 12);
+});
+
+test("FIX-1397: rootDay — a read count that went backwards nulls the count and the mean, and says where", () => {
+  const r = rootDay(rowsOf([s(4, later(READS_LATER)), s(2, later({ ...READS, disk_all_reads: 100 })), s(0, { ...COUNTERS, ...READS })], 5));
+  assert.equal(r.root_reads, null);
+  assert.equal(r.mean_read_kib, null);
+  assert.equal(r.root_read_gb, 174, "the bytes did not reset");
+  assert.match(r.reason!, /root read count went backwards at /);
+  const old = rootDay(rowsOf([s(2, later()), s(0, COUNTERS)], 3));
+  assert.deepEqual([old.root_reads, old.mean_read_kib, old.reads_hours], [null, null, null], "a day before cc-267's sampler");
 });
 
 test("FIX-1386: rootDay — a counter reset nulls that number and says why, even when the ends look monotonic", () => {

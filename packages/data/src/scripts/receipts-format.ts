@@ -877,6 +877,21 @@ function instantsText(io: IoDay): string {
   );
 }
 
+/**
+ * FIX-1397 — root's mean read size, the attribution instrument: ~4–8 KiB is
+ * page-sized (faults, swap), 64 KiB and up file-backed sequential. Days banked
+ * before cc-267's sampler carry no read count and print n/a.
+ */
+function rootReadsText(root: RootDay): string {
+  if (root.mean_read_kib === undefined || root.mean_read_kib === null || root.root_reads === undefined || root.root_reads === null) {
+    return " · root mean read n/a";
+  }
+  const part = root.reads_hours !== undefined && root.reads_hours !== null && root.hours !== null && root.reads_hours < root.hours - 0.05
+    ? ", over the last " + Math.round(root.reads_hours * 10) / 10 + " h"
+    : "";
+  return " · root mean read **" + root.mean_read_kib + " KiB** (" + root.root_reads.toLocaleString("en-US") + " reads" + part + ")";
+}
+
 /** FIX-1386 — the Root budget bullet. The file-backed clause is a hypothesis and says so. */
 function rootBudgetText(root: RootDay | undefined): string {
   if (root === undefined) return "Root budget: n/a (banked before cc-265).";
@@ -888,6 +903,7 @@ function rootBudgetText(root: RootDay | undefined): string {
     (root.swap_in_share_pct === null ? "" : " (" + root.swap_in_share_pct + " % of root)") +
     " · major faults " + gb(root.majfault_gb) +
     (root.majfault_gb === null ? "" : " at one 4 KiB page per fault, a floor") +
+    rootReadsText(root) +
     " — hypothesis, not measured: the rest of root's reads are file-backed (binaries, libraries, logs, WAL on root?)." +
     (root.reason === null ? "" : " (" + root.reason + ").")
   );

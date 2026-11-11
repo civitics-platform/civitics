@@ -319,6 +319,23 @@ test("FIX-1375: two scrapes rate on the EXPORTER's clock — every rate is the c
   assert.ok(r.io_time_pct! <= 100);
 });
 
+test("FIX-1397: disk_all_reads sums both whole disks' reads completed; disk_all_reads_ps rates it on the exporter's clock", () => {
+  const a = parseBoxHealthSample(DISK_A, "2026-11-03T02:36:15.732Z", 300);
+  const b = parseBoxHealthSample(DISK_B, "2026-11-03T02:37:17.199Z", 300);
+  assert.ok(a.ok && b.ok);
+  const reads = (body: string) =>
+    counter(body, "node_disk_reads_completed_total", "nvme1n1") + counter(body, "node_disk_reads_completed_total", "nvme0n1");
+  assert.equal(a.sample.disk_all_reads, reads(DISK_A), "the root volume's reads are in it");
+  assert.ok(a.sample.disk_all_reads! > a.sample.disk_reads!, "more than /data's alone");
+  const dt = exporterClock(DISK_B) - exporterClock(DISK_A);
+  const r = diskRates(a.sample, b.sample);
+  assert.equal(r.disk_all_reads_ps, Math.round(((reads(DISK_B) - reads(DISK_A)) / dt) * 10) / 10);
+  assert.equal(diskRates(null, b.sample).disk_all_reads_ps, undefined, "the first sample rates nothing");
+  const reset = diskRates({ ...a.sample, disk_all_reads: b.sample.disk_all_reads! + 1 }, b.sample);
+  assert.equal(reset.disk_all_reads_ps, undefined, "a counter that went backwards drops this rate only");
+  assert.equal(typeof reset.disk_all_read_mbps, "number");
+});
+
 test("FIX-1375: no honest rate → the key is ABSENT (first sample, device change, same snapshot, a gap, a reset)", () => {
   const a = parseBoxHealthSample(DISK_A, "t", 1);
   const b = parseBoxHealthSample(DISK_B, "t", 1);

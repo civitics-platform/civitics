@@ -154,6 +154,8 @@ export type DiskRaw = {
   /** Bytes read / written across every whole disk on the db host: the instance's burst budget is shared. */
   disk_all_read_bytes: number;
   disk_all_written_bytes: number;
+  /** FIX-1397 — reads completed across every whole disk: with the bytes, root's mean read size. */
+  disk_all_reads: number;
 } & Record<DiskCounterField, number>;
 
 /** FIX-1375 — the rates over the interval since the previous sample. MB is 10^6 bytes, as EBS quotes it. */
@@ -168,6 +170,8 @@ export type DiskRates = {
   disk_writes_ps: number;
   disk_all_read_mbps: number;
   disk_all_write_mbps: number;
+  /** FIX-1397 — every whole disk's reads/s. */
+  disk_all_reads_ps: number;
 };
 
 export type BoxHealthSample = {
@@ -282,6 +286,7 @@ export function parseDiskRaw(body: string): DiskRaw | { missing: string } {
       .reduce((s, r) => s + r.value, 0);
   raw["disk_all_read_bytes"] = sumAll(BOX_HEALTH_DISK_COUNTERS.disk_read_bytes);
   raw["disk_all_written_bytes"] = sumAll(BOX_HEALTH_DISK_COUNTERS.disk_written_bytes);
+  raw["disk_all_reads"] = sumAll(BOX_HEALTH_DISK_COUNTERS.disk_reads);
 
   const cpu = rows.filter((r) => r.name === "node_cpu_seconds_total");
   const cpus = new Set(cpu.map((r) => r.labels.match(/cpu="([^"]+)"/)?.[1] ?? "?"));
@@ -324,6 +329,7 @@ export function diskRates(prev: Partial<BoxHealthSample> | null, cur: Partial<Bo
   put("disk_writes_ps", delta("disk_writes"), 1, 1);
   put("disk_all_read_mbps", delta("disk_all_read_bytes"), 1e6, 2);
   put("disk_all_write_mbps", delta("disk_all_written_bytes"), 1e6, 2);
+  put("disk_all_reads_ps", delta("disk_all_reads"), 1, 1);
   const io = delta("disk_io_time_s");
   if (io !== null) out.io_time_pct = Math.min(100, Math.round((1000 * io) / dt) / 10);
   return out;

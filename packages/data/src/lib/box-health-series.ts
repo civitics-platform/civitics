@@ -57,6 +57,9 @@ export type RootCounters = {
   disk_device: string;
   disk_read_bytes: number;
   disk_all_read_bytes: number;
+  /** FIX-1397 — the read counts, on samples from cc-267's sampler on (absent before). */
+  disk_reads?: number;
+  disk_all_reads?: number;
 };
 
 export type SeriesRow = {
@@ -98,7 +101,7 @@ function rate(prev: number | undefined, cur: number | undefined, seconds: number
 }
 
 function rootCounters(s: BoxHealthSample): RootCounters | null {
-  const { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes } = s;
+  const { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes, disk_reads, disk_all_reads } = s;
   if (
     pswpin === undefined ||
     pgmajfault === undefined ||
@@ -108,7 +111,10 @@ function rootCounters(s: BoxHealthSample): RootCounters | null {
   ) {
     return null;
   }
-  return { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes };
+  return {
+    pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes,
+    ...(disk_reads !== undefined && disk_all_reads !== undefined ? { disk_reads, disk_all_reads } : {}),
+  };
 }
 
 /** Newest-first samples → oldest-first rows inside the last `hours`. */
@@ -252,6 +258,17 @@ export type RootDay = {
   swap_in_share_pct: number | null;
   rated: number;
   reason: string | null;
+  /**
+   * FIX-1397 — root's reads COMPLETED and their mean size (KiB, 1,024 B), from
+   * the samples that carry the counts: a window that spans the sampler's deploy
+   * starts at its first such sample, and `reads_hours` says how much of the day
+   * that is. The bytes are re-differenced over the same samples, so the mean
+   * never divides one window's bytes by another's reads. ~4–8 KiB reads as
+   * page-sized (faults, swap); 64 KiB and up as file-backed sequential.
+   */
+  root_reads: number | null;
+  mean_read_kib: number | null;
+  reads_hours: number | null;
 };
 
 /** FIX-1375 — "busy" for minutes_busy: the gp3 IOPS ceiling reads 97–101 % (cc-262 calibration). */
@@ -354,6 +371,9 @@ export function rootDay(rows: SeriesRow[]): RootDay {
     swap_in_share_pct: null,
     rated: carrying.length,
     reason,
+    root_reads: null,
+    mean_read_kib: null,
+    reads_hours: null,
   });
   if (carrying.length === 0) return unrated("no sample in the window carries the raw counters");
   if (carrying.length === 1) return unrated("one sample in the window carries the raw counters; nothing to difference");
@@ -361,15 +381,20 @@ export function rootDay(rows: SeriesRow[]): RootDay {
   const first = carrying[0]!;
   const last = carrying[carrying.length - 1]!;
   const reasons: string[] = [];
-  const delta = (name: string, read: (c: RootCounters) => number): number | null => {
-    for (let i = 1; i < carrying.length; i++) {
-      if (read(carrying[i]!.c) < read(carrying[i - 1]!.c)) {
-        reasons.push(`${name} went backwards at ${carrying[i]!.at}`);
+  const deltaOver = (
+    list: { at: string; c: RootCounters }[],
+    name: string,
+    read: (c: RootCounters) => number,
+  ): number | null => {
+    for (let i = 1; i < list.length; i++) {
+      if (read(list[i]!.c) < read(list[i - 1]!.c)) {
+        reasons.push(`${name} went backwards at ${list[i]!.at}`);
         return null;
       }
     }
-    return read(last.c) - read(first.c);
+    return read(list[list.length - 1]!.c) - read(list[0]!.c);
   };
+  const delta = (name: string, read: (c: RootCounters) => number): number | null => deltaOver(carrying, name, read);
 
   const moved = carrying.find((x) => x.c.disk_device !== first.c.disk_device);
   if (moved) reasons.push(`the /data device changed ${first.c.disk_device} → ${moved.c.disk_device} at ${moved.at}`);
@@ -377,6 +402,20 @@ export function rootDay(rows: SeriesRow[]): RootDay {
   const dataBytes = moved ? null : delta("/data reads", (c) => c.disk_read_bytes);
   const swapPages = delta("pswpin", (c) => c.pswpin);
   const faults = delta("pgmajfault", (c) => c.pgmajfault);
+
+  // FIX-1397: the read count, over the samples that carry it.
+  const counting = carrying.filter((x) => x.c.disk_reads !== undefined && x.c.disk_all_reads !== undefined);
+  let rootReads: number | null = null;
+  let meanKib: number | null = null;
+  let readsHours: number | null = null;
+  if (!moved && counting.length >= 2) {
+    rootReads = deltaOver(counting, "root read count", (c) => c.disk_all_reads! - c.disk_reads!);
+    const countedBytes = deltaOver(counting, "root reads (counted window)", (c) => c.disk_all_read_bytes - c.disk_read_bytes);
+    meanKib = rootReads === null || countedBytes === null || rootReads === 0
+      ? null
+      : Math.round((countedBytes / 1024 / rootReads) * 10) / 10;
+    readsHours = Math.round((Date.parse(counting[counting.length - 1]!.at) - Date.parse(counting[0]!.at)) / 36_000) / 100;
+  }
 
   const gb = (bytes: number | null) => (bytes === null ? null : Math.round((bytes / GB) * 10) / 10);
   const swapBytes = swapPages === null ? null : swapPages * PAGE_BYTES;
@@ -390,6 +429,9 @@ export function rootDay(rows: SeriesRow[]): RootDay {
       swapBytes === null || rootBytes === null || rootBytes === 0 ? null : Math.round((1000 * swapBytes) / rootBytes) / 10,
     rated: carrying.length,
     reason: reasons.length === 0 ? null : reasons.join("; "),
+    root_reads: rootReads,
+    mean_read_kib: meanKib,
+    reads_hours: readsHours,
   };
 }
 
