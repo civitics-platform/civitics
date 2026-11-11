@@ -28,7 +28,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { atCurrentPins, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -450,7 +450,8 @@ test("clone: a tick under a streak skips with `box: io_saturated` and arms nothi
         `SELECT proname, md5(prosrc) AS m FROM pg_proc
           WHERE pronamespace = 'public'::regnamespace AND proname IN ('dispatch_one_unit', 'get_dispatcher_status')`,
       )).rows as { proname: "dispatch_one_unit" | "get_dispatcher_status"; m: string }[];
-      for (const p of pins) assert.equal(p.m, PINS[p.proname], p.proname);
+      // cc-267 moved get_dispatcher_status (FIX-1398): PIN_LINEAGE names its live body.
+      for (const p of pins) assert.equal(p.m, atCurrentPins(PINS[p.proname]), p.proname);
     } finally {
       await c.query("ROLLBACK");
     }
@@ -459,7 +460,7 @@ test("clone: a tick under a streak skips with `box: io_saturated` and arms nothi
   }
 });
 
-test("clone: the tick row's box carries readings.io; get_dispatcher_status()->'box' does not, and its pin stays", async (t) => {
+test("clone: the tick row's box carries readings.io; get_dispatcher_status()->'box' projects it from cc-267 on (FIX-1398)", async (t) => {
   const c = await clone(t);
   if (!c) return;
   try {
@@ -473,7 +474,13 @@ test("clone: the tick row's box carries readings.io; get_dispatcher_status()->'b
       assert.equal(box.io.all_mbps, 31);
       assert.equal(box.thresholds.io.ceiling, 90);
       const s = (await c.query("SELECT public.get_dispatcher_status() AS s")).rows[0].s;
-      assert.deepEqual(Object.keys(s.box).sort(), ["decision", "memory", "thresholds_memory", "ticked_at"], "fix1354's projection");
+      assert.deepEqual(
+        Object.keys(s.box).sort(),
+        ["decision", "io", "mem_stale", "memory", "mirror_age_seconds", "thresholds_io", "thresholds_memory", "ticked_at"],
+        "fix1354's projection + cc-267's io block",
+      );
+      assert.equal(s.box.io.busy_streak, 3);
+      assert.equal(s.box.thresholds_io.ceiling, 90);
     } finally {
       await c.query("ROLLBACK");
     }
@@ -581,6 +588,11 @@ test("clone: the reverts restore every md5, the row and the dials, in order", as
   try {
     await begin(c);
     try {
+      // cc-267's reverts first: their targets are the bodies the cc-264 reverts guard on.
+      await c.query(script("fix1392-revert-io-hold-stale.sql"));
+      await c.query(script("fix1398-revert-status-readings-io.sql"));
+      await c.query(script("fix1399-revert-io-samples-3.sql"));
+
       await assert.rejects(() => c.query("SAVEPOINT s; " + script("fix1375-revert-io-rung.sql")), /run scripts\/fix1377-revert-prod-op-gate-d\.sql first/);
       await c.query("ROLLBACK TO SAVEPOINT s");
 

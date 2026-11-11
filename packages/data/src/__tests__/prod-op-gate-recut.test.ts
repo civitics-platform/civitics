@@ -260,7 +260,8 @@ test("(4) clone rehearsal (r1)-(r6): classes, the dispatched skip, live and slot
   try {
     const md = (await c.query<{ m: string }>(
       "SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = 'prod_op_gate' AND pronamespace = 'public'::regnamespace")).rows[0]?.m;
-    if (md !== RECUT_MD5 && md !== D_RECUT_MD5) {
+    // FIX-1392 (cc-267): 70a799ab… is D_RECUT's body reading a standing hold at any mirror age.
+    if (md !== RECUT_MD5 && md !== D_RECUT_MD5 && md !== "70a799ab3df2484fc424fe2762ffa797") {
       t.skip(`FIX-1342 not applied on this DB (md5 ${md})`);
       return;
     }
@@ -280,6 +281,9 @@ test("(4) clone rehearsal (r1)-(r6): classes, the dispatched skip, live and slot
     await tx("(r2) an active unguarded 200 s-mean cron slotted 40 min ahead: (5400) blocked, (60) not", async () => {
       const off = (await jobid("officials-vacuum-analyze"))!;
       const now = "2030-03-12 00:50:00+00";
+      // FIX-1396 (cc-267) MOVEd officials, so (b) reads its row as dispatched. Put the row
+      // back on a cron rule, ungated, so the slot clause still has an unguarded cron.
+      await c.query("UPDATE public.job_registry SET deadline_rule = 'at 30 1 * * 1', gates = '{}' WHERE job = 'officials-vacuum-analyze'");
       // Its real schedule is weekly (30 1 * * 1), which the daily regex reads
       // as unparsed — the slot clause needs a daily one to exercise.
       await c.query("SELECT cron.alter_job($1, schedule := '30 1 * * *', active := true)", [off]);
@@ -489,6 +493,8 @@ test("(6) clone: the windows, the box and the io: keys by class", async (t) => {
 
     await tx("a streak of 3 blocks both, now + 10 min, the detail naming N, M and the sample", async () => {
       await seed({ io_busy_streak: 3 });
+      // FIX-1399 (cc-267) sets the dial to 2 on the clone; this case reads M = 3.
+      await c.query("UPDATE public.platform_dials SET io_samples = 3");
       for (const e of [P, B]) {
         const g = await gate(e);
         const x = d(g, "io_saturated");
@@ -499,14 +505,19 @@ test("(6) clone: the windows, the box and the io: keys by class", async (t) => {
       }
     });
 
-    await tx("a stale mirror reads neither io: block", async () => {
+    await tx("a stale mirror reads its standing hold, never its streak (FIX-1392, cc-267)", async () => {
       await seed({ at: "2030-03-12 11:00:00+00", io_busy_streak: 9, io_throttle_until: "2030-03-12 13:00:00+00" });
       for (const e of [P, B]) {
         const g = await gate(e);
-        assert.equal(d(g, "io_saturated"), undefined, `(${e})`);
-        assert.equal(d(g, "io_throttled"), undefined, `(${e})`);
+        assert.equal(d(g, "io_saturated"), undefined, `(${e}) the stale streak stays fail-open`);
+        const x = d(g, "io_throttled");
+        assert.ok(x, `(${e}) the hold is honoured at any mirror age`);
+        assert.equal(iso(x.retry_after!), iso("2030-03-12 13:00:00+00"));
+        assert.equal(d(g, "box_io_throttled"), undefined, "named once");
         assert.equal(g.readings.io.fresh, false);
       }
+      await seed({ at: "2030-03-12 11:00:00+00", io_busy_streak: 9 });
+      for (const e of [P, B]) assert.equal((await gate(e)).blocked_by.filter((x) => /io_/.test(x.name)).length, 0, `(${e}) no hold, no io block`);
     });
 
     await tx("memory saturates class P through (d), and never class B", async () => {

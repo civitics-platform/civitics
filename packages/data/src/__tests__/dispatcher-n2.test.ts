@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { read, stripComments } from "./lib/migration-text";
+import { atCurrentPins, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -384,10 +384,11 @@ test("local: when N2 is applied, the live bodies are this file's (the ec procedu
       const live = r.rows[0]?.s.replace(/\r\n/g, "\n");
       // 20261025000000 (cc-247, FIX-1342) replaced prod_op_gate; its pin is
       // prod-op-gate-recut.test.ts. Either body passes here, nothing else.
-      if (name === "prod_op_gate") assert.ok([GATE_N2_MD5, GATE_RECUT_MD5, GATE_D_RECUT_MD5].includes(md5(live ?? "")), `${name} live body is none of N2's, FIX-1342's or FIX-1377's`);
+      // cc-267 (FIX-1392) moved it again: PIN_LINEAGE names the live body.
+      if (name === "prod_op_gate") assert.ok([GATE_N2_MD5, GATE_RECUT_MD5, GATE_D_RECUT_MD5, atCurrentPins(GATE_D_RECUT_MD5)].includes(md5(live ?? "")), `${name} live body is none of N2's, FIX-1342's, FIX-1377's or its lineage`);
       // 20261027000000 (cc-251, FIX-1354) replaced these two, and 20261029000000
       // (cc-253, FIX-1361) dispatch_one_unit again; any of those bodies passes, nothing else.
-      else if (R4_MD5[name] !== undefined && md5(live ?? "") === R4_MD5[name]) continue;
+      else if (R4_MD5[name] !== undefined && [R4_MD5[name], atCurrentPins(R4_MD5[name]!)].includes(md5(live ?? ""))) continue;
       else if (name === "dispatch_one_unit" && md5(live ?? "") === R5_DISPATCH_MD5) continue;
       else assert.equal(live, prosrc(src, name, kind), `${name} live body is neither the N2 file's nor FIX-1354's`);
       if (kind === "PROCEDURE") assert.equal(r.rows[0]?.cfg, null, `${name} COMMITs; proconfig must stay NULL`);
