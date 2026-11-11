@@ -345,6 +345,37 @@ removes the ceiling instead of restoring it.
 `docs/audits/2026-09-14-fix1128-half2-census.md` §4 ·
 `20260916000000_fix1185_postgres_role_statement_timeout_3h.sql`*
 
+**Addendum — 2026-11-11, `transaction_timeout` IS a body-level bound (cc-267,
+FIX-1393).** PostgreSQL 17's `transaction_timeout` belongs to the transaction,
+not to the caller's statement. Proven on the clone (17.6; prod 17.6; both run
+pg_cron jobs as ordinary libpq backends, `cron.use_background_workers` off),
+each case from its own client:
+
+1. `COMMIT`, then `SET LOCAL transaction_timeout = '2s'`, then `pg_sleep(6)` →
+   `FATAL: terminating connection due to transaction timeout` **2.0 s after
+   the SET**, not after the transaction's start or the CALL's.
+2. The same SET, a statement, `COMMIT`, `pg_sleep(6)` → survives: the COMMIT
+   ends the transaction and the SET LOCAL with it.
+3. `SET LOCAL statement_timeout = '2s'`, `pg_sleep(6)` → survives. This rule's
+   control holds.
+
+So one phase of a COMMITting procedure CAN be bounded from inside: set it LOCAL
+at the phase's start; the phase's own COMMIT ends it. Past the bound the session
+is **terminated**, not cancelled. On `donor_rollup_rebuild_bulk`'s staging the
+residue matched a `pg_cancel_backend` at the same statement: the transaction
+rolled back (both TRUNCATEs, the cursor, the running row), and the session lock
+went with the session. Use it for a pre-loop phase no chunk gate reaches (the
+FIX-1018 shape). It is not a substitute for chunking: a killed phase keeps
+nothing.
+
+**Two clocks, and a report names which one fired.** A unit's in-body budget
+(`c_budget`, tested at a chunk boundary) and its watchdog row
+(`cron_job_budget` / `job_registry.budget_seconds`, enforced by
+`enforce_cron_job_budgets()`) are different clocks. 11-09's donor run was
+written up as "cancelled 35 min past its 7,200 s budget". It was cancelled 277
+s past its 9,000 s watchdog row, inside a staging statement the 7,200 s body
+budget never reaches.
+
 ### C3. A guard must be able to fire in the case it exists for.
 
 Three guards this arc were silently incapable of firing in their own situation.

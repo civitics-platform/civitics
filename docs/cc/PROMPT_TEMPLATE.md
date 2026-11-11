@@ -202,18 +202,24 @@ restating it. Each line is a rule that has cost a real session.
 - For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
   the prompt names it.
 - **The dispatcher's bodies** — what a dispatcher prompt's read 2/3 pins, from
-  cc-265 on (2026-11-07 06:28:32Z, FIX-1375 `20261108000000` + FIX-1377 `20261108001000`,
-  cc-264): `md5(prosrc)` of `dispatch_one_unit`
-  **`d6a9073bcc4d9084b9d7994324a89b18`** / `get_dispatcher_status`
-  **`4c30523742e280a4b48ea2ec390654d6`** / `box_is_saturated`
-  **`aaf6cc6552df532eff4a9b21e9780670`** (`ac8dbcddf71978e73d28c999433156b7`
-  fix1354 → fix1375's rung) / `prod_op_gate`
-  **`6488601cf8c09287d540989c0e0fd074`** (`1d3507cd4b71439f0cfff51cde49b9d8`
-  fix1342 → fix1377). Fifteen older migrations assert the two old md5s in their
-  read-backs; they are history, and a clone test re-applies them through
-  `withCurrentPins()`, so a new pin move adds a line to `PIN_LINEAGE`
-  (`packages/data/src/__tests__/lib/migration-text.ts`). The dispatcher pair is
-  from cc-254 on (2026-10-29 00:18:16Z, FIX-1361 `20261029000000`, cc-253).
+  cc-267 on (2026-11-11 01:10:43Z, FIX-1398 `20261111001000` + FIX-1392
+  `20261111003000`): `md5(prosrc)` of `dispatch_one_unit`
+  **`d6a9073bcc4d9084b9d7994324a89b18`** (unchanged since cc-254) /
+  `get_dispatcher_status` **`d6bb02aab3eb8c9625275227f564c5c9`**
+  (`4c30523742e280a4b48ea2ec390654d6` fix1354 → the io block) /
+  `box_is_saturated` **`b05961ca6d1cf7e56874071bfe334da1`**
+  (`ac8dbcddf71978e73d28c999433156b7` fix1354 → `aaf6cc6552df532eff4a9b21e9780670`
+  fix1375's rung → the hold at any mirror age) / `prod_op_gate`
+  **`70a799ab3df2484fc424fe2762ffa797`** (`1d3507cd4b71439f0cfff51cde49b9d8`
+  fix1342 → `6488601cf8c09287d540989c0e0fd074` fix1377 → the same hold). Not
+  pins, but read the same way: `record_box_health_mem`
+  `5cc93c2ade0f9f6008154e3ffbf5276c` (was `de9ebee7…`). Older migrations assert
+  the old md5s in their read-backs; they are history, and a clone test re-applies
+  them through `withCurrentPins()`, so a new pin move adds a line to `PIN_LINEAGE`
+  (`packages/data/src/__tests__/lib/migration-text.ts`); a cron MOVE that older
+  read-backs assert against adds a line to `MOVED_LINEAGE` beside it (cc-267,
+  officials). `dispatch_one_unit` is from cc-254 on (2026-10-29 00:18:16Z,
+  FIX-1361 `20261029000000`, cc-253).
   Lineage: `64c8271e7601095d275c68eff5187931` (FIX-1354
   `20261027000000`, cc-251) is now only FIX-1361's revert target
   (`scripts/fix1361-revert-dispatcher-anchor-rung.sql`); the N2 pair
@@ -271,8 +277,10 @@ re-reads the (d′) row and the dry run before each (cc-263). History: the 05:45
   the set at prompt time — for VACUUM rows the registry test (`job_registry.job
   = cron.jobname AND deadline_rule !~ '^at ' AND 'prod_session' = ANY (gates)`
   reads `dispatched`), for procedures `Q_CRON_JOB_PIPELINES`'s `guarded` column
-  (`packages/data/src/lib/cron-job-pipelines.ts`). Today fr / votes / xsr are
-  dispatched rows gated `{prod_session}`; officials and the MV series are crons
+  (`packages/data/src/lib/cron-job-pipelines.ts`). Since cc-267 (FIX-1396,
+  2026-11-11) every VACUUM row is a dispatched row gated `{prod_session}`; the
+  unguarded pg_cron set is the probes (box-health, the three vm-probes), the
+  watchdogs, the dispatcher tick, the two retentions and platform-counts-daily
   — read 3 of the last timing prompt prints the set. Start with **no VACUUM
   live** and **no unguarded VACUUM cron whose 14-d mean or last wall > 60 s
   slotted inside `[start, start + 2 × expected wall]`**.

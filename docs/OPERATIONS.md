@@ -1106,6 +1106,15 @@ like: the before window held Tuesday's weeklies and the after window held
 contract-flow. Swap-in is only ~18 % of root's reads, so the swap read is not
 the whole of root's budget.
 
+**Root's mean read size is the attribution instrument** (FIX-1397, cc-267).
+Bytes and fault counts cannot say what the rest of root's reads are
+(pgmajfault × 4 KiB is a floor). The sampler counts reads completed on every
+whole disk from 2026-11-11 01:11Z, and the receipts' §9 Root budget line prints
+`root mean read N KiB (M reads)`: ~4–8 KiB is page-sized (faults and swap: the
+memory ceiling spending the IO budget), 64 KiB and up is file-backed
+sequential. The first calibration, idle at 00:20Z 11-11: root 212 reads/s at
+7.9 MB/s, mean **36.4 KiB**, neither shape; /data 3.6 reads/s at 15.0 KiB.
+
 **A sweep chain's IO shape (11-07, cc-263).** Two sweeps at once reach the gp3
 3,000-IOPS ceiling at full burst: five samples, 01:14 → 01:22Z, read io_time
 96–100 %, 2,207–3,061 reads/s, /data 26–45 MB/s, queue 20–49. That is ten
@@ -1133,22 +1142,30 @@ from the on-box mirror, checked after `memory` and before `watchdog_wall`:
 - **`io_throttled`:** `io_throttle_until` is in the future.
 - **`io_saturated`:** `io_busy_streak` ≥ `io_samples`.
 
-The tick's skip row reads `box: io_throttled` / `box: io_saturated`. Only a
-fresh mirror reads them; a stale or absent one leaves the rung silent. The route
-needs no code: `record_box_health_mem()` derives both keys from its previous row,
-and a caller cannot set either. A sample with no `io_time_pct` carries the streak.
+The tick's skip row reads `box: io_throttled` / `box: io_saturated`. **A
+recorded hold reads at ANY mirror age** (FIX-1392 H1, cc-267, landed
+2026-11-11 01:10:43Z): the throttle starves the route that freshens the mirror,
+so a hold must outlive the mirror going dark, and it expires on its own instant
+(≤ `io_throttle_hold_min` after the last throttle sample). A stale mirror's
+**streak** and swap stay fail-open (FIX-1354 D1), and an absent mirror reads
+nothing. The route needs no code: `record_box_health_mem()` derives both keys
+from its previous row, and a caller cannot set either. A sample with no
+`io_time_pct` carries the streak.
 
 | dial (`platform_dials`) | default | meaning |
 |---|---|---|
 | `io_time_pct_ceiling` | 90 | a rated sample at or over this counts. The IOPS ceiling reads 97–100 %, idle < 1 %. |
-| `io_samples` | 3 | consecutive samples, ~6 min. One ecs window is ~4 min, so this catches the second window, not the first. |
+| `io_samples` | 3 (prod **2** since 2026-11-11 01:10:43Z, FIX-1399) | consecutive samples. At 2 (~4 min) the rung holds on the second throttle sample: cc-266's replay of 11-09 set five holds, all at ≤ 12 MB/s, where 3 set two; saturated minutes 16 → 40 per 30 h. Revert: `scripts/fix1399-revert-io-samples-3.sql`. |
 | `io_mbps_floor` | 12 | all-disk MB/s at or under this, with the streak standing, is the throttle signature. The baseline is ~10.9 MB/s. |
 | `io_throttle_hold_min` | 60 | how long the hold outlasts the last such sample. A throttle ends when the bucket refills. |
 
 **The brake:** `UPDATE public.platform_dials SET io_time_pct_ceiling = 101;`. The
 sampler clamps at 100, so the streak stays 0 from the next sample. A hold already
-set stands until it expires. Full revert: `scripts/fix1377-revert-prod-op-gate-d.sql`
-first, then `scripts/fix1375-revert-io-rung.sql`.
+set stands until it expires. Full revert, in this order:
+`scripts/fix1392-revert-io-hold-stale.sql`, `scripts/fix1398-revert-status-readings-io.sql`,
+`scripts/fix1399-revert-io-samples-3.sql`, `scripts/fix1377-revert-prod-op-gate-d.sql`,
+then `scripts/fix1375-revert-io-rung.sql` (each guard names the body the one before
+it restores).
 
 **Who it reaches.** It excludes every arm at the tick's step 4, and no cancel path
 reads it. But it is a `box_is_saturated()` reason, so every reader inherits it, as
@@ -1157,8 +1174,17 @@ agency, contract-flow and weekly-tagger units, and the chunk loops of
 `donor_rollup_rebuild_bulk` (partial; `stale_after 12 hours` makes the rest wait
 12 h) and `refresh_agency_staffing_rollup` (no cursor; the next firing redoes the
 dirty set). A running chunked unit backs off at its next chunk boundary. Its own IO
-can trip that. Read `dispatch_log.box` for `readings.io`:
-`get_dispatcher_status()->'box'` projects memory only.
+can trip that.
+
+**The status call shows it** (FIX-1398, cc-267). `get_dispatcher_status()->'box'`
+carries, from the newest tick row with box readings: `io` (`{io_time_pct,
+all_mbps, reads_ps, busy_streak, throttle_until}`), `thresholds_io` (`{ceiling,
+samples, mbps_floor, hold_min}` as that tick read them; the dials now for a row
+stamped before the rung), `mirror_age_seconds` and `mem_stale` beside `memory`
+and `thresholds_memory`. A blind rung reads `mem_stale true` with a large
+`mirror_age_seconds`. `->'dials'` lists the four io columns. The tick row's own
+`dispatch_log.box` is the same object; note the path is `box->'io'`, not
+`box->'readings'->'io'`: the tick stores `box_is_saturated()->'readings'` as `box`.
 
 **What the replay says.** Fri 11-07 01:14–01:22Z's sweep chain read 95.9–100 % at
 31–51 MB/s. The streak reaches 3 at 01:18Z and clears at 01:24Z, and `io_throttled`
@@ -1180,15 +1206,16 @@ startup timeouts 3 h (`d:startup_timeout`, latest + 3 h). Class P remembers 10 m
 reads the live box (`d:box_<reason>`, 10 min). Over 14 d, the 10-25 wedge day out,
 (d)'s startup-timeout hours read 7.1 at 60 min, 13.1 at 3 h and 4.0 at 10 min.
 
-**The no-push rule (its end condition, the `io:` rung's first real receipt, was met 11-09 —
-cc-266 — but that receipt shows the rung blind inside the stall, FIX-1392, so the rule stands until
-Craig lifts it):** no class-P push and no
-class-B op from the drop night's 21:00Z until the ec-crawl's first post-landing
-`entity_connection_stats_windows` pass completes (11:31Z on 11-02, 12.5 h
-after the landing; 22:21Z on 11-09, behind a `donations_incr_windows` pass
-that ran 02:41–12:55Z). None during a second pass either (Mon ~23:00Z → Tue). In
-practice that means Sunday 21:00Z → Tuesday ~06:00Z. A `job startup timeout`
-or a ring sample with load1 > 8 in the last 3 h is a STOP
+**The no-push rule is LIFTED** (Craig, Mon 11-09 20:39 PST, "3b"; written down
+by cc-267). It was a calendar rule: no class-P push and no class-B op from the
+drop night's 21:00Z until the ec-crawl's first post-landing
+`entity_connection_stats_windows` pass completed (in practice Sunday 21:00Z →
+Tuesday ~06:00Z). It existed because nothing in code read the disk when 11-02's
+throttle armed heavy units into it. What guards a push now is code, and it does
+not change: `prod_op_gate` (d) (class B remembers startup timeouts 3 h, class P
+10 min plus the live box, both read the io keys), the `io:` rung (a hold honoured
+at any mirror age since FIX-1392 H1), and the template's (d′) STOP row: a `job
+startup timeout` or a ring sample with load1 > 8 in the last 3 h
 (`docs/cc/PROMPT_TEMPLATE.md`, FIX-1377). → `docs/audits/2026-11-02-io-budget-census.md`.
 
 ### A registry row that shares its pipeline (FIX-1361) and the weekly's nets (FIX-1363)
@@ -1268,6 +1295,41 @@ whose cursor expires, must come back through the crawl.
   back to `at`; no dial was written; the cron stays parked);
   `scripts/fix1366-revert-move-dpr-vacuum.sql` (the rule back to `at`, gates
   `{}`, and the cron RE-ACTIVATED by name; pause first, as its header says).
+
+### Every VACUUM row is dispatched (FIX-1396, cc-267)
+
+The last eight cron vacuums MOVEd at 2026-11-11 01:10:43Z (20261111000000),
+fix1366's shape ×8. Every row gates `{prod_session}`, no phase_lock, cap 64,
+budget NULL, priority 4; each cron is parked by name, never unscheduled.
+
+| row | rule | group | table · 60 % line at the move |
+|---|---|---|---|
+| officials-vacuum-analyze (cron 39) | `dead_tuples > 60% of trigger + floor 7 days` | officials | `officials` · 600 (threshold-only trigger 1,000) |
+| odr-mv-vacuum-analyze (32) | `… + floor 24 hours` | rollups | `official_donor_rollup_mv` · 19,970 |
+| treemap-individuals-vacuum-analyze (33) | `… + floor 24 hours` | rollups | `treemap_individuals_rollup` · 37,529 |
+| odt-vacuum-analyze (34) | `… + floor 24 hours` | rollups | `official_donor_totals` · 256 |
+| osdr-vacuum-analyze (35) | `… + floor 24 hours` | rollups | `official_small_dollar_rollup` · 256 |
+| osar-vacuum-analyze (36) | `… + floor 24 hours` | rollups | `official_sector_affinity_rollup` · 802 |
+| odbt-vacuum-analyze (37) | `… + floor 24 hours` | rollups | `official_donor_bracket_totals` · 646 |
+| ecs-vacuum-analyze (47) | `… + floor 24 hours` | ec | `entity_connection_stats_mv` · 147,870 |
+
+- **The MV series ran on a clock** twice a day (11:xx / 17:xx), 0.14–1.63 s p50,
+  whether or not a refresh had dirtied the table. Now a table under its line is
+  not due, and the 24-hour floor keeps the old cadence's bound. Their floors
+  first fell due 11-11 17:05–17:20Z.
+- **officials autovacuums on its own** (51 runs from the 11-05 restart to 11-11,
+  ~8.6 / day). The floor anchors on its newest vacuum of any kind, so autovacuum
+  keeps resetting it, and the 600-tuple line is what will usually arm the row.
+- **What they wait on.** The six rollups rows queue behind the group's live unit
+  and the FIX-1322 one-VACUUM-at-a-time io cap; ecs behind ec-crawl and
+  ec-vacuum-analyze; officials is alone in its group. Nothing waits on them.
+- **The unguarded pg_cron set is now non-VACUUM only:** the probes, the
+  watchdogs, the dispatcher tick, the two retentions and platform-counts-daily.
+  R1b (FIX-1309, `cron_job_budget` → VIEW and `cron.unschedule`) is the
+  cutover's one remaining step.
+- **Revert:** `scripts/fix1396-revert-move-officials-mv-vacuums.sql` (the eight
+  rows back to their `at` text, gates `{}`, the crons re-activated by name; pause
+  first).
 
 ### A multi-row RETURN in one exclusion group runs as a chain (FIX-1368 / 1369 / 1370)
 

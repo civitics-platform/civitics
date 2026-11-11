@@ -103,7 +103,8 @@ file is rewritten as before (FIX-1218). Files before FIX-1289 carry no
 - **`swap_max_at`, `mem_available_min_at`:** the earliest sample at the day's
   swap peak and MemAvailable floor.
 - **`root`:** `{hours, root_read_gb, data_read_gb, swap_in_gb, majfault_gb,
-  swap_in_share_pct, rated, reason}`, from the window's first and last samples
+  swap_in_share_pct, rated, reason, root_reads, mean_read_kib, reads_hours}`,
+  from the window's first and last samples
   carrying the raw counters. `rated` counts those samples, and §9 reads
   `missing` when there are fewer than two.
 
@@ -126,9 +127,22 @@ How to read `root`:
 - **Resets:** a counter that went backwards anywhere in the window nulls its
   numbers and `reason` says where. A /data device change nulls both disk
   numbers.
+- **`root_reads`, `mean_read_kib`, `reads_hours`** (FIX-1397, cc-267): root's
+  reads COMPLETED, Δ(`disk_all_reads` − `disk_reads`), and the mean read size,
+  the same samples' root bytes / 1,024 / reads (KiB = 1,024 B). They come
+  from the samples that carry the counts, so a window that spans the
+  sampler's deploy starts at its first such sample; `reads_hours` says how
+  much of the day that is, and §9 adds "over the last H h" when it is short.
+  This is the attribution instrument: **~4–8 KiB is page-sized** (faults and
+  swap, the memory ceiling spending the IO budget), **64 KiB and up is
+  file-backed sequential**. The first calibration (cc-267 read 6, two
+  Prometheus scrapes 68.9 s apart at 00:20Z on an idle box): root 212
+  reads/s at 7.9 MB/s, mean 36.4 KiB; /data 3.6 reads/s, 15.0 KiB. §9 prints
+  `root mean read **N KiB** (M reads)` on the Root budget line, or `n/a`.
 
 A day banked before cc-265 has none of these keys, and FIX-1289 keeps it that
-way. §9 prints `n/a (banked before cc-265)` for it.
+way. §9 prints `n/a (banked before cc-265)` for it. A day banked before cc-267
+has no read count, and the Root budget line prints `root mean read n/a`.
 
 **Section 9's crawl skip counters are banked here too** (FIX-1124, cc-189).
 `ec-crawl` and `fe-crawl` record every skip in
