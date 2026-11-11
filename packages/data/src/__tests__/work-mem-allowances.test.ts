@@ -437,8 +437,10 @@ test("local: each live body is the M1 file's; proconfig NULL on the COMMITting t
         `SELECT prosrc AS s, proconfig AS cfg FROM pg_proc WHERE oid = '${b.regproc}'::regprocedure`);
       const row = res.rows[0] as Row;
       // 20261023000000 (cc-243, FIX-1330) replaced this body; its live pin is
-      // dispatcher-n2.test.ts. The text checks above still read the M1 file.
-      if (b.name !== "run_entity_connections_rebuild")
+      // dispatcher-n2.test.ts. 20261111004000 (cc-267, FIX-1393) replaced
+      // donor_rollup_rebuild_bulk; its pin is dispatcher-r16.test.ts. The text
+      // checks above still read the M1 file.
+      if (b.name !== "run_entity_connections_rebuild" && b.name !== "donor_rollup_rebuild_bulk")
         assert.equal(row.s.replace(/\r\n/g, "\n"), body(src, b.sig), `${b.name} live body is not the M1 file's`);
       if (b.commits) assert.equal(row.cfg, null, `${b.name} COMMITs; proconfig must stay NULL`);
       else assert.ok((row.cfg ?? []).every((x: string) => x.startsWith("search_path=")), `${b.name}: ${JSON.stringify(row.cfg)}`);
