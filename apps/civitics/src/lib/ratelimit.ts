@@ -42,6 +42,23 @@
 //     identifier, where the limiter would otherwise burn its own budget
 //     issuing 429s to a client that is not listening.
 //
+//   * FIXED WINDOW ON THE READ BUCKETS (FIX-1391). An allowed check is what
+//     spends, and the read buckets are where the checks are. The installed
+//     @upstash/ratelimit v2.0.8 sliding window runs EVALSHA + GET + GET +
+//     INCRBY per allowed check, + PEXPIRE on a key's first check in its window:
+//     4.13 commands a check, fitted on 11-02 → 11-08
+//     (docs/audits/2026-11-09-upstash-spend-census.md §1, §8). Its fixed window
+//     runs EVALSHA + INCRBY (+ PEXPIRE): 2.13 at that week's ~13 %
+//     first-in-window share, 3 if every check is a first. So −40 % to −48 %.
+//     The price is the boundary: a client can land `tokens` at the end of one
+//     window and `tokens` more at the start of the next, 2× the cap across an
+//     edge. memoryLimit below already makes that trade, and these caps sit
+//     25–50× above any single IP measured (see the next bullet). `write` and
+//     the two auth buckets stay sliding: they spend ~0 and their burst
+//     semantics are the point. The choice is `algorithm` in BUCKET_LIMITS, and
+//     a fixed bucket keys under its own `:fw` prefix, so no sliding counter
+//     left from the deploy overlap is ever read as a fixed one.
+//
 //   * Edge-runtime safe: middleware.ts imports this; `@upstash/*` are built for
 //     the edge (REST transport, no node net), and nothing here touches a Node
 //     API. Build + serve with the env ABSENT.
@@ -93,33 +110,59 @@ export type RateLimitBucket =
 
 // @upstash/ratelimit's Duration string type, sourced from the call signature so
 // we never drift from the package's accepted union (e.g. "1 m", "10 m", "1 h").
+// fixedWindow takes the same (tokens, Duration).
 type Window = Parameters<typeof Ratelimit.slidingWindow>[1];
 
-// Per-bucket policy (sliding window). (default — tune) — these are fixed policy
-// values, not data-shape-dependent. Read limits match the prior Map limiter.
-const BUCKET_LIMITS: Record<RateLimitBucket, { tokens: number; window: Window }> = {
-  search: { tokens: 30, window: "1 m" },
-  graph_ai: { tokens: 5, window: "1 m" },
-  graph: { tokens: 60, window: "1 m" },
-  write: { tokens: 30, window: "1 m" },
+/** FIX-1391: which @upstash/ratelimit algorithm a bucket's durable limiter runs. */
+export type LimiterAlgorithm = "fixed" | "sliding";
+
+// Per-bucket policy. (default — tune) — these are fixed policy values, not
+// data-shape-dependent. Read limits match the prior Map limiter. `algorithm`
+// is FIX-1391's: fixed on the six read buckets, sliding on the rest (header).
+const BUCKET_LIMITS: Record<
+  RateLimitBucket,
+  { tokens: number; window: Window; algorithm: LimiterAlgorithm }
+> = {
+  search: { tokens: 30, window: "1 m", algorithm: "fixed" },
+  graph_ai: { tokens: 5, window: "1 m", algorithm: "fixed" },
+  graph: { tokens: 60, window: "1 m", algorithm: "fixed" },
+  write: { tokens: 30, window: "1 m", algorithm: "sliding" },
   // Generous: a real reader almost never opens >120 distinct entity pages in a
   // minute, but a crawler walking distinct IDs blows past it. Tune up if a power
   // user (or a tab-restore burst) trips it; tune down if a crawl still gets through.
-  entity_pages: { tokens: 120, window: "1 m" },
+  entity_pages: { tokens: 120, window: "1 m", algorithm: "fixed" },
   // Stricter than entity_pages (FIX-683): 45 distinct leaf pages/min = one every
   // ~1.3s sustained for a full minute — above any real reader (these are dense
   // civic profiles humans dwell on), well below a crawler walking thousands of
   // empty district/county/official shells. Tune down if a crawl still gets
   // through; tune up if a power-user tab-restore burst trips it.
-  entity_leaf: { tokens: 45, window: "1 m" },
+  entity_leaf: { tokens: 45, window: "1 m", algorithm: "fixed" },
   // FIX-797: generous — a link-dense page can legitimately queue 50–100
   // prefetches as the viewport scrolls, and prefetch responses are cheap RSC
   // payloads that usually hit the edge cache. 300/min still hard-caps a
   // header-spoofing crawler at ~5 pages/s, far below an unthrottled walk.
-  entity_prefetch: { tokens: 300, window: "1 m" },
-  auth_send_ip: { tokens: 5, window: "10 m" },
-  auth_send_email: { tokens: 3, window: "1 h" },
+  entity_prefetch: { tokens: 300, window: "1 m", algorithm: "fixed" },
+  auth_send_ip: { tokens: 5, window: "10 m", algorithm: "sliding" },
+  auth_send_email: { tokens: 3, window: "1 h", algorithm: "sliding" },
 };
+
+/**
+ * A bucket's durable-limiter settings. A fixed bucket keys under
+ * `civitics:rl:<bucket>:fw`, a sliding one under `civitics:rl:<bucket>` as
+ * before (FIX-1391). Both algorithms name their keys `<prefix>:<id>:<window #>`,
+ * so a shared prefix would hand a fixed check the sliding counter of the same
+ * minute during the deploy overlap. The old keys expire on their own TTL.
+ */
+export function limiterSettings(bucket: RateLimitBucket): {
+  tokens: number;
+  window: Window;
+  algorithm: LimiterAlgorithm;
+  prefix: string;
+} {
+  const cfg = BUCKET_LIMITS[bucket];
+  const prefix = cfg.algorithm === "fixed" ? `civitics:rl:${bucket}:fw` : `civitics:rl:${bucket}`;
+  return { ...cfg, prefix };
+}
 
 const DURATION_UNIT_MS: Record<string, number> = {
   ms: 1,
@@ -163,11 +206,14 @@ function getLimiter(bucket: RateLimitBucket): Ratelimit | null {
   if (!redis) return null;
   let limiter = limiters.get(bucket);
   if (!limiter) {
-    const cfg = BUCKET_LIMITS[bucket];
+    const cfg = limiterSettings(bucket);
     limiter = new Ratelimit({
       redis,
-      limiter: Ratelimit.slidingWindow(cfg.tokens, cfg.window),
-      prefix: `civitics:rl:${bucket}`,
+      limiter:
+        cfg.algorithm === "fixed"
+          ? Ratelimit.fixedWindow(cfg.tokens, cfg.window)
+          : Ratelimit.slidingWindow(cfg.tokens, cfg.window),
+      prefix: cfg.prefix,
       // Analytics issues extra Redis commands per check — off to protect the
       // free-tier command budget (cost ceiling, design §5).
       analytics: false,
@@ -343,11 +389,12 @@ function shouldWarnForUpstashError(): boolean {
 
 // ── Budget flag (FIX-1304) ───────────────────────────────────────────────────
 //
-// THE LIMITER SHARES ITS DATABASE. The box-health ring and the front-door
-// restart arm live in the same Upstash database (the free tier allows one),
-// spend a flat ~68k commands a month between them, and went dark for the rest
-// of the billing period both times a crawl spent this limiter's share and
-// theirs (08-15, 10-12). This limiter is the only tenant whose spend scales
+// THE LIMITER SHARES ITS DATABASE. The box-health ring, the front-door
+// restart arm and the snapshot probe live in the same Upstash database (the
+// free tier allows one) and spend a flat 2,449 commands a day between them,
+// ~73k a month (census §1). The ring and the arm went dark for the rest of the
+// billing period both times a crawl spent this limiter's share and theirs
+// (08-15, 10-12). This limiter is the only tenant whose spend scales
 // with traffic, so it is the one that gets a budget.
 //
 // The platform-snapshot probe (packages/db/src/upstash-usage.ts, every 30 min)

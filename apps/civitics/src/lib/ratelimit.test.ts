@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import {
   checkRateLimit,
   getLimiterHealth,
+  limiterSettings,
   windowMs,
   __resetRateLimiterStateForTests,
   __setUpstashLimitFnForTests,
@@ -386,6 +387,25 @@ describe("public contract", () => {
       assert.equal(r.allowed, true, `${bucket} first request`);
       assert.ok(Number.isFinite(r.remaining), `${bucket} remaining must be finite on the memory path`);
     }
+  });
+
+  it("FIX-1391: the six read buckets run a fixed window; write and the two auth buckets stay sliding", () => {
+    const fixed: RateLimitBucket[] = ["search", "graph", "graph_ai", "entity_pages", "entity_leaf", "entity_prefetch"];
+    const sliding: RateLimitBucket[] = ["write", "auth_send_ip", "auth_send_email"];
+    for (const b of fixed) assert.equal(limiterSettings(b).algorithm, "fixed", b);
+    for (const b of sliding) assert.equal(limiterSettings(b).algorithm, "sliding", b);
+    // Only the algorithm moved: the caps and windows are the pre-FIX-1391 values.
+    assert.deepEqual(
+      [limiterSettings("entity_leaf").tokens, limiterSettings("entity_leaf").window],
+      [45, "1 m"],
+    );
+  });
+
+  it("FIX-1391: a fixed bucket keys under its own `:fw` prefix; a sliding one keeps the old prefix", () => {
+    assert.equal(limiterSettings("entity_leaf").prefix, "civitics:rl:entity_leaf:fw");
+    assert.equal(limiterSettings("search").prefix, "civitics:rl:search:fw");
+    assert.equal(limiterSettings("write").prefix, "civitics:rl:write");
+    assert.equal(limiterSettings("auth_send_email").prefix, "civitics:rl:auth_send_email");
   });
 
   it("the auth_send_email bucket keys on the email and caps at 3 per hour", async () => {

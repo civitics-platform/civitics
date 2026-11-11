@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/ratelimit";
+import { getClientIp } from "@/lib/client-ip";
 import { createRedirectResolver } from "@/lib/official-redirects";
 import { createInstitutionSlugResolver } from "@/lib/institution-slug-redirects";
 import {
@@ -147,15 +148,6 @@ function getRateLimitBucket(
     }
   }
   return null;
-}
-
-function getClientIp(request: NextRequest): string {
-  // Vercel sets x-forwarded-for; fall back to a generic key if unavailable
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown"
-  );
 }
 
 function rateLimitResponse(retryAfterSec: number): NextResponse {
@@ -374,7 +366,7 @@ async function routeRequest(request: NextRequest, path: string): Promise<NextRes
   // outage/quota (FIX-1038) and logging `[ratelimit]`; never allow-all.
   const bucket = getRateLimitBucket(path, request.method, isPrefetchRequest(request));
   if (bucket) {
-    const ip = getClientIp(request);
+    const ip = getClientIp(request.headers);
     const result = await checkRateLimit(bucket, ip);
     if (!result.allowed) {
       return rateLimitResponse(result.retryAfterSec);

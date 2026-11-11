@@ -170,6 +170,7 @@ const nextConfig = {
     //
     // Route → cache policy (complete map, post-FIX-796):
     //   /_next/static/*             browser immutable (content-hashed)
+    //   /favicon.ico                1 day, 7 days stale (FIX-1395)
     //   PAGE ALLOWLIST (publicPages
     //   + `/` + /dashboard)         edge 300/600 (dashboard: 1800/3600)
     //   PINNED NO-STORE             /auth, /profile, /desk, /admin,
@@ -279,6 +280,16 @@ const nextConfig = {
         source: "/_next/static/(.*)",
         headers: [
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        // FIX-1395: public/favicon.ico. Vercel serves public/ with max-age=0,
+        // so every browser and crawler ask went to the origin (25,012 404s in
+        // 11-02 → 11-08). A day in any cache, a week stale — not `immutable`,
+        // because the URL is not content-hashed and the icon may change.
+        source: "/favicon.ico",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ],
       },
       // ── Pinned no-store guards ─────────────────────────────────────────────
