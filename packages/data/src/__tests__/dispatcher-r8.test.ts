@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments, withCurrentPins } from "./lib/migration-text";
+import { MOVED_LINEAGE, read, stripComments, withCurrentPins } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -166,6 +166,9 @@ test("clone: the move and its revert, inside one rolled-back transaction", async
   try {
     await c.query("BEGIN");
     try {
+      // fix1366's read-back asserts officials on `at` with an active cron: put it back
+      // there first (FIX-1396 MOVEd it, cc-267), inside this rolled-back transaction.
+      await c.query(read(path.join(ROOT, "scripts", MOVED_LINEAGE["officials-vacuum-analyze"]!.revert)));
       await c.query(REVERT());  // from the un-moved row, whichever state the clone is in
       assert.deepEqual(await state(), { rule: AT, gates: [], lock: false, crons: 1, active: true, officials: true });
       await c.query(DPR());

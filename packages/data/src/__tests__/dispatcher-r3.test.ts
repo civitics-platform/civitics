@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { movedState, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -172,13 +172,12 @@ test("clone: the two rules read as written, phase-locked, both crons parked, off
       const unlocked = job === "fe-vacuum-analyze" && /FIX-1358/.test(byJob[job]?.note ?? "");
       assert.equal(byJob[job]?.phase_lock, !unlocked, `${job} phase_lock`);
     }
-    assert.equal(byJob["officials-vacuum-analyze"]?.deadline_rule, "at 30 1 * * 1");
-    // FIX-1366 (cc-254) MOVEs dpr with donor-party's RETURN: its weekly rule, its cron parked.
-    const dprMoved = /FIX-1366/.test(byJob["dpr-vacuum-analyze"]?.note ?? "");
-    assert.equal(
-      byJob["dpr-vacuum-analyze"]?.deadline_rule,
-      dprMoved ? "dead_tuples > 60% of trigger + floor 7 days" : "at 0 2 * * 0,3",
-    );
+    // FIX-1366 (cc-254) MOVEs dpr with donor-party's RETURN, FIX-1396 (cc-267) officials:
+    // MOVED_LINEAGE reads which state this clone is in.
+    const officials = movedState("officials-vacuum-analyze", byJob["officials-vacuum-analyze"]?.note);
+    const dpr = movedState("dpr-vacuum-analyze", byJob["dpr-vacuum-analyze"]?.note);
+    assert.equal(byJob["officials-vacuum-analyze"]?.deadline_rule, officials.rule);
+    assert.equal(byJob["dpr-vacuum-analyze"]?.deadline_rule, dpr.rule);
     const cron = await c.query(
       "SELECT jobname, active FROM cron.job " +
         "WHERE jobname IN ('ec-vacuum-analyze', 'fe-vacuum-analyze', 'officials-vacuum-analyze', 'dpr-vacuum-analyze') ORDER BY jobname",
@@ -186,8 +185,8 @@ test("clone: the two rules read as written, phase-locked, both crons parked, off
     const active = Object.fromEntries(cron.rows.map((r) => [r.jobname, r.active]));
     assert.equal(active["ec-vacuum-analyze"], false);
     assert.equal(active["fe-vacuum-analyze"], false);
-    assert.equal(active["officials-vacuum-analyze"], true);
-    assert.equal(active["dpr-vacuum-analyze"], !dprMoved);
+    assert.equal(active["officials-vacuum-analyze"], officials.active);
+    assert.equal(active["dpr-vacuum-analyze"], dpr.active);
   } finally {
     await c.end();
   }

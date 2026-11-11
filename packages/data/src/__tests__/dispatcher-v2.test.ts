@@ -32,7 +32,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { movedState, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -155,7 +155,7 @@ test("clone: the two rules read as written, both crons parked, officials untouch
   await c.connect();
   try {
     const reg = await c.query(
-      "SELECT job, deadline_rule, gates FROM public.job_registry " +
+      "SELECT job, deadline_rule, gates, note FROM public.job_registry " +
         "WHERE job IN ('votes-vacuum-analyze', 'xsr-vacuum-analyze', 'officials-vacuum-analyze') ORDER BY job",
     );
     const byJob = Object.fromEntries(reg.rows.map((r) => [r.job, r]));
@@ -163,7 +163,9 @@ test("clone: the two rules read as written, both crons parked, officials untouch
       assert.equal(byJob[job]?.deadline_rule, RULE, `${job} rule`);
       assert.deepEqual(byJob[job]?.gates, ["prod_session"], `${job} gates`);
     }
-    assert.equal(byJob["officials-vacuum-analyze"]?.deadline_rule, "at 30 1 * * 1");
+    // FIX-1396 (cc-267) MOVEs officials: MOVED_LINEAGE reads which state this clone is in.
+    const officials = movedState("officials-vacuum-analyze", byJob["officials-vacuum-analyze"]?.note);
+    assert.equal(byJob["officials-vacuum-analyze"]?.deadline_rule, officials.rule);
     const cron = await c.query(
       "SELECT jobname, active FROM cron.job " +
         "WHERE jobname IN ('votes-vacuum-analyze', 'xsr-vacuum-analyze', 'officials-vacuum-analyze') ORDER BY jobname",
@@ -171,7 +173,7 @@ test("clone: the two rules read as written, both crons parked, officials untouch
     const active = Object.fromEntries(cron.rows.map((r) => [r.jobname, r.active]));
     assert.equal(active["votes-vacuum-analyze"], false);
     assert.equal(active["xsr-vacuum-analyze"], false);
-    assert.equal(active["officials-vacuum-analyze"], true);
+    assert.equal(active["officials-vacuum-analyze"], officials.active);
   } finally {
     await c.end();
   }
