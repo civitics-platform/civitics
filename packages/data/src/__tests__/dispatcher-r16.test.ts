@@ -269,8 +269,8 @@ test("F: get_ec_crawl_health reads dispatch_log for its firings; cron.job_run_de
   assert.equal(md5(now), MD5.ech.now);
   assert.doesNotMatch(stripComments(now), /job_run_details|cron\.job\b/);
   assert.match(now, /FROM public\.dispatch_log a/);
-  assert.match(now, /l\.started_at >  a\.armed_for - interval '5 seconds'/);
-  assert.match(now, /l\.started_at <  a\.armed_for \+ interval '60 seconds'/);
+  assert.ok(now.includes("l.started_at >  a.armed_for - interval '5 seconds'"), "the window opens 5 s before armed_for");
+  assert.ok(now.includes("l.started_at <  a.armed_for + interval '60 seconds'"), "and closes 60 s after it");
   const keys = (s: string) => [...s.matchAll(/^\s+'([a-z_0-9]+)',\s/gm)].map((m) => m[1]).sort();
   assert.deepEqual(keys(now.slice(now.indexOf("RETURN jsonb_build_object("))), keys(was.slice(was.indexOf("RETURN jsonb_build_object("))));
 });
