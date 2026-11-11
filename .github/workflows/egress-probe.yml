@@ -36,8 +36,10 @@ on:
         required: false
         # The collector's senate.gov roll URL shape (votes.ts urlFor:
         # .../roll_call_votes/vote{congress}{session}/vote_{congress}_{session}_{NNNNN}.xml),
-        # GovTrack's vote API, and congress.gov's (absent) senate-vote family.
-        default: "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1192/vote_119_2_00001.xml https://www.govtrack.us/api/v2/vote?congress=119&chamber=senate&session=2026&limit=1 https://api.congress.gov/v3/senate-vote?limit=1&format=json"
+        # GovTrack's vote API, congress.gov's (absent) senate-vote family, and
+        # (cc-267, D17) GovTrack's bulk listing — the second-source candidate,
+        # never read from a GitHub runner before.
+        default: "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1192/vote_119_2_00001.xml https://www.govtrack.us/api/v2/vote?congress=119&chamber=senate&session=2026&limit=1 https://api.congress.gov/v3/senate-vote?limit=1&format=json https://www.govtrack.us/data/congress/119/votes/"
       ua:
         description: "User-Agent for the first GET (the collector's)"
         required: false
