@@ -451,10 +451,14 @@ const WL_FILE = "20261104005000_fix1375_box_health_mem_whitelist_disk_rates.sql"
 /** cc-264's rung is the latest definer: this whitelist plus the streak (its pin: dispatcher-r15.test.ts). */
 const RUNG_FILE = "20261108000000_fix1375_io_rung_box_is_saturated_mirror_streak_dials.sql";
 const RUNG_MD5 = "de9ebee733077a59dfe2959981f8e0c3";
+/** cc-267 (FIX-1397): the rung's body + disk_all_reads / disk_all_reads_ps — now the latest definer (dispatcher-r16.test.ts). */
+const READS_FILE = "20261111001000_fix1397_fix1398_mirror_disk_all_reads_status_readings_io.sql";
+const READS_MD5 = "5cc93c2ade0f9f6008154e3ffbf5276c";
 const WL_MD5 = "b6a472e5ccabbf65e4f05106563ce6f4";
 
-test("FIX-1375: the rung is the latest definer; the whitelist file's signature, DEFINER, search_path, grants, the md5 guard", () => {
-  assert.equal(path.basename(latest("record_box_health_mem")), RUNG_FILE);
+test("FIX-1375: cc-267's file B is the latest definer (the rung before it); the whitelist file's signature, DEFINER, search_path, grants, the md5 guard", () => {
+  assert.equal(path.basename(latest("record_box_health_mem")), READS_FILE);
+  assert.ok(fs.existsSync(path.join(MIGRATIONS, RUNG_FILE)), "the rung's file, the one before it");
   const src = fs.readFileSync(path.join(MIGRATIONS, WL_FILE), "utf8");
   const h = header(src, "record_box_health_mem");
   assert.match(h, /record_box_health_mem\(p jsonb\)\s+RETURNS jsonb\s+LANGUAGE plpgsql\s+VOLATILE\s+SECURITY DEFINER\s+SET search_path TO 'public', 'pg_catalog'/);
@@ -493,7 +497,7 @@ test("FIX-1375 clone: disk rates are stored, disk_device is ignored, a null rate
     const live = (await c.query<{ m: string }>(
       "SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = 'record_box_health_mem' AND pronamespace = 'public'::regnamespace",
     )).rows[0]?.m;
-    if (live !== WL_MD5 && live !== RUNG_MD5) {
+    if (live !== WL_MD5 && live !== RUNG_MD5 && live !== READS_MD5) {
       t.skip(`the clone's record_box_health_mem is ${live}, not ${WL_FILE}'s — apply it first`);
       return;
     }
