@@ -436,15 +436,18 @@ export function __resetUpstashUsageCache(): void {
 
 // ── FIX-1304: the limiter's budget ────────────────────────────────────────────
 //
-// THE HOG IS BUDGETED; NOTHING MOVES. The limiter spends ~150k commands a month
-// at human traffic and has no ceiling under a crawl; the box-health ring (2 per
-// */2 sample, ~43k/month) and the front-door restart arm (one MGET per */2
-// tick, ~25k/month) are flat. Twice (08-15, 10-12) a crawl spent all 500,000 and
-// the ring and the arm went dark for the rest of the billing period. So once the
-// management API reads used ≥ pct of the vendor's cap, this probe writes a flag
-// and the edge limiter (apps/civitics/src/lib/ratelimit.ts) takes its
-// per-instance memory path BEFORE the quota is gone. At the default 70 % the
-// other two keep 150,000 commands: twice their monthly 68k.
+// THE HOG IS BUDGETED; NOTHING MOVES. The limiter has no ceiling under a crawl
+// and was 92 % of the spend on 11-02 → 11-08 (docs/audits/2026-11-09-upstash-
+// spend-census.md §1). Everything else is a flat floor F = 2,449 commands/day:
+// the box-health ring (3 per */2 sample — LPUSH + LTRIM + the FIX-1375 LINDEX —
+// 2,160/day), the front-door restart arm (one MGET per */15 tick, 96/day) and
+// this probe (3 PINGs + 1 flag write per */30 tick, 192/day) and the nightly
+// receipts LRANGE (1), about 73k a 30-day month. Twice (08-15, 10-12) a crawl spent all 500,000 and the ring and
+// the arm went dark for the rest of the billing period. So once the management
+// API reads used ≥ pct of the vendor's cap, this probe writes a flag and the
+// edge limiter (apps/civitics/src/lib/ratelimit.ts) takes its per-instance
+// memory path BEFORE the quota is gone. At the default 70 % the floor keeps
+// 150,000 commands: twice its monthly ~73k.
 //
 // The flag lives in the same database, under LIMITER_BUDGET_KEY, with a 2 h TTL
 // rewritten every tick while the hold lasts and DELeted once used < budget. The

@@ -36,10 +36,15 @@
  * Upstash, over REST, in ONE pipelined request per sample:
  *   LPUSH civitics:box_health:mem <json>
  *   LTRIM civitics:box_health:mem 0 899     — a 30 h ring at 2-min cadence
- * These are 2 commands against the 500k/month allotment the rate limiter
- * shares: 720 samples/day × 2 = 1,440/day, about 43k per 30-day month, 8.6 %.
+ * plus, since FIX-1375 (5d23037f, 11-03), one LINDEX … 0 before it that reads
+ * the previous sample for the disk rates. So a sample is 3 commands against
+ * the 500k/month allotment the rate limiter shares: 720 samples/day × 3 =
+ * 2,160/day, about 65k per 30-day month, 13 % (cc-269 census §1, which fitted
+ * the floor at 2,449/day with the arm and the snapshot probe). The write
+ * pipeline is BOX_HEALTH_COMMANDS_PER_SAMPLE (2) and the read is
+ * BOX_HEALTH_HEAD_READS_PER_SAMPLE (1).
  * That is set by the CADENCE, not the ring length: FIX-1289 took the ring from
- * 720 (24 h) to 900 (30 h) at the same 2 commands a sample, so the command
+ * 720 (24 h) to 900 (30 h) at the same commands a sample, so the command
  * share is unchanged and only the stored list grows, by 25 %. The 30 h is so
  * the receipts job, which runs after the 21:00Z slot (up to ~100 min after on a
  * Sunday drop night, ~3 h for the schedule fallback), still holds the whole

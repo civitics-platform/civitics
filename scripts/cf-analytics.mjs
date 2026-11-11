@@ -25,6 +25,22 @@
 // It also warns explicitly when the API's 10,000-row group cap binds, because a
 // truncated grouping reads exactly like a complete one.
 //
+// FILTERS (cc-270) — both modes, combinable with each other and with --by:
+//
+//   --origin              only requests that reached the origin
+//                         (originResponseStatus_gt: 0 — the definition
+//                         packages/db/src/cloudflare-analytics.ts uses). Without
+//                         it, --by counts challenged and edge-cached requests too.
+//   --path-like <like>    clientRequestPath_like, SQL LIKE (% wildcard), e.g.
+//                         --path-like "/officials/%"
+//
+//   node scripts/cf-analytics.mjs --since 2026-11-09T00:00:00Z --origin --by userAgent
+//   node scripts/cf-analytics.mjs --origin --path-like "/jurisdictions/%" --by clientIP
+//
+// Together they join user agent or IP to a path family (cc-269 census §10
+// item 7). Hourly mode always prints an `origin` column next to the edge status
+// split, from a second query grouped by hour alone.
+//
 // NOT AVAILABLE ON THIS FREE ZONE (probed 2026-08-16, both refused by the API):
 // the `clientAsn` dimension, and the whole `firewallEventsAdaptiveGroups`
 // dataset. Top-ASN and per-rule mitigation breakdowns need the dashboard.
@@ -32,6 +48,8 @@
 // Reads CLOUDFLARE_API_TOKEN from .env.local.prod by direct file read — the
 // same trick as db-query.mjs / db-push-prod.mjs, which sidesteps the `source`
 // non-export trap and keeps the agent's command free of $(...) substitution.
+// The file is the PRIMARY checkout's (mainCheckoutRoot, as session-held.mjs
+// does): a `session:worktree` tree carries no real .env.local.prod.
 //
 // FREE-PLAN LIMIT: the GraphQL Analytics API refuses a range wider than 1 day
 // on a Free zone ("cannot request a time range wider than 1d"). --hours is
@@ -41,15 +59,20 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mainCheckoutRoot } from "./lib/cc-config.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ENV_FILE = join(ROOT, ".env.local.prod");
+const ENV_FILE = join(mainCheckoutRoot(ROOT), ".env.local.prod");
 const ZONE_NAME = "civitics.com";
 const API = "https://api.cloudflare.com/client/v4";
 
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+function flag(name) {
+  return process.argv.includes(`--${name}`);
 }
 
 function loadToken() {
@@ -102,6 +125,25 @@ async function resolveZoneId() {
   return json.result[0];
 }
 
+// The filter every query sends. --path-like rides as a variable, so the value
+// is never spliced into the query text. Checked before any request goes out.
+const originOnly = flag("origin");
+const pathLike = arg("path-like");
+if (flag("path-like") && !pathLike) {
+  console.error('[cf-analytics] --path-like needs a value, e.g. --path-like "/officials/%"');
+  process.exit(1);
+}
+if (pathLike && !pathLike.startsWith("/")) {
+  // Git Bash rewrites a leading-slash argument into a Windows path
+  // ("/officials/%" → "C:/Program Files/Git/officials/%"), which matches nothing
+  // and reads exactly like a quiet hour. Prefix the command with MSYS_NO_PATHCONV=1.
+  console.error(
+    `[cf-analytics] --path-like ${JSON.stringify(pathLike)} does not start with "/". ` +
+      `From Git Bash, prefix the command with MSYS_NO_PATHCONV=1.`,
+  );
+  process.exit(1);
+}
+
 const zone = await resolveZoneId();
 const hours = Math.min(24, Math.max(1, Number(arg("hours", "24"))));
 const until = arg("since")
@@ -109,9 +151,21 @@ const until = arg("since")
   : new Date(Date.now() - 60_000);
 const since = new Date(until.getTime() - hours * 3600_000);
 const vars = { zoneTag: zone.id, since: since.toISOString(), until: until.toISOString() };
+if (pathLike) vars.pathLike = pathLike;
+const VAR_DECLS = `$zoneTag: String!, $since: Time!, $until: Time!${pathLike ? ", $pathLike: String!" : ""}`;
+function filterText({ origin = originOnly } = {}) {
+  const parts = ["datetime_geq: $since", "datetime_leq: $until"];
+  if (origin) parts.push("originResponseStatus_gt: 0");
+  if (pathLike) parts.push("clientRequestPath_like: $pathLike");
+  return `{${parts.join(", ")}}`;
+}
 
 console.log(`[cf-analytics] zone=${zone.name} id=${zone.id} plan=${zone.plan?.name}`);
-console.log(`[cf-analytics] window ${vars.since} .. ${vars.until} (${hours}h, UTC)\n`);
+console.log(`[cf-analytics] window ${vars.since} .. ${vars.until} (${hours}h, UTC)`);
+console.log(
+  `[cf-analytics] filter: ${originOnly ? "origin-reaching only" : "all edge requests"}` +
+    `${pathLike ? `, path LIKE ${JSON.stringify(pathLike)}` : ""}\n`,
+);
 
 // ── Breakdown mode (--by <dimension>) ────────────────────────────────────────
 
@@ -138,10 +192,10 @@ if (by) {
   }
   const top = Math.max(1, Number(arg("top", "20")));
   const BREAKDOWN = `
-query ($zoneTag: String!, $since: Time!, $until: Time!) {
+query (${VAR_DECLS}) {
   viewer { zones(filter: {zoneTag: $zoneTag}) {
     httpRequestsAdaptiveGroups(limit: ${GROUP_LIMIT},
-      filter: {datetime_geq: $since, datetime_leq: $until},
+      filter: ${filterText()},
       orderBy: [count_DESC]) {
       count
       dimensions { ${by} }
@@ -199,10 +253,10 @@ query ($zoneTag: String!, $since: Time!, $until: Time!) {
 // ── Default mode: hourly ─────────────────────────────────────────────────────
 
 const GROUPS = `
-query ($zoneTag: String!, $since: Time!, $until: Time!) {
+query (${VAR_DECLS}) {
   viewer { zones(filter: {zoneTag: $zoneTag}) {
     httpRequestsAdaptiveGroups(limit: 2000,
-      filter: {datetime_geq: $since, datetime_leq: $until},
+      filter: ${filterText()},
       orderBy: [datetimeHour_ASC]) {
       count
       dimensions { datetimeHour clientRequestHTTPHost edgeResponseStatus cacheStatus }
@@ -210,8 +264,26 @@ query ($zoneTag: String!, $since: Time!, $until: Time!) {
   } }
 }`;
 
+// The origin column: the same window and path filter, origin-reaching only,
+// grouped by hour alone so it cannot multiply the rows above.
+const ORIGIN_BY_HOUR = `
+query (${VAR_DECLS}) {
+  viewer { zones(filter: {zoneTag: $zoneTag}) {
+    httpRequestsAdaptiveGroups(limit: 100,
+      filter: ${filterText({ origin: true })},
+      orderBy: [datetimeHour_ASC]) {
+      count
+      dimensions { datetimeHour }
+    }
+  } }
+}`;
+
 const data = await gql(GROUPS, vars);
 const rows = data?.httpRequestsAdaptiveGroups ?? [];
+const originData = await gql(ORIGIN_BY_HOUR, vars);
+const originByHour = new Map(
+  (originData?.httpRequestsAdaptiveGroups ?? []).map((r) => [r.dimensions.datetimeHour, r.count]),
+);
 if (!rows.length) {
   console.log("(no rows — zone may have had no traffic in the window)");
   process.exit(0);
@@ -229,23 +301,26 @@ for (const r of rows) {
   if (cs === "hit") b.hit += r.count;
 }
 
-// 403 is the tell for a Cloudflare challenge/block; 200 is what reached the
-// origin. The gap between them is the whole story of a mitigation.
-console.log("hour_utc                total      200      403    other   cache_hit  top_host");
-let gTotal = 0, g200 = 0, g403 = 0;
+// 403 is the tell for a Cloudflare challenge/block; `origin` is what reached
+// the origin. The gap between them is the whole story of a mitigation.
+console.log("hour_utc                total      200      403    other   cache_hit   origin  top_host");
+let gTotal = 0, g200 = 0, g403 = 0, gOrigin = 0;
 for (const [hr, b] of [...byHour.entries()].sort()) {
   const s200 = b.status.get(200) ?? 0;
   const s403 = b.status.get(403) ?? 0;
   const other = b.total - s200 - s403;
-  gTotal += b.total; g200 += s200; g403 += s403;
+  const origin = originByHour.get(hr) ?? 0;
+  gTotal += b.total; g200 += s200; g403 += s403; gOrigin += origin;
   const top = [...b.hosts.entries()].sort((a, c) => c[1] - a[1])[0];
   console.log(
     `${hr}  ${String(b.total).padStart(7)}  ${String(s200).padStart(7)}  ` +
       `${String(s403).padStart(7)}  ${String(other).padStart(7)}  ` +
-      `${String(b.hit).padStart(9)}  ${top ? `${top[0]}=${top[1]}` : "-"}`,
+      `${String(b.hit).padStart(9)}  ${String(origin).padStart(7)}  ${top ? `${top[0]}=${top[1]}` : "-"}`,
   );
 }
+// 200 is the EDGE status: an edge-cached 200 never reached the origin, and an
+// origin 404 is not a 200. `origin` is originResponseStatus_gt: 0.
 console.log(
-  `\nTOTAL ${gTotal}   reached-origin(200) ${g200}   ` +
+  `\nTOTAL ${gTotal}   edge-200 ${g200}   origin ${gOrigin}   ` +
     `mitigated(403) ${g403}   → ${((g403 / gTotal) * 100).toFixed(1)}% mitigated`,
 );
