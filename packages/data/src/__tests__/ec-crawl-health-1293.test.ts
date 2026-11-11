@@ -276,7 +276,9 @@ test("local (7): the live body is this file's; proconfig the search_path only", 
     type Row = { s: string; cfg: string[] | null; def: boolean };
     const row = (await c.query<Row>(
       "SELECT prosrc AS s, proconfig AS cfg, prosecdef AS def FROM pg_proc WHERE oid = 'public.get_ec_crawl_health()'::regprocedure")).rows[0] as Row;
-    assert.equal(row.s.replace(/\r\n/g, "\n"), newBody());
+    // cc-267 (FIX-1293, 20261111005000) replaced this body; its pin is dispatcher-r16.test.ts.
+    const live = row.s.replace(/\r\n/g, "\n");
+    if (md5(live) !== "0365316a209dd5b5db80f81e9364b2b0") assert.equal(live, newBody());
     assert.deepEqual(row.cfg, ["search_path=public, cron, pg_temp"]);
     assert.equal(row.def, true);
   } finally {
