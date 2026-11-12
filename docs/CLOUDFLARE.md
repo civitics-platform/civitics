@@ -128,6 +128,21 @@ browser. Scripted verification sees the Vercel layer only, and a green scripted 
 nothing about Cloudflare. That is the REQUEST path: the zone's analytics are readable as text
 with `node scripts/cf-analytics.mjs` (edge traffic by hour, or `--by clientIP|userAgent`).
 
+**The one scripted way through (cc-272):** a GitHub-hosted runner, carrying the
+`x-civitics-probe` header that `Probe skip (FIX-1057)` matches. The dev box does not hold
+`PROBE_HEADER_SECRET`; GitHub Actions does. `egress-probe.yml` sends it to a
+`https://www.civitics.com/` URL and to no other host:
+
+```
+gh workflow run egress-probe.yml --ref main -f urls=https://www.civitics.com/api/cron/limiter-health
+gh run view <id> --log      # the "Probe" step: status, server, cf-ray, x-civitics-ip-key, x-vercel-id
+```
+
+`cf-ray` present and a non-403 status mean the request crossed Cloudflare and reached
+Vercel. A `403` with `cf-mitigated: challenge` means the header did not ride. The job holds
+no `CRON_SECRET`, so a cron path answers 401; the middleware's `x-civitics-ip-key` stamp on
+that 401 is the read (§Origin auth, "The limiter's key").
+
 ---
 
 ## Posture as of 2026-08-17
@@ -504,6 +519,42 @@ confirm that only the intended variable moved. The Vercel API's env metadata
 from the terminal. After a secret change, prove the new value in `report` mode before
 enforcing: the deploy should show zero `cf-ray=yes` lines across a platform-snapshot
 run, and an IP-door probe should log its first `cf-ray=no` miss.
+
+### The limiter's key (FIX-1401)
+
+**Behind this zone, `x-forwarded-for` is the Cloudflare edge, not the visitor.** Vercel
+overwrites `x-forwarded-for` and `x-real-ip` with the TCP peer (cc-270's alias spoof
+test), and through Cloudflare the TCP peer is the edge. On 2026-11-12 the www probe
+(`egress-probe.yml`, runs 43136758112 and 43137094913, through IAD and ORD) read
+`x-civitics-ip-key: cf=differs; key=xff`. Until cc-272, every visitor through one PoP
+shared one limiter bucket.
+
+The limiter now keys on **`cf-connecting-ip`** when, and only when,
+`ORIGIN_AUTH_MODE=enforce` and the request carried the origin secret above
+(`provedCloudflare` in `apps/civitics/src/lib/origin-auth.ts`). That proof is what makes
+the header trustworthy. Vercel passes a client-sent `cf-connecting-ip` through untouched,
+but only a request that crossed this zone carries the Transform Rule's secret.
+
+- **IPv6 keys on its /64**: the first four hextets of the expanded address, lower case
+  (`2001:0db8:000a:000b::/64`). One subscriber's prefix is one bucket, so rotating
+  addresses inside it neither dodges the cap nor spends a first-in-window command per
+  address. IPv4, and IPv4-mapped IPv6, is used whole.
+- **Set the mode back to `report` or `off` and the key falls back** to the old chain
+  (`x-forwarded-for` → `x-real-ip` → `unknown`): per-edge buckets again, never a
+  forgeable key. The same holds outside production and when `ORIGIN_AUTH_SECRET` is unset.
+- **What it costs.** Per-client keys are sparser than per-edge ones, so more checks are
+  first-in-window. Under the fixed window (FIX-1391) that moves k toward 3 Upstash
+  commands a check, not toward 2.13.
+
+**Reading it.** Every answer from `/api/cron/limiter-health` carries
+`x-civitics-ip-key: cf=<absent|same|differs>; key=<xff|real|cf|unknown>`, the 401
+included. `cf` compares `cf-connecting-ip` with `x-forwarded-for`'s first hop, and `key`
+names the header the limiter would key this request on. The stamp is a class, never an
+address. Through www it should read `cf=differs; key=cf`. Through the alias it reads
+`cf=absent; key=xff`, because the alias carries no origin secret. With the `CRON_SECRET`
+bearer, the same path returns the limiter's health block from the middleware's own
+isolate (FIX-1402). Each bearer call forces one budget-flag read, which is one Upstash
+GET.
 
 ## If the zone ever moves accounts again
 

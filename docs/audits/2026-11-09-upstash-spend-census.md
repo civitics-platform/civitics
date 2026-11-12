@@ -718,3 +718,244 @@ Cloudflare, `/favicon.ico`, compared:
 
 Deploy: `c949fa20` reached `main` at 00:30:58Z; the Vercel commit status went
 from `pending` to `success` at 00:32:42Z.
+
+## §12 cc-272 — the identifier, the health block, the Chrome 133–142 fleet (2026-11-12; appended, nothing above edited)
+
+Prod contact was read-only, with three exceptions, all stated here.
+
+- **The two deploys:** the code's own, on `main`.
+- **The bearer GETs** of the health path: each one now forces one Upstash flag GET.
+- **One local `next start` smoke test.** Its `.env.local` carries the project's one
+  Upstash database, so it spent one fixed-window limiter check on a 60 s key, plus two
+  flag GETs.
+
+Everything else was reads: Cloudflare GraphQL, three `db-query --prod` reads under
+`statement_timeout 30s`, and the GHA `egress-probe.yml` runs through www.
+
+### The identifier (§10 item 13): CONFIRMED, and fixed ([[FIX-1401]])
+
+`egress-probe.yml` now sends `x-civitics-probe` to `https://www.civitics.com/` only. The
+middleware stamps `x-civitics-ip-key: cf=<absent|same|differs>; key=<xff|real|cf|unknown>`
+on every `/api/cron/limiter-health` answer, the 401 included. The probe holds no
+`CRON_SECRET`, so it read the stamp off the 401:
+
+| when (UTC) | run | edge → Vercel | UA | status | `x-civitics-ip-key` |
+|---|---|---|---|---|---|
+| 01:46:07 (deploy A) | 43136758112 | IAD → iad1 | node, Chrome/142 | 401, `cf-ray` present | **`cf=differs; key=xff`** |
+| 01:49:07 (deploy A) | 43137094913 | ORD → cle1 | node, Chrome/142 | 401, `cf-ray` present | **`cf=differs; key=xff`** |
+| 01:58:43 (deploy B) | 43138160863 | ORD → cle1 | node, Chrome/142 | 401 | **`cf=differs; key=cf`** |
+| 01:59:41 (deploy B) | 43138264706 | LAX → sfo1 | node, Chrome/142 | 401 | `cf=differs; key=cf` |
+| 02:01:37 (deploy B) | 43138500014 | PDX/SEA → pdx1 | node, Chrome/142 | 401 | **`cf=differs; key=cf`** |
+
+So, through Cloudflare, `x-forwarded-for` was the edge and `cf-connecting-ip` was the
+client: the limiter's "per-IP" key was per-PoP. Since deploy B, a request that carries
+the origin secret under `enforce` keys on `cf-connecting-ip`. IPv6 keys on its /64 and
+IPv4 is used whole (`client-ip.ts`, `origin-auth.ts` `provedCloudflare`). Through the
+alias, with the bearer, the key is unchanged at `cf=absent; key=xff`: the dev box, via
+`x-forwarded-for`.
+
+**Consequence for k (owed, after 11-14 06:00Z).** One page per IP (below) means nearly
+every fleet check is now first-in-window: 3 commands under the fixed window. That is
+§11's bound (iii), and it puts the FIX-1304 hold near 11-18, not 11-21.
+
+### The health block ([[FIX-1402]])
+
+The middleware now answers `/api/cron/limiter-health` (`src/lib/limiter-health.ts`). The
+route and its test are gone. Six bearer GETs through the alias after deploy A (01:46:25 →
+01:48:56Z, 30 s apart) gave the same row each time:
+
+- `health_scope: "middleware"`, `budget_read: "read"`, `budget_hold: false`, `budget_detail: null`
+- `isolate.id` `b86e2198-c284`, `started_at` 01:45:06.674Z, which is deploy A's success instant
+- `checks: 0`, `mode: null`, `transitions: 0`
+- `budget_reads` stepped 1 → 6, one forced read per GET
+
+0 of 6 landed on an isolate with `checks > 0`. pdx1 serves the dev box, and almost
+nothing bucketed lands there. The single read after deploy B (01:59:24Z) did land warm:
+isolate `9f43bc14-e9cf`, `checks: 1`, `mode: "upstash"` since 01:58:53Z, `budget_reads: 2`.
+
+The same isolate id across 3.5 minutes is also the first direct evidence that module
+state survives between requests on a middleware isolate, which FIX-1304's design
+assumed.
+
+**What FIX-1304's receipt looks like through it:**
+
+- On any isolate, `budget_hold: true` and `budget_detail: "<used>/<limit>"`, because the
+  forced read is the flag as of the call.
+- On a warm isolate (`checks > 0`) that has served a check since the flag was set,
+  `mode: "memory"` with `reason: "budget hold: …"`.
+
+### The fleet (§4 (3c), §11): census, read-only ([[FIX-1403]])
+
+**Classifier:** `userAgent_in` the ten exact strings `Mozilla/5.0 (Windows NT 10.0;
+Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/1{33..42}.0.0.0
+Safari/537.36`. Days run 00:00Z ≤ t < 24:00Z (`datetime_lt`).
+
+**Self-test:** 11-10 origin-reaching = **23,020**, against §11's 23,151 (−0.57 %, inside
+±1 %). All-origin for 11-10 is 24,256, the same as §11. All-origin for 11-02 → 11-08
+matches §4 (3a) exactly, so Cloudflare still held 11-01 → 11-04 on 11-12 (cc-272 report, What
+contradicted).
+
+**(a) Edge vs origin**
+
+| | 11-10 | 11-11 (newest full day) |
+|---|---:|---:|
+| fleet at the edge | 56,796 | 38,110 |
+| reached the origin | 23,020 (40.5 %) | 11,195 (29.4 %) |
+| edge status | 200 23,491 · 403 15,724 · 499 6,022 · 404 5,767 · 204 3,174 · 401 2,539 | 200 18,824 · 403 9,673 · 499 4,138 · 204 2,134 · 400 1,654 · 401 1,543 |
+| share of all origin traffic | 94.9 % | 86.5 % |
+
+Every version passes the challenge at the same rate on a given day: 41 % on 11-10, for
+133 (4,494 → 1,841) and for 142 (15,641 → 6,411) alike. Chrome/142 carries ~3× each of
+the other nine.
+
+**(b) Origin paths and methods**
+
+| | 11-10 | 11-11 |
+|---|---|---|
+| top paths | `/favicon.ico` 5,767 · `/api/platform/web-vitals` 4,194 · `/icon.svg` 2,235 · `/api/notifications` 2,034 (401) · `/_vercel/insights/view` 1,996 · `/api/track-view` 1,546 · `/75c49be622312150/vitals` 714 · `/api/questions` 519 · `/api/constituent-status` 518 · `/api/comments` 511 · `/api/follows` 505 | web-vitals 2,809 · `/icon.svg` 1,542 · insights 1,365 · notifications 1,351 · track-view 927 · speed-insights 434 · `/favicon.ico` **315** · comments 211 · questions 200 · follows / constituent-status 192 |
+| distinct paths | 2,181 | 1,561 |
+| methods | GET 14,570 · POST 8,450 | GET 5,660 · POST 5,535 |
+
+- `/75c49be622312150/vitals` is Vercel Speed Insights (`<SpeedInsights />` in
+  `app/layout.tsx`), a fourth beacon.
+- `/favicon.ico` fell from 5,767 to 315 because cc-270's favicon is now an edge-cached 200.
+
+**(c) Countries.** ASN and referer are refused to this Free zone: `clientAsn`,
+`clientASNDescription` and `clientRefererHost` all return "does not have access to the
+field".
+
+- **11-10:** 125 countries. BR 2,532 · IN 2,442 · VN 1,699 · US 1,242 · MX 1,028 · TH 944 ·
+  ID 703 · GB 676 · PH 671 · TR 588 · AU 529 · SA 462 · CO 438 · ES 406 · FR 374
+- **11-11:** 110 countries. IN 1,329 · BR 1,217 · VN 933 · US 630 · MX 538 · ID 440 · TH 387 ·
+  GB 326 · PH 287 · TR 231 · CO 229 · SA 208 · ES 199 · MY 199 · AU 197
+
+**(d) IPs**
+
+| | 11-10 | 11-11 |
+|---|---:|---:|
+| distinct IPs at origin | 2,784 | 1,641 |
+| of them IPv6 | **0** | **0** |
+| requests per IP, p50 / p95 / max | 9 / 14 / 24 | 7 / 11 / 20 |
+| distinct /24s | 2,732 | 1,627 |
+| /24s holding more than one IP | 45 (max 4) | 14 (max 2) |
+| IPs at the edge | 5,454 (2,670 never reached origin) | 3,915 (2,274 never reached origin) |
+
+**(e) Origin by hour (UTC)**
+
+- **11-10:** `00` 831 · `01` 757 · `02` 560 · `03` 883 · `04` 943 · `05` 1,185 · `06` 1,077 ·
+  `07` 1,058 · `08` 1,151 · `09` 1,146 · `10` 1,025 · `11` 1,108 · `12` 1,073 · `13` 1,099 ·
+  `14` 1,142 · `15` 1,113 · `16` 1,045 · `17` 1,112 · `18` 922 · `19` 1,359 · `20` 1,027 ·
+  `21` 511 · `22` 493 · `23` 400. A flat plateau of ~1,000–1,150 an hour from 05Z to 20Z.
+- **11-11:** `00` 325 · `01` 479 · `02` 900 · `03` 1,130 · `04` 1,132 · `05` 863 · `06` 767 ·
+  `07` 703 · `08` 651 · `09` 657 · `10` 817 · `11` 821 · `12` 514 · `13` 179 · `14` 218 ·
+  `15` 188 · `16` 146 · `17` 184 · `18` 122 · `19` 62 · `20` 57 · `21` 54 · `22` 128 ·
+  `23` 98. It ramps to 02–04Z, then winds down after 12Z.
+
+Neither day is human-shaped for a population split between UTC−3 (BR) and UTC+7 (VN).
+
+**(f) Pages: the fleet walks the deep-link long tail, about one page an IP**
+
+| | 11-10 | 11-11 |
+|---|---:|---:|
+| page renders at origin | **2,459** over 2,148 distinct paths (1.14 a path) | 1,604 over 1,529 (1.05) |
+| by family | `/donors/*` 1,436 · `/jurisdictions/*` 801 · `/officials/*` 130 · `/proposals/*` 86 · `/institutions/*` 4 · `/agencies/*` 2 | donors 935 · jurisdictions 564 · officials 56 · proposals 36 · institutions 9 · agencies 4 |
+| origin status | 200 2,435 · 500 22 · 308 2 | 200 1,591 · 500 9 · 308 4 |
+
+- Page requests are `cacheStatus: dynamic` at origin; the rest are `none` / 403
+  (challenged) or 499.
+- At the edge the fleet also requests `/cdn-cgi/challenge-platform/…` (12,061 on 11-10)
+  and Cloudflare's `/cdn-cgi/rum` (3,216): it runs the challenge's JS and Cloudflare's own
+  RUM beacon.
+- **These renders are bucketed.** `/donors/*` and `/proposals/*` are `entity_pages`;
+  `/jurisdictions/*` and `/officials/*` are `entity_leaf`. On 11-10 that was 931 leaf +
+  1,528 pages = 2,459 checks, **~88 % of §11's B of 2,805** (leaf 991, pages 1,814). The
+  fleet is most of the limiter's bucketed traffic since Exa stopped.
+- At one page per IP, no per-IP cap can touch it.
+
+**(g) The daily series (origin-reaching; extends §11)**
+
+| UTC day | fleet origin | all origin | share | fleet edge | IPs | track-view forwarded (200 + 499) | `page_views` rows | web-vitals forwarded (200 + 499) | `web_vitals_samples`: fleet / all (%) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 11-01 | 17,254 | 22,748 | 75.8 % | 46,006 | 2,197 | 963 | 975 | 3,886 | 3,802 / 3,910 (97.2) |
+| 11-02 | 8,406 | 13,756 | 61.1 % | 24,575 | 1,317 | 355 | 394 | 1,434 | 1,386 / 1,545 (89.7) |
+| 11-03 | 7,276 | 14,865 | 48.9 % | 21,959 | 1,068 | 238 | 259 | 1,672 | 1,647 / 1,721 (95.7) |
+| 11-04 | 7,265 | 15,547 | 46.7 % | 27,036 | 1,278 | 115 | 152 | 1,081 | 1,065 / 1,233 (86.4) |
+| 11-05 | 6,266 | 16,477 | 38.0 % | 23,245 | 1,165 | 215 | 221 | 811 | 797 / 1,008 (79.1) |
+| 11-06 | 7,490 | 15,160 | 49.4 % | 25,412 | 1,231 | 578 | 596 | 2,156 | 2,161 / 2,239 (96.5) |
+| 11-07 | 6,318 | 12,351 | 51.2 % | 19,751 | 916 | 384 | 418 | 1,538 | 1,517 / 1,596 (95.1) |
+| 11-08 | 15,086 | 19,787 | 76.2 % | 44,101 | 2,126 | 880 | 932 | 3,577 | 3,515 / 3,629 (96.9) |
+| 11-09 | 6,105 | 8,482 | 72.0 % | 25,075 | 1,236 | 212 | 231 | 1,064 | 1,057 / 1,102 (95.9) |
+| 11-10 | 23,020 | 24,256 | 94.9 % | 56,796 | 2,784 | 1,549 | 1,583 | 7,589 | 7,430 / 7,502 (99.0) |
+| 11-11 | 11,195 | 12,943 | 86.5 % | 38,110 | 1,641 | 933 | 946 | 5,109 | 5,035 / 5,120 (98.3) |
+
+§11's series read 7,523 · 6,735 · 15,668 · 6,269 · 23,151 for 11-06 → 11-10. The exact
+ten-string classifier reads 0.4–6 % lower on those days, while all-origin agrees to the
+request, so cc-270's family was slightly wider than the ten strings.
+
+**The 499s reach the origin.** Fleet web-vitals at the edge on 11-10 were 4,194 `200/200`
++ **3,395 `499/0`** + 29 `403`. The DB holds 7,430 fleet rows for that day, against
+4,194 + 3,395 = 7,589. `sendBeacon` on unload drops the connection before the answer
+comes back. Cloudflare logs a 499 with `originResponseStatus 0`, but it had already
+forwarded the request and the function ran. Speed Insights had the same split: 714
+`200` + 2,553 `499`. So `originResponseStatus_gt: 0`, the `--origin` definition,
+**under-counts origin work for beacons**. The fleet's real arrivals on 11-10 were nearer
+29k than 23k.
+
+### The DB side (read 7)
+
+- **`page_views`, 11-01 → 11-11:** 6,707 rows. Each day's rows ≈ distinct `session_id`
+  (one view per session). `is_bot` true on 1 row in 11 days. `browser` is `Chrome` on
+  95–100 % of every day.
+- **`page_views.country_code` is the EDGE's country.** Top 5 on 11-10: US 215 · SG 208 ·
+  BR 187 · FR 131 · HK 83. Cloudflare's countries for the fleet that day are led by BR,
+  IN and VN, and IN and VN are missing from the DB's top 5. `x-vercel-ip-country`
+  geolocates the Cloudflare egress, the same root cause as the key. **One-line follow-up
+  (D8, not built):** `track-view/route.ts` reads `cf-ipcountry`, set by Cloudflare,
+  before `x-vercel-ip-country`.
+- **`web_vitals_samples`, 11-01 → 11-11:** the fleet's ten UAs are **29,412 of 30,605
+  rows (96.1 %)**.
+- **The fleet's share of `page_views`:** forwarded fleet track-views sum to 6,422 against
+  6,707 rows, **≈ 95.8 %**. `page_views` carries no UA, so this ratio crosses the two
+  sources.
+- **Sizes:**
+  - `page_views`: 3.1 MB heap / 6.6 MB total, `reltuples` 14,903, `n_dead_tup` 2.
+  - `web_vitals_samples`: 16.1 MB / 23.4 MB, `reltuples` 64,522, `n_dead_tup` 16.
+  - Both are small. The fleet's cost here is meaning, not bytes.
+- **The newest `platform_usage_snapshot`** (01:31:08Z 11-12, month to date, 11 days):
+  - `total_overage_cost` **3.5648**.
+  - The Vercel keys are `vercel_account`, `vercel_billing`, `vercel_billing_shadow` and
+    `vercel_breakdown`.
+  - `vercel_breakdown.services[]` (`service`, `usd`, `quantity`, `unit`, `metric`):
+    - `Function Invocations` 269,523 ($0.441)
+    - `Web Analytics Events` 7,764 ($0.635)
+    - `Observability Events` 2,382,634 ($7.798, the largest metered line, not attributed)
+    - `Fluid Active CPU` 5.08 h ($1.884) · `Fluid Provisioned Memory` 84.6 GB-h ($2.491) ·
+      `ISR Writes` 229,679 ($2.506) · `Fast Origin Transfer` 2.92 GB ($0.548)
+  - `vercel_billing`: `usage_mtd_usd` 6.11 of `included_credit_usd` 20
+    (`credit_used_pct` 30.6), `projected_usage_usd` 16.68, `billable_overage_mtd_usd` 0.
+
+### Who, what it costs, how much of the data
+
+- **A farm, not people.** The real Chrome visitors on this zone run 155–157. Its ten
+  Windows strings are 13–24 releases stale, and every version passes the challenge at the
+  same rate. 2,784 IPs spread over 2,732 /24s, with zero IPv6, each loading about one
+  deep-link page and its beacons, on a flat 05–20Z plateau. That is a residential-proxy
+  browser farm executing JS.
+- **A day costs little in dollars; the cost is elsewhere.** 11-10 cost about 15.7k
+  function invocations: 2,459 renders, 7,589 web-vitals, 1,549 track-views, 2,034
+  notifications and ~2,050 reads of the four page APIs. That is ~$0.03 at the snapshot's
+  own rate, against a month-to-date average of ~24.5k a day. The day also brought ~2,000
+  Web Analytics events (up to ~$0.16 if all were billed; the snapshot bills only 7,764
+  month to date) and ~9k DB rows. Vercel overage is $0 at 30.6 % of the credit. The real
+  costs are ~2,460 bucketed checks a day, ~7k Upstash commands at k ≈ 3 toward the
+  FIX-1304 hold, and the analytics themselves.
+- **It is ~96 % of both telemetry tables since 11-01**: ~95.8 % of `page_views` and
+  96.1 % of `web_vitals_samples`.
+
+### Options for Craig (nothing built)
+
+| option | what it does | saves a day (11-10 scale) | risks |
+|---|---|---|---|
+| **(1) Leave it** | nothing | 0 | `page_views` / `web_vitals_samples` stay ~96 % fleet; anything built on them reads the farm. ~2.5k bucketed checks a day (~7k Upstash commands at k ≈ 3) pull the FIX-1304 hold toward 11-18. The 11-01 / 11-08 / 11-10 peaks recur. |
+| **(2) Edge rule** | All 5 Free slots are used, so OR a clause into **`Common Exploit Paths`** (Block): `(http.user_agent in {"…Chrome/133.0.0.0 Safari/537.36", …, "…Chrome/142.0.0.0 Safari/537.36"})`, the ten exact strings. The signature has held every day since 11-01. Merging into `SearchBot` instead (managed_challenge) buys little, because the farm already passes Under Attack's challenge 30–41 % of the time. | all ~23k origin requests, ~2.5k renders, ~9k rows, the analytics events | It blocks any real Windows user still on Chrome 133–142. The zone's non-fleet Chrome is 155–157, but stale Windows Chrome cannot be told apart from the farm. The farm can rotate strings at will. It is a dashboard edit to a Block rule. |
+| **(3) App-side** | `/api/track-view` and `/api/platform/web-vitals` answer 204 without the INSERT, or `track-view` writes `is_bot: true` with `bot_name: 'chrome-133-142'`, when the UA is one of the ten. The UA is the only field the census can tell apart. A real browser sends the same string, so nothing else separates them. | ~9k rows a day; `page_views` / `web_vitals_samples` clean | It saves no invocations: the function still runs, unless middleware answers first. It does nothing for renders, Upstash checks or the `/_vercel/*` beacons. A real stale-Chrome user loses only telemetry. `is_bot` is the reversible form. |
