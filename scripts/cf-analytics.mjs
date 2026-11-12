@@ -33,17 +33,22 @@
 //                         it, --by counts challenged and edge-cached requests too.
 //   --path-like <like>    clientRequestPath_like, SQL LIKE (% wildcard), e.g.
 //                         --path-like "/officials/%"
+//   --ua-like <like>      userAgent_like, the same LIKE shape (cc-272), e.g.
+//                         --ua-like "%Chrome/14_.0.0.0 Safari/537.36"
 //
 //   node scripts/cf-analytics.mjs --since 2026-11-09T00:00:00Z --origin --by userAgent
 //   node scripts/cf-analytics.mjs --origin --path-like "/jurisdictions/%" --by clientIP
+//   node scripts/cf-analytics.mjs --origin --ua-like "%Win64; x64)%Chrome/1%" --by clientRequestPath
 //
 // Together they join user agent or IP to a path family (cc-269 census §10
 // item 7). Hourly mode always prints an `origin` column next to the edge status
 // split, from a second query grouped by hour alone.
 //
-// NOT AVAILABLE ON THIS FREE ZONE (probed 2026-08-16, both refused by the API):
-// the `clientAsn` dimension, and the whole `firewallEventsAdaptiveGroups`
-// dataset. Top-ASN and per-rule mitigation breakdowns need the dashboard.
+// NOT AVAILABLE ON THIS FREE ZONE, all refused by the API ("does not have
+// access to the field"): the `clientAsn` dimension and the whole
+// `firewallEventsAdaptiveGroups` dataset (probed 2026-08-16), and
+// `clientASNDescription` and `clientRefererHost` (probed 2026-11-12, cc-272).
+// Top-ASN, referer and per-rule mitigation breakdowns need the dashboard.
 //
 // Reads CLOUDFLARE_API_TOKEN from .env.local.prod by direct file read — the
 // same trick as db-query.mjs / db-push-prod.mjs, which sidesteps the `source`
@@ -125,12 +130,19 @@ async function resolveZoneId() {
   return json.result[0];
 }
 
-// The filter every query sends. --path-like rides as a variable, so the value
-// is never spliced into the query text. Checked before any request goes out.
+// The filter every query sends. --path-like and --ua-like ride as variables, so
+// a value is never spliced into the query text. Checked before any request goes out.
 const originOnly = flag("origin");
 const pathLike = arg("path-like");
 if (flag("path-like") && !pathLike) {
   console.error('[cf-analytics] --path-like needs a value, e.g. --path-like "/officials/%"');
+  process.exit(1);
+}
+// A user agent never starts with "/", so Git Bash's path rewrite (below) cannot
+// bite --ua-like; an empty value is the only shape to refuse.
+const uaLike = arg("ua-like");
+if (flag("ua-like") && !uaLike) {
+  console.error('[cf-analytics] --ua-like needs a value, e.g. --ua-like "%Chrome/14_.0.0.0%"');
   process.exit(1);
 }
 if (pathLike && !pathLike.startsWith("/")) {
@@ -152,11 +164,15 @@ const until = arg("since")
 const since = new Date(until.getTime() - hours * 3600_000);
 const vars = { zoneTag: zone.id, since: since.toISOString(), until: until.toISOString() };
 if (pathLike) vars.pathLike = pathLike;
-const VAR_DECLS = `$zoneTag: String!, $since: Time!, $until: Time!${pathLike ? ", $pathLike: String!" : ""}`;
+if (uaLike) vars.uaLike = uaLike;
+const VAR_DECLS =
+  `$zoneTag: String!, $since: Time!, $until: Time!` +
+  `${pathLike ? ", $pathLike: String!" : ""}${uaLike ? ", $uaLike: String!" : ""}`;
 function filterText({ origin = originOnly } = {}) {
   const parts = ["datetime_geq: $since", "datetime_leq: $until"];
   if (origin) parts.push("originResponseStatus_gt: 0");
   if (pathLike) parts.push("clientRequestPath_like: $pathLike");
+  if (uaLike) parts.push("userAgent_like: $uaLike");
   return `{${parts.join(", ")}}`;
 }
 
@@ -164,7 +180,8 @@ console.log(`[cf-analytics] zone=${zone.name} id=${zone.id} plan=${zone.plan?.na
 console.log(`[cf-analytics] window ${vars.since} .. ${vars.until} (${hours}h, UTC)`);
 console.log(
   `[cf-analytics] filter: ${originOnly ? "origin-reaching only" : "all edge requests"}` +
-    `${pathLike ? `, path LIKE ${JSON.stringify(pathLike)}` : ""}\n`,
+    `${pathLike ? `, path LIKE ${JSON.stringify(pathLike)}` : ""}` +
+    `${uaLike ? `, UA LIKE ${JSON.stringify(uaLike)}` : ""}\n`,
 );
 
 // ── Breakdown mode (--by <dimension>) ────────────────────────────────────────
@@ -186,7 +203,8 @@ if (by) {
   if (!BY_DIMENSIONS.has(by)) {
     console.error(
       `[cf-analytics] --by ${by} is not in the supported set: ${[...BY_DIMENSIONS].join(", ")}.\n` +
-        `  NB clientAsn and firewallEventsAdaptiveGroups are refused to this Free zone.`,
+        `  NB clientAsn, clientASNDescription, clientRefererHost and ` +
+        `firewallEventsAdaptiveGroups are refused to this Free zone.`,
     );
     process.exit(1);
   }
