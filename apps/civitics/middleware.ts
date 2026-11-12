@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/ratelimit";
 import { getClientIp } from "@/lib/client-ip";
+import { LIMITER_HEALTH_PATH, answerLimiterHealth } from "@/lib/limiter-health";
 import { createRedirectResolver } from "@/lib/official-redirects";
 import { createInstitutionSlugResolver } from "@/lib/institution-slug-redirects";
 import {
@@ -315,6 +316,14 @@ export async function middleware(request: NextRequest) {
     return originRefusedResponse();
   }
   if (origin.action === "report") noteOrigin(request, path, "miss");
+
+  // ── FIX-1402: the limiter's health block, from the limiter's own isolate ──
+  // An edge route is a separate bundle with its own ratelimit.ts state, so the
+  // middleware answers this path itself (src/lib/limiter-health.ts). It is
+  // `cron-exempt` above, so it never reaches here as a report miss.
+  if (path === LIMITER_HEALTH_PATH) {
+    return answerLimiterHealth(request.headers, process.env["CRON_SECRET"]);
+  }
 
   const response = await routeRequest(request, path);
   if (origin.action === "report") response.headers.set(ORIGIN_CHECK_HEADER, "miss");

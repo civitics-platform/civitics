@@ -24,8 +24,17 @@ name: egress-probe
 #   - An api.congress.gov URL gets `api_key` from the CONGRESS_API_KEY secret
 #     appended at request time. The printed URL never carries it, and Actions
 #     masks the secret in the log regardless.
+#   - (cc-272 D7) A URL under https://www.civitics.com/ gets
+#     `x-civitics-probe: <PROBE_HEADER_SECRET>`, the header the WAF rule
+#     `Probe skip (FIX-1057)` matches to skip Under Attack, so the request
+#     reaches Vercel instead of the challenge. NEVER sent to any other host (the
+#     `case` below). It carries no CRON_SECRET (not a GHA secret), so a cron
+#     path answers 401, and the middleware's `x-civitics-ip-key` stamp on that
+#     401 is the read: `cf=<absent|same|differs>; key=<xff|real|cf|unknown>`
+#     (FIX-1401, apps/civitics/src/lib/limiter-health.ts).
 #
 # Run:   gh workflow run egress-probe.yml --ref main
+#        gh workflow run egress-probe.yml --ref main -f urls=https://www.civitics.com/api/cron/limiter-health
 # Read:  gh run view <id> --log   (the "Probe" step prints the fact block)
 
 on:
@@ -75,6 +84,7 @@ jobs:
           COLLECTOR_UA: ${{ inputs.ua }}
           BROWSER_UA: ${{ inputs.browser_ua }}
           CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+          PROBE_HEADER_SECRET: ${{ secrets.PROBE_HEADER_SECRET }}
         run: |
           set -u
           # URLs carry `?`: split on spaces, never glob.
@@ -85,6 +95,7 @@ jobs:
             n=$((n + 1))
             fetch_url="${url}"
             key_note=""
+            extra=()
             case "${url}" in
               https://api.congress.gov/*)
                 if [ -n "${CONGRESS_API_KEY:-}" ]; then
@@ -95,6 +106,15 @@ jobs:
                   key_note=" (NO CONGRESS_API_KEY secret: unauthenticated)"
                 fi
                 ;;
+              https://www.civitics.com/*)
+                # The Under Attack skip header goes to www ONLY (cc-272 D7).
+                if [ -n "${PROBE_HEADER_SECRET:-}" ]; then
+                  extra=(-H "x-civitics-probe: ${PROBE_HEADER_SECRET}")
+                  key_note=" (x-civitics-probe from the PROBE_HEADER_SECRET secret)"
+                else
+                  key_note=" (NO PROBE_HEADER_SECRET secret: expect the challenge)"
+                fi
+                ;;
             esac
             for which in collector browser; do
               if [ "${which}" = collector ]; then agent="${COLLECTOR_UA}"; else agent="${BROWSER_UA}"; fi
@@ -102,12 +122,12 @@ jobs:
               body="${tmp}/b${n}${which}"
               : > "${hdr}"
               : > "${body}"
-              code="$(curl -sS -o "${body}" -D "${hdr}" -w '%{http_code}' --max-time 20 -A "${agent}" "${fetch_url}" 2> "${hdr}.err")" \
+              code="$(curl -sS -o "${body}" -D "${hdr}" -w '%{http_code}' --max-time 20 -A "${agent}" "${extra[@]}" "${fetch_url}" 2> "${hdr}.err")" \
                 || code="curl exit $? — $(head -c 160 "${hdr}.err" | tr -d '\r\n')"
               echo "== [${n}] ${url}${key_note}"
               echo "   ua=${which} (${agent})"
               echo "   status=${code}"
-              grep -i -E '^(server|cf-mitigated|cf-ray|x-akamai[a-z-]*|akamwafrefid|akamai-grn|retry-after|x-ratelimit[a-z-]*|content-type|location):' "${hdr}" \
+              grep -i -E '^(server|cf-mitigated|cf-ray|x-civitics-ip-key|x-vercel-id|x-akamai[a-z-]*|akamwafrefid|akamai-grn|retry-after|x-ratelimit[a-z-]*|content-type|location):' "${hdr}" \
                 | tr -d '\r' | sed 's/^/   /' || true
               first="$(head -c 600 "${body}" | tr -d '\r' | sed -n '/[^[:space:]]/{p;q}')"
               echo "   body1=${first:0:200}"

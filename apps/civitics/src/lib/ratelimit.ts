@@ -316,8 +316,27 @@ function evictTo<T>(
 // transition in pipeline_state + the snapshot payload. An edge instance cannot
 // durably record anything cheaply or safely (no admin client at the edge), so
 // the cron probe is the system of record and this is the per-instance view.
+//
+// Reading it (FIX-1402, cc-272): middleware.ts answers /api/cron/limiter-health
+// itself (src/lib/limiter-health.ts), because an edge ROUTE is its own bundle
+// with its own copy of this module and only ever saw zeros. getLimiterIsolate()
+// says which copy answered: an id minted when this module loaded, and how many
+// checkRateLimit calls it has served. Isolates are many and short-lived, so a
+// health read lands on a cold one (checks 0, mode null) as often as not.
 
 export type LimiterMode = "upstash" | "memory";
+
+const isolateId =
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().slice(0, 13)
+    : Math.random().toString(16).slice(2, 15);
+const isolateStartedAt = new Date().toISOString();
+let checkCount = 0;
+
+/** This module instance: its id, when it loaded, and the checkRateLimit calls it has served. */
+export function getLimiterIsolate(): { id: string; started_at: string; checks: number } {
+  return { id: isolateId, started_at: isolateStartedAt, checks: checkCount };
+}
 
 let mode: LimiterMode | null = null;
 let modeSince: number | null = null;
@@ -413,7 +432,8 @@ function shouldWarnForUpstashError(): boolean {
 // All of this is per instance and assumes module state survives between
 // requests on an edge isolate, as the deny-cache and memory counters already
 // do. Where it does not, every cold start costs one GET; `budget_reads` in
-// getLimiterHealth() is the count.
+// getLimiterHealth() is the count. A bearer GET of /api/cron/limiter-health
+// adds one forced read (forceBudgetFlagRead, FIX-1402), counted there too.
 
 /** Must equal LIMITER_BUDGET_KEY in packages/db/src/upstash-usage.ts. */
 export const BUDGET_FLAG_KEY = "civitics:limiter:budget";
@@ -510,6 +530,31 @@ function refreshBudgetIfDue(now: number): Promise<string | null> | null {
   return inFlight;
 }
 
+/** What forceBudgetFlagRead did: read the flag, found no reader (no Upstash env), or was refused for quota. */
+export type BudgetForcedRead = "read" | "no-reader" | "quota-refused";
+
+/**
+ * FIX-1402: read the flag NOW, whatever the 200-call / 60 s schedule says, so a
+ * bearer GET of /api/cron/limiter-health reports `budget_hold` / `budget_detail`
+ * as of that call on any isolate, cold or warm. The same readBudgetFlag path,
+ * so it also resets this isolate's schedule; a read already in flight is shared,
+ * not doubled. Never throws.
+ *
+ * COST: one Upstash GET per bearer call. Nothing schedules the health path, so
+ * this is hand-run reads only, never per request.
+ */
+export async function forceBudgetFlagRead(): Promise<BudgetForcedRead> {
+  if (!budgetInFlight) {
+    const read = resolveBudgetReader();
+    if (!read) return "no-reader";
+    budgetInFlight = readBudgetFlag(read).finally(() => {
+      budgetInFlight = null;
+    });
+  }
+  const refused = await budgetInFlight;
+  return refused === null ? "read" : "quota-refused";
+}
+
 // ── Fail-over limiter (per instance, fixed window) ───────────────────────────
 
 /**
@@ -564,6 +609,7 @@ export async function checkRateLimit(
   bucket: RateLimitBucket,
   identifier: string,
 ): Promise<RateLimitResult> {
+  checkCount += 1;
   if (!identifier) return ALLOW;
 
   const key = `${bucket}:${identifier}`;
@@ -669,6 +715,7 @@ export function __resetRateLimiterStateForTests(): void {
   budgetReads = 0;
   budgetErrorCount = 0;
   budgetInFlight = null;
+  checkCount = 0;
 }
 
 /** TEST-ONLY. Installs a stand-in for the budget flag GET (FIX-1304): resolves
