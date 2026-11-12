@@ -2,13 +2,19 @@
  * POST /api/platform/web-vitals — Capture a Core Web Vitals sample.
  *
  * Accepts sendBeacon or JSON POST. No auth (public telemetry).
- * Samples retained 30 days; aggregated into platform_usage by nightly job.
+ * No reader yet; no retention — FIX-1406. (FIX-049's nightly aggregation into
+ * platform_usage and its 30-day trim were never built.)
+ *
+ * FIX-1404: a sample from the Chrome 133–142 fleet (src/lib/view-telemetry.ts)
+ * gets the same { ok: true } without the INSERT. The table has no is_bot
+ * column, and a headless farm's timings are not field data.
  */
 
 export const dynamic = "force-dynamic";
 
 import { createAdminClient } from "@civitics/db";
 import { NextResponse } from "next/server";
+import { isChromeFleetUa } from "@/lib/view-telemetry";
 
 const ALLOWED = new Set(["LCP", "CLS", "INP", "FCP", "TTFB"]);
 
@@ -36,7 +42,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_metric" }, { status: 400 });
   }
 
-  const userAgent = req.headers.get("user-agent")?.slice(0, 255) ?? null;
+  const rawUserAgent = req.headers.get("user-agent");
+  if (isChromeFleetUa(rawUserAgent)) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const userAgent = rawUserAgent?.slice(0, 255) ?? null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
 
