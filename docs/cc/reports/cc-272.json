@@ -1,0 +1,73 @@
+{
+  "cc": "272",
+  "prompt": "cc-prompt-272-limiter-key-cf-connecting-ip-www-probe-from-gha-middleware-answers-limiter-health-chrome-fleet-census.md",
+  "started_at": "2026-11-12T01:29:12Z",
+  "finished_at": "2026-11-12T02:12:00Z",
+  "head_before": "eb5f748b",
+  "head_after": "b6357fdd",
+  "commits": [
+    {
+      "sha": "c22a9eb7",
+      "subject": "[skip vercel] chore(fixes): file FIX-1401, FIX-1402 and FIX-1403 (cc-272)"
+    },
+    {
+      "sha": "712b4474",
+      "subject": "[skip vercel] fix(scripts): fixes:sync reads a trailer reopen row back 5-column, so it stops re-appending 6dd15bde's FIX-1293 reopen (cc-272)"
+    },
+    {
+      "sha": "fbf45479",
+      "subject": "feat(app): FIX-1402 — the middleware answers /api/cron/limiter-health from the limiter's own isolate (bearer; one forced budget-flag read) and stamps the identifier class; egress-probe sends the probe header to www (cc-272)"
+    },
+    {
+      "sha": "1ba59498",
+      "subject": "[skip vercel] chore(scripts): cf-analytics --ua-like; the ASN / referer dimensions were each tried once and all three refused, named in the header (cc-272)"
+    },
+    {
+      "sha": "7af055fe",
+      "subject": "chore(fixes): record FIX-1402 on prod — six bearer GETs through the alias (01:46:25–01:48:56Z) all health_scope …"
+    },
+    {
+      "sha": "97cb126a",
+      "subject": "fix(app): FIX-1401 — key the limiter on cf-connecting-ip (IPv6 on its /64) when the request passed the origin door under enforce (cc-272)"
+    },
+    {
+      "sha": "e37acdf8",
+      "subject": "chore(fixes): record FIX-1401 on prod — the www probe's 401 now stamps cf=differs; key=cf (runs 43138160863 ORD and 43138500014 PDX/SEA, both UAs); the alias + bearer read keeps cf=absent; key=xff on the dev box (cc-272)"
+    },
+    {
+      "sha": "20cb17f8",
+      "subject": "[skip vercel] docs: the limiter's key and the through-www probe; census §12 — the identifier verdict, the health block, the Chrome 133–142 fleet (cc-272)"
+    },
+    {
+      "sha": "b6357fdd",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-272 — FIX-1401 and FIX-1402 close (local + prod); FIX-1403 stays open; no FIX-1293 reopen re-append (45 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1402",
+    "FIX-1401"
+  ],
+  "fixes_filed": [
+    "FIX-1401",
+    "FIX-1402",
+    "FIX-1403"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "No prod DB, Cloudflare, GitHub-secret or Vercel-env write. Upstash, outside posture: a local next start smoke test of the new middleware ran against the worktree's .env.local, which carries the project's ONE Upstash database. It made 1 fixed-window limiter check (EVALSHA + INCRBY + PEXPIRE on a 60 s civitics:rl:search:fw key) and 2 budget-flag GETs, ~5 commands, self-expiring. The 9 bearer GETs of the deployed health path each forced one flag GET (reads). Two Vercel deploys: the code's own, on main.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1401",
+      "what": "the first full UTC day after deploy B (11-13): k = (daily − F)/B, expect toward 3 now that per-client keys are sparse (the fleet is ~1 page an IP); distinct limiter keys per day up; 429s by UA class (0 for browser-class unless one client earns it) — the limiter now limits clients, not edges",
+      "after": "2026-11-14T06:00Z"
+    },
+    {
+      "fix": "FIX-1304",
+      "what": "the budget hold's first engagement read through /api/cron/limiter-health via the alias with the bearer: budget_hold true + budget_detail on the forced read, mode memory with reason 'budget hold: …' on an isolate with checks > 0; beside the snapshot's budget.state and the ring still writing (k ≈ 3 puts it nearer 11-18 than 11-21)",
+      "after": "2026-11-21T14:00Z"
+    }
+  ]
+}
