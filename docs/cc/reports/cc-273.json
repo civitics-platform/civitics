@@ -1,0 +1,55 @@
+{
+  "cc": "273",
+  "prompt": "cc-prompt-273-fix1403-app-side-fleet-flag-page-views-is-bot-skip-vitals-insert-cf-ipcountry-web-vitals-no-reader.md",
+  "started_at": "2026-11-12T04:54:00Z",
+  "finished_at": "2026-11-12T06:12:00Z",
+  "head_before": "1aa78ee2",
+  "head_after": "5be3e4e3",
+  "commits": [
+    {
+      "sha": "9710ca5d",
+      "subject": "[skip vercel] chore(fixes): file FIX-1404, FIX-1405 and FIX-1406 (cc-273)"
+    },
+    {
+      "sha": "0e51771c",
+      "subject": "fix(app): FIX-1404, FIX-1405 — track-view flags the Chrome 133–142 fleet as a bot and reads cf-ipcountry before x-vercel-ip-country; web-vitals skips the fleet's INSERT (cc-273)"
+    },
+    {
+      "sha": "809856b4",
+      "subject": "[skip vercel] docs: the beacon routes' fleet rule and the visitor-country header; census §13 (cc-273)"
+    },
+    {
+      "sha": "5be3e4e3",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-273 — FIX-1404 and FIX-1405 close (local; prod receipt owed, the fleet sent no beacon in the hour after the deploy); FIX-1406 and FIX-1403 stay open (46 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1404",
+    "FIX-1405"
+  ],
+  "fixes_filed": [
+    "FIX-1404",
+    "FIX-1405",
+    "FIX-1406"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 3 (the two record commits): read 4 was THIN at deploy + 30 and + 60 min — 0 fleet track-views and 0 fleet web-vitals forwarded at Cloudflare, 0 beacons from any UA, 0 page_views and 0 web_vitals_samples rows in the window. Both receipts are owed (below); FIX-1404 and FIX-1405 stay closed local-only."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1404",
+      "what": "over one full UTC day after the deploy, page_views rows with bot_name 'chrome-133-142' within ±15 % of the fleet's forwarded track-views (edge 200 + 499), and 0 web_vitals_samples rows on the ten UAs while the fleet's vitals POSTs are > 0 — needs the fleet to beacon again (none since 11-12 01Z)",
+      "after": "2026-11-13T05:08Z"
+    },
+    {
+      "fix": "FIX-1405",
+      "what": "the same day's top 8 country_code among flagged rows against Cloudflare's clientCountryName for the fleet's track-views (≥ 4 of the top 5 shared; not the edge set US/SG/FR/HK); if the fleet stays off the origin, is_bot = false rows' countries against clientCountryName for all forwarded track-views",
+      "after": "2026-11-13T05:08Z"
+    }
+  ]
+}
