@@ -556,6 +556,41 @@ bearer, the same path returns the limiter's health block from the middleware's o
 isolate (FIX-1402). Each bearer call forces one budget-flag read, which is one Upstash
 GET.
 
+### The beacon routes (FIX-1404, FIX-1405)
+
+**The same proxy fact reaches the telemetry.** Two routes write a row per page load:
+`/api/track-view` (`page_views`) and `/api/platform/web-vitals` (`web_vitals_samples`).
+Both share one rule set, in `apps/civitics/src/lib/view-telemetry.ts`.
+
+- **The fleet rule.** The Chrome 133–142 farm (audit
+  `docs/audits/2026-11-09-upstash-spend-census.md` §12) is ten exact Windows Chrome
+  strings, listed in `CHROME_FLEET_UAS`. `track-view` writes its views with
+  `is_bot = true` and `bot_name = 'chrome-133-142'`. The row is still written, so
+  `get_pv_bots` shows it by name and every `is_bot = false` reader drops it.
+  `web-vitals` answers `{ ok: true }` without the INSERT, because that table has no
+  `is_bot` column. A match is exact equality after `trim()`.
+  - **To add or retire a string,** edit the set and its test
+    (`view-telemetry.test.ts`, which pins the size at ten).
+  - **A false positive** is a real Windows user on one of those releases: their view
+    is labelled a bot and their vitals are not stored. Nothing else changes for them.
+  - **Craig's reversal**, not run: `UPDATE page_views SET is_bot = false, bot_name =
+    NULL WHERE bot_name = 'chrome-133-142';`. It restores the view counts, but not
+    `device_type` or `browser`, which bot rows never carry. Dropped vitals samples
+    cannot be recovered.
+- **The country rule.** `x-vercel-ip-country` geolocates the TCP peer, which behind
+  this zone is the Cloudflare edge (the same root cause as the limiter's key).
+  `page_views.country_code` now reads **`cf-ipcountry`** first:
+  - present → the value upper-cased, when it is two letters and not `XX`; otherwise
+    null (`T1`, Tor, is null too);
+  - never `x-vercel-ip-country` when `cf-ipcountry` is present, because that value
+    is the edge's;
+  - absent (the alias, a preview, local) → `x-vercel-ip-country`, as before.
+
+  The header depends on the zone's **Network → IP Geolocation** setting being on.
+  Under `ORIGIN_AUTH_MODE=enforce`, every production request the route sees crossed
+  this zone. Under `report` / `off`, a client could send the header itself. The stake
+  is a country label on an internal dashboard.
+
 ## If the zone ever moves accounts again
 
 Cloudflare moves the registration and lets you re-import DNS. **It moves nothing else.**

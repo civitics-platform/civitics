@@ -959,3 +959,129 @@ forwarded the request and the function ran. Speed Insights had the same split: 7
 | **(1) Leave it** | nothing | 0 | `page_views` / `web_vitals_samples` stay ~96 % fleet; anything built on them reads the farm. ~2.5k bucketed checks a day (~7k Upstash commands at k ≈ 3) pull the FIX-1304 hold toward 11-18. The 11-01 / 11-08 / 11-10 peaks recur. |
 | **(2) Edge rule** | All 5 Free slots are used, so OR a clause into **`Common Exploit Paths`** (Block): `(http.user_agent in {"…Chrome/133.0.0.0 Safari/537.36", …, "…Chrome/142.0.0.0 Safari/537.36"})`, the ten exact strings. The signature has held every day since 11-01. Merging into `SearchBot` instead (managed_challenge) buys little, because the farm already passes Under Attack's challenge 30–41 % of the time. | all ~23k origin requests, ~2.5k renders, ~9k rows, the analytics events | It blocks any real Windows user still on Chrome 133–142. The zone's non-fleet Chrome is 155–157, but stale Windows Chrome cannot be told apart from the farm. The farm can rotate strings at will. It is a dashboard edit to a Block rule. |
 | **(3) App-side** | `/api/track-view` and `/api/platform/web-vitals` answer 204 without the INSERT, or `track-view` writes `is_bot: true` with `bot_name: 'chrome-133-142'`, when the UA is one of the ten. The UA is the only field the census can tell apart. A real browser sends the same string, so nothing else separates them. | ~9k rows a day; `page_views` / `web_vitals_samples` clean | It saves no invocations: the function still runs, unless middleware answers first. It does nothing for renders, Upstash checks or the `/_vercel/*` beacons. A real stale-Chrome user loses only telemetry. `is_bot` is the reversible form. |
+
+## §13 cc-273 — the beacon routes flag the fleet, and the visitor's country (2026-11-12; appended, nothing above edited)
+
+Prod contact was read-only, plus the code's own deploy on `main` (`0e51771c`, Vercel
+commit status `success` at **05:07:32Z**). The reads were Cloudflare GraphQL, one REST
+GET of the zone's `ip_geolocation` setting, and four `db-query --prod` calls under
+`statement_timeout 30s`. Reads 2, 3 and 4 returned rows. The first try at read 3 failed at
+its first statement (a temp table, refused by the read-only wrapper) and read nothing.
+
+### What was built (option (3) of §12, and the `cf-ipcountry` follow-up)
+
+- **`apps/civitics/src/lib/view-telemetry.ts`** is pure (no `next/*` import). It holds:
+  - `CHROME_FLEET_UAS`: §12's ten exact strings;
+  - `isChromeFleetUa()`: exact equality after `trim()`;
+  - `CHROME_FLEET_BOT_NAME = "chrome-133-142"`;
+  - `visitorCountry()`: `cf-ipcountry` when present (two letters, upper-cased, not
+    `XX`; otherwise null), else `x-vercel-ip-country`.
+- **`/api/track-view`** writes fleet views with `is_bot = true` and `bot_name =
+  'chrome-133-142'`. `device_type` and `browser` are null, as for any bot, and the row
+  is still written. `country_code` comes from `visitorCountry()` on every row.
+- **`/api/platform/web-vitals`** answers a fleet sample `{ ok: true }` without the INSERT.
+  It does so after payload validation, so a bad payload still gets 400. The header comment
+  now says what is true: no reader, no retention ([[FIX-1406]]).
+- Filed [[FIX-1404]] (the flag) and [[FIX-1405]] (the country), and closed both `local`.
+  Filed [[FIX-1406]] (`web_vitals_samples`), not built. Rules:
+  `docs/CLOUDFLARE.md` §Origin auth, "The beacon routes".
+
+### Read 2: `web_vitals_samples` has no reader and no retention
+
+On prod, about 04:55Z 11-12:
+
+| what was looked for | found |
+|---|---|
+| `cron.job` rows whose command names `web_vitals` or `page_views` | 0 |
+| `public` functions whose `prosrc` names the table | 0 |
+| views or matviews over the table | 0 |
+| span of `recorded_at` | 2026-04-22 06:00:19Z → 2026-11-12 04:47:04Z |
+| `reltuples` | 64,522 |
+
+The tree agrees: the route, `packages/db/src/types/database.ts` and the creating
+migration are the only references. FIX-049's "aggregated into platform_usage by nightly
+job" and "retained 30 days" were never built. The table's RLS (creating migration, and
+read on local) allows anon INSERT and public SELECT, so the publishable key can write to
+it without the route.
+
+### Read 3: the 24 h before the deploy
+
+Window 04:56:44Z 11-11 → 04:56:44Z 11-12.
+
+| table | rows |
+|---|---|
+| `page_views` | 610, all `is_bot = false`; 0 bot rows |
+| `page_views.country_code`, top 8 | US 102 · SG 74 · BR 64 · FR 52 · HK 39 · IN 30 · ES 18 · AT 17 |
+| `web_vitals_samples` | fleet **3,730**, the rest 62 |
+
+The country list is still the edge set.
+
+### Read 5: the fleet's 400s on 11-11 are Cloudflare's challenge, not the origin
+
+§12 (a) lists 1,654 fleet `400`s on 11-11 and none on 11-10. All 1,654 are on
+Cloudflare's own `/cdn-cgi/challenge-platform/…`, 1,610 of them on the `/h/b/fo/…`
+submission path. Every one is a POST, with `originResponseStatus 0` and `cacheStatus
+none`: Cloudflare refused the fleet's challenge submissions, and none reached Vercel.
+
+The same path's edge status shows the turn:
+
+| day | edge statuses on `/fo/` |
+|---|---|
+| 11-10 | `200` 5,783 · `400` 32 · `499` 18 |
+| 11-11 | `200` 3,850 · `400` **1,610** · `499` 10 |
+
+The 400s were at most 3 an hour until 11Z, then **238 at 12Z** and 85–159 every hour
+after. That is the hour §12 (e)'s origin series fell from ~500–800 an hour to ~50–200.
+On 11-12 the fleet still sends ~1,000 edge requests an hour, but reaches the origin far
+less. From 02Z to 05Z that was 166 requests over 81 paths: `/icon.svg` 78, `/favicon.ico`
+8, and about 80 single deep-link page renders, mostly `/donors/*`. In that span **no
+fleet beacon reached the origin**; the last were 12 track-views at 00Z and 7 at 01Z.
+**Cloudflare's challenge, not anything in the app, has been holding the fleet off the
+origin since 11-11 12Z.**
+
+### Read 4: the receipt
+
+**THIN, so both receipts are owed.** The window ran from deploy success, 05:07:32Z.
+
+| window | CF: fleet track-views forwarded (edge 200 + 499) | CF: fleet web-vitals forwarded | CF: beacons forwarded, any UA |
+|---|---:|---:|---:|
+| + 30 min (to 05:37:49Z) | **0** | 0 | 0 |
+| + 60 min (to 06:07:49Z) | **0** | 0 | 0 |
+
+In the hour the fleet reached the origin only for `/icon.svg` (42), `/favicon.ico` (4) and
+single `/donors/*` pages. It sent no beacon, so the routes never saw it.
+
+The one DB read covered 05:07:32Z → 06:07:58Z:
+
+| table | rows in the window |
+|---|---|
+| `page_views` | 0 in total, so none flagged and no country list |
+| `web_vitals_samples` | 0 from the fleet, 0 from anyone else |
+
+0 fleet vitals is not a pass: the pass needs fleet vitals POSTs above 0.
+
+**The zone side of FIX-1405 is on.** A read-only GET of the zone's `ip_geolocation`
+setting returned `value: "on"`, so Cloudflare adds `CF-IPCountry` to what it forwards.
+Whether the route sees it, and what it says, needs a forwarded track-view: that is the
+owed read.
+
+**The fleet's vitals rows began on 10-22, not 11-01.** The same read counted every row:
+
+| `user_agent` | rows | first | last |
+|---|---:|---|---|
+| one of the ten | **53,047** | 2026-10-22 07:42:25Z | 2026-11-12 01:33:21Z |
+| any other | 15,787 | 2026-04-22 | 2026-11-12 04:47Z |
+
+§12's 29,412 counted 11-01 → 11-11 only.
+
+**Owed, after deploy + 24 h (2026-11-13T05:08Z), from a full UTC day:**
+
+- **[[FIX-1404]]:** rows with `bot_name = 'chrome-133-142'` within ±15 % of the fleet's
+  forwarded track-views, and 0 fleet vitals rows while its vitals POSTs are above 0.
+- **[[FIX-1405]]:** the flagged rows' countries against Cloudflare's `clientCountryName`
+  for the same track-views. If the challenge keeps the fleet's beacons off the origin,
+  any forwarded track-view will do: the `is_bot = false` countries against Cloudflare's
+  countries for all forwarded track-views.
+
+If the fleet never sends a beacon again, FIX-1404 cannot get its receipt from the fleet's
+own traffic, and it stays `local` until one arrives.
