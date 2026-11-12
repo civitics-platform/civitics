@@ -126,6 +126,22 @@ describe("the stamp (D1): cf=<absent|same|differs>; key=<xff|real|unknown>", () 
     });
   }
 
+  it("under trustCfConnectingIp (FIX-1401) the key is cf, and key_in_use is the client — v4 whole, v6 /64", async () => {
+    const trusted = { trustCfConnectingIp: true };
+    const viaCf = { "x-forwarded-for": "172.70.1.1", "cf-connecting-ip": "203.0.113.7" };
+    assert.equal(ipKeyStamp(h(viaCf), trusted), "cf=differs; key=cf");
+    assert.equal(ipKeyStamp(h(viaCf)), "cf=differs; key=xff", "no flag, no cf key");
+    assert.equal(ipKeyStamp(h({ "x-forwarded-for": "172.70.1.1" }), trusted), "cf=absent; key=xff");
+    assert.equal(ipKeyStamp(h({ ...viaCf, "cf-connecting-ip": "junk" }), trusted), "cf=differs; key=xff");
+    fakeFlag(null);
+    const res = await answerLimiterHealth(bearer({ ...viaCf, "cf-connecting-ip": "2001:db8:a:b::1" }), SECRET, trusted);
+    assert.equal(res.headers.get(IP_KEY_HEADER), "cf=differs; key=cf");
+    assert.equal(((await res.json()) as Body).ip.key_in_use, "2001:0db8:000a:000b::/64");
+    const unauth = await answerLimiterHealth(h(viaCf), SECRET, trusted);
+    assert.equal(unauth.status, 401);
+    assert.equal(unauth.headers.get(IP_KEY_HEADER), "cf=differs; key=cf", "the 401 carries the class too");
+  });
+
   it("the stamp is a class, never an address", () => {
     const stamp = ipKeyStamp(h({ "x-forwarded-for": "203.0.113.7", "cf-connecting-ip": "198.51.100.4" }));
     assert.doesNotMatch(stamp, /\d+\.\d+\.\d+\.\d+|:/);
@@ -201,10 +217,20 @@ describe("the middleware branch", () => {
     const start = MW.indexOf("export async function middleware(");
     const body = MW.slice(start, MW.indexOf("\nasync function ", start));
     const origin = body.indexOf("decideOriginAuth(");
+    const proof = body.indexOf("provedCloudflare(");
     const branch = body.indexOf("path === LIMITER_HEALTH_PATH");
-    const answer = body.indexOf("answerLimiterHealth(request.headers, process.env[\"CRON_SECRET\"])");
-    const rest = body.indexOf("routeRequest(");
-    assert.ok(origin > 0 && branch > origin && answer > branch && rest > answer);
+    const answer = body.indexOf(
+      "answerLimiterHealth(request.headers, process.env[\"CRON_SECRET\"], { trustCfConnectingIp })",
+    );
+    const rest = body.indexOf("routeRequest(request, path, trustCfConnectingIp)");
+    assert.ok(origin > 0 && proof > origin && branch > proof && answer > branch && rest > answer);
+  });
+
+  it("FIX-1401: the bucket check and the health answer key under ONE flag", () => {
+    assert.match(MW, /const trustCfConnectingIp = provedCloudflare\(\{/);
+    assert.match(MW, /mode: setting\.mode,/);
+    assert.match(MW, /getClientIp\(request\.headers, \{ trustCfConnectingIp \}\)/);
+    assert.equal((MW.match(/getClientIp\(/g) ?? []).length, 1, "one bucket-key call site");
   });
 
   it("the path is the one the origin door exempts", () => {

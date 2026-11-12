@@ -18,6 +18,7 @@ import {
   decideOriginAuth,
   formatOriginLogLine,
   parseOriginAuthMode,
+  provedCloudflare,
   withoutOriginAuthHeader,
   type OriginAuthMode,
 } from "./origin-auth";
@@ -229,5 +230,55 @@ describe("withoutOriginAuthHeader (cc-231)", () => {
   it("a request that never had the header forwards unchanged", () => {
     const out = withoutOriginAuthHeader(new Headers({ host: "www.civitics.com", accept: "text/html" }));
     assert.deepEqual([...out.entries()], [["accept", "text/html"], ["host", "www.civitics.com"]]);
+  });
+});
+
+// FIX-1401 (cc-272 D5): the proof the limiter needs before it keys on
+// cf-connecting-ip. On every path the door does not exempt it IS decideOriginAuth's
+// {pass, match} under enforce; on /api/cron/* it ignores the exemption.
+describe("provedCloudflare", () => {
+  const ENVS = ["production", "preview", undefined];
+  const MODES: OriginAuthMode[] = ["off", "report", "enforce"];
+  const SECRETS = [SECRET, undefined, ""];
+  const HEADERS = [SECRET, null, "b".repeat(64), SECRET.slice(1), ""];
+
+  it("equals {pass, match} under enforce on every non-cron path, for every input", () => {
+    let n = 0;
+    for (const vercelEnv of ENVS)
+      for (const mode of MODES)
+        for (const secret of SECRETS)
+          for (const headerValue of HEADERS)
+            for (const path of ["/", "/officials/x", "/api/search", "/api/cronjob"]) {
+              const d = decideOriginAuth({ path, headerValue, secret, mode, vercelEnv });
+              const literal = mode === "enforce" && d.action === "pass" && d.reason === "match";
+              assert.equal(
+                provedCloudflare({ headerValue, secret, mode, vercelEnv }),
+                literal,
+                JSON.stringify({ vercelEnv, mode, secret: !!secret, headerValue: headerValue?.slice(0, 3), path }),
+              );
+              n += 1;
+            }
+    assert.equal(n, 3 * 3 * 3 * 5 * 4);
+  });
+
+  it("on /api/cron/* the door says cron-exempt, but the proof is still the header", () => {
+    const base = { secret: SECRET, mode: "enforce" as const, vercelEnv: "production" };
+    assert.equal(decideOriginAuth({ ...base, path: `${CRON_PATH_PREFIX}limiter-health`, headerValue: SECRET }).reason, "cron-exempt");
+    assert.equal(provedCloudflare({ ...base, headerValue: SECRET }), true);
+    assert.equal(provedCloudflare({ ...base, headerValue: null }), false, "the alias read: no header, no trust");
+    assert.equal(provedCloudflare({ ...base, headerValue: "forged" }), false);
+  });
+
+  it("never under report / off / not-production / no secret", () => {
+    for (const [mode, vercelEnv, secret] of [
+      ["report", "production", SECRET],
+      ["off", "production", SECRET],
+      ["enforce", "preview", SECRET],
+      ["enforce", undefined, SECRET],
+      ["enforce", "production", undefined],
+      ["enforce", "production", ""],
+    ] as const) {
+      assert.equal(provedCloudflare({ headerValue: SECRET, secret, mode, vercelEnv }), false, `${mode}/${vercelEnv}/${!!secret}`);
+    }
   });
 });

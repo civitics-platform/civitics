@@ -59,6 +59,16 @@
 //     a fixed bucket keys under its own `:fw` prefix, so no sliding counter
 //     left from the deploy overlap is ever read as a fixed one.
 //
+//   * THE KEY IS THE CLIENT, NOT THE EDGE (FIX-1401). Until cc-272 the
+//     per-IP identifier was x-forwarded-for, which Vercel sets to the
+//     Cloudflare edge that connected to it, so every visitor through one PoP
+//     shared a bucket (the www probe read `cf=differs; key=xff` through IAD and
+//     ORD). Under ORIGIN_AUTH_MODE=enforce, a request that carried the origin
+//     secret now keys on cf-connecting-ip, IPv6 on its /64
+//     (src/lib/client-ip.ts). Per-client keys are sparser than per-edge ones,
+//     so more checks are first-in-window: k moves toward 3 under the fixed
+//     window, not toward 2.13. That is the price of limiting clients at all.
+//
 //   * Edge-runtime safe: middleware.ts imports this; `@upstash/*` are built for
 //     the edge (REST transport, no node net), and nothing here touches a Node
 //     API. Build + serve with the env ABSENT.

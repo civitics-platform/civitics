@@ -9,12 +9,14 @@
 // checkRateLimit answers. `health_scope: "middleware"` says so in the payload.
 //
 // THE STAMP (D1): every answer, the 401 included, carries
-//   x-civitics-ip-key: cf=<absent|same|differs>; key=<xff|real|unknown>
+//   x-civitics-ip-key: cf=<absent|same|differs>; key=<xff|real|cf|unknown>
 // `cf` compares cf-connecting-ip with x-forwarded-for's first hop; `key` names
-// the header getClientIp keyed THIS request on. A class, never an address, so
-// a probe without the bearer (the GHA job holds the Under Attack skip header but
-// not CRON_SECRET) still reads whether the limiter's key is the client or the
-// Cloudflare edge that connected to Vercel (FIX-1401).
+// the header getClientIp keyed THIS request on, under the same
+// `trustCfConnectingIp` the middleware hands the bucket check. A class, never
+// an address, so a probe without the bearer (the GHA job holds the Under Attack
+// skip header but not CRON_SECRET) still reads whether the limiter's key is the
+// client or the Cloudflare edge that connected to Vercel (FIX-1401: deploy A
+// read `cf=differs; key=xff` through IAD and ORD).
 //
 // THE BEARER (D2/D3): CRON_SECRET, compared in constant time; missing env or a
 // mismatch is 401. With it, one forced budget-flag read (forceBudgetFlagRead —
@@ -26,7 +28,7 @@
 // the bearer that makes it safe. Nothing schedules it: no vercel.json cron, no
 // registry row. Pure apart from the ratelimit.ts state it reads; edge-safe.
 
-import { CLIENT_IP_HEADERS, resolveClientIp } from "./client-ip";
+import { CLIENT_IP_HEADERS, resolveClientIp, type ClientIpOptions } from "./client-ip";
 import { constantTimeEqual } from "./origin-auth";
 import { forceBudgetFlagRead, getLimiterHealth, getLimiterIsolate } from "./ratelimit";
 
@@ -43,8 +45,8 @@ export function classifyCfConnectingIp(headers: Pick<Headers, "get">): CfConnect
   return cf === xff ? "same" : "differs";
 }
 
-export function ipKeyStamp(headers: Pick<Headers, "get">): string {
-  return `cf=${classifyCfConnectingIp(headers)}; key=${resolveClientIp(headers).source}`;
+export function ipKeyStamp(headers: Pick<Headers, "get">, options: ClientIpOptions = {}): string {
+  return `cf=${classifyCfConnectingIp(headers)}; key=${resolveClientIp(headers, options).source}`;
 }
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -59,8 +61,9 @@ function json(body: unknown, status: number, stamp: string): Response {
 export async function answerLimiterHealth(
   headers: Pick<Headers, "get">,
   secret: string | undefined,
+  options: ClientIpOptions = {},
 ): Promise<Response> {
-  const stamp = ipKeyStamp(headers);
+  const stamp = ipKeyStamp(headers, options);
   const auth = headers.get("authorization") ?? "";
   if (!secret || !constantTimeEqual(auth, `Bearer ${secret}`)) {
     return json({ error: "Unauthorized" }, 401, stamp);
@@ -76,7 +79,7 @@ export async function answerLimiterHealth(
       health_scope: "middleware",
       budget_read: budgetRead,
       isolate: getLimiterIsolate(),
-      ip: { ...ip, key_in_use: resolveClientIp(headers).ip },
+      ip: { ...ip, key_in_use: resolveClientIp(headers, options).ip },
       at: new Date().toISOString(),
     },
     200,

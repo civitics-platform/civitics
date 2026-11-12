@@ -126,6 +126,31 @@ export function decideOriginAuth(input: {
 }
 
 /**
+ * FIX-1401 (cc-272 D5): did this request PROVE it came through Cloudflare, under
+ * `enforce`? Only then may the limiter key on cf-connecting-ip (client-ip.ts) —
+ * Vercel passes a client-sent one through untouched (cc-270), and only
+ * Cloudflare's Transform Rule stamps the secret.
+ *
+ * On every path the door does not exempt this is exactly decideOriginAuth's
+ * `{action: "pass", reason: "match"}` with the mode `enforce` (origin-auth.test.ts
+ * pins the equivalence). It is path-blind on purpose: on /api/cron/* the door
+ * answers `cron-exempt` before it reads the header, which decides whether a
+ * request WITHOUT the header is let in, not whether this one proved its path.
+ * The limiter buckets nothing under /api/cron/, so the one place that differs is
+ * the /api/cron/limiter-health answer, which must report the key a bucketed
+ * request with the same headers would get.
+ */
+export function provedCloudflare(input: {
+  headerValue: string | null;
+  secret: string | undefined;
+  mode: OriginAuthMode;
+  vercelEnv: string | undefined;
+}): boolean {
+  if (input.vercelEnv !== "production" || input.mode !== "enforce" || !input.secret) return false;
+  return input.headerValue !== null && constantTimeEqual(input.headerValue, input.secret);
+}
+
+/**
  * The request headers middleware forwards to the app, minus the secret (cc-231).
  * The check has read it by then, and a route handler that echoes or logs its
  * headers must not be able to leak it. A copy, so the check's own read is

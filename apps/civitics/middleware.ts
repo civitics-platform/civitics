@@ -15,6 +15,7 @@ import {
   decideOriginAuth,
   formatOriginLogLine,
   parseOriginAuthMode,
+  provedCloudflare,
   withoutOriginAuthHeader,
   type OriginAuthDecision,
 } from "@/lib/origin-auth";
@@ -317,21 +318,34 @@ export async function middleware(request: NextRequest) {
   }
   if (origin.action === "report") noteOrigin(request, path, "miss");
 
+  // ── FIX-1401: key the limiter on cf-connecting-ip only with proof ─────────
+  // enforce + the origin secret matched (src/lib/client-ip.ts says why).
+  const trustCfConnectingIp = provedCloudflare({
+    headerValue: request.headers.get(ORIGIN_AUTH_HEADER),
+    secret: process.env["ORIGIN_AUTH_SECRET"],
+    mode: setting.mode,
+    vercelEnv: process.env["VERCEL_ENV"],
+  });
+
   // ── FIX-1402: the limiter's health block, from the limiter's own isolate ──
   // An edge route is a separate bundle with its own ratelimit.ts state, so the
   // middleware answers this path itself (src/lib/limiter-health.ts). It is
   // `cron-exempt` above, so it never reaches here as a report miss.
   if (path === LIMITER_HEALTH_PATH) {
-    return answerLimiterHealth(request.headers, process.env["CRON_SECRET"]);
+    return answerLimiterHealth(request.headers, process.env["CRON_SECRET"], { trustCfConnectingIp });
   }
 
-  const response = await routeRequest(request, path);
+  const response = await routeRequest(request, path, trustCfConnectingIp);
   if (origin.action === "report") response.headers.set(ORIGIN_CHECK_HEADER, "miss");
   return response;
 }
 
 /** Everything after the origin decisions. Every return is a NextResponse, so D6 can stamp it. */
-async function routeRequest(request: NextRequest, path: string): Promise<NextResponse> {
+async function routeRequest(
+  request: NextRequest,
+  path: string,
+  trustCfConnectingIp: boolean,
+): Promise<NextResponse> {
   // ── Bot pattern filtering ──────────────────────────────────────────────────
   if (BOT_PATTERNS.some((p) => p.test(path))) {
     return new NextResponse(null, { status: 404 });
@@ -375,7 +389,7 @@ async function routeRequest(request: NextRequest, path: string): Promise<NextRes
   // outage/quota (FIX-1038) and logging `[ratelimit]`; never allow-all.
   const bucket = getRateLimitBucket(path, request.method, isPrefetchRequest(request));
   if (bucket) {
-    const ip = getClientIp(request.headers);
+    const ip = getClientIp(request.headers, { trustCfConnectingIp });
     const result = await checkRateLimit(bucket, ip);
     if (!result.allowed) {
       return rateLimitResponse(result.retryAfterSec);
