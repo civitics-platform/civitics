@@ -424,6 +424,39 @@ export function rowDateFromCommitterIso(iso) {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/**
+ * One done.log line → `{date, id, sha, verified, note}`, or null for a blank,
+ * `#` or short line.
+ *
+ * A trailer reopen row is written `date | id | reopen | reopen | reopened by
+ * <sha> …`. Column 4 is the `reopen` sentinel, which is not in VERIFIED_VALUES,
+ * so before cc-272 the row read as 4-column and its note began `reopen | `.
+ * REOPEN_NOTE_SHA_RE then missed, the row's key never equalled the trailer's,
+ * and every sync appended 6dd15bde's FIX-1293 reopen again (done.log rows 1833,
+ * 1842, 1847). A fourth would have landed after cc-267's closing rows and
+ * reopened FIX-1293 by accident.
+ */
+export function parseDoneLogLine(rawLine) {
+  const line = String(rawLine ?? "").trim();
+  if (!line || line.startsWith("#")) return null;
+  const parts = line.split("|").map((p) => p.trim());
+  if (parts.length < 3) return null;
+  // 5-column (post-FIX-159): date | id | sha | verified | note
+  // 4-column (legacy):       date | id | sha | note
+  let date, id, sha, verified, note;
+  const fiveColumn =
+    parts.length >= 5 && (VERIFIED_VALUES.has(parts[3]) || (parts[2] === "reopen" && parts[3] === "reopen"));
+  if (fiveColumn) {
+    [date, id, sha, verified, ...note] = parts;
+    note = note.join(" | ");
+  } else {
+    [date, id, sha, ...note] = parts;
+    verified = "unverified";
+    note = note.join(" | ");
+  }
+  return { date, id, sha, verified, note };
+}
+
 function readDoneLog() {
   if (!existsSync(DONE_PATH)) {
     return { entries: [], keys: new Set(), completedIds: new Set(), reopenedIds: new Set() };
@@ -437,22 +470,10 @@ function readDoneLog() {
   const completedIds = new Set();
   const reopenedIds = new Set();
   for (const rawLine of text.split("\n")) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const parts = line.split("|").map((p) => p.trim());
-    if (parts.length < 3) continue;
-    // 5-column (post-FIX-159): date | id | sha | verified | note
-    // 4-column (legacy):       date | id | sha | note
-    let date, id, sha, verified, note;
-    if (parts.length >= 5 && VERIFIED_VALUES.has(parts[3])) {
-      [date, id, sha, verified, ...note] = parts;
-      note = note.join(" | ");
-    } else {
-      [date, id, sha, ...note] = parts;
-      verified = "unverified";
-      note = note.join(" | ");
-    }
-    entries.push({ date, id, sha, verified, note });
+    const entry = parseDoneLogLine(rawLine);
+    if (!entry) continue;
+    const { id, sha, note } = entry;
+    entries.push(entry);
     keys.add(doneLogKey({ id, sha, note }));
     // Last-write-wins: a `reopen` line clears completion, a subsequent
     // non-reopen line restores it. `reopenedIds` still records every ID that

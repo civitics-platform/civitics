@@ -21,6 +21,7 @@ import {
   evaluateTrunkViolations,
   buildCompletingShasById,
   doneLogKey,
+  parseDoneLogLine,
   rowDateFromCommitterIso,
 } from "./fixes-sync.mjs";
 import {
@@ -237,6 +238,30 @@ assertTrue(
   doneLogKey({ id: "FIX-1", sha: "reopen", note: "graph regression on production" }) !==
     doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by abc1234 subject" }),
 );
+
+// cc-272: the key has to survive the round trip through the FILE. A trailer
+// reopen is written with `reopen` in column 4, which is not a verified value;
+// read back as 4-column, its note began `reopen | ` and the key never matched,
+// so every sync re-appended 6dd15bde's FIX-1293 reopen (rows 1833/1842/1847).
+console.log("\ncc-272 done.log line round trip:");
+const writtenReopen =
+  "2026-11-10 | FIX-1293 | reopen | reopen | reopened by 6dd15bde chore(fixes): reopen FIX-1293 — x";
+const readBack = parseDoneLogLine(writtenReopen);
+assertEq("a written trailer reopen reads back 5-column",
+  [readBack.sha, readBack.verified, readBack.note],
+  ["reopen", "reopen", "reopened by 6dd15bde chore(fixes): reopen FIX-1293 — x"]);
+assertEq("...and keys like the trailer that wrote it",
+  doneLogKey(readBack),
+  doneLogKey({ id: "FIX-1293", sha: "reopen", note: "reopened by 6dd15bde chore(fixes): reopen FIX-1293 — x" }));
+assertEq("a hand-written reopen keeps its prose note",
+  parseDoneLogLine("2026-10-10 | FIX-1293 | reopen | reopen | cc-211: the bounded count").note,
+  "cc-211: the bounded count");
+assertEq("a closing row is unchanged",
+  doneLogKey(parseDoneLogLine("2026-11-11 | FIX-1293 | 18b68abe | prod-only | chore(fixes): record")),
+  "FIX-1293|18b68abe");
+assertEq("a legacy 4-column row keeps column 4 as its note",
+  parseDoneLogLine("2026-04-01 | FIX-010 | abc1234 | shipped the thing").note, "shipped the thing");
+assertEq("blank and comment lines are skipped", [parseDoneLogLine(""), parseDoneLogLine("# h")], [null, null]);
 
 // FIX-461: trunk-ancestry guard decision core. `evaluateTrunkViolations` and
 // `buildCompletingShasById` are pure (git is injected via `resolve`), so the
