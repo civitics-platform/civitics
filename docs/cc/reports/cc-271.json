@@ -1,0 +1,97 @@
+{
+  "cc": "271",
+  "prompt": "cc-prompt-271-thu-records-contract-flow-wall-seven-day-curve-limiter-k-root-mean-read-first-dispatched-vacuums-donor-staging-bound-senate-night-3-scan-receipt-retired.md",
+  "started_at": "2026-11-13T01:54:16Z",
+  "finished_at": "2026-11-13T02:21:00Z",
+  "head_before": "998f8532",
+  "head_after": "237def8f",
+  "commits": [
+    {
+      "sha": "6cfc2256",
+      "subject": "chore(fixes): record FIX-1382 on prod — the Thu 11-12 14:00Z contract-flow slot armed 14:01:00Z, the first tick past it (by 0 14 * * 4 → -00:01:00), complete 14:03:00 → 14:53:49Z, 500 / 1,201, 3,049.3 s, reaped 14:55:00Z succeeded: CALL unit_ms 3049386 (cc-271)"
+    },
+    {
+      "sha": "aefaa099",
+      "subject": "chore(fixes): record FIX-1379 on prod — the 7-day curve under the 128 MB pool: daily swap-min slope +0.29 MB/day (n 7) against +3.42 (n 10) in the 256 MB epoch, p50 +2.57 against +3.75; per day 11-06 → 11-12 swap max 503–677, MemAvailable min 215–299 (cc-271)"
+    },
+    {
+      "sha": "90a2da6c",
+      "subject": "chore(fixes): close FIX-1397 on prod — the 11-12 receipts' Root budget line prints root mean read 21.7 KiB (6,402,477 reads, over the last 19.8 h); 11-13 reads 21.2 KiB (8,969,268 reads, 24 h): neither page-sized nor file-backed (cc-271)"
+    },
+    {
+      "sha": "cc2fb7f5",
+      "subject": "chore(fixes): record FIX-1396 on prod — all eight MOVEd vacuums armed and reaped succeeded: VACUUM on 11-11 and 11-12; the seven daily rows 0.16–4.70 s, officials 1.23 / 1.12 s on its 600-dead line inside the nightly (21:07–21:09Z), not its floor; fr / ec / entity-tags armed on their own ticks, 0 collisions (cc-271)"
+    },
+    {
+      "sha": "c45417e2",
+      "subject": "chore(fixes): record FIX-1391 on prod — 11-11, the first full UTC day on the fixed window (old key): daily 9,615 at 23:31Z → 9,813 full-day, B 2,488 (leaf 715 / pages 1,769 / api 4), k = (9,813 − 2,449) / 2,488 = 2.96 ≤ 3.4; 0 × 429 at the origin (cc-271)"
+    },
+    {
+      "sha": "45641b47",
+      "subject": "chore(fixes): record FIX-1388 on prod — six tests.yml runs on main green with the two-pass runner since cff1f23f (42559733142 → 43159107822); pass 1 1,672–1,676 tests, pass 2 275–298 tests, 0 fail in either (cc-271)"
+    },
+    {
+      "sha": "828b2bd5",
+      "subject": "chore(fixes): record FIX-1338 on prod — the canary's rate line 11-07 → 11-12: 12 canary_check runs, 0 rate_regression keys, no pipeline newly sustained; the check now rates 13 pipelines with 0 regressions, run_rule_taggers ok on desired_rows (0.2016 / 2.1899 s/1k) (cc-271)"
+    },
+    {
+      "sha": "21db37dc",
+      "subject": "chore(fixes): record FIX-1258 on prod — the weekly scan reads 64.6 s at 100 % all-visible / 0 dead (10-27 64.8, 11-03 65.0); the < 63.4 s bound was 10-20's, the last pre-repack weekly, and is retired (Craig 11-10) (cc-271)"
+    },
+    {
+      "sha": "5c70786c",
+      "subject": "chore(fixes): record FIX-1381 on prod — the weekly scan reads 64.6 s at 100 % all-visible / 0 dead (10-27 64.8, 11-03 65.0); the < 63.4 s bound was 10-20's, the last pre-repack weekly, and is retired (Craig 11-10) (cc-271)"
+    },
+    {
+      "sha": "d8bd83e0",
+      "subject": "chore(fixes): FIX-1372 evidence — four nights: served (11-09), 403 (11-10), served through 24 × 403 (11-11), 403 (11-12); the walk stopped at S1 662 / 407 / 662 / 180 and S2 259 / 152 / 261 / 91; new Senate votes 13,464 / 0 / 200 / 0 (cc-271)"
+    },
+    {
+      "sha": "0cc45512",
+      "subject": "[skip vercel] docs: contract-flow's band re-based 0–4575 on its three dispatched walls; the < 63.4 s taggers scan receipt retired; root's mean read, the staging bound's first arms, officials' arms per day, the 7-day curve's slopes; dispatcher s12b-13 / s12b-14 / s15d / s27 / s28 / s29 (cc-271)"
+    },
+    {
+      "sha": "237def8f",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-271 — FIX-1397 closes (prod); records FIX-1382, FIX-1379, FIX-1396, FIX-1391, FIX-1388, FIX-1338, FIX-1258 and FIX-1381 on prod; FIX-1384 stays open (3,049.4 s > 2,856); no FIX-1293 reopen re-append (45 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1397"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 0 / D7 (the filing) NOT run: the tree contradicts its premise. cc-272 already fixed the fixes:sync reopen re-append (712b4474, on main, with a round-trip test), and this run's own sync appended no reopen row. Nothing was filed, so fixes_filed is [] and the worktree slot is cc-271.",
+    "FIX-1384 NOT closed (D3's second branch): the third wall is 3,049.4 s, above 2,856 s. It stays open, re-owed to Thu 11-19. Nothing is proposed beyond the facts.",
+    "FIX-1393 NOT recorded: no non-resumed staging has run under the bound. All four donor-rollup-refresh arms since 11-11 (10:03Z / 22:03Z ×2) were caught-up exits before the SET (horizon = watermark 11-08 22:57:25Z, 0.1 s, 0 targets). Re-owed to the first sweep after Sun 11-15's drop night.",
+    "Read 3's premise: dispatch_log keeps 14 days (oldest row 10-30 01:57Z). The 256 MB epoch's 10-26 → 10-29 days are therefore cc-255's quoted rows, not a fresh read. Prod reproduces cc-255's 10-31 → 11-04 rows exactly.",
+    "Read 9 (FIX-1338): the receipts carry no §9 rate line. The canary's rate verdicts were read from the canary_check rows (12 runs, 11-07 → 11-12) and one read-only call of check_pipeline_rate_regression()."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1381",
+      "what": "the Tue 11-17 16:00Z taggers-weekly scan RECORDED as a reading (the < 63.4 s bound is retired, Craig 11-10): phase_seconds, relpages, all-visible — any value settles it",
+      "after": "2026-11-17T17:00Z"
+    },
+    {
+      "fix": "FIX-1384",
+      "what": "the Thu 11-19 14:00Z contract-flow wall, the fourth dispatched (band 0–4575): ≤ 2,856 s on the warm pool closes FIX-1384 as no-op; above, the walls side by side with co-runners and box for Cowork's design",
+      "after": "2026-11-19T16:00Z"
+    },
+    {
+      "fix": "FIX-1393",
+      "what": "the first NON-resumed donor_rollup_rebuild_bulk staging under the 2,400 s transaction_timeout (after Sun 11-15's drop-night FR writes move the horizon): complete inside it, with the wall and the staging's upper bound; or dead at it with no residue and re-armed on the ladder",
+      "after": "2026-11-16T12:00Z"
+    },
+    {
+      "fix": "FIX-1396",
+      "what": "ecs-vacuum-analyze against Sun 11-15's post-landing pass: armed on its line or floor, not held behind ec-crawl past its floor by more than a tick; and officials' arms per day through a drop night",
+      "after": "2026-11-16T12:00Z"
+    }
+  ]
+}
