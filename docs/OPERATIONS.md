@@ -1115,6 +1115,16 @@ memory ceiling spending the IO budget), 64 KiB and up is file-backed
 sequential. The first calibration, idle at 00:20Z 11-11: root 212 reads/s at
 7.9 MB/s, mean **36.4 KiB**, neither shape; /data 3.6 reads/s at 15.0 KiB.
 
+| receipts file | root GB | swap-in GB (share) | reads | hours | root mean read |
+|---|---:|---:|---:|---:|---:|
+| 2026-11-12 (cc-271, FIX-1397) | 176.6 | 31.4 (17.8 %) | 6,402,477 | 19.8 of 24 | **21.7 KiB** |
+| 2026-11-13 | 195.1 | 34.7 (17.8 %) | 8,969,268 | 24 | **21.2 KiB** |
+
+The whole-day mean is between the two shapes too, and the mean alone cannot
+split them. If each swap-in read is one 4 KiB page, swap-in is 94 % of the
+reads, and the other 6 % carry ~315 KiB each. If each is a 32 KiB cluster,
+swap-in is 12 % of the reads.
+
 **A sweep chain's IO shape (11-07, cc-263).** Two sweeps at once reach the gp3
 3,000-IOPS ceiling at full burst: five samples, 01:14 → 01:22Z, read io_time
 96–100 %, 2,207–3,061 reads/s, /data 26–45 MB/s, queue 20–49. That is ten
@@ -1199,6 +1209,14 @@ second hold refused every tick to 15:23Z. It was **silent through the two stalls
 timeouts; 11-02 had 270). The ring gapped 24–38 min, `mem_stale` failed open, and `fork_failures` did the
 refusing. donor-rollup-refresh armed into a standing throttle at 08:39:49Z on a 404 s mirror. The 64–89 %
 throttle samples reset the 90 % streak (FIX-1392). The match was the donor bulk's `_drb_fe` staging (FIX-1393).
+
+**The staging bound has not run yet** (cc-271, 11-13). The bound is FIX-1393's
+2,400 s `transaction_timeout`. donor-rollup-refresh armed four times from the
+11-11 landing to 11-12 22:03Z. All four were caught-up exits before the `SET`:
+the horizon equals the watermark (11-08 22:57:25Z), each took 0.1 s, and each
+had 0 targets. No `cron.job_run_details` row carries a transaction timeout or
+a lost connection. The first non-resumed staging comes after the Sun 11-15
+drop night's `financial_relationships` writes.
 
 **The gate.** `prod_op_gate` (d) reads the same keys for both classes:
 `d:io_throttled` to the hold's instant, `d:io_saturated` for 10 min. Class B remembers
@@ -1323,6 +1341,16 @@ budget NULL, priority 4; each cron is parked by name, never unscheduled.
 - **What they wait on.** The six rollups rows queue behind the group's live unit
   and the FIX-1322 one-VACUUM-at-a-time io cap; ecs behind ec-crawl and
   ec-vacuum-analyze; officials is alone in its group. Nothing waits on them.
+- **The first two days (cc-271, 11-11 and 11-12).** All eight armed and reaped
+  `succeeded: VACUUM` on both days.
+  - The seven daily rows ran 17:07 → 17:43Z, one at a time on the io cap: 0.16
+    to 4.70 s, ecs the longest at 4.07 / 4.70 s.
+  - **officials armed once a day, inside the nightly** (11-11 21:09Z, 11-12
+    21:07Z). It armed on the 600-dead line, not the floor, and ran 1.23 / 1.12 s.
+    `autovacuum_count` rose 51 → 56; on 11-12 an autovacuum ran 26 s before the
+    dispatched VACUUM.
+  - fr (03:23Z), ec (11:05Z) and entity-tags (21:25Z) each armed on its own
+    tick both days. None was held by one of the eight.
 - **The unguarded pg_cron set is now non-VACUUM only:** the probes, the
   watchdogs, the dispatcher tick, the two retentions and platform-counts-daily.
   R1b (FIX-1309, `cron_job_budget` → VIEW and `cron.unschedule`) is the
@@ -1963,6 +1991,13 @@ the prod receipt, and step 7's sweep stays the manual net.
 M4′ read at 46.6 h (cc-263): all five census numbers better, the floor ~50 MB
 lower and re-formed within the hour, MemAvailable flat, the creep still open
 (census §M4′).
+
+The 7-day curve (cc-271, FIX-1379) is a least-squares fit over the daily swap
+values in `dispatch_log.box`. The daily **min** rose **+0.29 MB/day** over
+11-06 → 11-12 (n 7), against +3.42 over 10-26 → 11-04 (n 10). The **p50** rose
++2.57 against +3.75, and at that rate it reaches 1,018 MB at uptime day ~231.
+The daily max fell (−0.82). 11-08 (a drop night) and 11-09 (the stall) are
+over-sampled, and the rows are arms and box skips, not a uniform clock.
 
 `pg_buffercache` is installed (FIX-1389, cc-264), so an M4-class pool read is a
 plain `SELECT` from `extensions.pg_buffercache`. Rule 429's rolled-back

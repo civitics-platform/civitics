@@ -328,6 +328,12 @@ its 0–140), `fe-vacuum-analyze` (5, max 95.7 s, in 0–140),
 `votes-vacuum-analyze` (2, max 3.0 s, in 0–29), `donor-party-rollup-refresh`
 (1, 198.5 s, above its 0–119 crawl-mode band by its catch-up design, cc-254).
 
+`contract-flow-rollups-refresh` was re-based on its third dispatched wall
+(cc-271): 2,791.6 / 2,995.0 / 3,049.4 s, all on the 64MB + parallel 0 body,
+gives 0–4575. It replaces cc-211's LOOSE 0–8839, which came from the 256MB
+body's 09-17 outlier. FIX-1384 stays open, because the 11-12 wall is above the
+2,856 s bar.
+
 ### Re-basing a band after a mechanism change
 
 A band is never measured across a mechanism change (rule 74). When a job's
@@ -352,7 +358,12 @@ phase above all) or any `entity_tags`-bound wall measured across that date
 straddles it. A later band re-cut for either tagger cites this date and takes
 its runs from after it only. The last pre-compaction readings were
 `rule-taggers-daily` on 10-23 (`scan` 173.7 s of 209.3 s, `data_sync_log`) and
-`rule-taggers-weekly` on 10-20 (`scan` 63.4 s of 493.4 s). §2 shows both
+`rule-taggers-weekly` on 10-20 (`scan` 63.4 s of 493.4 s). The weeklies after
+it read `scan` 64.8 s (10-27), 65.0 s (11-03) and 64.6 s (11-10, on an
+`entity_tags` at 100 % all-visible, 0 dead, relpages 132,405). The repack did
+not make the weekly scan cheaper, and vacuuming cannot either. **The `< 63.4 s`
+receipt that FIX-1258 and FIX-1381 carried is retired** (Craig 11-10, cc-271):
+the weekly scan is recorded as a reading, never against a bound. §2 shows both
 taggers' last *pg_cron* firings (10-13), because they are dispatched now. Read
 the dispatched runs from §9 or `data_sync_log`, not §2.
 
