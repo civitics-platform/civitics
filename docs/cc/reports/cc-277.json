@@ -1,0 +1,56 @@
+{
+  "cc": "277",
+  "prompt": "cc-prompt-277-senate-amendment-votes-amendment-to-document-number-parent-bill-metadata-amendment-number-unstored-version-2-graph-procedural-prefix.md",
+  "started_at": "2026-11-14T03:26:11Z",
+  "finished_at": "2026-11-14T03:59:30Z",
+  "head_before": "2be15ab2",
+  "head_after": "8cea0b02",
+  "commits": [
+    {
+      "sha": "ca7bae7c",
+      "subject": "[skip vercel] chore(fixes): file FIX-1408 (Senate amendment rolls carry their bill in the amendment block) and FIX-1409 (the EC vote arm decides an edge from the latest roll whatever its question) (cc-277)"
+    },
+    {
+      "sha": "bfb7afcf",
+      "subject": "feat(data): senateBillRef() — Step 4's bill-reference block as one pure function, pinned on the three LIS fixtures; it reads an amendment roll's parent bill from <amendment_to_document_number> and carries <amendment_number> (cc-277)"
+    },
+    {
+      "sha": "608c33f4",
+      "subject": "fix(data): FIX-1408 — the Senate's amendment rolls are stored against their parent bill with metadata.amendment_number; the seen-unstored record goes to v2; the graph's procedural filter learns 'on the amendment' (cc-277)"
+    },
+    {
+      "sha": "9d617e24",
+      "subject": "[skip vercel] docs: the Senate roll walk — which bill a roll lands on (<document>, then the amendment's target), metadata.amendment_number, the record at v2; congress-ids s15–s17 and the owed receipts (cc-277)"
+    },
+    {
+      "sha": "8cea0b02",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-277 — FIX-1408 closes (local; the nightlies' receipt owed after 2026-11-17T01:00Z); FIX-1409 filed, stays open (46 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1408"
+  ],
+  "fixes_filed": [
+    "FIX-1408",
+    "FIX-1409"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1408",
+      "what": "the nightlies at their slots after the ff, read with cc-274's two: per night and session the Senate line and the record line verbatim; on prod, Senate rolls and vote rows carrying metadata.amendment_number per session, the distinct parent bills they landed on, the record's remaining no_proposal_reference count with five of those roll ids named, and how many proposals the run minted for an amendment's parent. Met when both sessions' gap passes have completed once at v 2 and every roll still unstored is named with its reason",
+      "after": "2026-11-17T01:00Z"
+    },
+    {
+      "fix": "FIX-1409",
+      "what": "after the same nights: the count of Senate (official, bill) pairs on prod whose latest roll carries metadata.amendment_number, beside read 3's baseline — the edges an amendment roll now decides. A reading, not a close",
+      "after": "2026-11-17T01:00Z"
+    }
+  ]
+}
