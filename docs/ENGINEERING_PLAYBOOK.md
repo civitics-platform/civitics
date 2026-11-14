@@ -52,6 +52,9 @@ FIX-1377). New rule **C13**.
 **Extended 2026-11-05** with the planned restart (cc-255, FIX-1379: the
 `shared_buffers` halving). New rule **D13**.
 
+**Extended 2026-11-14** with contract-flow's one-pass stage (cc-280, FIX-1384).
+New rule **B6**.
+
 ---
 
 ## A. Data-shape regimes
@@ -224,6 +227,44 @@ on the creep days. **The creep is in swap, not MemAvailable.**
 
 *FIX-1354, FIX-1125, FIX-589 · `docs/audits/2026-10-25-io-budget-front-door-triage.md`
 · `docs/audits/2026-10-26-box-memory-census.md`*
+
+### B6. A rollup that joins a small table to a large one is planned on the join's estimate. Aggregate the large side first, then join the aggregate.
+
+*Added 2026-11-14 (cc-280, FIX-1384).* Contract-flow's agency × sector
+statement joined 137 `agencies` to every contract row. The planner sized that
+join at **46 rows** on prod (58 on the clone). The real count is **4,332,843**.
+On that estimate it chose a nested loop over
+`financial_relationships_agency_spend_lateral`, which fetches each contract
+row from the heap in amount order, one random block at a time. Prod's
+`pg_stat_statements` put it at **4,653,478 shared reads a call**, a mean of
+2,945.3 s over three weekly calls.
+
+The data did not change, only the order. One aggregate pass over the contract
+rows, grouped by the five columns both rollups need (`contract_flow_stage`,
+203,314 rows), took **136.7 s and 390,630 reads** on prod. It was a bitmap heap
+scan in physical order and a HashAggregate in one batch. Both rollups then
+read the aggregate and get correct estimates. On the clone the old and new
+outputs `EXCEPT` to zero both ways. The whole CALL went from 193.4 s to 15.9 s
+warm.
+
+The clone also hid the cost. Its two statements took ~65 s, against prod's
+~49-minute CALL, because its disk serves random reads nearly as fast as
+sequential ones. B2 and B3 are the same lesson from the cache side.
+
+**Apply:**
+- When a rollup joins a dimension table to a fact table, look at the join's
+  row estimate before anything else. A nested loop with the big table on the
+  inner side, under an estimate in the tens, is this failure.
+- Aggregate the large side by every key the outputs need, then join the small
+  result. SUM and COUNT are associative, so equality is provable with `EXCEPT`
+  both ways.
+- Before sizing chunks for a slow statement, read `shared_blks_read` per call
+  from prod's `pg_stat_statements`. The fix may be the access pattern, not the
+  unit size.
+- A clone wall ratio is not a prod wall ratio for a random-read plan.
+
+*FIX-1384 · `docs/audits/2026-11-13-contract-flow-cost-shape.md` ·
+`20261116000000_fix1384_contract_flow_one_pass_stage.sql`*
 
 ---
 

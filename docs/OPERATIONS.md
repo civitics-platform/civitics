@@ -1531,10 +1531,11 @@ DUE, and all three were terminal 30 min later:
 
 cc-257 returned the last parked weekly, `contract-flow-rollups-refresh`, as
 `by 0 14 * * 4` (group `mvs`, cap 64, budget 9000). Its body,
-`refresh_contract_flow_rollups()` (`c699dc7d…`, FIX-1295 M3), is ATOMIC: a
-`running` row COMMITted first, then ONE sub-block that rebuilds
-`contract_recipient_rollup` and `contract_agency_sector_rollup` and flips
-`contract_flow_rollups_state`. The first dispatched run armed 2026-11-01
+`refresh_contract_flow_rollups()`, is ATOMIC. It was `c699dc7d…` (FIX-1295 M3)
+and has been `e19b470b…` (FIX-1384, `20261116000000`) since 2026-11-14
+23:51:00Z. A `running` row is COMMITted first. Then ONE sub-block replaces
+`contract_flow_stage` (since FIX-1384), rebuilds `contract_recipient_rollup` and
+`contract_agency_sector_rollup`, and flips `contract_flow_rollups_state`. The first dispatched run armed 2026-11-01
 00:19:00Z (ttd −2 d 10:19), ran 00:21:00–01:07:32Z and closed `complete`,
 500 / 1,201 rows, in 2,791.6 s. That is 1.47× the 256MB era's 1,904 s, and
 fe-crawl co-ran 00:43–00:49Z. MemAvailable low was 242 MB, swap peak 547 MB.
@@ -1554,7 +1555,7 @@ It reaped `succeeded: CALL`, 2,791,654 ms.
   `reaped` row armed after the pipeline's last `complete|partial` counts,
   whatever its text. A DUE, unwindowed `by` row that did not complete re-arms
   at reap + `rearm_cooldown_seconds` (1800 s), then + 3600 s, + 7200 s … capped
-  at 24 h. Each attempt is a full scan of the contract FR rows. The tick reads
+  at 24 h. Each attempt is one full pass over the contract FR rows. The tick reads
   `cooldown: <job> (n non-advancing reap(s), last '<reap text>' at …; re-arm
   at …)`. `dispatcher-r10` seeds this on the clone.
 - **In a supervised session the operator is the brake.** A `failed` row means
@@ -1571,12 +1572,34 @@ It reaped `succeeded: CALL`, 2,791,654 ms.
   box (`box_is_saturated` plus the memory rungs), so the gate returns `clear`
   at once and the running row carries no `gate` key (none on the first
 dispatched run). A wait would sit
-  inside the budget (1,800 + the 5,891 s max = 7,691 < 9,000). Removing it is
-  a body change, for the s7 chunking prompt (`docs/cc/projects/forker.md` s7,
-  dispatcher.md s14).
+  inside the budget (1,800 + the 5,891 s max = 7,691 < 9,000). FIX-1384 kept
+  it unedited (D7); removing it would be a body change of its own.
 - **Progress has no cursor.** The stage is a plpgsql variable, so the only
   live view is `pg_stat_activity` for the CALL (`IO/DataFileRead` /
   `DataFilePrefetch` on the FR scan) and `box_health_mem`.
+- **The one-pass stage (FIX-1384, cc-280).** The body reads the contract rows
+  ONCE. One `INSERT … SELECT` fills `public.contract_flow_stage`, one row per
+  (from, to, NAICS code) with `SUM(amount_cents)` and `COUNT(*)`; it held
+  163,501 rows on the clone and 203,314 on prod (read 6). Both rollups are
+  derived from it, and `EXCEPT` both ways proves the outputs unchanged. The
+  stage is LOGGED, RLS on, service_role DML only, and only this body writes
+  it. Before the pass the body reads `source_fingerprint`:
+  `ec_arm_source_fingerprint('rebuild_entity_connections_contracts')`, the
+  contract + grant rows' `n=<count>;t=<max(updated_at)>`. That read is ~53 s on
+  prod. After the pass it ANALYZEs the stage and folds an order-independent
+  `stage_checksum` (count, both sums, Σ 64-bit row hashes).
+- **What a run records.** The state gains `staged`, `source_fingerprint` and
+  `stage_checksum`. The `complete` row gains `staged`, `source_fingerprint` and
+  `stage_seconds` = `{stage, recipients, agency_sectors}`, the three walls
+  from `clock_timestamp()` deltas. `stage` includes the fingerprint read. Two
+  runs with one fingerprint and one checksum are what a future skip would
+  stand on; nothing skips today (D4).
+- **The stage has no vacuum row.** A procedure cannot VACUUM. Each run DELETEs
+  the whole stage (~203 k rows on prod). Prod's autovacuum is at the defaults
+  (0.2 × reltuples + 50 ≈ 40.7 k), so it takes the stage after every run.
+- **Revert:** `scripts/fix1384-revert-contract-flow-one-pass.sql` puts back the
+  M3 body verbatim, through `db-query --call --file`. It leaves
+  `contract_flow_stage` in place; M3 never reads it.
 
 ### The monthly sweeps under `by` rows: a swallowed cancel closes `partial`, an ADVANCING row (FIX-1374)
 
