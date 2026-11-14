@@ -1,0 +1,64 @@
+{
+  "cc": "278",
+  "prompt": "cc-prompt-278-fix1394-edgar-daily-index-outcome-honest-13dg-scanner-daily-index-dir-schedule-form-names-newest-listed-file-dry-mode-fix1400-irs990-deflate64-partial.md",
+  "started_at": "2026-11-14T04:23:24Z",
+  "finished_at": "2026-11-14T05:04:00Z",
+  "head_before": "c7e0c009",
+  "head_after": "2dcc8027",
+  "commits": [
+    {
+      "sha": "11c38e6c",
+      "subject": "[skip vercel] chore(fixes): file FIX-1410 — the EDGAR daily 13D/G scanner has never read an index (full-index URL, today's file, pre-2025 form names) (cc-278)"
+    },
+    {
+      "sha": "23da7bdc",
+      "subject": "fix(data): FIX-1394 — the EDGAR daily index read says what happened: refused fails the run, unpublished and quiet days skip by name (cc-278)"
+    },
+    {
+      "sha": "c75e5360",
+      "subject": "feat(data): FIX-1410 — the EDGAR daily reads the newest listed daily-index file for both families of 13D/G names, and runs dry (cc-278)"
+    },
+    {
+      "sha": "fa3a54cd",
+      "subject": "fix(data): FIX-1400 — irs990 reads the two Deflate64 archives through Info-ZIP unzip, and a run that leaves ids unresolved behind a failed ZIP ends partial (cc-278)"
+    },
+    {
+      "sha": "e410b0e1",
+      "subject": "[skip vercel] docs(ops): the EDGAR daily's directory, 403-means-missing, the listing and dry mode; irs990's Deflate64 fallback and what partial means (cc-278)"
+    },
+    {
+      "sha": "2dcc8027",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-278 — FIX-1394 and FIX-1400 close (local-only; the receipts are the nightlies' edgar_daily rows and Mon 11-16's irs990 run) (42 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1394",
+    "FIX-1400"
+  ],
+  "fixes_filed": [
+    "FIX-1410"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "owed": [
+    {
+      "fix": "FIX-1394",
+      "what": "the nightlies at their slots after the ff: each night's edgar_daily data_sync_log row — status, skip_reason or error, and the [edgar…] log lines verbatim. Met when no night logs a refused or missing index as no_filings",
+      "after": "2026-11-17T01:00Z"
+    },
+    {
+      "fix": "FIX-1410",
+      "what": "the same nights' dry-run metadata, per night: the index file read, 13D/G rows, rows on tracked CIKs, filings fetched, holders parsed, holders with a percent, unparsed, and the samples — beside read 3's local numbers. A reading for Craig's switch-on decision, not a close",
+      "after": "2026-11-17T01:00Z"
+    },
+    {
+      "fix": "FIX-1400",
+      "what": "the Mon 11-16 15:00Z irs990 run at its slot (GitHub may start it hours late): the unzip Deflate64 line, each 2025 archive's line, rows inserted / failed, the status, and metadata.zips_failed / object_ids_unresolved. Met when the two archives are read and the five filings land, or the run is partial and names them",
+      "after": "2026-11-17T01:00Z"
+    }
+  ]
+}
