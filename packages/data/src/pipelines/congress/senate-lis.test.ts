@@ -18,9 +18,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as path from "path";
-import { parseSenateRoll, senateBillRef, senateRollResult, type SenateBillRefContext } from "./votes";
+import { parseSenateRoll, senateBillRef, senateRollResult, senateVoteMetadata, type SenateBillRefContext } from "./votes";
 import { mapVoteResult } from "./members";
-import { mintStatuses, rollPassageAdvances } from "./bill-status";
+import { mintStatuses, rollPassageAdvances, stampMintStatuses } from "./bill-status";
 
 const fixture = (name: string) => fs.readFileSync(path.join(__dirname, "__fixtures__", name), "utf8");
 const NOMINATION = "lis-senate-119-2-00256-nomination.xml";
@@ -294,4 +294,76 @@ test("FIX-1408 an unrecognized <document> type falls through to the amendment ta
     "    r: unrecognized Senate document_type 'Treaty Doc.', skipping bill ref",
     "    r: unrecognized amendment target '', skipping bill ref",
   ]);
+});
+
+/** A roll's evidence and mint args as Step 4 buffers them. */
+const evidence = (root: Record<string, unknown>, rollCallId: string, votedAt: string) => {
+  const ref = senateBillRef(root, rollCallId, ctx(votedAt));
+  return {
+    ref,
+    roll: { rollCallId, billKey: ref.billKey, voteQuestion: String(root["question"]), resultStr: senateRollResult(root).resultStr },
+  };
+};
+/** Roll 62 re-asked as a vote on the amendment itself. */
+const amendmentAgreedTo = () =>
+  parseSenateRoll(
+    fixture(AMDT_MOTION)
+      .replace("<question>On the Motion</question>", "<question>On the Amendment</question>")
+      .replace("<vote_result>Motion Rejected</vote_result>", "<vote_result>Amendment Agreed to</vote_result>"),
+  )!;
+
+test("FIX-1408 D3: an amendment roll and a motion on one ask for no status advance; the parent bill mints floor_vote", () => {
+  const motion = evidence(parseSenateRoll(fixture(AMDT_MOTION))!, "senate-119-1-00062", "2025-02-20");
+  const agreed = evidence(amendmentAgreedTo(), "senate-119-1-00063", "2025-02-20");
+  assert.equal(motion.roll.voteQuestion, "On the Motion");
+  assert.equal(motion.roll.resultStr, "Motion Rejected");
+  assert.equal(agreed.roll.voteQuestion, "On the Amendment");
+  assert.equal(agreed.roll.resultStr, "Amendment Agreed to");
+  assert.equal(mapVoteResult("Amendment Agreed to"), "passed_chamber", "the result alone would advance — the question is the gate");
+
+  const rolls = [motion.roll, agreed.roll];
+  assert.deepEqual(rollPassageAdvances(rolls, () => "sconres7"), []);
+  assert.deepEqual(Object.fromEntries(mintStatuses(rolls)), { "119-SCONRES-7": "floor_vote" });
+
+  // The mint path: the parent first seen through an amendment roll is stamped floor_vote.
+  const args = new Map([[motion.ref.billKey!, motion.ref.args!]]);
+  stampMintStatuses(args, rolls);
+  assert.equal(args.get("119-SCONRES-7")!.status, "floor_vote");
+});
+
+test("FIX-1408 D3: an amendment roll beside a passed passage roll on the same bill does not hold it back", () => {
+  const agreed = evidence(amendmentAgreedTo(), "a", "2025-07-16").roll;
+  const passage = evidence(parseSenateRoll(fixture(BILL_PASSED))!, "p", "2025-07-17").roll;
+  const onHr4 = { ...agreed, billKey: "119-HR-4" };
+  assert.deepEqual(Object.fromEntries(mintStatuses([onHr4, passage])), { "119-HR-4": "passed_chamber" });
+  assert.deepEqual(rollPassageAdvances([onHr4, passage], () => "hr4"), [{ id: "hr4", status: "passed_chamber", via: "p" }]);
+});
+
+test("FIX-1408 metadata: byte-identical for every roll with no amendment number; amendment_number last when there is one", () => {
+  // The pre-FIX-1408 literal, verbatim from the writer.
+  const before = (resultStr: string, resultText: string) =>
+    JSON.stringify({ vote_result: resultStr, ...(resultText ? { vote_result_text: resultText } : {}) });
+  const want: Array<[string, string]> = [
+    [NOMINATION, '{"vote_result":"Nomination Confirmed","vote_result_text":"Nomination Confirmed (47-41)"}'],
+    [CLOTURE, '{"vote_result":"Cloture Motion Agreed to","vote_result_text":"Cloture Motion Agreed to (48-47)"}'],
+    [BILL_PASSED, '{"vote_result":"Bill Passed","vote_result_text":"Bill Passed (51-48)"}'],
+  ];
+  for (const [f, json] of want) {
+    const root = parseSenateRoll(fixture(f))!;
+    const { resultStr, resultText } = senateRollResult(root);
+    const { amendmentNumber } = senateBillRef(root, f, ctx("2025-01-01"));
+    assert.equal(amendmentNumber, null, f);
+    assert.equal(JSON.stringify(senateVoteMetadata({ resultStr, resultText, amendmentNumber })), json, f);
+    assert.equal(JSON.stringify(senateVoteMetadata({ resultStr, resultText, amendmentNumber })), before(resultStr, resultText), f);
+  }
+  // The two shorter shapes: no result text, and no result at all.
+  assert.equal(JSON.stringify(senateVoteMetadata({ resultStr: "Bill Passed", resultText: "", amendmentNumber: null })), before("Bill Passed", ""));
+  assert.equal(JSON.stringify(senateVoteMetadata({ resultStr: "", resultText: "", amendmentNumber: null })), '{"vote_result":""}');
+
+  const root = parseSenateRoll(fixture(AMDT_MOTION))!;
+  const { amendmentNumber } = senateBillRef(root, "senate-119-1-00062", ctx("2025-02-20"));
+  assert.equal(
+    JSON.stringify(senateVoteMetadata({ ...senateRollResult(root), amendmentNumber })),
+    '{"vote_result":"Motion Rejected","vote_result_text":"Motion Rejected (47-52, 3/5 majority required)","amendment_number":"S.Amdt. 454"}',
+  );
 });

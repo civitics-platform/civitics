@@ -477,6 +477,24 @@ export function senateRollResult(root: Record<string, unknown>): { resultStr: st
   };
 }
 
+/**
+ * A Senate vote row's `metadata`. FIX-1408 adds `amendment_number` only when
+ * the roll names one, so every other roll's metadata is byte-identical to what
+ * it was. Nothing else rides per row (~100 rows a roll): the purpose and the
+ * title stay at `source_url`.
+ */
+export function senateVoteMetadata(roll: {
+  resultStr: string;
+  resultText: string;
+  amendmentNumber: string | null;
+}): { vote_result: string; vote_result_text?: string; amendment_number?: string } {
+  return {
+    vote_result: roll.resultStr,
+    ...(roll.resultText ? { vote_result_text: roll.resultText } : {}),
+    ...(roll.amendmentNumber ? { amendment_number: roll.amendmentNumber } : {}),
+  };
+}
+
 /** What a Senate roll's mint args need beyond the roll itself. */
 export interface SenateBillRefContext {
   congress: number;
@@ -949,6 +967,8 @@ export async function runVotesPipeline(
     voteQuestion: string;
     resultStr:    string;
     resultText:   string;
+    /** FIX-1408: "S.Amdt. 454", or null. */
+    amendmentNumber: string | null;
     memberList:   unknown[];
   }
   const senateRollBuffer: SenateRollItem[] = [];
@@ -1029,75 +1049,18 @@ export async function runVotesPipeline(
                 : [])
           : [];
 
-        const docBlock = root["document"] as Record<string, unknown> | null;
-        let billKey: string | null = null;
-        if (docBlock) {
-          const rawDocType = String(docBlock["document_type"] ?? "");
-          const docNumber  = String(docBlock["document_number"] ?? "");
-          if (rawDocType && docNumber) {
-            const upperDocType = rawDocType.trim().toUpperCase();
-            // Presidential Nominations (cabinet, judicial, ambassador
-            // confirmations) — the XML's <document_title> is the nominee
-            // string; route them as type='appointment' with a PN identifier
-            // so they don't end up as fake "S {N}" bills.
-            if (upperDocType === "PN") {
-              const documentTitle = String(docBlock["document_title"] ?? "").trim();
-              const title = (documentTitle || `Presidential Nomination ${docNumber}`).slice(0, 500);
-              const introducedIso = votedAt ? new Date(votedAt).toISOString() : null;
-              billKey = `${CURRENT_CONGRESS}-PN-${docNumber}`;
-              if (!senateBillArgs.has(billKey)) {
-                senateBillArgs.set(billKey, {
-                  billKey,
-                  title,
-                  billNumber:      `PN ${docNumber}`,
-                  billType:        "PN",
-                  chamber:         "senate",
-                  type:            "appointment" as ProposalType,
-                  status:          MINT_FLOOR, // FIX-1261: stamped at flush
-                  jurisdictionId:  federalId,
-                  governingBodyId: senateGovBodyId,
-                  congressGovUrl:  `https://www.congress.gov/nomination/${CURRENT_CONGRESS}th-congress/${docNumber}`,
-                  introducedAt:    introducedIso,
-                  lastActionAt:    introducedIso,
-                  congressNumber:  CURRENT_CONGRESS,
-                  session:         String(CURRENT_CONGRESS),
-                });
-              }
-            } else {
-              const billType = normalizeSenateDocType(rawDocType);
-              if (billType) {
-                billKey = `${CURRENT_CONGRESS}-${billType}-${docNumber}`;
-                if (!senateBillArgs.has(billKey)) {
-                  const govBodyId      = chamberGovBodyId(billType, senateGovBodyId, houseGovBodyId);
-                  const congressGovUrl = congressGovBillUrl(CURRENT_CONGRESS, billType, docNumber);
-                  const introducedIso  = votedAt ? new Date(votedAt).toISOString() : null;
-                  senateBillArgs.set(billKey, {
-                    billKey,
-                    title:           `${billType} ${docNumber}`,
-                    billNumber:      `${billType} ${docNumber}`,
-                    billType,
-                    chamber:         chamberForBillType(billType),
-                    type:            mapLegislationType(billType) as ProposalType,
-                    status:          MINT_FLOOR, // FIX-1261: stamped at flush
-                    jurisdictionId:  federalId,
-                    governingBodyId: govBodyId,
-                    congressGovUrl,
-                    introducedAt:    introducedIso,
-                    lastActionAt:    introducedIso,
-                    congressNumber:  CURRENT_CONGRESS,
-                    session:         String(CURRENT_CONGRESS),
-                  });
-                }
-              } else {
-                console.warn(
-                  `    ${rollCallId}: unrecognized Senate document_type '${rawDocType}', skipping bill ref`
-                );
-              }
-            }
-          }
-        }
+        // FIX-1408: <document> first, then the amendment's target bill.
+        const { billKey, args, amendmentNumber, warnings } = senateBillRef(root, rollCallId, {
+          congress: CURRENT_CONGRESS,
+          votedAt,
+          federalId,
+          senateGovBodyId,
+          houseGovBodyId,
+        });
+        for (const line of warnings) console.warn(line);
+        if (billKey && args && !senateBillArgs.has(billKey)) senateBillArgs.set(billKey, args);
 
-        senateRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, resultText, memberList });
+        senateRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, resultText, amendmentNumber, memberList });
       } catch (err) {
         console.error(`    Senate roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
@@ -1152,10 +1115,7 @@ export async function runVotesPipeline(
           voted_at:         votedAtIso,
           vote_question:    roll.voteQuestion,
           source_url:       roll.url,
-          metadata:         {
-            vote_result: roll.resultStr,
-            ...(roll.resultText ? { vote_result_text: roll.resultText } : {}),
-          },
+          metadata:         senateVoteMetadata(roll),
         });
       }
       return voteRecords;
