@@ -1872,3 +1872,4 @@
 2026-11-13 | FIX-1397 | 90a2da6c | prod-only | chore(fixes): close FIX-1397 on prod — the 11-12 receipts' Root budget line prints root mean read 21.7 KiB (6,402,477 reads, over the last 19.8 h); 11-13 reads 21.2 KiB (8,969,268 reads, 24 h): neither page-sized nor file-backed (cc-271)
 2026-11-14 | FIX-1407 | 0a98ed40 | local-only | fix(data): FIX-1407 — the Senate walk keeps a seen-unstored record in pipeline_state, walks the current session's new rolls first, retries 403/429 as blocked and paces its GETs (cc-274)
 2026-11-14 | FIX-1408 | 608c33f4 | local-only | fix(data): FIX-1408 — the Senate's amendment rolls are stored against their parent bill with metadata.amendment_number; the seen-unstored record goes to v2; the graph's procedural filter learns 'on the amendment' (cc-277)
+2026-11-14 | FIX-1406 | e069cb70 | local+prod | fix(db): FIX-1406 — drop public.web_vitals_samples, no reader and no writer since deploy A (cc-275)
