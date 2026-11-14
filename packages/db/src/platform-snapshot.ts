@@ -64,15 +64,12 @@ import { getVercelAccount } from "./vercel-account";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import {
-  budgetFor,
-  clearLimiterBudgetFlag,
   getUpstashHealth,
   getUpstashUsage,
-  limiterBudgetFlag,
   recordUpstashLimiterState,
   resolveLimiterBudgetPct,
   resolveLimiterState,
-  writeLimiterBudgetFlag,
+  runLimiterBudgetTick,
   type LimiterBudget,
   type LimiterFlagWrite,
   type UpstashLimiterState,
@@ -277,7 +274,10 @@ export type PlatformUsagePayload = {
     usage?: UpstashUsage;
     // FIX-1304: the limiter's budget against `usage`, and this tick's flag
     // command (SET while it holds, DEL while it is clear). `flag_written` is
-    // whether that command landed. Absent when `usage` is.
+    // whether that command landed. Absent when `usage` is. FIX-1313: `used` is
+    // what the hold was decided on, `basis` which number that is
+    // (`used_estimate` or `used_counter`), `estimate_note` why there was no
+    // estimate.
     budget?: LimiterBudget & { flag_written: boolean; flag_error: string | null };
   };
   // FIX-1044: the LEADING cost signal. Cloudflare is the only near-real-time,
@@ -621,23 +621,19 @@ export async function computePlatformUsagePayload(
     // otherwise — and that command doubles as the write-class probe: a refused
     // write is quota_exhausted even when the PINGs answered. No usage reading,
     // no command: the flag is left to its TTL.
+    //
+    // FIX-1313: `used` is the estimate — the counter plus daily's growth since
+    // the counter last moved — read off the last 24 h of these rows (one
+    // Postgres read; no Upstash command). No estimate → the counter, with the
+    // reason in budget.estimate_note.
     let budget: LimiterBudget | null = null;
     let flagWrite: LimiterFlagWrite | null = null;
     let budgetBlock: NonNullable<PlatformUsagePayload["upstash"]>["budget"] = undefined;
     if (usageOk) {
       const { pct, invalid } = resolveLimiterBudgetPct(process.env.UPSTASH_LIMITER_BUDGET_PCT);
       if (invalid) errors.push(`upstash_budget: ${invalid}`);
-      budget = budgetFor(usage, pct);
       const creds = upstashCredsFromEnv(process.env);
-      if (creds) {
-        flagWrite =
-          budget.state === "hold"
-            ? await writeLimiterBudgetFlag(
-                creds,
-                limiterBudgetFlag(budget, usage.limit_commands, new Date().toISOString()),
-              )
-            : await clearLimiterBudgetFlag(creds);
-      }
+      ({ budget, flagWrite } = await runLimiterBudgetTick({ db: anyDb, usage, pct, creds }));
       budgetBlock = {
         ...budget,
         flag_written: flagWrite?.ok ?? false,
@@ -647,7 +643,9 @@ export async function computePlatformUsagePayload(
       // tick whose DEL landed is silent (the payload still records it).
       if (budget.state === "hold" || !budgetBlock.flag_written) {
         console.warn(
-          `[upstash] budget state=${budget.state} used=${budget.used} limit=${usage.limit_commands} ` +
+          `[upstash] budget state=${budget.state} used=${budget.used} basis=${budget.basis} ` +
+            `counter=${budget.used_counter} estimate=${budget.used_estimate} ` +
+            `estimate_note=${JSON.stringify(budget.estimate_note)} limit=${usage.limit_commands} ` +
             `budget=${budget.commands} pct=${budget.pct} daily=${usage.daily_commands} ` +
             `flag_written=${budgetBlock.flag_written} flag_error=${JSON.stringify(budgetBlock.flag_error)}`,
         );
