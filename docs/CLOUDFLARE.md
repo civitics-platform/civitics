@@ -556,27 +556,28 @@ bearer, the same path returns the limiter's health block from the middleware's o
 isolate (FIX-1402). Each bearer call forces one budget-flag read, which is one Upstash
 GET.
 
-### The beacon routes (FIX-1404, FIX-1405)
+### The beacon routes (FIX-1404, FIX-1405, FIX-1406)
 
-**The same proxy fact reaches the telemetry.** Two routes write a row per page load:
-`/api/track-view` (`page_views`) and `/api/platform/web-vitals` (`web_vitals_samples`).
-Both share one rule set, in `apps/civitics/src/lib/view-telemetry.ts`.
+**The same proxy fact reaches the telemetry.** One route writes a row per page load:
+`/api/track-view` (`page_views`). Its rules live in
+`apps/civitics/src/lib/view-telemetry.ts`. The second beacon,
+`/api/platform/web-vitals` (`web_vitals_samples`), was removed by FIX-1406 (cc-275):
+the table had no reader, and Vercel Speed Insights already collects field vitals.
 
 - **The fleet rule.** The Chrome 133–142 farm (audit
   `docs/audits/2026-11-09-upstash-spend-census.md` §12) is ten exact Windows Chrome
   strings, listed in `CHROME_FLEET_UAS`. `track-view` writes its views with
   `is_bot = true` and `bot_name = 'chrome-133-142'`. The row is still written, so
-  `get_pv_bots` shows it by name and every `is_bot = false` reader drops it.
-  `web-vitals` answers `{ ok: true }` without the INSERT, because that table has no
-  `is_bot` column. A match is exact equality after `trim()`.
+  `get_pv_bots` shows it by name and every `is_bot = false` reader drops it. A match
+  is exact equality after `trim()`.
   - **To add or retire a string,** edit the set and its test
     (`view-telemetry.test.ts`, which pins the size at ten).
   - **A false positive** is a real Windows user on one of those releases: their view
-    is labelled a bot and their vitals are not stored. Nothing else changes for them.
+    is labelled a bot. Nothing else changes for them.
   - **Craig's reversal**, not run: `UPDATE page_views SET is_bot = false, bot_name =
     NULL WHERE bot_name = 'chrome-133-142';`. It restores the view counts, but not
-    `device_type` or `browser`, which bot rows never carry. Dropped vitals samples
-    cannot be recovered.
+    `device_type` or `browser`, which bot rows never carry. The vitals samples the
+    rule skipped between FIX-1404 and FIX-1406 were never stored.
 - **The country rule.** `x-vercel-ip-country` geolocates the TCP peer, which behind
   this zone is the Cloudflare edge (the same root cause as the limiter's key).
   `page_views.country_code` now reads **`cf-ipcountry`** first:

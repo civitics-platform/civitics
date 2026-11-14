@@ -1,14 +1,14 @@
-// The two telemetry beacons' visitor rules (cc-273): which requests are the
+// The page-view beacon's visitor rules (cc-273): which requests are the
 // Chrome 133–142 fleet (FIX-1404), and which country a page view came from
-// (FIX-1405). Used by app/api/track-view/route.ts and
-// app/api/platform/web-vitals/route.ts. Pure: no next/* import, so it runs
-// under tsx --test.
+// (FIX-1405). Used by app/api/track-view/route.ts. The vitals beacon that also
+// used them was removed by FIX-1406 (cc-275). Pure: no next/* import, so it
+// runs under tsx --test.
 //
 // THE FLEET (FIX-1403, docs/audits/2026-11-09-upstash-spend-census.md §12). Ten
 // exact Windows Chrome strings, 13–24 releases stale against the zone's real
 // Chrome (155–157): a residential-proxy browser farm that runs JS, loads about
-// one deep-link page per IP and fires its beacons. Since 11-01 it is ~96 % of
-// web_vitals_samples (29,412 of 30,605 rows) and ~95.8 % of page_views.
+// one deep-link page per IP and fires its beacons. From 11-01 to 11-11 it was
+// ~96 % of the vitals samples (29,412 of 30,605 rows) and ~95.8 % of page_views.
 // next/server's userAgent().isBot does not know these strings, so before this
 // every fleet view was written as a human Chrome view.
 //
@@ -20,8 +20,8 @@
 //
 // THE COST OF A FALSE POSITIVE. A real Windows user still on one of these ten
 // releases loses only telemetry: their page_views row is labelled
-// `chrome-133-142` (still written, so still countable) and their Web Vitals
-// samples are not stored. No page, API or limiter behaviour changes for them.
+// `chrome-133-142` (still written, so still countable). No page, API or
+// limiter behaviour changes for them.
 
 /** The ten user agents audit §12 classifies as the fleet (`userAgent_in`). */
 export const CHROME_FLEET_UAS: ReadonlySet<string> = Object.freeze(

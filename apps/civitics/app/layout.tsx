@@ -8,7 +8,6 @@ import { ChromeTheme } from "./components/ChromeTheme";
 import { Footer } from "./components/Footer";
 import { FooterGate } from "./components/FooterGate";
 import { NavBar } from "./components/NavBar";
-import { WebVitalsReporter } from "./components/WebVitalsReporter";
 import { SITE_ORIGIN } from "@/lib/canonical";
 import "./globals.css";
 
@@ -80,7 +79,6 @@ export default function RootLayout({
         </ChromeTheme>
         <AuthHashHandler />
         <ChallengeModal />
-        <WebVitalsReporter />
         <Analytics />
         <SpeedInsights />
         {process.env.NODE_ENV === "development" && (
