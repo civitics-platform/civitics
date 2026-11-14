@@ -240,8 +240,14 @@ export async function failSync(
 
 // Mark a run as a deliberate no-op (Phase 2 skeleton, version-unchanged short-
 // circuit, etc.). Distinct from `complete` so the dashboard can render skipped
-// runs differently from real zero-row days.
-export async function skipSync(id: string, reason: string): Promise<void> {
+// runs differently from real zero-row days. `metadata` (optional) is merged
+// under skip_reason like failSync's — FIX-1394: a skipped EDGAR daily names the
+// index file it read or looked for.
+export async function skipSync(
+  id: string,
+  reason: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
   if (!id) return;
   inFlightLogIds.delete(id);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -254,6 +260,7 @@ export async function skipSync(id: string, reason: string): Promise<void> {
       .maybeSingle();
     const merged = {
       ...(existing?.metadata ?? {}),
+      ...(metadata ?? {}),
       skip_reason: reason,
       peak_rss_mb: captureRssMb(),
     };
