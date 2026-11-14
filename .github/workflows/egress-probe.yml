@@ -56,7 +56,8 @@ on:
       browser_ua:
         description: "User-Agent for the second GET (a current Chrome)"
         required: false
-        default: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+        # Never one of CHROME_FLEET_UAS (apps/civitics/src/lib/view-telemetry.ts): those ten are blocked at the edge by `Common Exploit Paths` since 2026-11-14 01:34Z (FIX-1403), so through www the second GET would read the Block, not the site.
+        default: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
 
 permissions:
   contents: read
