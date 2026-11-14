@@ -1,0 +1,56 @@
+{
+  "cc": "279",
+  "prompt": "cc-prompt-279-fix1314-upstash-cycle-calendar-month-fix1313-budget-hold-on-estimated-used-counter-plus-daily-growth-since-last-move-replay-first.md",
+  "started_at": "2026-11-14T04:23:24Z",
+  "finished_at": "2026-11-14T05:10:00Z",
+  "head_before": "c7e0c009",
+  "head_after": "a736fa79",
+  "commits": [
+    {
+      "sha": "2baf3ac4",
+      "subject": "fix(db): FIX-1314 — the costs card's Upstash cycle is the calendar month, read off the counter (cc-279)"
+    },
+    {
+      "sha": "f1bf283f",
+      "subject": "fix(db): FIX-1313 — the limiter's budget hold keys on an estimate, the monthly counter plus daily growth since its last move (cc-279)"
+    },
+    {
+      "sha": "dfdf799f",
+      "subject": "[skip vercel] docs(ops): the Upstash allotment's calendar cycle, the hold's estimate fields and fallback; spend census §15, the replay (cc-279)"
+    },
+    {
+      "sha": "e959b1e6",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-279 — FIX-1313 and FIX-1314 close (local-only; the prod record follows the first post-deploy snapshot tick) (44 open)"
+    },
+    {
+      "sha": "13878674",
+      "subject": "chore(fixes): record FIX-1314 on prod — the first snapshot tick after deploy dfdf799f (Vercel success 04:53:58Z), 05:01:10Z: cycles.upstash Nov 1 – Dec 1 (2026-11-01T00:00Z → 12-01T00:00Z), source calendar, the readings as its note; the 04:31:09Z tick before read Nov 13 – Dec 13, api (cc-279)"
+    },
+    {
+      "sha": "99808637",
+      "subject": "chore(fixes): record FIX-1313 on prod — the first snapshot tick after deploy dfdf799f, 05:01:10Z: budget basis estimate, used 291,797 = used_counter 291,658 + daily 1,078 -> 1,217 since the counter's 04:01:11Z move; used_estimate 291,797, estimate_note null, state clear, flag_written true (the one DEL) (cc-279)"
+    },
+    {
+      "sha": "a736fa79",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-279's prod records — FIX-1313 and FIX-1314 prod-only from the 05:01:10Z snapshot tick (42 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1313",
+    "FIX-1314"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1313",
+      "what": "48 h of live ticks after the deploy: at every move of the monthly counter, the estimate at the tick before against the counter after (the same error measure as the replay), the share of ticks on basis estimate / counter with each estimate_note counted, and 0 ticks with more than one flag command. A reading; the hold itself need not engage",
+      "after": "2026-11-17T01:00Z"
+    }
+  ]
+}
