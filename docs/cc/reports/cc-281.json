@@ -1,0 +1,71 @@
+{
+  "cc": "281",
+  "prompt": "cc-prompt-281-pre-dispatcher-fix-triage-records-close-superseded-1137-1186-1125-1181-redirect-1292-1075-1039-under-attack-counting-read.md",
+  "started_at": "2026-11-14T23:18:54Z",
+  "finished_at": "2026-11-14T23:41:00Z",
+  "head_before": "47aab18b",
+  "head_after": "f23ccb88",
+  "commits": [
+    {
+      "sha": "2d440c41",
+      "subject": "[skip vercel] chore(fixes): file FIX-1411 / FIX-1412 / FIX-1413, the successors of FIX-1292 / FIX-1075 / FIX-1039 with cc-281's readings"
+    },
+    {
+      "sha": "b1c4dcf8",
+      "subject": "[skip vercel] docs(triage): cc-281's pre-dispatcher FIX triage records — s15b parked without a FIX, plan refs re-pointed, the Under Attack counting read"
+    },
+    {
+      "sha": "57cf6fb6",
+      "subject": "chore(fixes): close FIX-1137 — superseded by the dispatcher: active pg_cron is the ten plumbing jobs plus the dispatcher's own one-shot arm; 1,209 reaps since 10-31, 2 not succeeded (donor-rollup-refresh 11-09, a cancel and a job startup timeout), both re-armed +1 h 05 m / +1 h 02 m (cc-281)"
+    },
+    {
+      "sha": "36dd3f48",
+      "subject": "chore(fixes): close FIX-1186 — answered by FIX-1393 (transaction_timeout bounds donor_rollup_rebuild_bulk's pre-loop staging, on prod per cc-281 read 4) and by every dispatched unit being its own top-level CALL with a job_registry budget row (cc-281)"
+    },
+    {
+      "sha": "94ba028c",
+      "subject": "chore(fixes): close FIX-1125 — the memory gate and its rungs are live: headroom: 6 rows 11-01 → 11-04, box: memory 0 since 10-31; swap_ceiling_mb 1018 / headroom_target_mb 150; postgres + authenticator at max_parallel_workers_per_gather 0 and hash_mem_multiplier 1; shared_buffers 128MB; s15b parked without a FIX (T2) (cc-281)"
+    },
+    {
+      "sha": "b11e2165",
+      "subject": "chore(fixes): close FIX-1181 — the third clean pgss read: epoch 2026-10-25 13:25:52Z, 20 d 10 h, 0 API-role statements past 8,000 ms; link_officials_to_districts max 7,636.2 ms (9 calls), refresh_primary_source_for_entities max 6,103.9 ms (1,972 calls) (cc-281)"
+    },
+    {
+      "sha": "f01e41ee",
+      "subject": "chore(fixes): close FIX-1292 — redirected to FIX-1411: the :02/:32 swap-in slots are still LIT on 29.97 h of ring (medians 491.9 / 485.5 pages/s, 30 of 30 each) and carry 38.2 % of all swap-in (cc-281)"
+    },
+    {
+      "sha": "9c81cd0b",
+      "subject": "chore(fixes): close FIX-1075 — redirected to FIX-1412: _external's last five walls 1,010.6–1,210.7 s, the 1,350 s twice-running trigger not met (cc-281)"
+    },
+    {
+      "sha": "f7c3e582",
+      "subject": "chore(fixes): close FIX-1039 — redirected to FIX-1413, the Under Attack exit: of 12,414 edge-stopped requests in 24 h, fleet 6,003 / SearchBot 1,208 / exploit paths 598 / at most 4,605 the mode's alone (cc-281)"
+    },
+    {
+      "sha": "f23ccb88",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-281's triage records — FIX-1137, FIX-1186, FIX-1125 closed superseded, FIX-1181 no-op, FIX-1292 / FIX-1075 / FIX-1039 redirected to FIX-1411 / FIX-1412 / FIX-1413 (38 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1137",
+    "FIX-1186",
+    "FIX-1125",
+    "FIX-1181",
+    "FIX-1292",
+    "FIX-1075",
+    "FIX-1039"
+  ],
+  "fixes_filed": [
+    "FIX-1411",
+    "FIX-1412",
+    "FIX-1413"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "hygiene",
+  "owed": []
+}
