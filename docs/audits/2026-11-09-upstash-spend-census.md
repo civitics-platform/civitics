@@ -1195,3 +1195,105 @@ The 24 h before deploy A also carries [[FIX-1404]]'s vitals half. On UTC day 11-
 fleet sent **4,036** vitals POSTs that reached the origin, and the table gained **0** fleet
 rows that day (read 1). Every fleet sample was answered without its INSERT, as cc-273
 built it.
+
+## §15 cc-279 — the counter's 3 h step, replayed: the estimate the hold now keys on ([[FIX-1313]]), and the reset on the 1st ([[FIX-1314]]) (2026-11-14; appended, nothing above edited)
+
+Every number here is from prod `platform_usage_snapshot`, read-only, on 2026-11-14 between
+04:25Z and 04:35Z. `used` is `payload.upstash.usage.used_commands` (the management API's
+`total_monthly_requests`) and `daily` is `.daily_commands` (`daily_net_commands`).
+
+### Read 1: the history read's cost
+
+- The prompt's `created_at` does not exist. The column is `fetched_at`, indexed by
+  `platform_usage_snapshot_fetched_at_idx`.
+- The last 48 rows by `fetched_at DESC`, projecting the two counters: **Index Scan**, 317 ms
+  cold, 821 buffers. The time is the payload's TOAST, about 42.5 KB a row.
+- The table: **1,470 rows**, heap 192 kB, 87 MB total, oldest **2026-10-14T06:31:08Z**. The
+  nightly `prune_platform_usage_snapshot()` keeps 30 days, so **10-12 is gone**.
+
+### Read 2: the reset is on the 1st
+
+| tick | used | daily | state |
+|---|---:|---:|---|
+| 10-31 22:01:10Z | 503,289 | 191 | quota_exhausted |
+| 10-31 23:31:07Z | 503,289 | 209 | quota_exhausted |
+| **11-01 00:00:58Z** | **0** | 6 | healthy |
+| 11-01 00:30:58Z | 0 | 731 | healthy |
+| 11-01 01:00:58Z | 1,033 | 1,254 | healthy |
+
+| tick (around 11-13 07:51Z, the creation_time anniversary) | used | daily |
+|---|---:|---:|
+| 11-13 06:31:05Z | 282,419 | 2,828 |
+| 11-13 07:01:11Z | 283,768 | 3,026 |
+| 11-13 08:01:12Z | 283,768 | 3,471 |
+| 11-13 10:01:08Z | 285,360 | 4,634 |
+
+So there is a fall to 0 in the first tick of 11-01 and no fall on 11-13. With 09-01 (cc-229)
+and 10-13 (cc-233), that makes two resets on the 1st and two 13ths with no reset.
+
+### Read 3: the replay (the bar passed)
+
+Every tick 10-14T06:31Z → 11-14T04:01Z: 1,470 rows, 1,469 with a usage block (11-12T07:01Z
+has none). D2's estimate was computed at the tick just before each counter move, from the
+24 h before that tick, and compared with the value the counter moved to. `effective =
+max(counter, estimate)`.
+
+| | moves | within ±10 % | error p50 | error p95 \|·\| | worst | absolute (commands) |
+|---|---:|---:|---:|---:|---:|---|
+| **estimate (effective)**, healthy moves | 119 | **117 (98.3 %)** | −0.19 % | 2.92 % | −29.82 % | −68 to −2,273, p50 −349 |
+| counter alone, same moves | 119 | 110 (92.4 %) | −1.20 % | 18.53 % | −100 % | p50 −2,168, min −9,496 |
+| quota-exhausted span (excluded) | 160 | — | — | — | — | creeps +13 a move (p50), max +231 |
+| month reset (excluded) | 1 | — | — | — | — | 503,289 → 0 |
+
+Intervals between moves: **p50 3.00 h, p95 3.00 h, max 6.00 h** (all 280 moves, and the
+healthy 119 alike). The counter steps about one minute past 01, 04, 07, 10, 13, 16, 19 and
+22Z, and again at 00Z. Since 11-01, three steps landed an hour late (02Z twice, 08Z once)
+and two never came (11-04 10Z and 11-12 07Z; the 6 h maximum).
+
+The five worst healthy moves are all on the month's first day, when the denominator is
+small:
+
+| tick before | estimate | moved-to | error | counter alone |
+|---|---:|---:|---:|---:|
+| 11-01 00:30:58Z | 725 | 1,033 | −29.82 % | −100.00 % |
+| 11-01 03:30:58Z | 3,598 | 4,150 | −13.30 % | −75.11 % |
+| 11-01 06:30:58Z | 6,988 | 7,441 | −6.09 % | −44.23 % |
+| 11-01 09:31:06Z | 9,701 | 10,252 | −5.37 % | −27.42 % |
+| 11-01 12:31:05Z | 12,683 | 13,099 | −3.18 % | −21.73 % |
+
+The estimate ran **low on every move, never high**. The residual is the counter's own lag at
+its last move plus the half-tick of daily growth the tick before cannot see.
+
+**10-12 could not be replayed.** It is past the table's 30 days, so the bar's second clause
+became "no engagement later than the counter's". That holds by construction, because
+`effective ≥ counter`, and on the data. On November's own series, against synthetic
+budgets every 25,000 from 25,000 to 275,000, the estimate engaged **earlier at 9 of 11
+budgets, at the same tick at 2, later at none**. It led by p50 2 ticks and at most 5 ticks
+(2.5 h; e.g. 175,000: the estimate at 11-06 13:31:06Z, the counter at 16:01:11Z).
+
+Two readings of 10-12 survive in cc-233, and they agree with the replay:
+
+- From 16:01Z to the freeze, `used` moved 241,414 → 499,669 (+258,255), while `daily`
+  moved 49,167 → 307,396 (+258,229, the day's last value per §2). The two counters
+  measure the same commands, to within 26.
+- The counter-only hold would have engaged on the 19:01Z step (375,889). Under the
+  estimate, the hold engages once `daily` passes 157,753 (241,414 + growth ≥ 350,000).
+  Burst 3's ~229k commands (284,819 gateway requests × 0.80 commands each, §B1 of the
+  10-12 audit) over 16:30–19:15Z put that between 17:31 and 18:01Z, two or three ticks
+  earlier. That is modelled from burst totals, not replayed.
+
+### Read 4: the window
+
+At p95 the last move is 3 h back, and at most 6 h. **24 h stays.** A 6 h window would have
+left 2 of the 119 ticks with no move in view: 11-04 12:31Z and 11-12 09:31Z, each just
+after one of the skipped steps. 24 h leaves none.
+
+### Where November stands
+
+At 11-14T04:01:11Z: `used` **291,658** (moved this tick), `daily` 1,078. That leaves 58,342
+to the 350,000 hold. The last three full days spent 9,615 / 8,775 / 9,637 (mean 9,342),
+and 11-14 is on the same pace (1,078 by 04:01Z, against 1,481 by 03:31Z on 11-13).
+
+- At 9,342 a day the estimate crosses 350,000 around **11-20 10:00Z**. The counter alone
+  would cross up to one 3 h step later.
+- On the flat floor alone (2,449 a day, §1), the 16.8 days left add ~41k. That falls short.

@@ -1984,6 +1984,57 @@ month and the `Pro` line prorates over 31 days, so the projection is
 calendar-month. The Vercel usage page separately describes an Aug 14 – Sep 14
 cycle and nothing in the API discriminates between the two.
 
+#### The Upstash allotment: its cycle, and the limiter's budget hold (FIX-1304, FIX-1313, FIX-1314)
+
+**The cycle is the calendar month, UTC.** The vendor states no billing period;
+the counter's own resets say the 1st. The limiter read healthy again at
+2026-09-01T00:01:16Z (cc-229), and `total_monthly_requests` fell from 503,289
+at 2026-10-31T23:31:07Z to 0 at 2026-11-01T00:00:58Z (cc-279). The 13th, the
+anniversary of the database's `creation_time` that FIX-1089 anchored on,
+passed twice with no reset (10-13: 499,686 → 499,693; 11-13: 282,419 →
+283,768). `payload.cycles.upstash` is `upstashCycle()`
+(`packages/db/src/billing-cycles.ts`), and the card tags it `(calendar)` with
+those readings as its caveat. `payload.upstash.usage.created_at` is still
+recorded; it is not the anchor.
+
+**The hold.** Each snapshot tick writes one flag command to Upstash: a `SET
+civitics:limiter:budget … EX 7200` while used ≥ `UPSTASH_LIMITER_BUDGET_PCT`
+(default 70 %, so 350,000) of the vendor's cap, and a `DEL` otherwise. While
+the flag is set, the edge limiter takes its per-instance memory path
+(`apps/civitics/src/lib/ratelimit.ts`) and the probe records `budget_hold`.
+
+**What "used" is (FIX-1313).** `total_monthly_requests` moves in 3 h steps,
+about one minute past 01, 04, 07, 10, 13, 16, 19 and 22Z, plus 00Z.
+`daily_net_commands` moves every tick. So the hold decides on
+`max(counter, counter + daily's growth since the counter last moved)`, and
+reads that growth from the last 24 h of `platform_usage_snapshot` (one
+Postgres read per tick, no Upstash command). `payload.upstash.budget` carries:
+
+| field | meaning |
+|---|---|
+| `used`, `used_pct` | the number the hold was decided on |
+| `used_counter` | `total_monthly_requests` this tick |
+| `used_estimate` | counter + daily's growth since its last move; `null` on basis `counter` |
+| `basis` | `estimate` (the normal case) or `counter` |
+| `estimate_note` | why there was no estimate; `null` on basis `estimate` |
+
+- **Reading it:** `used_estimate − used_counter` is how far the counter is
+  behind. It is near 0 just after a 3-hourly move and largest just before
+  one. Replayed over 10-14 → 11-14, the estimate always ran slightly low (by 68
+  to 2,273 commands) and never high (`docs/audits/2026-11-09-upstash-spend-census.md`
+  §15).
+- **The fallback.** `basis: counter` means the hold read the counter alone,
+  which is the pre-FIX-1313 behaviour. `estimate_note` names the cause, as one
+  of `history read failed: …`, `fewer than two prior ticks (n)`, `newest prior
+  tick is N min old (> 90)` or `no counter move in the window (n prior ticks)`.
+  An occasional one after a missed tick is expected. A run of them means the
+  history read is failing; read the snapshot route's log line `[upstash] budget
+  … basis=counter estimate_note=…`.
+
+```bash
+node scripts/db-query.mjs --prod "SELECT fetched_at, payload->'upstash'->'budget' AS budget, payload->'cycles'->'upstash'->>'label' AS cycle FROM platform_usage_snapshot ORDER BY fetched_at DESC LIMIT 6"
+```
+
 ### pg_cron background-worker capacity (FIX-1022)
 
 **`job startup timeout` is a failed CONNECTION, not a missing worker slot.** With
