@@ -318,19 +318,12 @@ export type UpstashUsage = {
   auto_upgrade: boolean;
   plan: string | null;
   /**
-   * FIX-1089: `creation_time` (epoch SECONDS) as an ISO string — the anchor for
-   * the billing cycle. The allotment is per BILLING PERIOD, and the period is
-   * the monthly anniversary of this date, NOT the calendar month: measured
-   * 1781337093 = 2026-06-13T07:51:33Z, so it rolls on the 13th.
-   *
-   * That gap is the whole point. On 2026-08-15 a crawler spent the entire
-   * 500,000 in 15.5 hours; "99.8% used" with no cycle end cannot answer the
-   * only question anyone had — when does the rate limiter come back — and the
-   * calendar-month answer (Sep 1) is wrong by twelve days.
-   *
-   * CONTRADICTED since (FIX-1314): the only observed reset was 09-01T00:01:16Z,
-   * and 10-13 07:51Z passed with used still at 499,693. The reset reads as
-   * calendar. The field stays; the cycle built from it is FIX-1314's.
+   * `creation_time` (epoch SECONDS) as an ISO string: measured 1781337093 =
+   * 2026-06-13T07:51:33Z. FIX-1089 anchored the billing cycle on it (the 13th);
+   * the counter says otherwise. It reset on 09-01 and on 11-01 (503,289 at
+   * 10-31T23:31:07Z → 0 at 11-01T00:00:58Z) and passed 10-13 and 11-13 07:51Z
+   * with no reset, so the cycle is the calendar month (FIX-1314,
+   * `upstashCycle` in billing-cycles.ts). The field stays as the vendor's fact.
    */
   created_at: string | null;
   fetched_at: string;

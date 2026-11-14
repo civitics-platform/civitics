@@ -170,6 +170,8 @@ export {
   calendarMonthCycle,
   vendorWindowCycle,
   anniversaryCycle,
+  upstashCycle,
+  UPSTASH_CYCLE_NOTE,
   isRolling,
 } from "./billing-cycles";
 export type {
