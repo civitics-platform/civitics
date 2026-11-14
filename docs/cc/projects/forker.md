@@ -11,7 +11,7 @@ steps:
   - {id: s3, kind: cc, ref: "cc-153", title: "record_box_health service_role revoke + prod_op_gate (d) one scan", done: 2026-09-25}
   - {id: s4, kind: cc, ref: "cc-183", title: "P1-A — start gate + chunk backoff on the three heavy rollups; receipts bank the memory series"}
   - {id: s5, kind: receipt, ref: "FIX-1194", title: "a week with zero non-landing fork bursts (receipts §9 10-02 → 10-09) → Verified: prod", after: 2026-10-09T12:00Z}
-  - {id: s6, kind: design, ref: "FIX-1125", title: "memory threshold — after ≥ 7 receipts days carrying forker.memory_day", after: 2026-10-09T12:00Z}
+  - {id: s6, kind: design, ref: "", title: "memory threshold — after ≥ 7 receipts days carrying forker.memory_day — ref cleared by cc-281: FIX-1125 closed superseded 2026-11-14; the threshold lives in the dispatcher's box gate (swap_ceiling_mb 1018, headroom_target_mb 150)", after: 2026-10-09T12:00Z}
   - {id: s7, kind: design, ref: "", title: "contract-flow chunking (D-contract) — the one heavy rollup still a single statement"}
   - {id: s8, kind: cc, ref: "cc-202", title: "burst census part 1: snapshot cron → 7,37 (R6); ring banked; memory_day slot window filed as FIX-1289 (build stopped)", done: 2026-10-08}
   - {id: s9, kind: cc, ref: "cc-203", title: "burst census part 2: verdict A (the burst moved to :10/:40 with the route; no statement owns it — FIX-1292); cron reverted to */30", done: 2026-10-09}
@@ -19,7 +19,7 @@ steps:
   - {id: s11, kind: cc, ref: "cc-208", title: "FIX-1286 auto-restart on the 4th consecutive Logs-arm DOWN tick (FIX-1285 shipped it in cc-206; armed 10-07); receipt = the next wedge", done: 2026-10-07}
   - {id: s12, kind: cc, ref: "cc-213", title: "FIX-1292 R7 — the halves split 7,37 / 22,52 for 24 h; pre-split ring banked", done: 2026-10-10}
   - {id: s13, kind: receipt, ref: "FIX-1292", title: "R7's verdict — which half's sample lit; revert or keep", after: 2026-10-11T18:16Z, done: 2026-10-11}
-  - {id: s14, kind: design, ref: "FIX-1292", title: "the fix from R7's verdict (B) — the status half's compute owns the burst"}
+  - {id: s14, kind: design, ref: "FIX-1411", title: "the fix from R7's verdict (B) — the status half's compute owns the burst; re-pointed by cc-281 from FIX-1292 (closed redirected) to its successor: the :02/:32 slots still LIT 11-13/14, the lever is the status half's cadence"}
 ---
 
 # pg_cron forker starvation

@@ -280,6 +280,25 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
       admits one client by a secret header rather than changing the posture. Turning Under
       Attack off remains the real test named in §2: watch Vercel Fluid CPU once
       `Common Exploit Paths` holds the line alone.
+
+      **2026-11-14 (cc-281 reads 7–8; the exit is now [[FIX-1413]], FIX-1039 closed
+      redirected).** 24 h, 11-13 23:20Z → 11-14 23:20Z, `scripts/cf-analytics.mjs`:
+      15,491 edge requests, 3,077 reached the origin, 12,414 stopped at the edge. By
+      user agent: the fleet's ten strings 6,003 (7,913 edge, 1,910 origin, every one
+      of those before the 01:34Z Block; up to 2,838 of the stopped fall in the
+      23:00–01:59Z buckets around it), `SearchBot` 1,208 (KeenableBot 1,207,
+      ExaSearchBot 1, 0 origin), the five exploit-path clauses 598 (325 paths,
+      0 origin, none from a fleet or SearchBot string), everything else **4,605**.
+      That last figure is an UPPER bound on what Under Attack alone stops: it also
+      holds Browser Integrity Check, the `Meta` rule, the edge's 301s (1,252 in the
+      window) and `/cdn-cgi/*`. Its top user agents: empty 2,426 (2,443 empty-UA
+      requests came in the 17:00Z hour, at the apex: 1,458 × 403, 1,210 × 301),
+      GPTBot/1.4 485, Mac Chrome 476, facebookexternalhit 308. The exact per-rule
+      split is on the dashboard only (Security → Events, by service). The level was
+      last read by API on 11-09 (`under_attack`, modified 2026-08-15 22:03Z,
+      `docs/audits/2026-11-09-upstash-spend-census.md` §5);
+      `pipeline_state.cf_mitigation_loop` does not record it (`tripped` null, last
+      scope probe 11-14 19:00Z). Full reads: `docs/audits/2026-11-13-pre-dispatcher-fix-triage.md`.
 - [ ] **Rotate `PROBE_HEADER_SECRET` whenever the probe changes hands or leaks.** It lives
       in exactly two places — the `Probe skip (FIX-1057)` WAF rule expression and the
       GitHub Actions secret of the same name — and both must change in the same sitting.
