@@ -1,0 +1,47 @@
+{
+  "cc": "280",
+  "prompt": "cc-prompt-280-fix1384-contract-flow-one-pass-stage-table-both-rollups-derived-from-it-class-p-prod-plan-and-pgss-reads-first.md",
+  "started_at": "2026-11-14T23:17:07Z",
+  "finished_at": "2026-11-14T23:57:00Z",
+  "head_before": "47aab18b",
+  "head_after": "5614f68f",
+  "commits": [
+    {
+      "sha": "8a919a3f",
+      "subject": "fix(rollups): FIX-1384 contract-flow reads the contract rows once into contract_flow_stage and derives both rollups from it (cc-280)"
+    },
+    {
+      "sha": "bcd0caf0",
+      "subject": "[skip vercel] docs(ops): contract-flow's cost shape and the one-pass stage — audit, playbook B6, OPERATIONS, plan steps (cc-280)"
+    },
+    {
+      "sha": "5614f68f",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-280 — FIX-1384 closes local-only (the receipt is the Thu 11-19 14:00Z dispatched run on the one-pass body) (37 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1384"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261116000000_fix1384_contract_flow_one_pass_stage.sql"
+  ],
+  "prod_writes": "ONE gated class-P push of one file, from the primary's packages/data, in the foreground: session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --then db-push-prod. The dry run before it listed exactly 20261116000000_fix1384_contract_flow_one_pass_stage.sql. The five facts: (1) gate wait started 23:50:53Z, ok=true on poll 1 at 23:50:55Z (census pass: 3 renders / 3 events in 60 min, edge 2 of 613 = 0.33 %); (2) blocked_tokens [], so no b: and no a:nightly_next_start token; (3) claim 23:50:59.465Z → 23:51:00.572Z = 1.1 s, 17 guarded pipelines held and 17 cleared; (4) 0 data_sync_log rows inside the claim; (5) two dispatch_log ticks inside it, 23:51:00.097Z reaped ec-crawl 'succeeded: CALL' and 23:51:00.250Z nothing_due (next ec-crawl in 00:08:00). What the file wrote: CREATE TABLE public.contract_flow_stage (0 rows) + its COMMENT, RLS, REVOKE and GRANT, and CREATE OR REPLACE PROCEDURE refresh_contract_flow_rollups (c699dc7d → e19b470b) with its grants restated. No row was written. The procedure was not CALLed. No registry, cron, dial, band or VACUUM. Prod head 20261115000000 / 560 → 20261116000000 / 561.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1384",
+      "what": "the Thu 11-19 14:00Z dispatched contract-flow run on the one-pass body (e19b470b): status complete, 500 recipients, the row's stage_seconds verbatim, staged, the wall against max(600 s, 2 x read 6's 136.7 s) = 600 s, the two rollup tables' count / SUM(total_cents) / SUM(award_count) against read 7's (500 / 252,560,706,525,410 / 1,304,540 and 1,201 / 279,014,647,583,490 / 4,332,843) if source_fingerprint equals read 7's n=5008467;t=2026-10-11 09:39:05.324534+00, the box under it (ring samples >= 90 %, any io hold), and the stage's n_dead_tup / last_autovacuum a day later. Above 900 s or an io_throttled hold reopens it for the ctid-range chunks",
+      "after": "2026-11-19T16:00Z"
+    },
+    {
+      "fix": "FIX-1295",
+      "what": "contract-flow's half of the M3 record, on the same run: the wall beside the 256MB era's 1,904 s",
+      "after": "2026-11-19T16:00Z"
+    }
+  ]
+}
