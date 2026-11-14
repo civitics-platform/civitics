@@ -678,6 +678,11 @@ test("B4 / B3 / B7: plain SET 64MB + parallel 0 in treemap, contract-flow and th
   for (const b of BODIES2.filter((x) => x.kind === "plain")) assert.deepEqual(plainSetProblems(now2(b)), [], b.name);
 });
 
+test("B3 after FIX-1384 (cc-280, D8): the one-pass body still carries both SET lines, unedited", () => {
+  const cf = byName2("refresh_contract_flow_rollups");
+  assert.deepEqual(plainSetProblems(body(bySuffix("_fix1384_contract_flow_one_pass_stage.sql")(), cf.sig)), []);
+});
+
 test("B5: donor-party's ONE line — SET 64MB; the FIX-1212 parallel-0 line kept, once", () => {
   assert.deepEqual(donorPartyProblems(now2(byName2("refresh_donor_party_rollup_incremental"))), []);
 });
@@ -803,6 +808,9 @@ test("local (M2/M3/FIX-1293/FIX-1296): each live body is its file's; proconfig N
       // 20261022000000 (cc-241) replaced this body; its live pin is
       // ec-crawl-health-1293.test.ts. The text checks above still read this file.
       if (b.name === "get_ec_crawl_health") continue;
+      // 20261116000000 (cc-280, FIX-1384) replaced this body; its live pin is
+      // contract-flow-stage.test.ts. The M3 line diff above still reads M3.
+      if (b.name === "refresh_contract_flow_rollups") continue;
       type Row = { s: string; cfg: string[] | null };
       const res = await c.query<Row>(
         `SELECT prosrc AS s, proconfig AS cfg FROM pg_proc WHERE oid = '${b.regproc}'::regprocedure`);
