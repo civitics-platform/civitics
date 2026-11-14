@@ -664,11 +664,13 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     }
   }
 
-  // 1d. Daily — SEC EDGAR 13D/G poll (FIX-253). Scans the previous business
-  //     day's full-index for new beneficial-ownership filings touching
-  //     tracked S&P 500 CIKs. Cheap (~one HTTP call + per-hit retrieval);
-  //     skipSync if the index is unpublished (weekends/holidays). The full
-  //     DEF 14A reconciliation runs weekly in the Sunday block below.
+  // 1d. Daily — SEC EDGAR 13D/G poll (FIX-253). Reads the newest file the
+  //     daily-index quarter listing names (FIX-1410: at 21:00Z today's file
+  //     is not listed yet) for beneficial-ownership filings touching tracked
+  //     S&P 500 CIKs. DRY until EDGAR_DAILY_WRITES flips (cc-278 D4): it logs
+  //     the parse yield and writes nothing. A refused index is `failed`
+  //     (FIX-1394). The full DEF 14A reconciliation runs weekly in the Sunday
+  //     block below.
   {
     const t0 = Date.now();
     try {

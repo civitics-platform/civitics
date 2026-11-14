@@ -10,9 +10,12 @@
  *                                external_relationships edges and review
  *                                queue rows. Targeted by `pnpm data:edgar`.
  *
- *   runEdgarDailyPipeline()   — scans the SEC daily full-index for new
- *                                SC 13D / SC 13G filings touching tracked
- *                                CIKs. Targeted by `pnpm data:edgar:daily`.
+ *   runEdgarDailyPipeline()   — reads the newest file the SEC daily-index
+ *                                quarter listing names, for SCHEDULE 13D/G
+ *                                (and the older SC 13D/G) filings touching
+ *                                tracked CIKs. DRY by default — see
+ *                                EDGAR_DAILY_WRITES. Targeted by
+ *                                `pnpm data:edgar:daily`.
  *
  * Both pipelines call sync-log per audit §1b. Neither calls
  * rebuild_entity_connections() — the nightly orchestrator does that
@@ -20,7 +23,8 @@
  *
  * Env overrides:
  *   EDGAR_CIKS=320193,1018724,...    Smoke-test a small subset of CIKs.
- *   EDGAR_DAILY_DATE=YYYY-MM-DD      Override "today" for the daily scan.
+ *   EDGAR_DAILY_DATE=YYYY-MM-DD      Read that day's index file instead of the
+ *                                    newest listed one.
  */
 
 import { canonicalizeEntityName } from "../fec-bulk/writer";
@@ -38,6 +42,7 @@ import {
   scanDailyShareholders,
   type DailyIndexOutcome,
   type ScanOptions,
+  type ScanStats,
   type ShareholderFiling,
 } from "./shareholders";
 import { loadSp500Universe, type UniverseEntry } from "./universe";
@@ -69,14 +74,30 @@ function selectUniverse(): ReturnType<typeof loadSp500Universe> {
   return scoped;
 }
 
-function todayUtc(): Date {
+/** EDGAR_DAILY_DATE names the index file to read; unset, the run reads the newest listed. */
+function dailyDateOverride(): Date | undefined {
   const override = process.env["EDGAR_DAILY_DATE"];
   if (override) {
     const d = new Date(`${override}T00:00:00Z`);
     if (Number.isFinite(d.getTime())) return d;
   }
-  return new Date();
+  return undefined;
 }
+
+/**
+ * FIX-1410 (cc-278 D4) — the 13D/G scanner runs DRY. It has never read an
+ * index on prod (full-index URL, today's file, pre-2025 form names), so what
+ * it does next — fetch each filing, parse a cover page written for the old
+ * HTML form, write shareholders rows, match donors, queue org holders — has
+ * never run there either. With this false the run does everything up to the
+ * writes and stops: no shareholders row, no edge, no review-queue row, no
+ * pipeline_state key. It logs `complete` with the parse yield in metadata.
+ * Flipping it is a later prompt, after three nights of those rows are read.
+ */
+export const EDGAR_DAILY_WRITES = false;
+
+/** Dry mode fetches at most this many tracked filings (2 GETs each, at the client's 10/s). */
+export const DRY_RUN_FETCH_CAP = 200;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Weekly pipeline
@@ -250,6 +271,27 @@ export interface EdgarDailyDeps {
   scan:            (opts: ScanOptions) => Promise<DailyIndexOutcome>;
   writeFilings:    (filings: ShareholderFiling[], universe: UniverseEntry[]) => Promise<DailyWriteCounts>;
   now:             () => Date;
+  dateOverride:    () => Date | undefined;
+  writesEnabled:   boolean;
+}
+
+/** The parse yield, as data_sync_log.metadata carries it (cc-278 D4). */
+function statsMetadata(file: string, stats: ScanStats, dryRun: boolean): Record<string, unknown> {
+  return {
+    dry_run:           dryRun,
+    index_file:        file,
+    rows_13dg:         stats.rows13dg,
+    rows_13dg_by_form: stats.rows13dgByForm,
+    rows_tracked:      stats.rowsTracked,
+    filings_fetched:   stats.filingsFetched,
+    not_fetched:       stats.notFetched,
+    documents_found:   stats.documentsFound,
+    fetch_errors:      stats.fetchErrors,
+    holders_parsed:    stats.holdersParsed,
+    holders_with_pct:  stats.holdersWithPct,
+    unparsed:          stats.unparsed,
+    samples:           stats.samples,
+  };
 }
 
 // We need edgar_companies.id keyed by CIK. Don't refresh metadata daily — just
@@ -287,7 +329,9 @@ export async function runEdgarDailyPipeline(overrides: Partial<EdgarDailyDeps> =
     loadTrackedCiks: loadTrackedCiksFromDb,
     scan:            scanDailyShareholders,
     writeFilings:    writeDailyFilings,
-    now:             todayUtc,
+    now:             () => new Date(),
+    dateOverride:    dailyDateOverride,
+    writesEnabled:   EDGAR_DAILY_WRITES,
     ...overrides,
   };
   const logId = await deps.startSync("edgar_daily");
@@ -303,7 +347,12 @@ export async function runEdgarDailyPipeline(overrides: Partial<EdgarDailyDeps> =
       return result;
     }
 
-    const outcome = await deps.scan({ date: deps.now(), trackedCiks });
+    const outcome = await deps.scan({
+      now:        deps.now(),
+      date:       deps.dateOverride(),
+      trackedCiks,
+      maxFilings: deps.writesEnabled ? undefined : DRY_RUN_FETCH_CAP,
+    });
     // FIX-1394: three answers, three statuses. A refused index used to come
     // back as an empty list and log `skipped / no_filings` — 180 nights of it.
     if (outcome.kind === "refused") {
@@ -314,13 +363,34 @@ export async function runEdgarDailyPipeline(overrides: Partial<EdgarDailyDeps> =
       return result;
     }
     if (outcome.kind === "not_published") {
-      console.info(`  [edgar:daily] ${outcome.file} is not in the listing yet — skipping`);
+      console.info(`  [edgar:daily] ${outcome.file ?? "no master.*.idx"} is not in the listing yet — skipping`);
       await deps.skipSync(logId, "index_not_published", { index_file: outcome.file });
       return result;
     }
-    if (outcome.rowsTracked === 0) {
-      console.info(`  [edgar:daily] no 13D/G filings for tracked CIKs in ${outcome.file}`);
-      await deps.skipSync(logId, "no_filings", { index_file: outcome.file });
+    if (outcome.stats.rowsTracked === 0) {
+      console.info(`  [edgar:daily] no 13D/G filings for tracked CIKs in ${outcome.file} (${outcome.stats.rows13dg} 13D/G rows in the file)`);
+      await deps.skipSync(logId, "no_filings", {
+        index_file:        outcome.file,
+        rows_13dg:         outcome.stats.rows13dg,
+        rows_13dg_by_form: outcome.stats.rows13dgByForm,
+      });
+      return result;
+    }
+
+    const s = outcome.stats;
+    if (!deps.writesEnabled) {
+      console.info(`  [edgar:daily] DRY RUN (EDGAR_DAILY_WRITES=false) — nothing written:`);
+      console.info(`    index file:           ${outcome.file}`);
+      console.info(`    13D/G rows:           ${s.rows13dg} (${s.rowsTracked} on tracked CIKs)`);
+      console.info(`    filings fetched:      ${s.filingsFetched} (${s.notFetched} past the cap of ${DRY_RUN_FETCH_CAP})`);
+      console.info(`    documents found:      ${s.documentsFound} (${s.fetchErrors} fetch errors)`);
+      console.info(`    holders parsed:       ${s.holdersParsed} (${s.holdersWithPct} with a percent; ${s.unparsed} filings unparsed)`);
+      for (const x of s.samples) {
+        console.info(`    sample:               ${x.accession} ${x.form} ${JSON.stringify(x.holder)} ${x.pct ?? "—"}%`);
+      }
+      console.info(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
+      result.metadata = statsMetadata(outcome.file, s, true);
+      await deps.completeSync(logId, result);
       return result;
     }
 
@@ -336,7 +406,7 @@ export async function runEdgarDailyPipeline(overrides: Partial<EdgarDailyDeps> =
     console.info(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
 
     result.inserted = counts.shareholders + counts.edges + counts.reviewQueue;
-    result.metadata = { index_file: outcome.file };
+    result.metadata = statsMetadata(outcome.file, s, false);
     await deps.completeSync(logId, result);
     return result;
   } catch (err) {
