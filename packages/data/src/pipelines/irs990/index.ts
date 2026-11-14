@@ -33,7 +33,7 @@ import {
   streamIndexCsv,
   getYearZipUrls,
   downloadFileToTemp,
-  extractObjectIdXmlsFromZip,
+  extractObjectIdXmls,
   tempDir,
   safeUnlink,
   loadIndexWatermark,
@@ -83,25 +83,89 @@ function taxYears(): number[] {
 // Main entry point
 // ---------------------------------------------------------------------------
 
-export async function runIrs990Pipeline(): Promise<PipelineResult> {
-  const logId = await startSync("irs990");
+/**
+ * The run's collaborators up to the ZIP loop — injectable so a test drives the
+ * download / extract failures and reads the closing status without a network or
+ * a database (FIX-1400). The CLI passes nothing and gets these defaults.
+ */
+export interface Irs990Deps {
+  startSync:                    typeof startSync;
+  completeSync:                 typeof completeSync;
+  failSync:                     typeof failSync;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  db:                           () => any;
+  years:                        () => number[];
+  loadOfficialsByCanonicalName: typeof loadOfficialsByCanonicalName;
+  loadIndexWatermark:           typeof loadIndexWatermark;
+  saveIndexWatermark:           typeof saveIndexWatermark;
+  headIrsFile:                  typeof headIrsFile;
+  streamIndexCsv:               typeof streamIndexCsv;
+  filterUningestedObjectIds:    typeof filterUningestedObjectIds;
+  getYearZipUrls:               typeof getYearZipUrls;
+  downloadFileToTemp:           typeof downloadFileToTemp;
+  extractObjectIdXmls:          (zipPath: string, needed: Set<string>) => ReturnType<typeof extractObjectIdXmls>;
+}
+
+/**
+ * FIX-1400 (cc-278 D7): the run's closing status. A download or extract failure
+ * that leaves needed object ids unresolved is `partial` — eight Mondays logged
+ * `complete / 0 inserted / 5 failed` while two archives never opened. The keys
+ * appear only when they have something to say, so a clean run's metadata is
+ * what it always was.
+ */
+export function irs990RunOutcome(
+  zipsFailed:   Array<{ zip: string; error: string }>,
+  unresolved:   string[],
+  zipsViaUnzip: string[],
+): { status: "complete" | "partial"; metadata?: Record<string, unknown> } {
+  const metadata: Record<string, unknown> = {};
+  if (zipsFailed.length > 0)   metadata["zips_failed"] = zipsFailed;
+  if (unresolved.length > 0)   metadata["object_ids_unresolved"] = unresolved;
+  if (zipsViaUnzip.length > 0) metadata["zips_via_unzip"] = zipsViaUnzip;
+  const status = zipsFailed.length > 0 && unresolved.length > 0 ? "partial" : "complete";
+  return Object.keys(metadata).length > 0 ? { status, metadata } : { status };
+}
+
+export async function runIrs990Pipeline(overrides: Partial<Irs990Deps> = {}): Promise<PipelineResult> {
+  const deps: Irs990Deps = {
+    startSync,
+    completeSync,
+    failSync,
+    db:                           () => createAdminClient(),
+    years:                        taxYears,
+    loadOfficialsByCanonicalName,
+    loadIndexWatermark,
+    saveIndexWatermark,
+    headIrsFile,
+    streamIndexCsv,
+    filterUningestedObjectIds,
+    getYearZipUrls,
+    downloadFileToTemp,
+    extractObjectIdXmls:          (zipPath, needed) => extractObjectIdXmls(zipPath, needed),
+    ...overrides,
+  };
+  const logId = await deps.startSync("irs990");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = deps.db() as any;
 
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
+  // FIX-1400: what the closing status is read from.
+  const zipsFailed: Array<{ zip: string; error: string }> = [];
+  const unresolved: string[] = [];
+  const zipsViaUnzip: string[] = [];
 
   try {
     console.info("\n=== IRS 990 pipeline ===");
     console.info(`  Seed orgs: ${SEED_NONPROFITS.length}`);
-    const years = taxYears();
+    const years = deps.years();
     console.info(`  Tax years: ${years.join(", ")}`);
 
     // Load officials lookup once (re-used across all years).
     console.info("  Loading officials → canonical-name map...");
-    const officialsByName = await loadOfficialsByCanonicalName(db);
+    const officialsByName = await deps.loadOfficialsByCanonicalName(db);
     console.info(`    ${officialsByName.size.toLocaleString()} canonical names indexed`);
 
-    const watermark = await loadIndexWatermark(db);
+    const watermark = await deps.loadIndexWatermark(db);
     const seedFp = fingerprintSeedEins(SEED_NONPROFITS.map((s) => s.ein));
 
     for (const year of years) {
@@ -111,7 +175,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       // Watermark check — skip only when BOTH the index Last-Modified AND
       // the seed-EIN fingerprint match the stored values. Without the
       // second check, expanding the seed list never re-streams the index.
-      const head = await headIrsFile(url);
+      const head = await deps.headIrsFile(url);
       const lm = head?.lastModified ?? null;
       const wmKey = String(year);
       const stored = watermark[wmKey];
@@ -127,7 +191,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       console.info(`    Streaming index ${url}...`);
       const matches: Array<{ row: IndexRow; ein: string }> = [];
       try {
-        const { rowCount } = await streamIndexCsv(url, (row) => {
+        const { rowCount } = await deps.streamIndexCsv(url, (row) => {
           const ein = normalizeEin(row.EIN);
           if (SEED_EIN_SET.has(ein)) matches.push({ row, ein });
         });
@@ -143,13 +207,13 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
 
       // Filter out object_ids we've already ingested.
       const candidateObjectIds = matches.map((m) => m.row.OBJECT_ID).filter(Boolean);
-      const alreadyIngested = await filterUningestedObjectIds(db, candidateObjectIds);
+      const alreadyIngested = await deps.filterUningestedObjectIds(db, candidateObjectIds);
       const newMatches = matches.filter((m) => m.row.OBJECT_ID && !alreadyIngested.has(m.row.OBJECT_ID));
       console.info(`    New filings to ingest: ${newMatches.length} (skipping ${alreadyIngested.size} already-present)`);
       if (newMatches.length === 0) {
         if (lm) {
           watermark[wmKey] = { lastModified: lm, seedFingerprint: seedFp };
-          await saveIndexWatermark(db, watermark);
+          await deps.saveIndexWatermark(db, watermark);
         }
         continue;
       }
@@ -159,11 +223,15 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       // monthly TEOS_XML ZIPs. We download each ZIP for the year, stream
       // through it, and extract only entries whose object_id is in our
       // needed set.
-      const zipUrls = await getYearZipUrls(year);
+      const zipUrls = await deps.getYearZipUrls(year);
       console.info(`    ZIP archives for year ${year}: ${zipUrls.length}`);
       if (zipUrls.length === 0) {
         console.warn(`    No ZIP archives found for year ${year} — IRS page may have changed`);
         result.failed += newMatches.length;
+        // FIX-1400: getYearZipUrls answers [] when the downloads page fails —
+        // a download failure of the list itself, so the ids are unresolved.
+        zipsFailed.push({ zip: `(downloads page, ${year})`, error: "no ZIP archives listed" });
+        unresolved.push(...newMatches.map((m) => m.row.OBJECT_ID));
         continue;
       }
 
@@ -180,17 +248,23 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
         const zipPath = path.join(dir, zipName);
         console.info(`      Downloading ${zipName}...`);
         try {
-          await downloadFileToTemp(zipUrl, zipPath);
+          await deps.downloadFileToTemp(zipUrl, zipPath);
         } catch (err) {
-          console.warn(`      [skip] ${zipName}: download failed — ${err instanceof Error ? err.message : String(err)}`);
+          const error = `download failed — ${err instanceof Error ? err.message : String(err)}`;
+          console.warn(`      [skip] ${zipName}: ${error}`);
+          zipsFailed.push({ zip: zipName, error });
           continue;
         }
 
         let xmlMap: Map<string, string>;
         try {
-          xmlMap = await extractObjectIdXmlsFromZip(zipPath, needed);
+          const extracted = await deps.extractObjectIdXmls(zipPath, needed);
+          xmlMap = extracted.xmls;
+          if (extracted.via === "unzip") zipsViaUnzip.push(zipName);
         } catch (err) {
-          console.warn(`      [skip] ${zipName}: extract failed — ${err instanceof Error ? err.message : String(err)}`);
+          const error = `extract failed — ${err instanceof Error ? err.message : String(err)}`;
+          console.warn(`      [skip] ${zipName}: ${error}`);
+          zipsFailed.push({ zip: zipName, error });
           safeUnlink(zipPath);
           continue;
         } finally {
@@ -309,6 +383,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       if (needed.size > 0) {
         console.warn(`    ${needed.size} filings not found in any ZIP archive (may be in a B/C/D variant not yet listed): ${Array.from(needed).slice(0, 5).join(", ")}${needed.size > 5 ? "..." : ""}`);
         result.failed += needed.size;
+        unresolved.push(...needed);
       }
 
       // FIX-397: refresh primary_source for every financial_entity that just
@@ -323,17 +398,22 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       // next run retries).
       if (lm && needed.size === 0) {
         watermark[wmKey] = { lastModified: lm, seedFingerprint: seedFp };
-        await saveIndexWatermark(db, watermark);
+        await deps.saveIndexWatermark(db, watermark);
       }
     }
 
-    await completeSync(logId, result);
-    console.info(`\n  IRS 990 complete: ${result.inserted} rows inserted, ${result.failed} failed, ${result.estimatedMb.toFixed(1)} MB XML processed`);
+    const outcome = irs990RunOutcome(zipsFailed, unresolved, zipsViaUnzip);
+    if (outcome.metadata) result.metadata = outcome.metadata;
+    await deps.completeSync(logId, result, outcome.status);
+    console.info(`\n  IRS 990 ${outcome.status}: ${result.inserted} rows inserted, ${result.failed} failed, ${result.estimatedMb.toFixed(1)} MB XML processed`);
+    if (zipsFailed.length > 0) console.warn(`  ZIPs failed: ${zipsFailed.map((z) => `${z.zip} (${z.error})`).join("; ")}`);
+    if (unresolved.length > 0) console.warn(`  object ids unresolved: ${unresolved.join(", ")}`);
+    if (zipsViaUnzip.length > 0) console.info(`  read via unzip (Deflate64): ${zipsViaUnzip.join(", ")}`);
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("IRS 990 pipeline threw:", msg);
-    await failSync(logId, msg);
+    await deps.failSync(logId, msg);
     throw err;
   }
 }
