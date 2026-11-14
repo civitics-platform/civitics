@@ -20,8 +20,15 @@ import {
   limiterBudgetFlag,
   writeLimiterBudgetFlag,
   clearLimiterBudgetFlag,
+  estimateUsedCommands,
+  readUsageHistory,
+  runLimiterBudgetTick,
+  USAGE_HISTORY_WINDOW_HOURS,
   type UpstashLimiterState,
+  type UsageTick,
+  type UsedEstimate,
 } from "./upstash-usage";
+import { MIDNIGHT_1104, MONTH_RESET, NOV_05_06, type UsageRow } from "./__fixtures__/upstash-usage-ticks";
 
 // The message Upstash actually returned on 2026-08-15, verbatim from prod logs.
 const QUOTA_ERROR =
@@ -449,6 +456,9 @@ const healthy = {
 
 const fakeCreds = { url: "https://example.upstash.io", token: "test-token" };
 
+/** FIX-1304's own cases read the counter alone; FIX-1313's estimate has its suite below. */
+const ON_COUNTER: UsedEstimate = { basis: "counter", used_estimate: null, note: "test: counter only" };
+
 /** A fetch stand-in for upstashRequest: records each command, answers `reply`. */
 function flagFetch(reply: { status?: number; body: unknown }): { commands: unknown[]; impl: typeof fetch } {
   const commands: unknown[] = [];
@@ -476,7 +486,7 @@ describe("FIX-1304 — the limiter budget", () => {
   });
 
   it("the threshold sits at floor(limit × pct / 100), read off the vendor's cap: budget − 1 clear, budget and budget + 1 hold", () => {
-    const at = (used: number) => budgetFor(usageAt(used), 70);
+    const at = (used: number) => budgetFor(usageAt(used), 70, ON_COUNTER);
     assert.equal(at(0).commands, 350_000);
     assert.equal(at(349_999).state, "clear");
     assert.equal(at(350_000).state, "hold");
@@ -486,18 +496,22 @@ describe("FIX-1304 — the limiter budget", () => {
       commands: 350_000,
       used: 350_000,
       used_pct: 70,
+      used_counter: 350_000,
+      used_estimate: null,
+      basis: "counter",
+      estimate_note: "test: counter only",
       state: "hold",
     });
     // The denominator is the vendor's own number, never a hard-coded 500,000.
-    assert.equal(budgetFor(usageAt(0, 1_000_000), 70).commands, 700_000);
-    assert.equal(budgetFor(usageAt(0, 333_333), 70).commands, 233_333, "floored, never rounded up");
+    assert.equal(budgetFor(usageAt(0, 1_000_000), 70, ON_COUNTER).commands, 700_000);
+    assert.equal(budgetFor(usageAt(0, 333_333), 70, ON_COUNTER).commands, 233_333, "floored, never rounded up");
   });
 
   it("the recorded state: quota_exhausted > budget_hold > unreachable > healthy", () => {
     const quota = { ...healthy, state: "quota_exhausted" as const, detail: "2/3 PINGs refused — " + QUOTA_ERROR, refusals: 2 };
     const unreachable = { ...healthy, state: "unreachable" as const, detail: "fetch failed" };
-    const hold = budgetFor(usageAt(400_000), 70);
-    const clear = budgetFor(usageAt(100_000), 70);
+    const hold = budgetFor(usageAt(400_000), 70, ON_COUNTER);
+    const clear = budgetFor(usageAt(100_000), 70, ON_COUNTER);
     const landed = { ok: true, error: null };
     const refused = { ok: false, error: `upstash 200: ${QUOTA_ERROR}` };
     const other = { ok: false, error: "upstash: fetch failed" };
@@ -522,11 +536,13 @@ describe("FIX-1304 — the limiter budget", () => {
   });
 
   it("the flag: SET civitics:limiter:budget <json> EX 7200 on hold, DEL on clear, neither throws", async () => {
-    const hold = budgetFor(usageAt(360_000), 70);
+    const hold = budgetFor(usageAt(360_000), 70, ON_COUNTER);
     const flag = limiterBudgetFlag(hold, 500_000, "2026-10-14T00:00:00.000Z");
     assert.deepEqual(flag, {
       state: "hold",
       used: 360_000,
+      basis: "counter",
+      used_counter: 360_000,
       limit: 500_000,
       budget: 350_000,
       pct: 70,
@@ -551,7 +567,7 @@ describe("FIX-1304 — the limiter budget", () => {
   });
 
   it("a refused flag write records quota_exhausted with the write detail while the PINGs read healthy", async () => {
-    const hold = budgetFor(usageAt(499_774), 70);
+    const hold = budgetFor(usageAt(499_774), 70, ON_COUNTER);
     const refused = flagFetch({ body: { error: QUOTA_ERROR } });
     const write = await writeLimiterBudgetFlag(
       fakeCreds,
@@ -562,5 +578,294 @@ describe("FIX-1304 — the limiter budget", () => {
     const resolved = resolveLimiterState({ health: healthy, budget: hold, flagWrite: write });
     assert.equal(resolved.state, "quota_exhausted");
     assert.match(resolved.detail ?? "", /^write refused: .*max requests limit exceeded/);
+  });
+});
+
+// ── FIX-1313: the estimate the hold keys on ──────────────────────────────────
+
+const toTicks = (rows: UsageRow[]): UsageTick[] =>
+  rows.map(([ms, used, daily]) => ({ at: new Date(ms).toISOString(), used, daily }));
+/** What the snapshot sees at tick k: the tick, and every earlier one newest first. */
+const tickAt = (ticks: UsageTick[], k: number) => ({ now: ticks[k]!, prior: ticks.slice(0, k).reverse() });
+const usageOf = (t: UsageTick) => ({ limit_commands: 500_000, used_commands: t.used });
+
+type HistorySource = UsageTick[] | { error: { message: string } } | Error;
+
+/** Stand-in for the one PostgREST read readUsageHistory makes; records its shape. */
+function historyDb(source: HistorySource) {
+  const seen: { table?: string; select?: string; gte?: [string, string]; order?: [string, unknown]; limit?: number } = {};
+  const db = {
+    from(table: string) {
+      seen.table = table;
+      const q = {
+        select(s: string) {
+          seen.select = s;
+          return q;
+        },
+        gte(col: string, v: string) {
+          seen.gte = [col, v];
+          return q;
+        },
+        order(col: string, opts: unknown) {
+          seen.order = [col, opts];
+          return q;
+        },
+        async limit(n: number) {
+          seen.limit = n;
+          if (source instanceof Error) throw source;
+          if (!Array.isArray(source)) return { data: null, error: source.error };
+          const since = seen.gte![1];
+          const rows = source
+            .filter((t) => t.at >= since)
+            .sort((a, b) => (a.at < b.at ? 1 : -1))
+            .slice(0, n)
+            .map((t) => ({ fetched_at: t.at, used: t.used, daily: t.daily }));
+          return { data: rows, error: null };
+        },
+      };
+      return q;
+    },
+  };
+  return { db, seen };
+}
+
+describe("FIX-1313 — the estimate the hold keys on", () => {
+  it("prod's 11-05 → 11-06 ticks: a 35 % budget engages at 13:31:06Z on the estimate, 16:01:11Z on the counter", () => {
+    // cc-279 read 3. 10-12 itself is past the table's 30 days, so the real
+    // series is November's, against a budget it actually crossed.
+    const ticks = toTicks(NOV_05_06);
+    const firstHold = (estimate: (k: number) => UsedEstimate) =>
+      ticks.findIndex((t, k) => budgetFor(usageOf(t), 35, estimate(k)).state === "hold");
+    const onEstimate = firstHold((k) => estimateUsedCommands(tickAt(ticks, k).now, tickAt(ticks, k).prior));
+    const onCounter = firstHold(() => ON_COUNTER);
+    assert.equal(ticks[onEstimate]!.at, "2026-11-06T13:31:06.613Z");
+    assert.equal(ticks[onCounter]!.at, "2026-11-06T16:01:11.630Z");
+    assert.equal(onCounter - onEstimate, 5, "five ticks, 2.5 h, earlier");
+
+    const { now, prior } = tickAt(ticks, onEstimate);
+    const b = budgetFor(usageOf(now), 35, estimateUsedCommands(now, prior));
+    // The counter last moved to 174,906 at 13:01:15Z; daily grew 21,048 → 21,635 since.
+    assert.deepEqual(
+      { used: b.used, used_counter: b.used_counter, used_estimate: b.used_estimate, basis: b.basis, state: b.state },
+      { used: 175_493, used_counter: 174_906, used_estimate: 175_493, basis: "estimate", state: "hold" },
+    );
+  });
+
+  it("on every counter move in that series, the estimate at the tick before runs low by under 3 %, never high", () => {
+    // Read 3's finding on 119 moves (p95 |2.92 %|, never above), held on the fixture.
+    const ticks = toTicks(NOV_05_06);
+    let moves = 0;
+    for (let k = 3; k < ticks.length; k += 1) {
+      if (ticks[k]!.used === ticks[k - 1]!.used) continue;
+      const { now, prior } = tickAt(ticks, k - 1);
+      const e = estimateUsedCommands(now, prior);
+      if (e.basis !== "estimate") continue;
+      const err = (e.used_estimate - ticks[k]!.used) / ticks[k]!.used;
+      assert.ok(err <= 0 && err > -0.03, `${ticks[k]!.at}: estimate ${e.used_estimate} vs ${ticks[k]!.used}`);
+      moves += 1;
+    }
+    assert.ok(moves >= 7, `only ${moves} moves checked`);
+  });
+
+  it("a counter move followed by flat daily → the estimate is the counter", () => {
+    const ticks: UsageTick[] = [
+      { at: "2026-11-14T01:01:00.000Z", used: 290_000, daily: 600 },
+      { at: "2026-11-14T01:31:00.000Z", used: 290_985, daily: 683 },
+      { at: "2026-11-14T02:01:00.000Z", used: 290_985, daily: 683 },
+      { at: "2026-11-14T02:31:00.000Z", used: 290_985, daily: 683 },
+    ];
+    const { now, prior } = tickAt(ticks, 3);
+    assert.deepEqual(estimateUsedCommands(now, prior), { basis: "estimate", used_estimate: 290_985, note: null });
+    // And a move on THIS tick: nothing has grown since, so the estimate is the counter too.
+    const real = toTicks(NOV_05_06);
+    const move = tickAt(real, real.findIndex((t) => t.at === "2026-11-06T13:01:15.463Z"));
+    assert.deepEqual(estimateUsedCommands(move.now, move.prior), { basis: "estimate", used_estimate: 174_906, note: null });
+  });
+
+  it("the 00:00Z daily reset adds the later tick's daily, never the negative difference", () => {
+    // MIDNIGHT_1104 with the counter's own 00:01Z move masked (derived from the
+    // real rows: on every November midnight the counter did move, so the reset
+    // branch is the safety net for a midnight it does not). Last move 22:01:12Z.
+    const ticks = toTicks(MIDNIGHT_1104).map((t) => (t.used === 77_771 ? { ...t, used: 72_568 } : t));
+    const { now, prior } = tickAt(ticks, ticks.findIndex((t) => t.at === "2026-11-04T00:31:15.649Z"));
+    // (31,413 − 28,483) up to 23:31Z, then 0 at 00:01Z, then 657.
+    const e = estimateUsedCommands(now, prior);
+    assert.deepEqual(e, { basis: "estimate", used_estimate: 72_568 + 2_930 + 0 + 657, note: null });
+    // The counter's real value after midnight was 77,771: the estimate is 2.1 %
+    // low by the 23:31 → 24:00 tail, which no tick saw.
+    assert.ok((e.used_estimate! - 77_771) / 77_771 > -0.03);
+  });
+
+  it("a month reset: the estimate follows the counter down and the 70 % hold clears", () => {
+    const ticks = toTicks(MONTH_RESET);
+    const decide = (iso: string) => {
+      const { now, prior } = tickAt(ticks, ticks.findIndex((t) => t.at === iso));
+      return budgetFor(usageOf(now), 70, estimateUsedCommands(now, prior));
+    };
+    const before = decide("2026-10-31T23:31:07.193Z");
+    assert.equal(before.state, "hold");
+    assert.equal(before.used, 503_289 + (209 - 191), "the over-cap counter plus daily since its 22:01Z move");
+    const reset = decide("2026-11-01T00:00:58.290Z");
+    assert.deepEqual([reset.state, reset.used, reset.basis], ["clear", 0, "estimate"]);
+    assert.deepEqual([decide("2026-11-01T00:30:58.766Z").used, decide("2026-11-01T01:00:58.810Z").used], [725, 1_033]);
+  });
+
+  it("no estimate → the counter, with the reason: failed read, fewer than two ticks, stale newest tick, no move", () => {
+    const now: UsageTick = { at: "2026-11-14T04:01:11.000Z", used: 291_658, daily: 1_078 };
+    const p1: UsageTick = { at: "2026-11-14T03:31:05.000Z", used: 290_985, daily: 1_009 };
+    const p2: UsageTick = { at: "2026-11-14T03:01:19.000Z", used: 290_985, daily: 919 };
+    const stale = [{ ...p1, at: "2026-11-14T02:01:11.000Z" }, { ...p2, at: "2026-11-14T01:31:11.000Z" }];
+    const flatNow = { ...now, used: 290_985 };
+    const cases: [UsageTick, Parameters<typeof estimateUsedCommands>[1], RegExp][] = [
+      [now, { error: "connection refused" }, /^history read failed: connection refused$/],
+      [now, [], /^fewer than two prior ticks \(0\)$/],
+      [now, [p1], /^fewer than two prior ticks \(1\)$/],
+      [now, stale, /^newest prior tick is 120 min old \(> 90\)$/],
+      [flatNow, [p1, p2], /^no counter move in the window \(2 prior ticks\)$/],
+    ];
+    for (const [tick, prior, note] of cases) {
+      const e = estimateUsedCommands(tick, prior);
+      assert.equal(e.basis, "counter");
+      assert.equal(e.used_estimate, null);
+      assert.match(e.note ?? "", note);
+      const b = budgetFor(usageOf(tick), 70, e);
+      assert.equal(b.used, tick.used, "the hold reads the counter, as before FIX-1313");
+      assert.equal(b.basis, "counter");
+      assert.match(b.estimate_note ?? "", note);
+    }
+    // 90 min exactly is still a basis.
+    assert.equal(estimateUsedCommands(now, [{ ...p1, at: "2026-11-14T02:31:11.000Z" }, p2]).basis, "estimate");
+  });
+
+  it("budgetFor holds on max(counter, estimate) and records both", () => {
+    const est = (n: number): UsedEstimate => ({ basis: "estimate", used_estimate: n, note: null });
+    assert.deepEqual(budgetFor(usageAt(340_000), 70, est(351_000)), {
+      pct: 70,
+      commands: 350_000,
+      used: 351_000,
+      used_pct: 70.2,
+      used_counter: 340_000,
+      used_estimate: 351_000,
+      basis: "estimate",
+      estimate_note: null,
+      state: "hold",
+    });
+    assert.equal(budgetFor(usageAt(340_000), 70, est(349_999)).state, "clear");
+    // estimateUsedCommands never returns one below the counter; budgetFor does not trust that.
+    assert.equal(budgetFor(usageAt(352_000), 70, est(1)).used, 352_000);
+  });
+
+  it("the flag's used and the state's detail name the basis", () => {
+    const onEstimate = budgetFor(usageAt(340_000), 70, { basis: "estimate", used_estimate: 351_000, note: null });
+    assert.deepEqual(limiterBudgetFlag(onEstimate, 500_000, "2026-11-14T04:01:11.000Z"), {
+      state: "hold",
+      used: 351_000,
+      basis: "estimate",
+      used_counter: 340_000,
+      limit: 500_000,
+      budget: 350_000,
+      pct: 70,
+      at: "2026-11-14T04:01:11.000Z",
+    });
+    const landed = { ok: true, error: null };
+    assert.equal(
+      resolveLimiterState({ health: healthy, budget: onEstimate, flagWrite: landed }).detail,
+      "budget hold: used 351000 (estimate: counter 340000 + daily's growth since its last move) ≥ budget 350000 (70 % of the cap)",
+    );
+    const onCounter = budgetFor(
+      usageAt(360_000),
+      70,
+      estimateUsedCommands({ at: "2026-11-14T04:01:11.000Z", used: 360_000, daily: 9 }, { error: "timeout" }),
+    );
+    assert.equal(
+      resolveLimiterState({ health: healthy, budget: onCounter, flagWrite: landed }).detail,
+      "budget hold: used 360000 (counter; no estimate — history read failed: timeout) ≥ budget 350000 (70 % of the cap)",
+    );
+  });
+
+  it("readUsageHistory: one read of the last 24 h, the two counters only, newest first, rows with no usage skipped", async () => {
+    const ticks = toTicks(NOV_05_06);
+    const now = ticks.at(-1)!;
+    const { db, seen } = historyDb(ticks.slice(0, -1));
+    const out = await readUsageHistory(db, now.at);
+    assert.ok(Array.isArray(out));
+    assert.equal(seen.table, "platform_usage_snapshot");
+    assert.equal(
+      seen.select,
+      "fetched_at, used:payload->upstash->usage->used_commands, daily:payload->upstash->usage->daily_commands",
+    );
+    assert.deepEqual(seen.gte, ["fetched_at", new Date(Date.parse(now.at) - 24 * 3_600_000).toISOString()]);
+    assert.deepEqual(seen.order, ["fetched_at", { ascending: false }]);
+    assert.equal(USAGE_HISTORY_WINDOW_HOURS, 24);
+    assert.ok(out.length > 40 && out.length < 49, `${out.length} ticks inside 24 h`);
+    assert.ok(out[0]!.at > out[1]!.at, "newest first");
+
+    // The 11-12T07:01Z row had no usage block (the management API failed that tick).
+    const rows = [
+      { fetched_at: "2026-11-12T07:31:05Z", used: 277_000, daily: 3_100 },
+      { fetched_at: "2026-11-12T07:01:14Z", used: null, daily: null },
+      { fetched_at: "2026-11-12T06:31:05Z", used: "276500", daily: "2900" },
+    ];
+    const chain = { select: () => chain, gte: () => chain, order: () => chain, limit: async () => ({ data: rows, error: null }) };
+    assert.deepEqual(await readUsageHistory({ from: () => chain }, "2026-11-12T08:01:00Z"), [
+      { at: "2026-11-12T07:31:05Z", used: 277_000, daily: 3_100 },
+      { at: "2026-11-12T06:31:05Z", used: 276_500, daily: 2_900 },
+    ]);
+
+    assert.deepEqual(await readUsageHistory(historyDb({ error: { message: "permission denied" } }).db, now.at), {
+      error: "permission denied",
+    });
+    assert.deepEqual(await readUsageHistory(historyDb(new Error("fetch failed")).db, now.at), { error: "fetch failed" });
+  });
+
+  it("runLimiterBudgetTick issues exactly one flag command in every case, and none without creds", async () => {
+    const ticks = toTicks(NOV_05_06);
+    const k = ticks.findIndex((t) => t.at === "2026-11-06T13:31:06.613Z");
+    const now = ticks[k]!;
+    const usage = { limit_commands: 500_000, used_commands: now.used, daily_commands: now.daily, fetched_at: now.at };
+    const flatHistory: UsageTick[] = [1, 2, 3].map((i) => ({
+      at: new Date(Date.parse(now.at) - i * 1_800_000).toISOString(),
+      used: now.used,
+      daily: now.daily,
+    }));
+    const cases: [string, HistorySource, number, "SET" | "DEL", "estimate" | "counter"][] = [
+      ["estimate, hold", ticks.slice(0, k), 35, "SET", "estimate"],
+      ["estimate, clear", ticks.slice(0, k), 70, "DEL", "estimate"],
+      ["read failed (error)", { error: { message: "permission denied" } }, 35, "DEL", "counter"],
+      ["read failed (throw), counter over budget", new Error("fetch failed"), 30, "SET", "counter"],
+      ["fewer than two ticks", ticks.slice(k - 1, k), 35, "DEL", "counter"],
+      ["stale newest tick", ticks.slice(0, k - 4), 35, "DEL", "counter"],
+      ["no move in the window", flatHistory, 35, "DEL", "counter"],
+    ];
+    for (const [name, source, pct, verb, basis] of cases) {
+      const flag = flagFetch({ body: { result: verb === "SET" ? "OK" : 1 } });
+      const { budget, flagWrite } = await runLimiterBudgetTick({
+        db: historyDb(source).db,
+        usage,
+        pct,
+        creds: fakeCreds,
+        fetchImpl: flag.impl,
+      });
+      assert.equal(flag.commands.length, 1, `${name}: one flag command`);
+      assert.equal((flag.commands[0] as string[])[0], verb, name);
+      assert.equal(budget.basis, basis, name);
+      assert.equal(flagWrite?.ok, true, name);
+      if (verb === "SET") {
+        const value = JSON.parse((flag.commands[0] as string[])[2]!);
+        assert.equal(value.basis, basis, `${name}: the flag names its basis`);
+        assert.equal(value.used, budget.used);
+      }
+    }
+    const none = flagFetch({ body: { result: "OK" } });
+    const r = await runLimiterBudgetTick({
+      db: historyDb(ticks.slice(0, k)).db,
+      usage,
+      pct: 35,
+      creds: null,
+      fetchImpl: none.impl,
+    });
+    assert.equal(none.commands.length, 0);
+    assert.equal(r.flagWrite, null);
+    assert.equal(r.budget.state, "hold");
   });
 });

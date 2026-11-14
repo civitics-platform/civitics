@@ -449,10 +449,29 @@ export function __resetUpstashUsageCache(): void {
 // behaviour rather than a new failure. The edge has no admin client, and
 // Postgres is the thing a wedge takes down, so the flag cannot live there.
 //
-// LAG. The hold engages one probe tick (≤ 30 min) after `total_monthly_requests`
-// crosses the budget — and that counter is itself stale: on 10-12 it moved in
-// ~3 h steps (241,414 → 375,889 at 19:00Z → 499,669 at 22:00Z) while
-// `daily_commands` climbed every tick. See FIX-1313.
+// WHAT THE HOLD READS (FIX-1313). Not `total_monthly_requests` alone: that
+// counter moves in 3 h steps (~:01 past 01, 04, 07, 10, 13, 16, 19 and 22Z,
+// plus 00Z; cc-279 read 3: p50 = p95 = 3.00 h over 280 moves, 10-14 → 11-14),
+// so at a crawl's ~57k/hr it can sit ~170k behind, more than the 150k this
+// hold keeps.
+// `daily_net_commands` moves every tick. So the hold keys on
+//
+//   effective = max(counter, counter + daily's growth since the counter last moved)
+//
+// with the history read from platform_usage_snapshot (one indexed read of the
+// last 24 h per tick; estimateUsedCommands, readUsageHistory). Replayed on the
+// 119 healthy moves of that history, the estimate at the tick before a move
+// sat within ±10 % of the value the counter moved to on 117 (98.3 %): p50
+// −0.19 %, p95 |2.92 %|, worst −29.8 % (725 vs 1,033 on 11-01, when the month
+// was 30 min old). It ran low on every move, never high: −68 to −2,273
+// commands. The counter alone was within ±10 % on 110.
+//
+// LAG, what remains: one probe tick (≤ 30 min) — the estimate is as fresh as
+// the tick that reads it — plus the estimate's own error above, ~2,300
+// commands at worst. Where there is no estimate (fewer than two prior ticks,
+// the newest older than 90 min, a failed history read, or no counter move in
+// the window) the hold reads the counter, which is the pre-FIX-1313 behaviour,
+// and `budget.estimate_note` says why.
 
 /** Must equal BUDGET_FLAG_KEY in apps/civitics/src/lib/ratelimit.ts. */
 export const LIMITER_BUDGET_KEY = "civitics:limiter:budget";
@@ -481,33 +500,150 @@ export function resolveLimiterBudgetPct(raw: string | undefined): { pct: number;
   };
 }
 
+// ── FIX-1313: the estimate the hold keys on ───────────────────────────────────
+
+/** One snapshot tick's two counters: `used` ← total_monthly_requests, `daily` ← daily_net_commands. */
+export type UsageTick = { at: string; used: number; daily: number };
+
+/** How far back the history read looks. The counter moved every 3 h at p95 (cc-279 read 4). */
+export const USAGE_HISTORY_WINDOW_HOURS = 24;
+/** A newest prior tick older than this is a gap in the history, not a basis. */
+export const USAGE_HISTORY_MAX_GAP_MINUTES = 90;
+
+export type UsedEstimate =
+  | { basis: "estimate"; used_estimate: number; note: null }
+  | { basis: "counter"; used_estimate: null; note: string };
+
+/**
+ * D2/D3. `now` is this tick; `prior` the earlier ticks, NEWEST FIRST, or the
+ * history read's error. Finds the counter's last move — the newest tick whose
+ * `used` differs from the tick before it — and adds `daily`'s growth since,
+ * tick to tick. Across the 00:00Z reset `daily` falls, and the later tick's
+ * `daily` is added instead of the negative difference.
+ *
+ * No estimate → `basis: "counter"` with the reason, which is the pre-FIX-1313
+ * behaviour: a missing history can only make the hold as late as it was.
+ */
+export function estimateUsedCommands(
+  now: UsageTick,
+  prior: UsageTick[] | { error: string },
+  maxGapMinutes = USAGE_HISTORY_MAX_GAP_MINUTES,
+): UsedEstimate {
+  const counter = (note: string): UsedEstimate => ({ basis: "counter", used_estimate: null, note });
+  if (!Array.isArray(prior)) return counter(`history read failed: ${prior.error}`);
+  if (prior.length < 2) return counter(`fewer than two prior ticks (${prior.length})`);
+  const gapMinutes = (Date.parse(now.at) - Date.parse(prior[0]!.at)) / 60_000;
+  if (!(gapMinutes <= maxGapMinutes)) {
+    return counter(`newest prior tick is ${Math.round(gapMinutes)} min old (> ${maxGapMinutes})`);
+  }
+
+  const series = [now, ...prior];
+  let move = -1;
+  for (let i = 0; i < series.length - 1; i += 1) {
+    if (series[i]!.used !== series[i + 1]!.used) {
+      move = i;
+      break;
+    }
+  }
+  if (move < 0) return counter(`no counter move in the window (${prior.length} prior ticks)`);
+
+  let growth = 0;
+  for (let i = move; i >= 1; i -= 1) {
+    const older = series[i]!.daily;
+    const newer = series[i - 1]!.daily;
+    growth += newer >= older ? newer - older : newer;
+  }
+  return { basis: "estimate", used_estimate: now.used + growth, note: null };
+}
+
+/**
+ * D5. The last `windowHours` of ticks from platform_usage_snapshot, newest
+ * first: one read per tick on platform_usage_snapshot_fetched_at_idx,
+ * projecting only the two counters out of each payload. A row whose payload
+ * has no usage block (the management API failed that tick) is skipped. Never
+ * throws: a failure comes back as `{ error }` and the hold reads the counter.
+ */
+export async function readUsageHistory(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  nowIso: string,
+  windowHours = USAGE_HISTORY_WINDOW_HOURS,
+): Promise<UsageTick[] | { error: string }> {
+  const asNumber = (v: unknown): number =>
+    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN;
+  try {
+    const since = new Date(Date.parse(nowIso) - windowHours * 3_600_000).toISOString();
+    const { data, error } = await db
+      .from("platform_usage_snapshot")
+      .select(
+        "fetched_at, used:payload->upstash->usage->used_commands, daily:payload->upstash->usage->daily_commands",
+      )
+      .gte("fetched_at", since)
+      .order("fetched_at", { ascending: false })
+      .limit(windowHours * 4);
+    if (error) return { error: typeof error.message === "string" ? error.message : String(error) };
+    const rows = (Array.isArray(data) ? data : []) as { fetched_at: string; used: unknown; daily: unknown }[];
+    const ticks: UsageTick[] = [];
+    for (const r of rows) {
+      const used = asNumber(r.used);
+      const daily = asNumber(r.daily);
+      if (Number.isFinite(used) && Number.isFinite(daily)) ticks.push({ at: r.fetched_at, used, daily });
+    }
+    return ticks;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export type LimiterBudget = {
   pct: number;
   /** floor(limit_commands × pct / 100) — the vendor's cap, never a constant. */
   commands: number;
+  /** The number the hold was decided on: max(used_counter, used_estimate) on basis estimate. */
   used: number;
+  /** `used` as a share of the cap. */
   used_pct: number;
+  /** total_monthly_requests this tick. */
+  used_counter: number;
+  /** counter + daily's growth since the counter last moved; null on basis counter. */
+  used_estimate: number | null;
+  basis: "counter" | "estimate";
+  /** Why there is no estimate; null on basis estimate. */
+  estimate_note: string | null;
   state: "clear" | "hold";
 };
 
 export function budgetFor(
-  usage: Pick<UpstashUsage, "limit_commands" | "used_commands" | "used_pct">,
+  usage: Pick<UpstashUsage, "limit_commands" | "used_commands">,
   pct: number,
+  estimate: UsedEstimate,
 ): LimiterBudget {
   const commands = Math.floor((usage.limit_commands * pct) / 100);
+  const used =
+    estimate.basis === "estimate" ? Math.max(usage.used_commands, estimate.used_estimate) : usage.used_commands;
   return {
     pct,
     commands,
-    used: usage.used_commands,
-    used_pct: usage.used_pct,
-    state: usage.used_commands >= commands ? "hold" : "clear",
+    used,
+    used_pct: Math.round((used / usage.limit_commands) * 10000) / 100,
+    used_counter: usage.used_commands,
+    used_estimate: estimate.used_estimate,
+    basis: estimate.basis,
+    estimate_note: estimate.note,
+    state: used >= commands ? "hold" : "clear",
   };
 }
 
-/** The flag's value. `pct` is the budget's percentage, not usage. */
+/**
+ * The flag's value. `pct` is the budget's percentage, not usage. `used` is the
+ * number the hold was decided on, and `basis` says which one it is. The edge
+ * reads only `state` (and prints `used`/`limit`).
+ */
 export type LimiterBudgetFlag = {
   state: "hold";
   used: number;
+  basis: "counter" | "estimate";
+  used_counter: number;
   limit: number;
   budget: number;
   pct: number;
@@ -515,7 +651,24 @@ export type LimiterBudgetFlag = {
 };
 
 export function limiterBudgetFlag(budget: LimiterBudget, limit: number, at: string): LimiterBudgetFlag {
-  return { state: "hold", used: budget.used, limit, budget: budget.commands, pct: budget.pct, at };
+  return {
+    state: "hold",
+    used: budget.used,
+    basis: budget.basis,
+    used_counter: budget.used_counter,
+    limit,
+    budget: budget.commands,
+    pct: budget.pct,
+    at,
+  };
+}
+
+/** "estimate: counter N + daily's growth since its last move" or "counter[; no estimate — why]". */
+export function limiterBudgetBasisText(budget: LimiterBudget): string {
+  if (budget.basis === "estimate") {
+    return `estimate: counter ${budget.used_counter} + daily's growth since its last move`;
+  }
+  return budget.estimate_note ? `counter; no estimate — ${budget.estimate_note}` : "counter";
 }
 
 export type LimiterFlagWrite = { ok: boolean; error: string | null };
@@ -550,6 +703,38 @@ export async function clearLimiterBudgetFlag(
 }
 
 /**
+ * One snapshot tick of the budget: the history read (Postgres, never Upstash),
+ * the estimate, the decision, and exactly one flag command — SET while it
+ * holds, DEL otherwise — when `creds` is set. No creds, no command. Never throws.
+ */
+export async function runLimiterBudgetTick(input: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any;
+  usage: Pick<UpstashUsage, "limit_commands" | "used_commands" | "daily_commands" | "fetched_at">;
+  pct: number;
+  creds: UpstashCreds | null;
+  fetchImpl?: typeof fetch;
+}): Promise<{ budget: LimiterBudget; flagWrite: LimiterFlagWrite | null }> {
+  const { db, usage, pct, creds, fetchImpl = fetch } = input;
+  const history = await readUsageHistory(db, usage.fetched_at);
+  const estimate = estimateUsedCommands(
+    { at: usage.fetched_at, used: usage.used_commands, daily: usage.daily_commands },
+    history,
+  );
+  const budget = budgetFor(usage, pct, estimate);
+  if (!creds) return { budget, flagWrite: null };
+  const flagWrite =
+    budget.state === "hold"
+      ? await writeLimiterBudgetFlag(
+          creds,
+          limiterBudgetFlag(budget, usage.limit_commands, new Date().toISOString()),
+          fetchImpl,
+        )
+      : await clearLimiterBudgetFlag(creds, fetchImpl);
+  return { budget, flagWrite };
+}
+
+/**
  * The state this tick records. Precedence: quota_exhausted > budget_hold >
  * unreachable > healthy.
  *
@@ -575,7 +760,9 @@ export function resolveLimiterState(input: {
     const unwritten = flagWrite && !flagWrite.ok ? ` — flag NOT written: ${flagWrite.error}` : "";
     return {
       state: "budget_hold",
-      detail: `budget hold: used ${budget.used} ≥ budget ${budget.commands} (${budget.pct} % of the cap)${unwritten}`,
+      detail:
+        `budget hold: used ${budget.used} (${limiterBudgetBasisText(budget)}) ≥ budget ` +
+        `${budget.commands} (${budget.pct} % of the cap)${unwritten}`,
     };
   }
   if (health.state === "unreachable") return { state: "unreachable", detail: health.detail };

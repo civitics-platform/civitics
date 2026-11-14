@@ -325,9 +325,15 @@ export {
   LIMITER_BUDGET_TTL_SECONDS,
   budgetFor,
   clearLimiterBudgetFlag,
+  estimateUsedCommands,
+  limiterBudgetBasisText,
   limiterBudgetFlag,
+  readUsageHistory,
   resolveLimiterBudgetPct,
   resolveLimiterState,
+  runLimiterBudgetTick,
+  USAGE_HISTORY_MAX_GAP_MINUTES,
+  USAGE_HISTORY_WINDOW_HOURS,
   writeLimiterBudgetFlag,
 } from "./upstash-usage";
 export type {
@@ -341,6 +347,8 @@ export type {
   LimiterBudget,
   LimiterBudgetFlag,
   LimiterFlagWrite,
+  UsageTick,
+  UsedEstimate,
 } from "./upstash-usage";
 
 // Vercel current-cycle usage (Pro Usage endpoint + Billing Charges fallback)
