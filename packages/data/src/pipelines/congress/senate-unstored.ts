@@ -27,6 +27,11 @@
  * - `tail_closed` (D3): a past year's session whose tail walk ended past the
  *   end with no blocked or transient roll in it. Later runs skip its tail.
  *
+ * v2 (FIX-1408): the parser reads an amendment roll's bill from
+ * `<amendment><amendment_to_document_number>`, so the v1 record's
+ * `no_proposal_reference` rolls — the Senate's amendment rolls — are fetched
+ * once more.
+ *
  * Deleting the row is harmless: the next run fetches everything once, as
  * before FIX-1407. `pipeline_state` is world-readable (its public SELECT
  * policy), so the value holds roll ids, reasons, dates and flags — nothing else.
@@ -35,8 +40,12 @@
 import type { RollProbeSummary } from "./roll-probe";
 import type { UnstoredReason } from "./vote-bill-guard";
 
-/** Bump when the parser learns to store a roll it skips today. */
-export const SENATE_UNSTORED_VERSION = 1;
+/**
+ * Bump when the parser learns to store a roll it skips today.
+ * v2 (FIX-1408): amendment rolls are stored against their target bill, so
+ * every v1 `no_proposal_reference` is fetched once more.
+ */
+export const SENATE_UNSTORED_VERSION = 2;
 
 /** A roll skipped for a reason that can clear by itself is fetched again after this many days. */
 export const RETRY_ABSENT_DAYS = 7;

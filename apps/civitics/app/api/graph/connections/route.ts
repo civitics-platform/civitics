@@ -234,6 +234,7 @@ const PROCEDURAL_PREFIXES = [
   "on the motion to recommit",
   "on ordering the previous question",
   "on agreeing to the amendment",
+  "on the amendment", // the Senate's wording (FIX-1408)
   "on the conference report",
   "on the joint resolution",
   "on the resolution",
