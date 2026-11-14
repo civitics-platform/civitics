@@ -88,7 +88,43 @@ future move.
 The one custom rule that does exist is security, not caching:
 
 > **Common Exploit Paths** — Block where URI Path contains `.php`, `wp-`, `.env`,
-> `xmlrpc`, or `phpmyadmin`. 1 of 5 custom rules. Active.
+> `xmlrpc`, or `phpmyadmin`, **or the user agent is one of the Chrome 133–142 fleet's
+> ten strings** (since 2026-11-14 01:34Z; below). 1 of 5 custom rules. Active.
+
+**The fleet clause ([[FIX-1403]]).** Craig OR'd the farm's ten user agents into this
+rule, option (2) of audit `docs/audits/2026-11-09-upstash-spend-census.md` §12.
+
+- **When:** the rule's `last_updated` is **2026-11-14T01:34:46.93Z** (rule version 2,
+  ruleset v6; API read, cc-276). That is Fri 11-13 17:34 PST. In the data, the fleet's
+  last edge 200 and last origin request fall in the 01:34Z minute. From 01:35Z it has 0
+  of each (census §16).
+- **The expression, as live** (API read, cc-276):
+
+  ```
+  (http.request.uri.path contains ".php") or (http.request.uri.path contains "wp-") or (http.request.uri.path contains ".env") or (http.request.uri.path contains "xmlrpc") or (http.request.uri.path contains "phpmyadmin") or
+  (http.user_agent in {"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"})
+  ```
+
+- **The strings' source of truth is `CHROME_FLEET_UAS`**
+  (`apps/civitics/src/lib/view-telemetry.ts`). cc-276 diffed the rule's set against it:
+  the same ten, exact. A change to one is a change to both, by hand. The rule cannot
+  read the code.
+- **It matches exact strings only.** Any other user agent, including a stale Chrome on
+  another version or OS, goes on to Under Attack's challenge as before. In the first 4 h
+  after the Block, a spread of 24 other stale Chrome strings arrived from 136 IPs, one
+  request each, and every one was challenged (census §16). A farm that rotates its
+  strings leaves this clause behind.
+- **The cost of a false positive is now a block.** A real Windows user whose browser
+  sends one of the ten strings exactly gets Cloudflare's 403 on every path. Before the
+  Block, the only cost was a `page_views` row labelled `chrome-133-142`. The zone's real
+  Windows Chrome runs 155–157.
+- **The probe moved off the set.** `Probe skip (FIX-1057)` skips Security Level only, so
+  this clause applies to the probe like any other client. `egress-probe.yml`'s
+  `browser_ua` is now Windows Chrome/157.
+- **To reverse it:** in the dashboard, Security → WAF → Custom rules → `Common Exploit
+  Paths`, delete the ` or (http.user_agent in {…})` clause and leave the five path
+  clauses. Nothing in the app needs to change. The app-side flag ([[FIX-1404]], "The
+  beacon routes" below) keeps labelling the fleet's views without the clause.
 
 The second security rule was added 2026-09-04 to unblock [[FIX-1057]]:
 
@@ -156,7 +192,7 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Caching Level | Standard | default |
 | Bot Fight Mode | **Off** | intentional — see §2 |
 | Security level | **`under_attack` — STILL ON as of 2026-08-17** | human-set, not the loop — see §526 |
-| WAF custom rules | **5** — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta, `Probe skip (FIX-1057)`, `SearchBot` (FIX-1390) | all enabled; ruleset v5, last updated 2026-11-09T05:05:18Z (API read, cc-270). **All 5 Free slots are used**: the next rule (e.g. Pending's FIX-799 skip) must replace or merge one |
+| WAF custom rules | **5** — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta, `Probe skip (FIX-1057)`, `SearchBot` (FIX-1390) | all enabled; ruleset v6, last updated 2026-11-14T01:34:46Z, the fleet clause in Common Exploit Paths (API read, cc-276; v5 was 2026-11-09T05:05:18Z, cc-270). **All 5 Free slots are used**: the next rule (e.g. Pending's FIX-799 skip) must replace or merge one |
 | TLS 1.3 | On | |
 | Automatic HTTPS Rewrites | On | |
 | Always Use HTTPS | **On** | corrected 2026-08-17; the doc said Off |
@@ -571,9 +607,12 @@ the table had no reader, and Vercel Speed Insights already collects field vitals
   `get_pv_bots` shows it by name and every `is_bot = false` reader drops it. A match
   is exact equality after `trim()`.
   - **To add or retire a string,** edit the set and its test
-    (`view-telemetry.test.ts`, which pins the size at ten).
-  - **A false positive** is a real Windows user on one of those releases: their view
-    is labelled a bot. Nothing else changes for them.
+    (`view-telemetry.test.ts`, which pins the size at ten), and the fleet clause of
+    `Common Exploit Paths` (§3) by hand in the dashboard.
+  - **A false positive** is a real Windows user on one of those releases. Here, their
+    view is labelled a bot. Since 2026-11-14 01:34Z the same ten strings are also
+    blocked at the edge (§3, "The fleet clause"), so such a user is stopped by a 403
+    before the route runs. The flag is what still applies if that clause is removed.
   - **Craig's reversal**, not run: `UPDATE page_views SET is_bot = false, bot_name =
     NULL WHERE bot_name = 'chrome-133-142';`. It restores the view counts, but not
     `device_type` or `browser`, which bot rows never carry. The vitals samples the

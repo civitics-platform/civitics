@@ -1297,3 +1297,83 @@ and 11-14 is on the same pace (1,078 by 04:01Z, against 1,481 by 03:31Z on 11-13
 - At 9,342 a day the estimate crosses 350,000 around **11-20 10:00Z**. The counter alone
   would cross up to one 3 h step later.
 - On the flat floor alone (2,449 a day, §1), the 16.8 days left add ~41k. That falls short.
+
+## §16 cc-276 — after the Block: §12's option (2) as live ([[FIX-1403]]) (2026-11-14; appended, nothing above edited)
+
+Everything here was read-only: Cloudflare GraphQL on `httpRequestsAdaptiveGroups` (the
+fleet is §12's classifier, `userAgent_in` the ten strings), two REST GETs of the
+custom-rules entrypoint, and `db-query --prod` on `page_views` and
+`platform_usage_snapshot`. "B" below is the window, not §1's bucketed count.
+
+**The Block.** Craig OR'd the ten strings into `Common Exploit Paths` (action block). The
+rule's `last_updated` is **2026-11-14T01:34:46.93Z**, and the minute data agrees. The
+fleet's last edge 200 and last origin request are in the 01:34Z minute, and it has 0 of
+each from 01:35Z. The expression is quoted in `docs/CLOUDFLARE.md` §3. Its set is exactly
+`CHROME_FLEET_UAS`.
+
+**The fleet by hour (read 1):**
+
+| hours (UTC) | edge / h | 403 share | origin / h | origin share |
+|---|---:|---:|---:|---:|
+| 11-13 00Z → 11-14 01Z (window A, 25 h) | 1,286–2,288 | 12–28 % | 295–998 | 23–46 % |
+| 11-14 01Z (the Block at :34) | 1,181 | 19 % | 397 | 34 % |
+| **11-14 02–06Z (window B, 4 h)** | **156–171** | **55–57 %** | **0** | **0 %** |
+
+**Window B, 4 full hours (read 5).** The STOP table needs 6, so FIX-1403's close is
+owed after 2026-11-14T09:00Z.
+
+- **(a) The fleet at the edge: 648 requests, 0 at the origin.**
+  - 403: 362. That is `/favicon.ico` 178 and single deep-link pages, ~2 each.
+  - 204: 282, all on `/cdn-cgi/rum` (Cloudflare's own beacon, answered at the edge).
+  - 499: 4.
+- **(b) Flagged `page_views`:** 0 in every hour.
+- **(c) Collateral, B's clock hours on four days:**
+
+| 02–06Z on | `is_bot = false` `page_views` | non-fleet Chrome at the edge | of which 403, by hour |
+|---|---:|---:|---|
+| 11-11 | 384 (before the flag, so fleet rows written as human) | 189 | 33 (9 · 11 · 7 · 6) |
+| 11-12 | 6 | 97 | 11 (1 · 5 · 0 · 5) |
+| 11-13 | 1 | 238 | 155 (18 · **121** · 8 · 8; the 121 is one Windows Chrome/151 run) |
+| **11-14 (B)** | **2** (1 · 0 · 1 · 0) | **211** | **136** (42 · 33 · 33 · 28) |
+
+  Human rows did not fall. B's 403 total is inside the day-to-day range (11–155), but only
+  because of 11-13's one-UA spike: **hour by hour, B is above every other non-spike hour**.
+  Those 136 requests do not look like real users:
+  - 136 distinct IPs, one request each (3 IPv6);
+  - 24 stale Chrome strings, versions 99–136, Mac and Windows;
+  - single `/donors/*`, `/officials/*` and `/jurisdictions/*` pages;
+  - countries US 31 · BR 17 · GB 6 · MX 6 · VN 5 · VE 5.
+
+  That is §12's farm signature on new strings. Under Attack's challenge held all of it:
+  none of those user agents reached the origin. **The clause cannot cause this**, because
+  it matches the ten exact strings only. It does show that a farm rotating its strings
+  leaves the clause behind.
+- **(d) Cost, per hour:** no full UTC day after the Block exists yet (11-15 is the first).
+
+| clock hours 02–06Z | origin-reaching, all UAs | Upstash commands (snapshot `daily` deltas) |
+|---|---:|---:|
+| 11-13 | 3,184 (796 / h) | 1,728 (432 / h; 823 → 2,551) |
+| **11-14 (B)** | **201 (50 / h)** | **560 (140 / h; 773 → 1,333)** |
+
+  §1's floor F is 2,449 a day, 102 an hour. So after the Block the limiter spends ~38
+  commands an hour above the floor. The last full day before the Block, 11-13, had 17,222
+  origin-reaching requests, and `daily` was 9,637 at 23:31Z (9,835 for the full day).
+
+**Who still reaches the origin (read 6, B):** 201 requests from 60 IPs and 11 user agents.
+Statuses: 200 184 · 307 12 · 404 4 · 401 1.
+
+| who | requests | user agents |
+|---|---:|---|
+| the outage pager, `platform-snapshot.yml` `request-path-probe` (GitHub-hosted Azure IPs; `*/10` × `/`, `/officials`, `/api/officials/<id>/responsiveness`) | 74 | `curl/8.18.0` |
+| search crawlers | 73 | bingbot 29 · Googlebot 22 · OAI-SearchBot 22 |
+| two browsers on residential IPv6 | 46 | iPad CriOS/157 27 · Windows Firefox/160 19 |
+| `.git` scanners | 8 | Firefox/126 (Windows 4, Mac 4) |
+
+Top paths: `/` 26 · `/api/officials/5201c5c4-…/responsiveness` 25 · `/officials` 24 ·
+`/robots.txt` 9 · `/.git/config` 4 · `/.git/HEAD` 4 · one `/donors/*` page 3 ·
+`/api/platform/web-vitals` 3 · one `/proposals/*` page 2 · a `main-app` chunk 2.
+
+**Craig's "~75 visitors an hour" was the fleet.** In window A, flagged `page_views` ran
+27–103 an hour, each from a fresh IP. Since 01:35Z the origin sees ~50 requests an hour,
+and none are the fleet. Most of them are the pager and three search crawlers. Real
+visitors account for ~12 requests an hour and about one page view every two hours.
