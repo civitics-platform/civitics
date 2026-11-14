@@ -6398,39 +6398,6 @@ export type Database = {
         }
         Relationships: []
       }
-      web_vitals_samples: {
-        Row: {
-          exceeded: boolean
-          id: string
-          metric: string
-          path: string | null
-          rating: string | null
-          recorded_at: string
-          user_agent: string | null
-          value: number
-        }
-        Insert: {
-          exceeded?: boolean
-          id?: string
-          metric: string
-          path?: string | null
-          rating?: string | null
-          recorded_at?: string
-          user_agent?: string | null
-          value: number
-        }
-        Update: {
-          exceeded?: boolean
-          id?: string
-          metric?: string
-          path?: string | null
-          rating?: string | null
-          recorded_at?: string
-          user_agent?: string | null
-          value?: number
-        }
-        Relationships: []
-      }
     }
     Views: {
       chord_donor_state_party_flows_mv: {

@@ -1,0 +1,46 @@
+-- =============================================================================
+-- FIX-1406 — drop public.web_vitals_samples. cc-275, 2026-11-14 (option (3),
+-- Craig 11-12 19:49 PST; the exact statement confirmed in-session, D3). Class P:
+-- one DROP of a 22 MB table, no rewrite of anything else.
+--
+-- WHY. FIX-049's table was written on every page load and read by nothing: no
+-- cron job, function, view or page (cc-273 read 2; cc-275 read 2 found only
+-- its own pkey, two indexes and two policies). The nightly aggregation into
+-- platform_usage and the 30-day trim were never built. Its RLS let the
+-- publishable key INSERT past the route. Vercel Speed Insights already
+-- collects field vitals. The writer (WebVitalsReporter and
+-- /api/platform/web-vitals) was removed first, in deploy A (7cf51d1b, Vercel
+-- success 2026-11-14T03:35:29Z); two prod readings 10 min apart after it
+-- (03:40:43Z, 03:50:58Z) both read 68,911 rows, max(recorded_at)
+-- 2026-11-14 02:22:58Z.
+--
+-- WHAT IS KEPT. Only the per-metric, per-month aggregate of the non-fleet rows
+-- (docs/audits/2026-11-09-upstash-spend-census.md §14). The rows are gone.
+--
+-- No CASCADE: if anything has come to depend on the table, the statement
+-- fails closed. The two policies and three indexes go with the table.
+--
+-- A re-create would look like this (20260419030000; the rows do not come back):
+--
+--   CREATE TABLE IF NOT EXISTS web_vitals_samples (
+--     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     metric       TEXT NOT NULL,
+--     value        NUMERIC NOT NULL,
+--     rating       TEXT,
+--     path         TEXT,
+--     exceeded     BOOLEAN NOT NULL DEFAULT false,
+--     user_agent   TEXT,
+--     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+--   );
+--   CREATE INDEX IF NOT EXISTS web_vitals_samples_metric_recorded
+--     ON web_vitals_samples(metric, recorded_at DESC);
+--   CREATE INDEX IF NOT EXISTS web_vitals_samples_exceeded
+--     ON web_vitals_samples(recorded_at DESC) WHERE exceeded = true;
+--   ALTER TABLE web_vitals_samples ENABLE ROW LEVEL SECURITY;
+--   CREATE POLICY "anon insert vitals" ON web_vitals_samples
+--     FOR INSERT TO anon, authenticated WITH CHECK (true);
+--   CREATE POLICY "public read vitals" ON web_vitals_samples
+--     FOR SELECT USING (true);
+-- =============================================================================
+
+DROP TABLE IF EXISTS public.web_vitals_samples;
