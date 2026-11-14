@@ -866,7 +866,7 @@ SELECT * FROM platform_usage WHERE service = 'supabase' ORDER BY recorded_at DES
 
 Monitor Supabase dashboard if egress is near limits: `supabase.com/dashboard/project/xsazcoxinpgttgquwvuf`
 
-### The Senate roll walk (FIX-1324, FIX-1372, FIX-1407)
+### The Senate roll walk (FIX-1324, FIX-1372, FIX-1407, FIX-1408)
 
 `data:congress`'s votes step (Step 4 of `packages/data/src/pipelines/congress/votes.ts`,
 in the nightly's fec phase) fetches Senate LIS XML one roll per GET from
@@ -884,12 +884,26 @@ in the nightly's fec phase) fetches Senate LIS XML one roll per GET from
 - **Paced.** 1.5 s plus 0–0.5 s jitter between Senate GETs. The User-Agent is
   Node's default on purpose: FIX-1407 measures volume and order alone, and
   identity headers are the next lever.
+- **Which bill a roll lands on** (`senateBillRef()` in `votes.ts`). First
+  `<document>`: a measure type plus its number, or a `PN` nomination. An
+  amendment roll's `<document>` is `S.Amdt.` with an EMPTY `<document_number>`
+  (e.g. roll 119-1-62), so it names no bill; since FIX-1408 the bill then comes
+  from `<amendment><amendment_to_document_number>` (`S.Con.Res. 7` → type
+  `S.Con.Res.` + number `7`, the same key and mint args as the `<document>`
+  route). Any roll whose `<amendment_number>` is set carries it as
+  `votes.metadata.amendment_number` (`S.Amdt. 454`); the purpose and title stay
+  at `source_url`. An amendment or motion roll never advances the bill's status:
+  a novel parent mints `floor_vote`. A target the parser cannot read (empty, a
+  treaty document, a `PN`) logs `unrecognized amendment target '…'` and the
+  roll stays unstored.
 - **The seen-unstored record:** `pipeline_state` key
   `congress_votes:senate_rolls:<congress>`. It holds, per session, every roll
   that was fetched, parsed, and skipped before its insert, with `reason` and
   `seen_at`, plus `tail_closed`.
   - `no_proposal_reference` and `no_voted_at` stay skipped while the record's `v`
-    equals `SENATE_UNSTORED_VERSION` (`senate-unstored.ts`).
+    equals `SENATE_UNSTORED_VERSION` (`senate-unstored.ts`; 2 since FIX-1408).
+    `no_proposal_reference` means no `<document>` key AND no readable
+    amendment target.
   - Every other reason (guard-absent, `bill_unresolved`, `no_matchable_records`)
     is fetched again 7 days after `seen_at`.
   - `tail_closed` marks a past year's session whose end was found cleanly; its
@@ -898,7 +912,9 @@ in the nightly's fec phase) fetches Senate LIS XML one roll per GET from
     never recorded.
 - **Clearing it.** Bump `SENATE_UNSTORED_VERSION` when the parser learns to store
   a roll it skips today (a new document type, the nomination stage). A record
-  of another version is dropped whole, `tail_closed` flags included.
+  of another version is dropped whole, `tail_closed` flags included, with one
+  line: `… is v1, not v2 — starting over (every roll fetched once)`. FIX-1408's
+  bump (1 → 2, amendment targets) is the first.
   Deleting the row is also harmless: the next nightly fetches every unstored
   roll once, as before FIX-1407. The row is world-readable (`pipeline_state`'s
   public SELECT policy), so it holds roll ids, reasons, dates and flags only.
