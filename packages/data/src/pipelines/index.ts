@@ -673,7 +673,16 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const t0 = Date.now();
     try {
       const r = await runEdgarDailyPipeline();
-      results.pipelines.edgar_daily = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+      if (r.fatal_error) {
+        // FIX-1394: a refused index closes the edgar_daily row `failed` and is
+        // recorded `failed` here. Non-fatal to the phase, the opm-fte way: an
+        // outside archive's refusal must not turn the fec-phase red while the
+        // scanner runs dry (cc-278 D4) and writes nothing.
+        console.error("[nightly] edgar daily failed (non-fatal):", r.fatal_error);
+        results.pipelines.edgar_daily = { status: "failed", error: r.fatal_error, duration_ms: Date.now() - t0 };
+      } else {
+        results.pipelines.edgar_daily = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+      }
     } catch (err) {
       const msg = errMsg(err);
       console.error("[nightly] edgar daily failed:", msg);

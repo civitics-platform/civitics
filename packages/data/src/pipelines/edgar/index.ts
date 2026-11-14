@@ -34,8 +34,13 @@ import {
 import { syncCompanies } from "./companies";
 import { parseDef14a } from "./def14a";
 import { matchPersonToDonor } from "./matcher";
-import { scanDailyShareholders } from "./shareholders";
-import { loadSp500Universe } from "./universe";
+import {
+  scanDailyShareholders,
+  type DailyIndexOutcome,
+  type ScanOptions,
+  type ShareholderFiling,
+} from "./shareholders";
+import { loadSp500Universe, type UniverseEntry } from "./universe";
 import { padCik } from "./util";
 import {
   setOfficerMatch,
@@ -222,202 +227,270 @@ export async function runEdgarPipeline(): Promise<PipelineResult> {
 // Daily pipeline (13D/G poll)
 // ──────────────────────────────────────────────────────────────────────────
 
-export async function runEdgarDailyPipeline(): Promise<PipelineResult> {
-  const logId = await startSync("edgar_daily");
+/** What the daily's write half did. */
+export interface DailyWriteCounts {
+  shareholders: number;
+  edges:        number;
+  reviewQueue:  number;
+  failed:       number;
+}
+
+/**
+ * The daily run's collaborators — injectable so a test drives every index
+ * outcome with a stubbed fetch and no database (FIX-1394). The nightly and the
+ * CLI pass nothing and get these defaults.
+ */
+export interface EdgarDailyDeps {
+  startSync:       typeof startSync;
+  completeSync:    typeof completeSync;
+  failSync:        typeof failSync;
+  skipSync:        typeof skipSync;
+  universe:        () => UniverseEntry[];
+  loadTrackedCiks: (universe: UniverseEntry[]) => Promise<Map<string, string>>;
+  scan:            (opts: ScanOptions) => Promise<DailyIndexOutcome>;
+  writeFilings:    (filings: ShareholderFiling[], universe: UniverseEntry[]) => Promise<DailyWriteCounts>;
+  now:             () => Date;
+}
+
+// We need edgar_companies.id keyed by CIK. Don't refresh metadata daily — just
+// bind CIK → company_id from edgar_companies.
+async function loadTrackedCiksFromDb(universe: UniverseEntry[]): Promise<Map<string, string>> {
+  const trackedCiks = new Map<string, string>();
+  const { createAdminClient, rowsOrThrow } = await import("@civitics/db");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  // FIX-545: silent-zero here mis-skipped the day as "no tracked CIKs" on
+  // a gateway blip; the ~500-CIK universe also overflows the ~200-id .in()
+  // URL cap. Chunk + throw.
+  for (let i = 0; i < universe.length; i += EDGAR_IN_CHUNK) {
+    const rows = rowsOrThrow(
+      await db
+        .from("edgar_companies")
+        .select("id, cik, financial_entity_id")
+        .in("cik", universe.slice(i, i + EDGAR_IN_CHUNK).map((u) => u.cik)),
+      "edgar daily tracked-CIK preload",
+    ) as Array<{ id: string; cik: string; financial_entity_id: string | null }>;
+    for (const r of rows) {
+      if (r.financial_entity_id) trackedCiks.set(r.cik, r.id);
+    }
+  }
+  return trackedCiks;
+}
+
+export async function runEdgarDailyPipeline(overrides: Partial<EdgarDailyDeps> = {}): Promise<PipelineResult> {
+  const deps: EdgarDailyDeps = {
+    startSync,
+    completeSync,
+    failSync,
+    skipSync,
+    universe:        selectUniverse,
+    loadTrackedCiks: loadTrackedCiksFromDb,
+    scan:            scanDailyShareholders,
+    writeFilings:    writeDailyFilings,
+    now:             todayUtc,
+    ...overrides,
+  };
+  const logId = await deps.startSync("edgar_daily");
   const tStart = Date.now();
   const result: PipelineResult = { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
 
   try {
-    const universe = selectUniverse();
-
-    // We need edgar_companies.id keyed by CIK. The simplest non-roundtrip path
-    // is to ensure the company rows exist first (no-op if already synced).
-    // Don't refresh metadata daily — just bind CIK → company_id from edgar_companies.
-    const trackedCiks = new Map<string, string>();
-    {
-      const { createAdminClient, rowsOrThrow } = await import("@civitics/db");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = createAdminClient() as any;
-      // FIX-545: silent-zero here mis-skipped the day as "no tracked CIKs" on
-      // a gateway blip; the ~500-CIK universe also overflows the ~200-id .in()
-      // URL cap. Chunk + throw.
-      for (let i = 0; i < universe.length; i += EDGAR_IN_CHUNK) {
-        const rows = rowsOrThrow(
-          await db
-            .from("edgar_companies")
-            .select("id, cik, financial_entity_id")
-            .in("cik", universe.slice(i, i + EDGAR_IN_CHUNK).map((u) => u.cik)),
-          "edgar daily tracked-CIK preload",
-        ) as Array<{ id: string; cik: string; financial_entity_id: string | null }>;
-        for (const r of rows) {
-          if (r.financial_entity_id) trackedCiks.set(r.cik, r.id);
-        }
-      }
-    }
+    const universe = deps.universe();
+    const trackedCiks = await deps.loadTrackedCiks(universe);
     if (trackedCiks.size === 0) {
       console.warn(`  [edgar:daily] no tracked CIKs in edgar_companies — run weekly first`);
-      await skipSync(logId, "no_tracked_ciks");
+      await deps.skipSync(logId, "no_tracked_ciks");
       return result;
     }
 
-    const filings = await scanDailyShareholders(todayUtc(), trackedCiks);
-    if (filings.length === 0) {
-      console.info(`  [edgar:daily] no 13D/G filings for tracked CIKs today`);
-      await skipSync(logId, "no_filings");
+    const outcome = await deps.scan({ date: deps.now(), trackedCiks });
+    // FIX-1394: three answers, three statuses. A refused index used to come
+    // back as an empty list and log `skipped / no_filings` — 180 nights of it.
+    if (outcome.kind === "refused") {
+      const msg = `daily index refused: HTTP ${outcome.status ?? "—"} ${outcome.url} — ${outcome.bodyHead}`;
+      console.warn(`  [edgar:daily] ${msg}`);
+      await deps.failSync(logId, msg, { index_url: outcome.url, index_http_status: outcome.status });
+      result.fatal_error = msg;
+      return result;
+    }
+    if (outcome.kind === "not_published") {
+      console.info(`  [edgar:daily] ${outcome.file} is not in the listing yet — skipping`);
+      await deps.skipSync(logId, "index_not_published", { index_file: outcome.file });
+      return result;
+    }
+    if (outcome.rowsTracked === 0) {
+      console.info(`  [edgar:daily] no 13D/G filings for tracked CIKs in ${outcome.file}`);
+      await deps.skipSync(logId, "no_filings", { index_file: outcome.file });
       return result;
     }
 
-    // Bulk write all shareholders.
-    const shareholderInputs: ShareholderWriteInput[] = [];
-    for (const filing of filings) {
-      for (const holder of filing.holders) {
-        shareholderInputs.push({
-          companyId: filing.companyId,
-          holder,
-          filing,
-        });
-      }
-    }
-    const { upserted: shInserted, idMap: shIds, failed: shFailed } = await upsertShareholders(shareholderInputs);
-    result.failed += shFailed;
-
-    // Build CIK → companyCanonical lookup for matching.
-    const cikToCanonical = new Map<string, string>();
-    for (const u of universe) cikToCanonical.set(u.cik, canonicalizeEntityName(u.name));
-
-    // Build CIK → company financial_entity_id lookup.
-    const cikToFinancialEntity = new Map<string, string>();
-    {
-      const { createAdminClient, rowsOrThrow } = await import("@civitics/db");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = createAdminClient() as any;
-      // FIX-545: same chunk + throw as the tracked-CIK preload above.
-      for (let i = 0; i < universe.length; i += EDGAR_IN_CHUNK) {
-        const rows = rowsOrThrow(
-          await db
-            .from("edgar_companies")
-            .select("cik, financial_entity_id")
-            .in("cik", universe.slice(i, i + EDGAR_IN_CHUNK).map((u) => u.cik)),
-          "edgar daily financial-entity preload",
-        ) as Array<{ cik: string; financial_entity_id: string | null }>;
-        for (const row of rows) {
-          if (row.financial_entity_id) cikToFinancialEntity.set(row.cik, row.financial_entity_id);
-        }
-      }
-    }
-
-    const edgesToAdd: EdgeInput[] = [];
-    const reviewToAdd: ReviewQueueInput[] = [];
-
-    for (const filing of filings) {
-      const companyCanonical = cikToCanonical.get(filing.cik) ?? "";
-      const companyEntityId = cikToFinancialEntity.get(filing.cik) ?? "";
-      if (!companyEntityId) continue;
-
-      for (const holder of filing.holders) {
-        const sid = shIds.get(`${filing.accession}|${holder.canonicalHolderName}`);
-        if (!sid) continue;
-
-        if (holder.isOrganization) {
-          // V1: org holders go to the review queue. Auto-binding org names to
-          // existing financial_entities (or inserting new corp rows) is a
-          // follow-up FIX.
-          reviewToAdd.push({
-            source_entity_id: `shareholder:${sid}`,
-            source_payload: {
-              shareholder_id: sid,
-              holder_name:    holder.holderName,
-              company_id:     filing.companyId,
-              company_cik:    filing.cik,
-              filing_type:    filing.filingType,
-              accession:      filing.accession,
-              pct_of_class:   holder.pctOfClass,
-              shares_held:    holder.sharesHeld,
-            },
-            candidate_matches: [],
-            reason: "org_holder_unmatched",
-          });
-          continue;
-        }
-
-        const outcome = await matchPersonToDonor(holder.canonicalHolderName, companyCanonical);
-        if (outcome.kind === "exact") {
-          edgesToAdd.push({
-            source_id:         `shareholder:${sid}`,
-            source_url:        `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${filing.cik}`,
-            from_entity_id:    outcome.donor.id,
-            to_entity_id:      companyEntityId,
-            connection_type:   "owns",
-            raw_category:      filing.filingType.toLowerCase().replace(/\s+/g, "_"),
-            raw_category_name: filing.filingType,
-            description:       `${holder.pctOfClass ?? "?"}% of ${filing.cik}`,
-            amount_cents:      null,
-            occurred_at:       holder.eventDate ?? filing.filedAt,
-            ended_at:          null,
-            is_current:        true,
-            match_confidence:  "high",
-            metadata: {
-              accession:    filing.accession,
-              pct_of_class: holder.pctOfClass,
-              shares_held:  holder.sharesHeld,
-              filing_type:  filing.filingType,
-            },
-          });
-          await setShareholderMatch(sid, outcome.donor.id, "high");
-        } else if (outcome.kind === "name_only") {
-          reviewToAdd.push({
-            source_entity_id: `shareholder:${sid}`,
-            source_payload: {
-              shareholder_id: sid,
-              holder_name:    holder.holderName,
-              company_id:     filing.companyId,
-              company_cik:    filing.cik,
-              filing_type:    filing.filingType,
-              accession:      filing.accession,
-            },
-            candidate_matches: outcome.candidates.map((c) => ({
-              civitics_id:   c.id,
-              civitics_type: "financial_entity",
-              score:         0.5,
-              reason:        "name_match_no_employer",
-              display_name:  c.displayName,
-              employer:      c.employerRaw,
-            })),
-            reason: "name_match_no_employer",
-          });
-        }
-      }
-    }
-
-    let edgeInserts = 0;
-    let queueInserts = 0;
-    if (edgesToAdd.length > 0) {
-      const e = await upsertEdgarEdges(edgesToAdd);
-      edgeInserts = e.upserted;
-      result.failed += e.failed;
-    }
-    if (reviewToAdd.length > 0) {
-      const q = await upsertEdgarReviewQueue(reviewToAdd);
-      queueInserts = q.upserted;
-      result.failed += q.failed;
-    }
+    const counts = await deps.writeFilings(outcome.filings, universe);
+    result.failed += counts.failed;
 
     console.info(`  [edgar:daily] summary:`);
-    console.info(`    filings:              ${filings.length}`);
-    console.info(`    shareholders rows:    ${shInserted}`);
-    console.info(`    matched edges:        ${edgeInserts}`);
-    console.info(`    review-queue entries: ${queueInserts}`);
+    console.info(`    index file:           ${outcome.file}`);
+    console.info(`    filings:              ${outcome.filings.length}`);
+    console.info(`    shareholders rows:    ${counts.shareholders}`);
+    console.info(`    matched edges:        ${counts.edges}`);
+    console.info(`    review-queue entries: ${counts.reviewQueue}`);
     console.info(`    duration:             ${((Date.now() - tStart) / 1000).toFixed(1)}s`);
 
-    result.inserted = shInserted + edgeInserts + queueInserts;
-    await completeSync(logId, result);
+    result.inserted = counts.shareholders + counts.edges + counts.reviewQueue;
+    result.metadata = { index_file: outcome.file };
+    await deps.completeSync(logId, result);
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  [edgar:daily] failed: ${msg}`);
-    await failSync(logId, msg);
+    await deps.failSync(logId, msg);
     throw err;
   }
+}
+
+/**
+ * The daily's write half: shareholders rows, the donor match, edges, and the
+ * review queue. Only ever reached with a read index file.
+ */
+async function writeDailyFilings(
+  filings: ShareholderFiling[],
+  universe: UniverseEntry[],
+): Promise<DailyWriteCounts> {
+  const counts: DailyWriteCounts = { shareholders: 0, edges: 0, reviewQueue: 0, failed: 0 };
+  // Bulk write all shareholders.
+  const shareholderInputs: ShareholderWriteInput[] = [];
+  for (const filing of filings) {
+    for (const holder of filing.holders) {
+      shareholderInputs.push({
+        companyId: filing.companyId,
+        holder,
+        filing,
+      });
+    }
+  }
+  const { upserted: shInserted, idMap: shIds, failed: shFailed } = await upsertShareholders(shareholderInputs);
+  counts.shareholders = shInserted;
+  counts.failed += shFailed;
+
+  // Build CIK → companyCanonical lookup for matching.
+  const cikToCanonical = new Map<string, string>();
+  for (const u of universe) cikToCanonical.set(u.cik, canonicalizeEntityName(u.name));
+
+  // Build CIK → company financial_entity_id lookup.
+  const cikToFinancialEntity = new Map<string, string>();
+  {
+    const { createAdminClient, rowsOrThrow } = await import("@civitics/db");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = createAdminClient() as any;
+    // FIX-545: same chunk + throw as the tracked-CIK preload above.
+    for (let i = 0; i < universe.length; i += EDGAR_IN_CHUNK) {
+      const rows = rowsOrThrow(
+        await db
+          .from("edgar_companies")
+          .select("cik, financial_entity_id")
+          .in("cik", universe.slice(i, i + EDGAR_IN_CHUNK).map((u) => u.cik)),
+        "edgar daily financial-entity preload",
+      ) as Array<{ cik: string; financial_entity_id: string | null }>;
+      for (const row of rows) {
+        if (row.financial_entity_id) cikToFinancialEntity.set(row.cik, row.financial_entity_id);
+      }
+    }
+  }
+
+  const edgesToAdd: EdgeInput[] = [];
+  const reviewToAdd: ReviewQueueInput[] = [];
+
+  for (const filing of filings) {
+    const companyCanonical = cikToCanonical.get(filing.cik) ?? "";
+    const companyEntityId = cikToFinancialEntity.get(filing.cik) ?? "";
+    if (!companyEntityId) continue;
+
+    for (const holder of filing.holders) {
+      const sid = shIds.get(`${filing.accession}|${holder.canonicalHolderName}`);
+      if (!sid) continue;
+
+      if (holder.isOrganization) {
+        // V1: org holders go to the review queue. Auto-binding org names to
+        // existing financial_entities (or inserting new corp rows) is a
+        // follow-up FIX.
+        reviewToAdd.push({
+          source_entity_id: `shareholder:${sid}`,
+          source_payload: {
+            shareholder_id: sid,
+            holder_name:    holder.holderName,
+            company_id:     filing.companyId,
+            company_cik:    filing.cik,
+            filing_type:    filing.filingType,
+            accession:      filing.accession,
+            pct_of_class:   holder.pctOfClass,
+            shares_held:    holder.sharesHeld,
+          },
+          candidate_matches: [],
+          reason: "org_holder_unmatched",
+        });
+        continue;
+      }
+
+      const outcome = await matchPersonToDonor(holder.canonicalHolderName, companyCanonical);
+      if (outcome.kind === "exact") {
+        edgesToAdd.push({
+          source_id:         `shareholder:${sid}`,
+          source_url:        `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${filing.cik}`,
+          from_entity_id:    outcome.donor.id,
+          to_entity_id:      companyEntityId,
+          connection_type:   "owns",
+          raw_category:      filing.filingType.toLowerCase().replace(/\s+/g, "_"),
+          raw_category_name: filing.filingType,
+          description:       `${holder.pctOfClass ?? "?"}% of ${filing.cik}`,
+          amount_cents:      null,
+          occurred_at:       holder.eventDate ?? filing.filedAt,
+          ended_at:          null,
+          is_current:        true,
+          match_confidence:  "high",
+          metadata: {
+            accession:    filing.accession,
+            pct_of_class: holder.pctOfClass,
+            shares_held:  holder.sharesHeld,
+            filing_type:  filing.filingType,
+          },
+        });
+        await setShareholderMatch(sid, outcome.donor.id, "high");
+      } else if (outcome.kind === "name_only") {
+        reviewToAdd.push({
+          source_entity_id: `shareholder:${sid}`,
+          source_payload: {
+            shareholder_id: sid,
+            holder_name:    holder.holderName,
+            company_id:     filing.companyId,
+            company_cik:    filing.cik,
+            filing_type:    filing.filingType,
+            accession:      filing.accession,
+          },
+          candidate_matches: outcome.candidates.map((c) => ({
+            civitics_id:   c.id,
+            civitics_type: "financial_entity",
+            score:         0.5,
+            reason:        "name_match_no_employer",
+            display_name:  c.displayName,
+            employer:      c.employerRaw,
+          })),
+          reason: "name_match_no_employer",
+        });
+      }
+    }
+  }
+
+  if (edgesToAdd.length > 0) {
+    const e = await upsertEdgarEdges(edgesToAdd);
+    counts.edges = e.upserted;
+    counts.failed += e.failed;
+  }
+  if (reviewToAdd.length > 0) {
+    const q = await upsertEdgarReviewQueue(reviewToAdd);
+    counts.reviewQueue = q.upserted;
+    counts.failed += q.failed;
+  }
+
+  return counts;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -427,7 +500,9 @@ export async function runEdgarDailyPipeline(): Promise<PipelineResult> {
 async function main(): Promise<void> {
   const daily = process.argv.includes("--daily");
   if (daily) {
-    await runEdgarDailyPipeline();
+    // FIX-727's rule for a standalone entrypoint: a failed run exits nonzero.
+    const r = await runEdgarDailyPipeline();
+    if (r.fatal_error) process.exitCode = 1;
   } else {
     await runEdgarPipeline();
   }

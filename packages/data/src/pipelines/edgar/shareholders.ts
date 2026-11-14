@@ -13,12 +13,28 @@
  * parsing for Reporting Person + percent + shares + event date. Filings
  * that don't parse cleanly are logged and skipped — better to miss a row
  * than to write garbage.
+ *
+ * FIX-1394: the archive answers a MISSING object with 403 `AccessDenied`,
+ * never 404 (cc-278 read 2: an unpublished daily-index date and the
+ * nonexistent full-index path both 403 with the same body). A status alone
+ * cannot tell "not published yet" from "refused", so the scan asks the quarter
+ * directory's listing (`index.json`) first: a file the listing does not name is
+ * `not_published`; a listing that fails, or a listed file that answers non-OK,
+ * is `refused`. The scan reports which — it never returns a bare empty list
+ * that the caller would log as a quiet day.
  */
 
 import { normalizeName } from "../fec-bulk/indiv";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
-import { edgarFetch } from "./client";
+import { edgarFetch, type EdgarFetchOptions, type EdgarResponse } from "./client";
 import { accessionPathSegment, padCik, parseFilingDate, parsePercent } from "./util";
+
+const DAILY_INDEX_BASE = "https://www.sec.gov/Archives/edgar/daily-index";
+const MASTER_FILE_RE = /^master\.\d{8}\.idx$/;
+const BODY_HEAD_CHARS = 120;
+
+/** edgarFetch's shape, injectable so tests never reach the network. */
+export type EdgarFetchLike = (url: string, opts?: EdgarFetchOptions) => Promise<EdgarResponse>;
 
 const TARGET_FORMS = new Set(["SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A"]);
 
@@ -50,12 +66,93 @@ function quarterFor(month: number): number {
 
 function pad(n: number): string { return n < 10 ? `0${n}` : String(n); }
 
+/** `…/daily-index/{YYYY}/QTR{N}/` — the quarter directory a daily file lives in. */
+export function quarterDirUrl(year: number, quarter: number): string {
+  return `${DAILY_INDEX_BASE}/${year}/QTR${quarter}/`;
+}
+
+/** `master.YYYYMMDD.idx` for a UTC calendar date. */
+export function masterFileName(date: Date): string {
+  const y = date.getUTCFullYear();
+  return `master.${y}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}.idx`;
+}
+
+/**
+ * FIX-1394: `daily-index`, not `full-index`. `full-index/{YYYY}/QTR{N}/` holds
+ * the quarter's cumulative `master.idx`; there is no dated file under it, and
+ * asking for one answers 403 AccessDenied.
+ */
 export function dailyIndexUrl(date: Date): string {
   const y = date.getUTCFullYear();
-  const m = date.getUTCMonth() + 1;
-  const d = date.getUTCDate();
-  const q = quarterFor(m);
-  return `https://www.sec.gov/Archives/edgar/full-index/${y}/QTR${q}/master.${y}${pad(m)}${pad(d)}.idx`;
+  const q = quarterFor(date.getUTCMonth() + 1);
+  return quarterDirUrl(y, q) + masterFileName(date);
+}
+
+/** Refused: the listing failed, or a file the listing names answered non-OK. */
+export interface IndexRefused {
+  kind:     "refused";
+  status:   number | null;   // null: the request threw (edgarFetch's 3 attempts)
+  url:      string;
+  bodyHead: string;          // the body's first 120 characters, or the thrown message
+}
+
+export interface QuarterListing {
+  kind:  "listed";
+  url:   string;
+  files: string[];           // master.YYYYMMDD.idx names, ascending
+}
+
+/** The first 120 characters, on one line — it rides a log line and error_message. */
+function bodyHead(body: string): string {
+  return body.slice(0, BODY_HEAD_CHARS).replace(/\s+/g, " ");
+}
+
+async function getOrRefuse(
+  url: string,
+  accept: string,
+  fetchImpl: EdgarFetchLike,
+): Promise<{ kind: "ok"; body: string } | IndexRefused> {
+  try {
+    const res = await fetchImpl(url, { accept });
+    if (!res.ok) {
+      return { kind: "refused", status: res.status, url, bodyHead: bodyHead(res.body) };
+    }
+    return { kind: "ok", body: res.body };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { kind: "refused", status: null, url, bodyHead: bodyHead(msg) };
+  }
+}
+
+/**
+ * Read one quarter directory's `index.json` and return its `master.*.idx`
+ * names. A non-OK answer, a throw, or a body that is not the directory JSON is
+ * `refused` — the listing is the thing that tells a missing file from a refusal,
+ * so a listing that cannot be read leaves the run unable to say which.
+ */
+export async function listQuarter(
+  year: number,
+  quarter: number,
+  fetchImpl: EdgarFetchLike = edgarFetch,
+): Promise<QuarterListing | IndexRefused> {
+  const url = quarterDirUrl(year, quarter) + "index.json";
+  const got = await getOrRefuse(url, "application/json", fetchImpl);
+  if (got.kind === "refused") return got;
+  let items: unknown;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    items = (JSON.parse(got.body) as any)?.directory?.item;
+  } catch {
+    items = undefined;
+  }
+  if (!Array.isArray(items)) {
+    return { kind: "refused", status: 200, url, bodyHead: bodyHead(got.body) };
+  }
+  const files = items
+    .map((it) => String((it as { name?: unknown })?.name ?? ""))
+    .filter((n) => MASTER_FILE_RE.test(n))
+    .sort();
+  return { kind: "listed", url, files };
 }
 
 interface IndexRow {
@@ -146,11 +243,15 @@ function extractHolders(body: string): ShareholderHolder[] {
   return out;
 }
 
-async function fetchPrimaryFromFilingIndex(cik: string, accession: string): Promise<{ body: string; docName: string } | null> {
+async function fetchPrimaryFromFilingIndex(
+  cik: string,
+  accession: string,
+  fetchImpl: EdgarFetchLike,
+): Promise<{ body: string; docName: string } | null> {
   const cikInt = String(parseInt(cik, 10));
   const seg = accessionPathSegment(accession);
   const indexUrl = `https://www.sec.gov/Archives/edgar/data/${cikInt}/${seg}/index.json`;
-  const res = await edgarFetch(indexUrl, { accept: "application/json" });
+  const res = await fetchImpl(indexUrl, { accept: "application/json" });
   if (!res.ok) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const json: any = JSON.parse(res.body);
@@ -160,35 +261,53 @@ async function fetchPrimaryFromFilingIndex(cik: string, accession: string): Prom
   const target = htm ?? items.find((it) => /\.txt$/i.test(it.name));
   if (!target) return null;
   const docUrl = `https://www.sec.gov/Archives/edgar/data/${cikInt}/${seg}/${target.name}`;
-  const docRes = await edgarFetch(docUrl, { accept: "text/html,*/*" });
+  const docRes = await fetchImpl(docUrl, { accept: "text/html,*/*" });
   if (!docRes.ok) return null;
   return { body: docRes.body, docName: target.name };
 }
 
-export async function scanDailyShareholders(
-  date: Date,
-  trackedCiks: Map<string, string>,            // padded CIK → edgar_companies.id
-): Promise<ShareholderFiling[]> {
-  const url = dailyIndexUrl(date);
-  let res;
-  try {
-    res = await edgarFetch(url, { accept: "text/plain,*/*" });
-  } catch (err) {
-    console.warn(`  [edgar/shareholders] daily index fetch failed: ${err instanceof Error ? err.message : err}`);
-    return [];
-  }
-  if (!res.ok) {
-    // SEC publishes no index on weekends / market holidays — that's a 404
-    if (res.status !== 404) {
-      console.warn(`  [edgar/shareholders] daily index HTTP ${res.status}`);
+/** What one scan found. `read` with `rowsTracked: 0` is the genuine quiet day. */
+export type DailyIndexOutcome =
+  | {
+      kind:        "read";
+      file:        string;
+      filings:     ShareholderFiling[];
+      rowsTracked: number;             // 13D/G rows on tracked CIKs in the file
     }
-    return [];
+  | { kind: "not_published"; file: string; listingUrl: string }
+  | IndexRefused;
+
+export interface ScanOptions {
+  date:        Date;
+  trackedCiks: Map<string, string>;            // padded CIK → edgar_companies.id
+  fetch?:      EdgarFetchLike;
+}
+
+export async function scanDailyShareholders(opts: ScanOptions): Promise<DailyIndexOutcome> {
+  const fetchImpl = opts.fetch ?? edgarFetch;
+  const { date, trackedCiks } = opts;
+  const listing = await listQuarter(date.getUTCFullYear(), quarterFor(date.getUTCMonth() + 1), fetchImpl);
+  if (listing.kind === "refused") {
+    console.warn(`  [edgar/shareholders] daily index listing refused: HTTP ${listing.status ?? "—"} ${listing.url} — ${listing.bodyHead}`);
+    return listing;
+  }
+  const file = masterFileName(date);
+  if (!listing.files.includes(file)) {
+    console.info(`  [edgar/shareholders] ${file} not listed in ${listing.url} (newest listed: ${listing.files[listing.files.length - 1] ?? "none"})`);
+    return { kind: "not_published", file, listingUrl: listing.url };
   }
 
-  const rows = parseDailyIndex(res.body).filter(
+  const url = dailyIndexUrl(date);
+  const got = await getOrRefuse(url, "text/plain,*/*", fetchImpl);
+  if (got.kind === "refused") {
+    console.warn(`  [edgar/shareholders] daily index HTTP ${got.status ?? "—"} ${url} — ${got.bodyHead}`);
+    return got;
+  }
+
+  const rows = parseDailyIndex(got.body).filter(
     (r) => TARGET_FORMS.has(r.formType) && trackedCiks.has(r.cik),
   );
-  console.info(`  [edgar/shareholders] ${rows.length} relevant 13D/G rows in ${url.slice(url.lastIndexOf("/") + 1)}`);
+  console.info(`  [edgar/shareholders] ${rows.length} relevant 13D/G rows in ${file}`);
 
   const out: ShareholderFiling[] = [];
   for (const row of rows) {
@@ -198,7 +317,7 @@ export async function scanDailyShareholders(
     const accession = accMatch[1]!;
     let parsed: { body: string; docName: string } | null = null;
     try {
-      parsed = await fetchPrimaryFromFilingIndex(row.cik, accession);
+      parsed = await fetchPrimaryFromFilingIndex(row.cik, accession, fetchImpl);
     } catch (err) {
       console.warn(`  [edgar/shareholders] ${row.cik} ${accession} fetch failed: ${err instanceof Error ? err.message : err}`);
       continue;
@@ -218,5 +337,5 @@ export async function scanDailyShareholders(
       holders,
     });
   }
-  return out;
+  return { kind: "read", file, filings: out, rowsTracked: rows.length };
 }
