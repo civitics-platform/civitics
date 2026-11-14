@@ -1,0 +1,51 @@
+{
+  "cc": "276",
+  "prompt": "cc-prompt-276-sat-records-fleet-flag-receipts-fix1404-fix1405-limiter-k-cf-key-day-edge-block-receipt-fix1403-origin-ua-census-egress-probe-ua.md",
+  "started_at": "2026-11-14T06:01:20Z",
+  "finished_at": "2026-11-14T06:24:00Z",
+  "head_before": "b226ebaf",
+  "head_after": "8f967b86",
+  "commits": [
+    {
+      "sha": "31a010e4",
+      "subject": "[skip vercel] chore(ci): egress-probe's browser GET sends Windows Chrome/157, not Chrome/142 — the ten fleet strings are blocked at the edge since 2026-11-14 01:34Z (cc-276)"
+    },
+    {
+      "sha": "bc275334",
+      "subject": "[skip vercel] docs: the fleet clause in Common Exploit Paths (since 2026-11-14 01:34:46Z) — expression, source of truth, reversal, a false positive is now a block; census §16, after the Block (cc-276)"
+    },
+    {
+      "sha": "20bcb63b",
+      "subject": "chore(fixes): record FIX-1404 on prod — window A (11-13T00Z → 11-14T01Z, 25 h, ending at the edge Block): 1,760 page_views rows bot_name chrome-133-142 against 1,767 fleet track-views forwarded (edge 200 1,758 + 499 9), −0.4 %; 0 fleet web_vitals_samples rows while the fleet forwarded 6,980 vitals POSTs (cc-276)"
+    },
+    {
+      "sha": "26f22694",
+      "subject": "chore(fixes): record FIX-1405 on prod — window A's 1,760 flagged rows by country_code, BR 209 · IN 169 · VN 133 · US 105 · MX 82 · PH 59 · TH 53 · GB 49, against Cloudflare's clientCountryName for the same 1,767 track-views, BR 214 · IN 168 · VN 142 · US 106 · MX 81 · PH 57 · TH 52 · GB 49; top 8 shared in order, 114 countries each, no SG / FR / HK (cc-276)"
+    },
+    {
+      "sha": "e0a76b05",
+      "subject": "chore(fixes): record FIX-1401 on prod — 11-13, the first full UTC day on per-client keys: daily 9,637 at 23:31:11Z → 9,835 full-day, B 2,385 (leaf 724 / pages 1,642 / api 19), k = (9,835 − 2,449) / 2,385 = 3.10 ≤ 3.4; 0 × 429 at the origin (cc-276)"
+    },
+    {
+      "sha": "8f967b86",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-276's prod records — FIX-1404, FIX-1405 and FIX-1401 prod-only; FIX-1403 stays open (window B 4 h after the 01:34:46Z Block, 6 needed) (42 open)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 (close FIX-1403): STOP table, window B shorter than 6 full hours. The Block went in at 2026-11-14T01:34:46Z, so B is 02:00Z → 06:00Z, 4 full hours, at this run's start. No commit; FIX-1403 stays open, and its receipt is owed after 2026-11-14T09:00Z (the Block's hour + 8 h). Over those 4 hours (a) and (b) read clean. (c) did not: non-fleet Chrome 403s rose hour by hour (hourly comparison first, below)."
+  ],
+  "lane": "hygiene",
+  "owed": [
+    {
+      "fix": "FIX-1403",
+      "what": "window B of at least 6 full hours after the 01:34:46Z Block (02Z → 09Z or later). Met when the fleet's origin-reaching requests are at most 1 % of its edge requests, flagged page_views are at most 2 an hour, and is_bot = false rows are not below the 11-12 / 11-13 same-hour range. Read non-fleet Chrome 403s with the farm-shaped rows (one request per IP, stale strings) split out. The first 4 h already read origin 0 of 648, 0 flagged, human 2 against 1–6.",
+      "after": "2026-11-14T09:00Z"
+    }
+  ]
+}
