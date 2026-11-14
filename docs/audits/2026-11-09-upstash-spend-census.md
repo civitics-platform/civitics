@@ -1085,3 +1085,113 @@ owed read.
 
 If the fleet never sends a beacon again, FIX-1404 cannot get its receipt from the fleet's
 own traffic, and it stays `local` until one arrives.
+
+## §14 cc-275 — the vitals table, retired (2026-11-14; appended, nothing above edited)
+
+[[FIX-1406]], option (3) of the cc-273 report. The writer was removed first, then the
+table was dropped.
+
+| step | instant (UTC) |
+|---|---|
+| deploy A (`7cf51d1b`: `WebVitalsReporter`, `src/lib/web-vitals.ts` and `/api/platform/web-vitals` removed), Vercel commit status | `pending` 03:34:18Z → **`success` 03:35:29Z** |
+| D1 reading 1 (deploy + 5 min) | 03:40:43Z: 68,911 rows, `max(recorded_at)` 02:22:58.945Z |
+| D1 reading 2 (+ 10 min 15 s) | 03:50:58Z: 68,911 rows, `max(recorded_at)` 02:22:58.945Z, **unmoved** |
+| Craig confirms `DROP TABLE IF EXISTS public.web_vitals_samples;` (D3) | between 03:52Z and 04:00Z (after read 6, before the file was written) |
+| the class-P push of `20261115000000_fix1406_drop_web_vitals_samples.sql` (`e069cb70`), gate claim | 04:05:59.174Z → 04:06:00.336Z (1.2 s) |
+| read-back on Pro | 04:06:31Z: `to_regclass` NULL, head `20261115000000`, 560 applied |
+
+### Read 1: what was dropped
+
+On Pro at 03:26:49Z, before any edit:
+
+| what | value |
+|---|---|
+| rows | **68,911** |
+| span of `recorded_at` | 2026-04-22 06:00:19Z → 2026-11-14 02:22:58Z |
+| `pg_total_relation_size` | 23,388,160 bytes (22 MB) |
+| rows on the ten fleet UAs (exact, after `btrim`) | 53,047 |
+| every other row (the keepsake's population) | 15,864 |
+
+Read 2 found nothing that depended on the table: no view or matview, no function
+`prosrc`, no `cron.job` command, no foreign key, no publication and no trigger. It had
+only its own pkey, the indexes `web_vitals_samples_metric_recorded` and
+`web_vitals_samples_exceeded`, and the policies `anon insert vitals` (INSERT to anon,
+authenticated) and `public read vitals` (SELECT to public).
+
+### Read 3: the keepsake
+
+The rows are gone. This aggregate is all that was kept (D4). It covers every row whose
+`user_agent` is not one of the ten fleet strings, NULLs included, grouped by calendar
+month UTC. Values are milliseconds, except CLS, which has no unit. Percentiles are
+`percentile_cont`, rounded to 0.1 (CLS to 0.001). `% exceeded` is the
+share of samples above the old reporter's "poor" bound: LCP 4,000, CLS 0.25, INP 500,
+FCP 3,000, TTFB 1,800. April starts 04-22, and November ends 11-14 02:22Z.
+
+| metric | month | n | p50 | p75 | p95 | % exceeded |
+|---|---|---:|---:|---:|---:|---:|
+| CLS | 2026-04 | 21 | 0.004 | 0.028 | 0.028 | 0.0 |
+| CLS | 2026-05 | 44 | 0.002 | 0.035 | 0.376 | 6.8 |
+| CLS | 2026-06 | 118 | 0.001 | 0.012 | 0.086 | 0.0 |
+| CLS | 2026-07 | 159 | 0.000 | 0.012 | 0.179 | 2.5 |
+| CLS | 2026-08 | 153 | 0.000 | 0.010 | 1.000 | 9.2 |
+| CLS | 2026-09 | 94 | 0.000 | 0.006 | 0.206 | 4.3 |
+| CLS | 2026-10 | 211 | 0.000 | 0.001 | 0.191 | 4.3 |
+| CLS | 2026-11 | 104 | 0.000 | 0.001 | 0.143 | 1.9 |
+| FCP | 2026-04 | 236 | 951.5 | 3,180.3 | 9,331.5 | 26.3 |
+| FCP | 2026-05 | 488 | 1,428.5 | 4,445.5 | 12,214.1 | 31.4 |
+| FCP | 2026-06 | 461 | 887.0 | 2,090.0 | 4,983.0 | 16.5 |
+| FCP | 2026-07 | 2,108 | 653.0 | 1,530.0 | 3,555.6 | 7.0 |
+| FCP | 2026-08 | 386 | 1,182.0 | 2,874.8 | 6,140.8 | 22.5 |
+| FCP | 2026-09 | 287 | 1,374.0 | 3,009.0 | 5,107.0 | 25.1 |
+| FCP | 2026-10 | 481 | 1,580.0 | 2,692.0 | 4,240.0 | 16.6 |
+| FCP | 2026-11 | 406 | 970.0 | 2,252.0 | 4,072.0 | 12.3 |
+| INP | 2026-04 | 193 | 24 | 64 | 464.0 | 1.6 |
+| INP | 2026-05 | 435 | 24 | 48 | 354.4 | 1.8 |
+| INP | 2026-06 | 383 | 16 | 32 | 95.2 | 0.5 |
+| INP | 2026-07 | 421 | 16 | 40 | 144.0 | 1.4 |
+| INP | 2026-08 | 203 | 16 | 24 | 80.0 | 1.0 |
+| INP | 2026-09 | 139 | 24 | 32 | 122.4 | 0.0 |
+| INP | 2026-10 | 203 | 24 | 48 | 190.4 | 2.5 |
+| INP | 2026-11 | 127 | 24 | 48 | 688.0 | 6.3 |
+| LCP | 2026-04 | 217 | 1,881.0 | 4,436.0 | 9,382.8 | 30.0 |
+| LCP | 2026-05 | 478 | 1,692.0 | 5,582.8 | 15,945.4 | 32.2 |
+| LCP | 2026-06 | 446 | 993.5 | 2,459.8 | 6,740.0 | 14.3 |
+| LCP | 2026-07 | 510 | 977.0 | 2,393.8 | 6,279.7 | 10.4 |
+| LCP | 2026-08 | 345 | 1,586.0 | 3,316.0 | 6,593.2 | 16.2 |
+| LCP | 2026-09 | 260 | 1,363.0 | 3,033.5 | 4,866.3 | 11.2 |
+| LCP | 2026-10 | 405 | 1,409.0 | 2,548.6 | 4,090.4 | 5.7 |
+| LCP | 2026-11 | 239 | 1,255.0 | 2,408.0 | 3,950.4 | 5.0 |
+| TTFB | 2026-04 | 242 | 762.5 | 2,238.0 | 8,032.9 | 28.5 |
+| TTFB | 2026-05 | 549 | 1,088.0 | 3,995.0 | 12,108.0 | 40.1 |
+| TTFB | 2026-06 | 472 | 784.1 | 1,894.0 | 4,672.2 | 26.3 |
+| TTFB | 2026-07 | 2,189 | 388.6 | 1,127.0 | 3,175.8 | 17.4 |
+| TTFB | 2026-08 | 434 | 841.8 | 2,339.7 | 5,611.4 | 35.7 |
+| TTFB | 2026-09 | 302 | 911.4 | 2,626.0 | 4,426.3 | 40.4 |
+| TTFB | 2026-10 | 499 | 864.6 | 2,181.5 | 3,248.8 | 35.9 |
+| TTFB | 2026-11 | 416 | 264.7 | 1,760.3 | 2,979.9 | 24.0 |
+
+The 15,864 rows split as CLS 904 · FCP 4,853 · INP 2,104 · LCP 2,900 · TTFB 5,103.
+July's FCP and TTFB counts (2,108 and 2,189) are about four times LCP's 510 in the same
+month. Nothing kept can now say why.
+
+### Read 6: the beacon at Cloudflare, before and after
+
+Origin-reaching requests to `/api/platform/web-vitals` (`cf-analytics.mjs --origin`):
+
+| window | requests | edge status | the fleet's ten UAs | any other UA |
+|---|---:|---|---:|---:|
+| the 24 h before deploy A (11-13 03:35:29Z → 11-14 03:35:29Z) | **3,691** | all 200 | 3,653 | 38 |
+| since deploy A (03:35:29Z → 04:07:26Z) | **0** | — | 0 | 0 |
+
+Hourly before: 71–255 an hour from 11-13 03Z to 11-14 01Z (116 at 01Z), then **3** in the
+02Z hour and none from 02:22Z on. The quiet began about 70 minutes **before** deploy A, so
+the "after" figure does not show cached bundles being turned away. It shows only that no
+client posted. The edge saw no request at all to the path after 02Z, and no
+`/api/track-view` reached the origin after deploy A either. A client still running an
+old bundle will get Next's 404 for an unknown path (D5). The next census that reads
+this path counts them.
+
+The 24 h before deploy A also carries [[FIX-1404]]'s vitals half. On UTC day 11-13 the
+fleet sent **4,036** vitals POSTs that reached the origin, and the table gained **0** fleet
+rows that day (read 1). Every fleet sample was answered without its INSERT, as cc-273
+built it.
