@@ -866,6 +866,52 @@ SELECT * FROM platform_usage WHERE service = 'supabase' ORDER BY recorded_at DES
 
 Monitor Supabase dashboard if egress is near limits: `supabase.com/dashboard/project/xsazcoxinpgttgquwvuf`
 
+### The Senate roll walk (FIX-1324, FIX-1372, FIX-1407)
+
+`data:congress`'s votes step (Step 4 of `packages/data/src/pipelines/congress/votes.ts`,
+in the nightly's fec phase) fetches Senate LIS XML one roll per GET from
+`www.senate.gov`. senate.gov serves a few dozen GETs a night and then answers
+403 (Akamai; FIX-1372, open). The walk is built around that:
+
+- **New rolls first.** The current session is walked first. Per session, pass A
+  starts above the frontier (the highest roll stored or known) and stops 3
+  non-roll bodies past the end; pass B then fills the gaps below the frontier,
+  where a non-roll body is a hole, not the end.
+- **403 / 429 is "blocked", not "no such roll".** Wait 30 s and retry the same
+  roll, then 120 s and retry. If it is still blocked it counts as `blocked`.
+  Three blocked rolls end the session with `blocked ×3`. A block never counts as
+  a miss and never closes a tail. The House walk still counts a 403 as a miss.
+- **Paced.** 1.5 s plus 0–0.5 s jitter between Senate GETs. The User-Agent is
+  Node's default on purpose: FIX-1407 measures volume and order alone, and
+  identity headers are the next lever.
+- **The seen-unstored record:** `pipeline_state` key
+  `congress_votes:senate_rolls:<congress>`. It holds, per session, every roll
+  that was fetched, parsed, and skipped before its insert, with `reason` and
+  `seen_at`, plus `tail_closed`.
+  - `no_proposal_reference` and `no_voted_at` stay skipped while the record's `v`
+    equals `SENATE_UNSTORED_VERSION` (`senate-unstored.ts`).
+  - Every other reason (guard-absent, `bill_unresolved`, `no_matchable_records`)
+    is fetched again 7 days after `seen_at`.
+  - `tail_closed` marks a past year's session whose end was found cleanly; its
+    tail is never walked again.
+  - Insert failures, blocked rolls, transient errors and past-end answers are
+    never recorded.
+- **Clearing it.** Bump `SENATE_UNSTORED_VERSION` when the parser learns to store
+  a roll it skips today (a new document type, the nomination stage). A record
+  of another version is dropped whole, `tail_closed` flags included.
+  Deleting the row is also harmless: the next nightly fetches every unstored
+  roll once, as before FIX-1407. The row is world-readable (`pipeline_state`'s
+  public SELECT policy), so it holds roll ids, reasons, dates and flags only.
+
+Reading a night: each Senate session logs one line, e.g.
+`Senate session 2: tail after roll 258: 2 new, past end at roll 263 (3 consecutive misses) — fetched 5 in 5 GETs: …, 0 blocked (0 retries), 0 transient; 196 already stored, 60 seen-unstored skipped`.
+The record logs `Senate unstored record: N known (…), +A added, −R retried`.
+A blocked night adds `first HTTP 403 at GET n on roll r`.
+
+```bash
+node scripts/db-query.mjs --prod "SELECT value, updated_at FROM pipeline_state WHERE key = 'congress_votes:senate_rolls:119'"
+```
+
 ### Windows-Specific: Exit Code Fix
 
 On Windows, Node.js pipelines may crash with **exit code 3221226505** (Windows/Node libuv issue). This is fixed in the codebase by appending:
