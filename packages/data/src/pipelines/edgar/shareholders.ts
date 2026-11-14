@@ -5,9 +5,12 @@
  *   https://www.sec.gov/Archives/edgar/daily-index/{YYYY}/QTR{N}/master.{YYYYMMDD}.idx
  * Pipe-delimited: CIK|Company Name|Form Type|Date Filed|Filename
  *
- * SEC publishes a new daily-index file every business day (US Eastern). We
- * scan the index for rows where Form Type ∈ {SC 13D, SC 13D/A, SC 13G,
- * SC 13G/A} AND the CIK is in our tracked S&P 500 universe.
+ * SEC publishes a new daily-index file every business day (US Eastern), listed
+ * around 22:00 ET. We read the newest file the quarter listing names and scan
+ * it for rows where Form Type ∈ {SCHEDULE 13D, SCHEDULE 13D/A, SCHEDULE 13G,
+ * SCHEDULE 13G/A} (or the pre-structured SC 13D/G names) AND the CIK is in our
+ * tracked S&P 500 universe. A filing appears once per party, so a tracked CIK
+ * may be the FILER, not the subject — the index row cannot say which.
  *
  * For each hit we fetch the primary document, do best-effort cover-page
  * parsing for Reporting Person + percent + shares + event date. Filings
@@ -36,7 +39,23 @@ const BODY_HEAD_CHARS = 120;
 /** edgarFetch's shape, injectable so tests never reach the network. */
 export type EdgarFetchLike = (url: string, opts?: EdgarFetchOptions) => Promise<EdgarResponse>;
 
-const TARGET_FORMS = new Set(["SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A"]);
+/**
+ * Both families of form names. The index files since the structured filings
+ * (cc-278 read 2, master.20261113.idx) say `SCHEDULE 13G/A` 920 ·
+ * `SCHEDULE 13G` 460 · `SCHEDULE 13D/A` 48 · `SCHEDULE 13D` 4 and no `SC …`
+ * row; the `SC …` names stay for older files (an EDGAR_DAILY_DATE re-read).
+ */
+const TARGET_FORMS = new Set([
+  "SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A",
+  "SCHEDULE 13D", "SCHEDULE 13D/A", "SCHEDULE 13G", "SCHEDULE 13G/A",
+]);
+
+export function isTargetForm(formType: string): boolean {
+  return TARGET_FORMS.has(formType.trim());
+}
+
+/** Any 13D/13G-looking form name — counted by name so a third renaming shows up in the metadata. */
+const ANY_13DG_RE = /\b13[DG]\b/;
 
 export interface ShareholderFiling {
   cik:                 string;     // tracked company's padded CIK
@@ -266,66 +285,193 @@ async function fetchPrimaryFromFilingIndex(
   return { body: docRes.body, docName: target.name };
 }
 
-/** What one scan found. `read` with `rowsTracked: 0` is the genuine quiet day. */
+/**
+ * What one read file yielded — the parse yield cc-278 D5 measures rather than
+ * fixes. `filingsFetched` counts filings asked for (≤ the cap); a filing whose
+ * primary document came back is `documentsFound`; a found document with no
+ * holder parsed is `unparsed`.
+ */
+export interface ScanStats {
+  rows13dg:       number;                  // target-form rows in the file
+  rows13dgByForm: Record<string, number>;  // every 13D/13G-looking form name in the file
+  rowsTracked:    number;                  // target-form rows on tracked CIKs
+  filingsFetched: number;
+  notFetched:     number;                  // tracked rows past the cap
+  documentsFound: number;
+  fetchErrors:    number;
+  holdersParsed:  number;
+  holdersWithPct: number;
+  unparsed:       number;
+  samples:        Array<{ accession: string; form: string; holder: string; pct: number | null }>;
+}
+
+const MAX_SAMPLES = 5;
+
+/** What one scan found. `read` with `stats.rowsTracked: 0` is the genuine quiet day. */
 export type DailyIndexOutcome =
-  | {
-      kind:        "read";
-      file:        string;
-      filings:     ShareholderFiling[];
-      rowsTracked: number;             // 13D/G rows on tracked CIKs in the file
-    }
-  | { kind: "not_published"; file: string; listingUrl: string }
+  | { kind: "read"; file: string; filings: ShareholderFiling[]; stats: ScanStats }
+  | { kind: "not_published"; file: string | null; listingUrl: string }
   | IndexRefused;
 
 export interface ScanOptions {
-  date:        Date;
+  /** The clock: which quarter directories to list. */
+  now:         Date;
+  /** EDGAR_DAILY_DATE: read this day's file instead of the newest listed. */
+  date?:       Date;
   trackedCiks: Map<string, string>;            // padded CIK → edgar_companies.id
+  /** Fetch at most this many tracked filings' documents; the rest count `notFetched`. */
+  maxFilings?: number;
   fetch?:      EdgarFetchLike;
+}
+
+/**
+ * Days into a quarter during which the previous quarter's directory is listed
+ * too. On 01-02 the newest file is 12-31's, in last year's QTR4 — and the new
+ * quarter's directory may not exist yet.
+ */
+export const QUARTER_LOOKBACK_DAYS = 7;
+
+export function candidateQuarters(now: Date): Array<{ year: number; quarter: number }> {
+  const year = now.getUTCFullYear();
+  const quarter = quarterFor(now.getUTCMonth() + 1);
+  const out = [{ year, quarter }];
+  const quarterStart = Date.UTC(year, (quarter - 1) * 3, 1);
+  if (now.getTime() - quarterStart < QUARTER_LOOKBACK_DAYS * 86_400_000) {
+    out.push(quarter === 1 ? { year: year - 1, quarter: 4 } : { year, quarter: quarter - 1 });
+  }
+  return out;
+}
+
+/** The newest `master.YYYYMMDD.idx` across the listings, with the directory it is in. */
+export function pickNewestListed(listings: QuarterListing[]): { file: string; dirUrl: string } | null {
+  let best: { file: string; dirUrl: string } | null = null;
+  for (const l of listings) {
+    const newest = l.files[l.files.length - 1];
+    if (newest && (!best || newest > best.file)) {
+      best = { file: newest, dirUrl: l.url.replace(/index\.json$/, "") };
+    }
+  }
+  return best;
+}
+
+function refusedLine(r: IndexRefused, what: string): string {
+  return `  [edgar/shareholders] ${what} HTTP ${r.status ?? "—"} ${r.url} — ${r.bodyHead}`;
+}
+
+/**
+ * FIX-1410 (cc-278 D3): which file. The nightly runs at 21:00Z (16:00 ET); a
+ * day's file is listed around 22:00 ET, so "today's" file is never there when
+ * the run asks. The run reads the newest file the quarter listing names. No
+ * watermark and no catch-up: a weekend re-reads Friday's file.
+ */
+async function locateIndexFile(
+  opts: ScanOptions,
+  fetchImpl: EdgarFetchLike,
+): Promise<{ kind: "found"; file: string; url: string } | Extract<DailyIndexOutcome, { kind: "not_published" }> | IndexRefused> {
+  if (opts.date) {
+    const date = opts.date;
+    const listing = await listQuarter(date.getUTCFullYear(), quarterFor(date.getUTCMonth() + 1), fetchImpl);
+    if (listing.kind === "refused") {
+      console.warn(refusedLine(listing, "daily index listing"));
+      return listing;
+    }
+    const file = masterFileName(date);
+    if (!listing.files.includes(file)) {
+      console.info(`  [edgar/shareholders] ${file} not listed in ${listing.url} (newest listed: ${listing.files[listing.files.length - 1] ?? "none"})`);
+      return { kind: "not_published", file, listingUrl: listing.url };
+    }
+    return { kind: "found", file, url: dailyIndexUrl(date) };
+  }
+
+  // The current quarter, and in its first days the previous one. A refused
+  // listing is tolerated only while another listing reads — on a quarter's
+  // first days the new directory may not exist yet.
+  const listings: QuarterListing[] = [];
+  let refusal: IndexRefused | null = null;
+  for (const q of candidateQuarters(opts.now)) {
+    const l = await listQuarter(q.year, q.quarter, fetchImpl);
+    if (l.kind === "refused") {
+      console.warn(refusedLine(l, "daily index listing"));
+      refusal ??= l;
+      continue;
+    }
+    listings.push(l);
+  }
+  const newest = pickNewestListed(listings);
+  if (!newest) {
+    if (refusal) return refusal;
+    const listingUrl = listings[0]?.url ?? "";
+    console.info(`  [edgar/shareholders] no master.*.idx listed in ${listings.map((l) => l.url).join(", ")}`);
+    return { kind: "not_published", file: null, listingUrl };
+  }
+  return { kind: "found", file: newest.file, url: newest.dirUrl + newest.file };
 }
 
 export async function scanDailyShareholders(opts: ScanOptions): Promise<DailyIndexOutcome> {
   const fetchImpl = opts.fetch ?? edgarFetch;
-  const { date, trackedCiks } = opts;
-  const listing = await listQuarter(date.getUTCFullYear(), quarterFor(date.getUTCMonth() + 1), fetchImpl);
-  if (listing.kind === "refused") {
-    console.warn(`  [edgar/shareholders] daily index listing refused: HTTP ${listing.status ?? "—"} ${listing.url} — ${listing.bodyHead}`);
-    return listing;
-  }
-  const file = masterFileName(date);
-  if (!listing.files.includes(file)) {
-    console.info(`  [edgar/shareholders] ${file} not listed in ${listing.url} (newest listed: ${listing.files[listing.files.length - 1] ?? "none"})`);
-    return { kind: "not_published", file, listingUrl: listing.url };
-  }
+  const { trackedCiks } = opts;
+  const located = await locateIndexFile(opts, fetchImpl);
+  if (located.kind !== "found") return located;
+  const { file, url } = located;
 
-  const url = dailyIndexUrl(date);
   const got = await getOrRefuse(url, "text/plain,*/*", fetchImpl);
   if (got.kind === "refused") {
-    console.warn(`  [edgar/shareholders] daily index HTTP ${got.status ?? "—"} ${url} — ${got.bodyHead}`);
+    console.warn(refusedLine(got, "daily index"));
     return got;
   }
 
-  const rows = parseDailyIndex(got.body).filter(
-    (r) => TARGET_FORMS.has(r.formType) && trackedCiks.has(r.cik),
+  const stats: ScanStats = {
+    rows13dg: 0, rows13dgByForm: {}, rowsTracked: 0, filingsFetched: 0, notFetched: 0,
+    documentsFound: 0, fetchErrors: 0, holdersParsed: 0, holdersWithPct: 0, unparsed: 0, samples: [],
+  };
+  const rows: IndexRow[] = [];
+  for (const r of parseDailyIndex(got.body)) {
+    if (ANY_13DG_RE.test(r.formType)) {
+      stats.rows13dgByForm[r.formType] = (stats.rows13dgByForm[r.formType] ?? 0) + 1;
+    }
+    if (!isTargetForm(r.formType)) continue;
+    stats.rows13dg++;
+    if (trackedCiks.has(r.cik)) rows.push(r);
+  }
+  stats.rowsTracked = rows.length;
+  const cap = opts.maxFilings ?? Number.POSITIVE_INFINITY;
+  const toFetch = rows.slice(0, cap);
+  stats.notFetched = rows.length - toFetch.length;
+  console.info(
+    `  [edgar/shareholders] ${file}: ${stats.rows13dg} 13D/G rows, ${rows.length} on tracked CIKs` +
+    (stats.notFetched > 0 ? `, fetching ${toFetch.length} (cap ${cap})` : ""),
   );
-  console.info(`  [edgar/shareholders] ${rows.length} relevant 13D/G rows in ${file}`);
 
   const out: ShareholderFiling[] = [];
-  for (const row of rows) {
+  for (const row of toFetch) {
     // Filename pattern: edgar/data/{cik_int}/{accession-no-dashes}.txt or .../{accession}-index.html
     const accMatch = row.filename.match(/(\d{10}-\d{2}-\d{6})/);
     if (!accMatch) continue;
     const accession = accMatch[1]!;
+    stats.filingsFetched++;
     let parsed: { body: string; docName: string } | null = null;
     try {
       parsed = await fetchPrimaryFromFilingIndex(row.cik, accession, fetchImpl);
     } catch (err) {
+      stats.fetchErrors++;
       console.warn(`  [edgar/shareholders] ${row.cik} ${accession} fetch failed: ${err instanceof Error ? err.message : err}`);
       continue;
     }
     if (!parsed) continue;
+    stats.documentsFound++;
 
     const holders = extractHolders(parsed.body);
-    if (holders.length === 0) continue;
+    if (holders.length === 0) {
+      stats.unparsed++;
+      continue;
+    }
+    stats.holdersParsed += holders.length;
+    for (const h of holders) {
+      if (h.pctOfClass !== null) stats.holdersWithPct++;
+      if (stats.samples.length < MAX_SAMPLES) {
+        stats.samples.push({ accession, form: row.formType, holder: h.holderName, pct: h.pctOfClass });
+      }
+    }
 
     out.push({
       cik:            row.cik,
@@ -337,5 +483,5 @@ export async function scanDailyShareholders(opts: ScanOptions): Promise<DailyInd
       holders,
     });
   }
-  return { kind: "read", file, filings: out, rowsTracked: rows.length };
+  return { kind: "read", file, filings: out, stats };
 }
