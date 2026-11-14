@@ -7,13 +7,18 @@
  * They are the first Senate fixtures in the tree. Before FIX-1260 the writer
  * read root["result"], which none of them has — every stored Senate roll got
  * vote_result ''.
+ *
+ * FIX-1408 adds a fourth, read 2026-11-13 (cc-277):
+ *   senate-119-1-00062  On the Motion          / Motion Rejected  (S.Amdt. 454 to S.Con.Res. 7)
+ * Its <document> is `S.Amdt.` with an empty number; the bill is in
+ * <amendment><amendment_to_document_number>.
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as path from "path";
-import { parseSenateRoll, senateRollResult } from "./votes";
+import { parseSenateRoll, senateBillRef, senateRollResult, type SenateBillRefContext } from "./votes";
 import { mapVoteResult } from "./members";
 import { mintStatuses, rollPassageAdvances } from "./bill-status";
 
@@ -108,4 +113,185 @@ test("FIX-1260 + FIX-1261: an agreed-to cloture motion mints floor_vote, never p
     rollPassageAdvances([cloture, passage], (k) => (k === "119-HR-4" ? "hr4" : "pn1")),
     [{ id: "hr4", status: "passed_chamber", via: BILL_PASSED }],
   );
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1408 — senateBillRef(), Step 4's bill-reference block lifted out.
+// ---------------------------------------------------------------------------
+
+const ctx = (votedAt: string): SenateBillRefContext => ({
+  congress: 119,
+  votedAt,
+  federalId: "fed",
+  senateGovBodyId: "senate-body",
+  houseGovBodyId: "house-body",
+});
+
+test("FIX-1408 pin: the three existing fixtures give exactly the key and mint args the inline block built", () => {
+  assert.deepEqual(senateBillRef(parseSenateRoll(fixture(BILL_PASSED))!, "senate-119-1-00411", ctx("2025-07-17")), {
+    billKey: "119-HR-4",
+    args: {
+      billKey: "119-HR-4",
+      title: "HR 4",
+      billNumber: "HR 4",
+      billType: "HR",
+      chamber: "house",
+      type: "bill",
+      status: "floor_vote",
+      jurisdictionId: "fed",
+      governingBodyId: "house-body",
+      congressGovUrl: "https://congress.gov/bill/119th-congress/house-bill/4",
+      introducedAt: "2025-07-17T00:00:00.000Z",
+      lastActionAt: "2025-07-17T00:00:00.000Z",
+      congressNumber: 119,
+      session: "119",
+    },
+    amendmentNumber: null,
+    warnings: [],
+  });
+  assert.deepEqual(senateBillRef(parseSenateRoll(fixture(CLOTURE))!, "senate-119-1-00431", ctx("2025-07-23")), {
+    billKey: "119-PN-25-53",
+    args: {
+      billKey: "119-PN-25-53",
+      title: "Aaron Szabo, of Virginia, to be an Assistant Administrator of the Environmental Protection Agency",
+      billNumber: "PN 25-53",
+      billType: "PN",
+      chamber: "senate",
+      type: "appointment",
+      status: "floor_vote",
+      jurisdictionId: "fed",
+      governingBodyId: "senate-body",
+      congressGovUrl: "https://www.congress.gov/nomination/119th-congress/25-53",
+      introducedAt: "2025-07-23T00:00:00.000Z",
+      lastActionAt: "2025-07-23T00:00:00.000Z",
+      congressNumber: 119,
+      session: "119",
+    },
+    amendmentNumber: null,
+    warnings: [],
+  });
+  assert.deepEqual(senateBillRef(parseSenateRoll(fixture(NOMINATION))!, "senate-119-2-00256", ctx("2026-09-30")), {
+    billKey: "119-PN-1129",
+    args: {
+      billKey: "119-PN-1129",
+      title: "Keith Sonderling, of Florida, to be Secretary of Labor",
+      billNumber: "PN 1129",
+      billType: "PN",
+      chamber: "senate",
+      type: "appointment",
+      status: "floor_vote",
+      jurisdictionId: "fed",
+      governingBodyId: "senate-body",
+      congressGovUrl: "https://www.congress.gov/nomination/119th-congress/1129",
+      introducedAt: "2026-09-30T00:00:00.000Z",
+      lastActionAt: "2026-09-30T00:00:00.000Z",
+      congressNumber: 119,
+      session: "119",
+    },
+    amendmentNumber: null,
+    warnings: [],
+  });
+});
+
+const AMDT_MOTION = "lis-senate-119-1-00062-amendment-motion.xml";
+const ROLL_62_TARGET = "<amendment_to_document_number>S.Con.Res. 7</amendment_to_document_number>";
+/** Roll 62 with another `<amendment_to_document_number>` ('' → the empty element). */
+const roll62Targeting = (target: string) => {
+  const xml = fixture(AMDT_MOTION);
+  assert.ok(xml.includes(ROLL_62_TARGET));
+  return parseSenateRoll(
+    xml.replace(ROLL_62_TARGET, target ? `<amendment_to_document_number>${target}</amendment_to_document_number>` : "<amendment_to_document_number/>"),
+  )!;
+};
+
+test("FIX-1408 roll 62: <document> is S.Amdt. with an EMPTY number — the shape the collector skipped", () => {
+  const root = parseSenateRoll(fixture(AMDT_MOTION))!;
+  const doc = root["document"] as Record<string, unknown>;
+  assert.equal(doc["document_type"], "S.Amdt.");
+  assert.equal(doc["document_number"], "");
+  assert.equal(root["question"], "On the Motion");
+  assert.deepEqual(senateRollResult(root), { resultStr: "Motion Rejected", resultText: "Motion Rejected (47-52, 3/5 majority required)" });
+});
+
+test("FIX-1408 D1 + D2: roll 62 is stored against its parent S.Con.Res. 7 and carries S.Amdt. 454", () => {
+  assert.deepEqual(senateBillRef(parseSenateRoll(fixture(AMDT_MOTION))!, "senate-119-1-00062", ctx("2025-02-20")), {
+    billKey: "119-SCONRES-7",
+    args: {
+      billKey: "119-SCONRES-7",
+      title: "SCONRES 7",
+      billNumber: "SCONRES 7",
+      billType: "SCONRES",
+      chamber: "senate",
+      type: "resolution",
+      status: "floor_vote",
+      jurisdictionId: "fed",
+      governingBodyId: "senate-body",
+      congressGovUrl: "https://congress.gov/bill/119th-congress/senate-concurrent-resolution/7",
+      introducedAt: "2025-02-20T00:00:00.000Z",
+      lastActionAt: "2025-02-20T00:00:00.000Z",
+      congressNumber: 119,
+      session: "119",
+    },
+    amendmentNumber: "S.Amdt. 454",
+    warnings: [],
+  });
+});
+
+test("FIX-1408 D1: an amendment target of each measure type maps through normalizeSenateDocType to the same key the <document> branch builds", () => {
+  const table: Array<[string, string, string, string]> = [
+    ["H.R. 1", "119-HR-1", "house", "house-body"],
+    ["S. 5", "119-S-5", "senate", "senate-body"],
+    ["H.J.Res. 20", "119-HJRES-20", "house", "house-body"],
+    ["S.Res. 12", "119-SRES-12", "senate", "senate-body"],
+  ];
+  for (const [target, key, chamber, body] of table) {
+    const ref = senateBillRef(roll62Targeting(target), "senate-119-1-00062", ctx("2025-02-20"));
+    assert.equal(ref.billKey, key, target);
+    assert.equal(ref.args?.billKey, key, target);
+    assert.equal(ref.args?.chamber, chamber, target);
+    assert.equal(ref.args?.governingBodyId, body, target);
+    assert.equal(ref.amendmentNumber, "S.Amdt. 454", target);
+    assert.deepEqual(ref.warnings, [], target);
+  }
+  // …and the args are the <document> branch's own: H.R. 4 by either route mints the same row.
+  const viaTarget = senateBillRef(roll62Targeting("H.R. 4"), "x", ctx("2025-07-17")).args;
+  const viaDocument = senateBillRef(parseSenateRoll(fixture(BILL_PASSED))!, "x", ctx("2025-07-17")).args;
+  assert.deepEqual(viaTarget, viaDocument);
+});
+
+test("FIX-1408 D7: an empty target or one the parser cannot read stays unstored, with one line", () => {
+  for (const target of ["", "Treaty Doc. 119-1", "PN 12"]) {
+    const ref = senateBillRef(roll62Targeting(target), "senate-119-1-00062", ctx("2025-02-20"));
+    assert.equal(ref.billKey, null, target);
+    assert.equal(ref.args, null, target);
+    assert.equal(ref.amendmentNumber, "S.Amdt. 454", target);
+    assert.deepEqual(ref.warnings, [`    senate-119-1-00062: unrecognized amendment target '${target}', skipping bill ref`], target);
+  }
+});
+
+test("FIX-1408 D2: a roll whose <document> names a bill keeps the document's key and still carries its amendment number", () => {
+  const xml = fixture(BILL_PASSED)
+    .replace("<amendment_number/>", "<amendment_number>S.Amdt. 2360</amendment_number>")
+    .replace("<amendment_to_document_number/>", "<amendment_to_document_number>S. 5</amendment_to_document_number>");
+  const ref = senateBillRef(parseSenateRoll(xml)!, "senate-119-1-00411", ctx("2025-07-17"));
+  assert.equal(ref.billKey, "119-HR-4");
+  assert.equal(ref.amendmentNumber, "S.Amdt. 2360");
+  assert.deepEqual(ref.warnings, []);
+});
+
+test("FIX-1408 an unrecognized <document> type falls through to the amendment target; neither readable → both lines", () => {
+  const xml = (target: string) =>
+    fixture(AMDT_MOTION)
+      .replace("<document_number/>", "<document_number>3</document_number>")
+      .replace("<document_type>S.Amdt.</document_type>", "<document_type>Treaty Doc.</document_type>")
+      .replace(ROLL_62_TARGET, target ? `<amendment_to_document_number>${target}</amendment_to_document_number>` : "<amendment_to_document_number/>");
+  const read = senateBillRef(parseSenateRoll(xml("S.Con.Res. 7"))!, "r", ctx("2025-02-20"));
+  assert.equal(read.billKey, "119-SCONRES-7");
+  assert.deepEqual(read.warnings, ["    r: unrecognized Senate document_type 'Treaty Doc.', skipping bill ref"]);
+  const neither = senateBillRef(parseSenateRoll(xml(""))!, "r", ctx("2025-02-20"));
+  assert.equal(neither.billKey, null);
+  assert.deepEqual(neither.warnings, [
+    "    r: unrecognized Senate document_type 'Treaty Doc.', skipping bill ref",
+    "    r: unrecognized amendment target '', skipping bill ref",
+  ]);
 });

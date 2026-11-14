@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FIX-1408 (cc-277): the head, through <count>, is roll 119-1-62's own, as senate.gov serves it
+     (https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00062.xml, read 2026-11-13).
+     The members block is cut to three, copied in shape from lis-senate-119-1-00411-bill-passed.xml; the
+     three casts are illustrative, not roll 62's record. -->
+<roll_call_vote>
+  <congress>119</congress>
+  <session>1</session>
+  <congress_year>2025</congress_year>
+  <vote_number>62</vote_number>
+  <vote_date>February 20, 2025,  06:54 PM</vote_date>
+  <modify_date>February 20, 2025,  08:02 PM</modify_date>
+  <vote_question_text>On the Motion (Motion to Waive All Applicable Budgetary Discipline Re: Schumer Amdt. No. 454)</vote_question_text>
+  <vote_document_text>To prevent unwarranted tax cuts for the ultra-rich.</vote_document_text>
+  <vote_result_text>Motion Rejected (47-52, 3/5 majority required)</vote_result_text>
+  <question>On the Motion</question>
+  <vote_title>Motion to Waive All Applicable Budgetary Discipline Re: Schumer Amdt. No. 454</vote_title>
+  <majority_requirement>3/5</majority_requirement>
+  <vote_result>Motion Rejected</vote_result>
+  <document>
+    <document_congress>119</document_congress>
+    <document_type>S.Amdt.</document_type>
+    <document_number/>
+    <document_name/>
+    <document_title/>
+    <document_short_title/>
+  </document>
+  <amendment>
+    <amendment_number>S.Amdt. 454</amendment_number>
+    <amendment_to_amendment_number/>
+    <amendment_to_amendment_to_amendment_number/>
+    <amendment_to_document_number>S.Con.Res. 7</amendment_to_document_number>
+    <amendment_to_document_short_title>No short title on file</amendment_to_document_short_title>
+    <amendment_purpose>To prevent unwarranted tax cuts for the ultra-rich.</amendment_purpose>
+  </amendment>
+  <count><yeas>47</yeas><nays>52</nays><present/><absent>1</absent></count>
+  <members>
+    <member>
+      <member_full>Alsobrooks (D-MD)</member_full>
+      <last_name>Alsobrooks</last_name>
+      <first_name>Angela</first_name>
+      <party>D</party>
+      <state>MD</state>
+      <vote_cast>Yea</vote_cast>
+      <lis_member_id>S428</lis_member_id>
+    </member>
+    <member>
+      <member_full>Baldwin (D-WI)</member_full>
+      <last_name>Baldwin</last_name>
+      <first_name>Tammy</first_name>
+      <party>D</party>
+      <state>WI</state>
+      <vote_cast>Not Voting</vote_cast>
+      <lis_member_id>S354</lis_member_id>
+    </member>
+    <member>
+      <member_full>Banks (R-IN)</member_full>
+      <last_name>Banks</last_name>
+      <first_name>Jim</first_name>
+      <party>R</party>
+      <state>IN</state>
+      <vote_cast>Nay</vote_cast>
+      <lis_member_id>S429</lis_member_id>
+    </member>
+  </members>
+</roll_call_vote>

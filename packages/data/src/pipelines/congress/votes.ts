@@ -477,6 +477,140 @@ export function senateRollResult(root: Record<string, unknown>): { resultStr: st
   };
 }
 
+/** What a Senate roll's mint args need beyond the roll itself. */
+export interface SenateBillRefContext {
+  congress: number;
+  /** parseSenateDate() of the roll's `<vote_date>`. */
+  votedAt: string | null;
+  federalId: string;
+  senateGovBodyId: string;
+  houseGovBodyId: string;
+}
+
+export interface SenateBillRef {
+  /** `119-HR-4`, `119-PN-1129`, … or null: the roll names no proposal the parser can read. */
+  billKey: string | null;
+  /** The proposal to mint when billKey is novel; null exactly when billKey is. */
+  args: BillProposalArgs | null;
+  /** `<amendment><amendment_number>` as the Senate wrote it ("S.Amdt. 454"), or null when empty. */
+  amendmentNumber: string | null;
+  /** Lines for the run log: a document type or an amendment target the parser cannot read. */
+  warnings: string[];
+}
+
+/** A Senate measure (S., H.R., S.Con.Res., …) by its LIS type string and number, or null for a type normalizeSenateDocType() does not know. */
+function senateMeasureRef(
+  rawType: string,
+  number: string,
+  ctx: SenateBillRefContext,
+): { billKey: string; args: BillProposalArgs } | null {
+  const billType = normalizeSenateDocType(rawType);
+  if (!billType) return null;
+  const billKey = `${ctx.congress}-${billType}-${number}`;
+  const introducedIso = ctx.votedAt ? new Date(ctx.votedAt).toISOString() : null;
+  return {
+    billKey,
+    args: {
+      billKey,
+      title:           `${billType} ${number}`,
+      billNumber:      `${billType} ${number}`,
+      billType,
+      chamber:         chamberForBillType(billType),
+      type:            mapLegislationType(billType) as ProposalType,
+      status:          MINT_FLOOR, // FIX-1261: stamped at flush
+      jurisdictionId:  ctx.federalId,
+      governingBodyId: chamberGovBodyId(billType, ctx.senateGovBodyId, ctx.houseGovBodyId),
+      congressGovUrl:  congressGovBillUrl(ctx.congress, billType, number),
+      introducedAt:    introducedIso,
+      lastActionAt:    introducedIso,
+      congressNumber:  ctx.congress,
+      session:         String(ctx.congress),
+    },
+  };
+}
+
+/**
+ * The proposal a Senate LIS roll is stored against, and the args to mint it
+ * with when it is novel — Step 4's bill-reference block, lifted out so it can
+ * be tested on the fixtures. Pure: the caller logs `warnings` and keeps the
+ * first roll's args for a key.
+ *
+ * `<document>` first (a measure, or a PN); when it yields no key, the
+ * amendment's target (FIX-1408). Neither readable → billKey null, and the
+ * writer records the roll `no_proposal_reference`. `amendmentNumber` is read
+ * whichever route found the key.
+ */
+export function senateBillRef(
+  root: Record<string, unknown>,
+  rollCallId: string,
+  ctx: SenateBillRefContext,
+): SenateBillRef {
+  const warnings: string[] = [];
+  let ref: { billKey: string; args: BillProposalArgs } | null = null;
+
+  const docBlock = root["document"] as Record<string, unknown> | null;
+  if (docBlock) {
+    const rawDocType = String(docBlock["document_type"] ?? "");
+    const docNumber  = String(docBlock["document_number"] ?? "");
+    if (rawDocType && docNumber) {
+      // Presidential Nominations (cabinet, judicial, ambassador
+      // confirmations) — the XML's <document_title> is the nominee
+      // string; route them as type='appointment' with a PN identifier
+      // so they don't end up as fake "S {N}" bills.
+      if (rawDocType.trim().toUpperCase() === "PN") {
+        const documentTitle = String(docBlock["document_title"] ?? "").trim();
+        const introducedIso = ctx.votedAt ? new Date(ctx.votedAt).toISOString() : null;
+        const billKey = `${ctx.congress}-PN-${docNumber}`;
+        ref = {
+          billKey,
+          args: {
+            billKey,
+            title:           (documentTitle || `Presidential Nomination ${docNumber}`).slice(0, 500),
+            billNumber:      `PN ${docNumber}`,
+            billType:        "PN",
+            chamber:         "senate",
+            type:            "appointment" as ProposalType,
+            status:          MINT_FLOOR, // FIX-1261: stamped at flush
+            jurisdictionId:  ctx.federalId,
+            governingBodyId: ctx.senateGovBodyId,
+            congressGovUrl:  `https://www.congress.gov/nomination/${ctx.congress}th-congress/${docNumber}`,
+            introducedAt:    introducedIso,
+            lastActionAt:    introducedIso,
+            congressNumber:  ctx.congress,
+            session:         String(ctx.congress),
+          },
+        };
+      } else {
+        ref = senateMeasureRef(rawDocType, docNumber, ctx);
+        if (!ref) warnings.push(`    ${rollCallId}: unrecognized Senate document_type '${rawDocType}', skipping bill ref`);
+      }
+    }
+  }
+
+  // FIX-1408: an amendment roll's <document> is `S.Amdt.` with an EMPTY
+  // number (roll 119-1-62), so it yields no key; the bill the amendment
+  // amends is <amendment><amendment_to_document_number> ("S.Con.Res. 7"). The
+  // roll is stored against that bill, as the House's amendment rolls are.
+  const amdtBlock = root["amendment"] && typeof root["amendment"] === "object"
+    ? (root["amendment"] as Record<string, unknown>)
+    : null;
+  const amdtText = (k: string) => String(amdtBlock?.[k] ?? "").trim();
+  if (!ref) {
+    const target = amdtText("amendment_to_document_number");
+    // One trailing integer; everything before it is the type.
+    const m = /^(.*?)\s*(\d+)$/.exec(target);
+    ref = m ? senateMeasureRef(m[1]!, m[2]!, ctx) : null;
+    if (!ref) warnings.push(`    ${rollCallId}: unrecognized amendment target '${target}', skipping bill ref`);
+  }
+
+  return {
+    billKey: ref?.billKey ?? null,
+    args: ref?.args ?? null,
+    amendmentNumber: amdtText("amendment_number") || null,
+    warnings,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
