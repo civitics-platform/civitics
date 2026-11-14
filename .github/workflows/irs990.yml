@@ -92,6 +92,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # FIX-1400 — two 2025 TEOS archives are Deflate64 (ZIP method 9), which
+      # Node's zlib cannot inflate; the pipeline falls back to this runner's
+      # Info-ZIP `unzip` for them. The receipt line: the build's Deflate64
+      # option, or a line saying it is missing.
+      - name: unzip Deflate64 support (FIX-1400)
+        run: unzip -v | grep -i deflate64 || echo "unzip: no Deflate64 line (or no unzip binary)"
+
       - name: Run IRS 990 bulk (officers + grants-out)
         run: pnpm --filter @civitics/data data:irs990:ci
 

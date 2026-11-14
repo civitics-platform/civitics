@@ -16,6 +16,7 @@ import * as crypto from "crypto";
 import * as fs    from "fs";
 import * as path  from "path";
 import * as os    from "os";
+import { execFile } from "child_process";
 import * as unzipper from "unzipper";
 import { parse as parseCsvRaw } from "csv-parse";
 
@@ -275,6 +276,141 @@ export async function extractObjectIdXmlsFromZip(
       .on("finish", () => resolve(found))
       .on("error", reject);
   });
+}
+
+// ---------------------------------------------------------------------------
+// FIX-1400 — Deflate64 fallback
+//
+// unzipper inflates with Node's zlib, which speaks Deflate (ZIP method 8) only.
+// 2025_TEOS_XML_05A.zip and 2025_TEOS_XML_11B.zip are method 9, Deflate64
+// (cc-278 read 5: local header bytes 8–9 = 09 00, version-needed 21, bit 3
+// clear; the control 01A is 08 00). zlib fails them with one of two messages:
+// a back-reference past its 32 KiB window, or a block header declaring more
+// distance codes than Deflate allows. For those two messages only, the archive
+// is listed and the needed entries extracted with Info-ZIP's `unzip` (built
+// with USE_DEFLATE64 on ubuntu-latest; irs990.yml prints the line). Every
+// archive that streams today still streams.
+// ---------------------------------------------------------------------------
+
+export const DEFLATE64_ZLIB_MESSAGES = [
+  "invalid distance too far back",
+  "too many length or distance symbols",
+] as const;
+
+export function isDeflate64ZlibError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return DEFLATE64_ZLIB_MESSAGES.some((m) => msg.includes(m));
+}
+
+/** `unzip -Z1 <zip>`: zipinfo mode, one entry name per line. */
+export function unzipListArgs(zipPath: string): string[] {
+  return ["-Z1", zipPath];
+}
+
+/**
+ * `unzip -o -j -qq <zip> <entry>… -d <outDir>`: overwrite, junk paths, quiet,
+ * only the named entries. An argument array for execFile — never a shell
+ * string, so no entry name is ever interpreted by a shell.
+ */
+export function unzipExtractArgs(zipPath: string, entries: string[], outDir: string): string[] {
+  return ["-o", "-j", "-qq", zipPath, ...entries, "-d", outDir];
+}
+
+export type ExecFileLike = (
+  file: string,
+  args: string[],
+  opts: { maxBuffer: number },
+) => Promise<{ stdout: string }>;
+
+const UNZIP_MAX_BUFFER = 64 * 1024 * 1024;   // a ~60k-entry listing is ~2 MB
+
+const execFileAsync: ExecFileLike = (file, args, opts) =>
+  new Promise((resolve, reject) => {
+    execFile(file, args, { maxBuffer: opts.maxBuffer, encoding: "utf8" }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve({ stdout });
+    });
+  });
+
+/** Does the `unzip` binary exist? A spawn error (ENOENT) says no. */
+export async function unzipAvailable(run: ExecFileLike = execFileAsync): Promise<boolean> {
+  try {
+    await run("unzip", ["-v"], { maxBuffer: UNZIP_MAX_BUFFER });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * List the archive, then extract only the needed `{OBJECT_ID}_public.xml`
+ * entries into a scratch directory and read them back. Same contract as
+ * extractObjectIdXmlsFromZip: Map<object_id, xml-string>.
+ */
+export async function extractObjectIdXmlsWithUnzip(
+  zipPath:         string,
+  neededObjectIds: Set<string>,
+  run:             ExecFileLike = execFileAsync,
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const { stdout } = await run("unzip", unzipListArgs(zipPath), { maxBuffer: UNZIP_MAX_BUFFER });
+  const wanted: Array<{ id: string; entry: string }> = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const entry = line.trim();
+    const m = path.basename(entry).match(/^(\d+)(?:_public)?\.xml$/i);
+    if (m && neededObjectIds.has(m[1]!)) wanted.push({ id: m[1]!, entry });
+  }
+  if (wanted.length === 0) return found;
+
+  const outDir = fs.mkdtempSync(path.join(tempDir(), "unzip-"));
+  try {
+    await run("unzip", unzipExtractArgs(zipPath, wanted.map((w) => w.entry), outDir), { maxBuffer: UNZIP_MAX_BUFFER });
+    for (const w of wanted) {
+      const p = path.join(outDir, path.basename(w.entry));
+      if (fs.existsSync(p)) found.set(w.id, fs.readFileSync(p, "utf8"));
+    }
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+  return found;
+}
+
+export interface ExtractDeps {
+  stream:         (zipPath: string, needed: Set<string>) => Promise<Map<string, string>>;
+  unzip:          (zipPath: string, needed: Set<string>) => Promise<Map<string, string>>;
+  unzipAvailable: () => Promise<boolean>;
+}
+
+/**
+ * Stream the ZIP; on one of the two Deflate64 messages, fall back to `unzip`
+ * when the binary exists. Any other error — or a missing binary — rethrows the
+ * ORIGINAL error, and the caller records the archive as failed.
+ */
+export async function extractObjectIdXmls(
+  zipPath: string,
+  needed:  Set<string>,
+  deps:    Partial<ExtractDeps> = {},
+): Promise<{ xmls: Map<string, string>; via: "stream" | "unzip" }> {
+  const d: ExtractDeps = {
+    stream:         extractObjectIdXmlsFromZip,
+    unzip:          (z, n) => extractObjectIdXmlsWithUnzip(z, n),
+    unzipAvailable: () => unzipAvailable(),
+    ...deps,
+  };
+  try {
+    return { xmls: await d.stream(zipPath, needed), via: "stream" };
+  } catch (err) {
+    if (!isDeflate64ZlibError(err)) throw err;
+    if (!(await d.unzipAvailable())) throw err;
+    const original = err instanceof Error ? err.message : String(err);
+    console.info(`      ${path.basename(zipPath)}: zlib "${original}" (Deflate64?) — retrying with unzip`);
+    try {
+      return { xmls: await d.unzip(zipPath, needed), via: "unzip" };
+    } catch (unzipErr) {
+      const msg = unzipErr instanceof Error ? unzipErr.message : String(unzipErr);
+      throw new Error(`${original}; unzip fallback failed — ${msg}`);
+    }
+  }
 }
 
 /** Convenience: where to write temp ZIPs during a pipeline run. */
