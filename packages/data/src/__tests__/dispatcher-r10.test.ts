@@ -13,9 +13,10 @@
  *     note is appended to; the guard admits the gated push's own hold;
  *   - the read-back pins every other column, one row on the pipeline, and the
  *     current four bodies (dispatch_one_unit = the md5 of FIX-1361's body);
- *   - the body (FIX-1295 M3, the md5 prod runs, cc-257 read 4): the START gate,
- *     the 64MB SET, ONE query_canceled sub-block whose cancel path RETURNs (so
- *     the reap reads `succeeded`) and whose error path RAISEs;
+ *   - the body (FIX-1384's one-pass stage since cc-280; FIX-1295 M3 before):
+ *     the START gate, the 64MB SET, ONE query_canceled sub-block — the stage
+ *     and both rollups inside it — whose cancel path RETURNs (so the reap reads
+ *     `succeeded`) and whose error path RAISEs;
  *   - the I6 ladder counts every reap of a pipeline row after its last
  *     complete|partial, whatever the reap's text;
  *   - the revert matches the new text and touches only the rule.
@@ -65,12 +66,14 @@ const REVERT = () => read(path.join(ROOT, "scripts", "fix1371-revert-return-cont
 // FIX-1382 (cc-263) converted the hold this file asserts; its revert puts FIX-1311's hold back first.
 const CUTOVER = () => read(path.join(ROOT, "scripts", "fix1382-revert-convert-contract-flow-hold.sql"));
 
-/** The live body (cc-257 read 4: prod = clone), last CREATEd by FIX-1295 M3. */
+/** The live body, last CREATEd by FIX-1384's one-pass stage (cc-280). */
 const BODY = {
-  md5: "c699dc7d6acf1cf35a3164b71ec0a3aa",
-  src: () => prosrc(one("_fix1295_work_mem_m3.sql"), "CREATE OR REPLACE PROCEDURE public.refresh_contract_flow_rollups()", "$procedure$"),
+  md5: "e19b470b888726356e1df21ccf7f1bb6",
+  src: () => prosrc(one("_fix1384_contract_flow_one_pass_stage.sql"), "CREATE OR REPLACE PROCEDURE public.refresh_contract_flow_rollups()", "$procedure$"),
   name: "refresh_contract_flow_rollups",
 } as const;
+/** The FIX-1295 M3 body the FIX-1371 file's NOTICE names (cc-257 read 4). That file is history. */
+const M3_BODY_MD5 = "c699dc7d6acf1cf35a3164b71ec0a3aa";
 
 const re = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -147,16 +150,18 @@ test("FIX-1371 read-back: every other column unchanged, one row on the pipeline,
   assert.ok(sql.includes("v_cool, v_cool, v_cool * 2, v_cool * 4"), "the ladder's first three offsets, from the dial");
 });
 
-test("the body (c699dc7d, FIX-1295 M3): the START gate, 64MB, ONE query_canceled sub-block; a cancel RETURNs, an error RAISEs", () => {
+test("the body (e19b470b, FIX-1384 one-pass): the START gate, 64MB, ONE query_canceled sub-block; a cancel RETURNs, an error RAISEs", () => {
   const b = BODY.src();
   assert.equal(md5(b), BODY.md5, "the last CREATE of the body is the one prod runs");
   assert.ok(b.includes("v_gate := public.box_backoff_gate('contract-flow-rollups-refresh', 1800);"), "its own START gate, before the lock");
   assert.ok(b.indexOf("box_backoff_gate(") < b.indexOf("pg_try_advisory_lock(c_lock_key)"));
   assert.ok(b.includes("SET work_mem = '64MB';") && b.includes("SET max_parallel_workers_per_gather = 0;"), "= cap_mb 64");
   assert.equal(b.split("WHEN query_canceled THEN").length - 1, 1, "ONE sub-block");
-  assert.ok(b.indexOf("COMMIT;") < b.indexOf("v_stage := 'contract_recipient_rollup';"), "the running row COMMITs first (FIX-1194 P1-A)");
+  assert.ok(b.indexOf("COMMIT;") < b.indexOf("v_stage := 'contract_flow_stage';"), "the running row COMMITs first (FIX-1194 P1-A)");
+  assert.ok(b.indexOf("v_stage := 'contract_flow_stage';") < b.indexOf("v_stage := 'contract_recipient_rollup';"), "the stage first (FIX-1384)");
   assert.ok(b.includes("DELETE FROM public.contract_recipient_rollup;") && b.includes("DELETE FROM public.contract_agency_sector_rollup;"));
-  assert.ok(b.indexOf("DELETE FROM public.contract_agency_sector_rollup;") < b.indexOf("WHEN query_canceled THEN"), "both tables inside the sub-block");
+  assert.ok(b.indexOf("DELETE FROM public.contract_flow_stage;") > b.indexOf("COMMIT;"), "the stage replace after the running row's COMMIT");
+  assert.ok(b.indexOf("DELETE FROM public.contract_agency_sector_rollup;") < b.indexOf("WHEN query_canceled THEN"), "all three tables inside the sub-block (D6)");
   assert.match(b, /'canceled', v_canceled IS NOT NULL,\s+'cancel_detail', v_canceled,\s+'stage_in_flight', v_stage,\s+'elapsed_seconds'/);
   // cc-257: a budget cancel is CAUGHT — the row closes `failed`, the CALL returns, the one-shot reads `succeeded`.
   assert.match(
@@ -165,7 +170,7 @@ test("the body (c699dc7d, FIX-1295 M3): the START gate, 64MB, ONE query_canceled
     "only an error RAISEs; a cancel RETURNs",
   );
   const file = stripComments(FILE());
-  assert.ok(file.includes(`c_body  CONSTANT text := '${BODY.md5}';`), "the NOTICE says whether the body is still the one its premise reads");
+  assert.ok(file.includes(`c_body  CONSTANT text := '${M3_BODY_MD5}';`), "the NOTICE says whether the body is still the one its premise reads");
   assert.ok(file.includes("box_backoff_gate(''contract-flow-rollups-refresh'', 1800)"));
   assert.ok(file.includes("SET work_mem = ''64MB'';"));
 });

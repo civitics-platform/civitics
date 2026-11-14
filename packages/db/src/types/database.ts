@@ -1582,6 +1582,36 @@ export type Database = {
         }
         Relationships: []
       }
+      contract_flow_stage: {
+        Row: {
+          award_count: number
+          from_id: string
+          from_type: string
+          naics_code: string | null
+          to_id: string
+          to_type: string
+          total_cents: number
+        }
+        Insert: {
+          award_count: number
+          from_id: string
+          from_type: string
+          naics_code?: string | null
+          to_id: string
+          to_type: string
+          total_cents: number
+        }
+        Update: {
+          award_count?: number
+          from_id?: string
+          from_type?: string
+          naics_code?: string | null
+          to_id?: string
+          to_type?: string
+          total_cents?: number
+        }
+        Relationships: []
+      }
       contract_recipient_rollup: {
         Row: {
           award_count: number
