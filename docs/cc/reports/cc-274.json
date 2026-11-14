@@ -1,0 +1,55 @@
+{
+  "cc": "274",
+  "prompt": "cc-prompt-274-fix1372-senate-polite-client-tail-first-walk-seen-unstored-record-pipeline-state-blocked-class-backoff-paced-gets.md",
+  "started_at": "2026-11-14T01:39:29Z",
+  "finished_at": "2026-11-14T02:03:00Z",
+  "head_before": "67d04991",
+  "head_after": "5f2e2340",
+  "commits": [
+    {
+      "sha": "ea49ca95",
+      "subject": "[skip vercel] chore(fixes): file FIX-1407 — the Senate roll walk re-fetches ~160 unstorable rolls a night, unpaced, and reads a 403 as past-the-end (cc-274)"
+    },
+    {
+      "sha": "426b47a0",
+      "subject": "feat(data): the roll probe's polite walk — tail first, seen-unstored skips, 403/429 as blocked with retries, paced GETs; all opt-in, the House walk unchanged (cc-274)"
+    },
+    {
+      "sha": "0a98ed40",
+      "subject": "fix(data): FIX-1407 — the Senate walk keeps a seen-unstored record in pipeline_state, walks the current session's new rolls first, retries 403/429 as blocked and paces its GETs (cc-274)"
+    },
+    {
+      "sha": "300402a0",
+      "subject": "[skip vercel] docs: the Senate roll walk — the seen-unstored record's key and what clears it, blocked 403s, pacing; congress-ids s12–s14 and the owed receipts (cc-274)"
+    },
+    {
+      "sha": "5f2e2340",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-274 — FIX-1407 closes (local; three nightlies owed after 2026-11-17T01:00Z); FIX-1372 stays open (45 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1407"
+  ],
+  "fixes_filed": [
+    "FIX-1407"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1407",
+      "what": "three nightlies at their slots after the ff (11-14, 11-15, 11-16 21:00Z) — per night and session the Senate summary line verbatim, GETs sent, tail-new, seen-unstored skipped, blocked + retries, the stop reason; the record's row on prod (N known by reason, tail_closed for session 1). Met when, from the second night on, each session sends at most 10 GETs and no session stops on blocked; a night that still stops on blocked is quoted with its GET count at the first 403",
+      "after": "2026-11-17T01:00Z"
+    },
+    {
+      "fix": "FIX-1372",
+      "what": "over the same three nights every Senate roll voted on day D is in votes by the nightly of D+1 (newest stored voted_at against the Senate's own floor days) — evidence for Craig's close-or-hold, not a close",
+      "after": "2026-11-17T01:00Z"
+    }
+  ]
+}
