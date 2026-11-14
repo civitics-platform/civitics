@@ -41,8 +41,8 @@ import {
   type ImpliedCostBasis,
 } from "./platform-rates";
 import {
-  anniversaryCycle,
   calendarMonthCycle,
+  upstashCycle,
   vendorWindowCycle,
   type ProviderCycle,
 } from "./billing-cycles";
@@ -1613,11 +1613,11 @@ export async function computePlatformUsagePayload(
 
   // ── FIX-1089: billing cycles, with provenance ───────────────────────────────
   //
-  // Everything here has been quietly anchored to the calendar month, and two
-  // providers are not on it. Both were found by asking the vendor: Vercel says
-  // Aug 14 – Sep 14, and Upstash's allotment rolls on the 13th (the monthly
-  // anniversary of its creation_time). `source` is what lets the UI caveat the
-  // assumed windows instead of rendering all of them with equal authority.
+  // Everything here has been quietly anchored to the calendar month, and one
+  // provider is not on it: Vercel says Aug 14 – Sep 14. Upstash was thought to
+  // roll on the 13th (its creation_time) until its counter reset on the 1st
+  // twice (FIX-1314). `source` is what lets the UI caveat the assumed windows
+  // instead of rendering all of them with equal authority.
   const cycleNow = new Date();
   const cycles: Record<string, ProviderCycle> = {
     supabase: calendarMonthCycle(
@@ -1678,18 +1678,10 @@ export async function computePlatformUsagePayload(
         "Fallback: the team billing endpoint did not return a period this tick. " +
           "The real Vercel cycle is NOT the calendar month.",
       );
-    const upstashCreatedAt = upstashPayload?.usage?.created_at ?? null;
-    if (upstashCreatedAt) {
-      cycles["upstash"] = anniversaryCycle(
-        new Date(upstashCreatedAt),
-        cycleNow,
-        `Derived from the management API's creation_time (${upstashCreatedAt}): ` +
-          "the 500,000-command allotment is per BILLING PERIOD and rolls on that " +
-          "day of the month, not on the 1st. This is the answer to 'when does " +
-          "the rate limiter come back' — the calendar-month answer is wrong.",
-        "api",
-      );
-    }
+    // FIX-1314: the calendar month, whether or not this tick read the management
+    // API — the allotment's cycle does not depend on the reading. `usage.created_at`
+    // stays in the payload; it is not the anchor.
+    cycles["upstash"] = upstashCycle(cycleNow);
   }
 
   // ── FIX-1089: the true monthly cost to run ──────────────────────────────────

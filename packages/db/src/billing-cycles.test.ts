@@ -1,10 +1,11 @@
 /**
  * FIX-1089 — per-provider billing cycles.
  *
- * The two cases that matter are the two providers that are NOT on the calendar
- * month, and both are pinned here with the real numbers read off the vendors on
- * 2026-08-22: Vercel's stated Aug 14 – Sep 14 window, and Upstash's 13th-of-
- * month anniversary derived from `creation_time`.
+ * The case that matters is the provider that is NOT on the calendar month,
+ * pinned here with the real numbers read off the vendor on 2026-08-22: Vercel's
+ * stated Aug 14 – Sep 14 window. Upstash was pinned beside it on its 13th-of-
+ * month `creation_time` anniversary until the counter reset on the 1st
+ * (FIX-1314); its calendar cycle and the readings behind it are pinned now.
  *
  * The rest are edge cases that would each produce a confidently wrong date:
  * short-month clamping, an anniversary that has not happened yet this month,
@@ -17,6 +18,7 @@ import assert from "node:assert/strict";
 import {
   anniversaryCycle,
   calendarMonthCycle,
+  upstashCycle,
   vendorWindowCycle,
 } from "./billing-cycles";
 
@@ -55,8 +57,29 @@ test("a missing or inverted vendor window refuses rather than degrading silently
   assert.equal(vendorWindowCycle(Number.NaN, 1789369200000, NOW, ""), null);
 });
 
-test("Upstash: the allotment rolls on the 13th, not the 1st", () => {
-  // creation_time 1781337093 (epoch SECONDS) = 2026-06-13T07:51:33Z.
+test("Upstash (FIX-1314): the allotment's cycle is the calendar month, and its note names the readings", () => {
+  // 2026-11-13 is the creation_time anniversary FIX-1089 anchored on (the 13th).
+  // The counter reset on 11-01, so the cycle in progress started then.
+  const c = upstashCycle(new Date("2026-11-13T12:00:00.000Z"));
+  assert.equal(c.start, "2026-11-01T00:00:00.000Z");
+  assert.equal(c.end, "2026-12-01T00:00:00.000Z");
+  assert.equal(c.source, "calendar", "an assumption backed by readings, never 'api'");
+  assert.equal(c.label, "Nov 1 – Dec 1");
+  // The note is the card's caveat: it carries the readings, not creation_time.
+  assert.match(c.detail, /2026-09-01T00:01:16Z/);
+  assert.match(c.detail, /503,289 at 2026-10-31T23:31:07Z to 0 at 2026-11-01T00:00:58Z/);
+  assert.match(c.detail, /499,686 at 10-13T06:01Z, 499,693 at 08:01Z, 499,774 at 10-15T02:01Z/);
+  assert.match(c.detail, /creation_time .* is not the anchor/);
+
+  // The 13th itself does not roll it: 07:51Z on 10-13 sits inside Oct 1 – Nov 1.
+  const oct = upstashCycle(new Date("2026-10-13T07:51:33.000Z"));
+  assert.equal(oct.start, "2026-10-01T00:00:00.000Z");
+  assert.equal(oct.end, "2026-11-01T00:00:00.000Z");
+});
+
+test("anniversaryCycle: the 13th-of-month arithmetic FIX-1089 built for Upstash still holds", () => {
+  // creation_time 1781337093 (epoch SECONDS) = 2026-06-13T07:51:33Z. No
+  // provider uses this cycle since FIX-1314; the function's arithmetic is kept.
   const anchor = new Date(1781337093 * 1000);
   assert.equal(anchor.toISOString(), "2026-06-13T07:51:33.000Z");
 
@@ -64,8 +87,6 @@ test("Upstash: the allotment rolls on the 13th, not the 1st", () => {
   assert.equal(c.start, "2026-08-13T00:00:00.000Z");
   assert.equal(c.end, "2026-09-13T00:00:00.000Z");
   assert.equal(c.source, "api");
-  // THE number the 2026-08-15 incident needed: when does the limiter come back.
-  // The calendar-month answer (Sep 1) is wrong by twelve days.
   assert.equal(c.days_remaining, 21);
 });
 

@@ -20,6 +20,11 @@
  * question that matters during that incident — when does the rate limiter come
  * back — and the calendar-month answer (Sep 1) is wrong by twelve days.
  *
+ * CORRECTED (FIX-1314): the Upstash anchor above was wrong. Every reset the
+ * counter has shown since landed on the 1st, and the 13th passed twice with no
+ * reset, so Upstash is on the calendar month after all — see `upstashCycle`.
+ * Vercel's window stands.
+ *
  * ── HONESTY ABOUT PROVENANCE ─────────────────────────────────────────────────
  *
  * `source` is not decoration. A cycle read off the vendor and a cycle we
@@ -156,7 +161,8 @@ export function vendorWindowCycle(
 
 /**
  * The cycle implied by a monthly anniversary — a subscription that renews on
- * the Nth of each month (Upstash, from its `creation_time`).
+ * the Nth of each month. Built for Upstash's `creation_time`, which turned out
+ * not to be its anchor (FIX-1314); no provider uses it today.
  *
  * Short months clamp: an anchor on the 31st rolls on the 28th/30th, matching
  * how every subscription biller behaves. Without the clamp, February would
@@ -186,4 +192,24 @@ export function anniversaryCycle(
   const endMs = Date.UTC(sy, sm + 1, dayIn(sy, sm + 1));
 
   return finish(startMs, endMs, now.getTime(), source, detail);
+}
+
+// ── Upstash: the calendar month, read off the counter (FIX-1314) ──────────────
+
+/**
+ * Why Upstash's cycle is the calendar month. The vendor states no billing
+ * period, so this is an assumption, and these readings are what back it. It is
+ * rendered as the card's caveat on the `(calendar)` tag.
+ */
+export const UPSTASH_CYCLE_NOTE =
+  "Calendar month, read off the counter; the vendor states no billing period, and " +
+  "creation_time (2026-06-13, the 13th) is not the anchor. Resets seen: the limiter " +
+  "read healthy again at 2026-09-01T00:01:16Z (cc-229), and total_monthly_requests " +
+  "fell from 503,289 at 2026-10-31T23:31:07Z to 0 at 2026-11-01T00:00:58Z (cc-279). " +
+  "No reset on the 13th: 499,686 at 10-13T06:01Z, 499,693 at 08:01Z, 499,774 at " +
+  "10-15T02:01Z (cc-233); 282,419 → 283,768 → 285,360 across 11-13T07:51Z (cc-279).";
+
+/** The allotment's current cycle: the UTC calendar month, with its readings. */
+export function upstashCycle(now: Date): BillingCycle {
+  return calendarMonthCycle(now, UPSTASH_CYCLE_NOTE);
 }
