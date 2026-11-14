@@ -1873,3 +1873,5 @@
 2026-11-14 | FIX-1407 | 0a98ed40 | local-only | fix(data): FIX-1407 — the Senate walk keeps a seen-unstored record in pipeline_state, walks the current session's new rolls first, retries 403/429 as blocked and paces its GETs (cc-274)
 2026-11-14 | FIX-1408 | 608c33f4 | local-only | fix(data): FIX-1408 — the Senate's amendment rolls are stored against their parent bill with metadata.amendment_number; the seen-unstored record goes to v2; the graph's procedural filter learns 'on the amendment' (cc-277)
 2026-11-14 | FIX-1406 | e069cb70 | local+prod | fix(db): FIX-1406 — drop public.web_vitals_samples, no reader and no writer since deploy A (cc-275)
+2026-11-14 | FIX-1313 | f1bf283f | local-only | fix(db): FIX-1313 — the limiter's budget hold keys on an estimate, the monthly counter plus daily growth since its last move (cc-279)
+2026-11-14 | FIX-1314 | 2baf3ac4 | local-only | fix(db): FIX-1314 — the costs card's Upstash cycle is the calendar month, read off the counter (cc-279)
