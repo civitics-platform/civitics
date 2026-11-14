@@ -928,6 +928,71 @@ A blocked night adds `first HTTP 403 at GET n on roll r`.
 node scripts/db-query.mjs --prod "SELECT value, updated_at FROM pipeline_state WHERE key = 'congress_votes:senate_rolls:119'"
 ```
 
+### The EDGAR daily 13D/G scan (FIX-1394, FIX-1410)
+
+`edgar_daily` (`runEdgarDailyPipeline()` in `packages/data/src/pipelines/edgar/`,
+in the nightly's fec phase) reads one SEC daily index file for
+beneficial-ownership filings on the ~500 tracked S&P CIKs.
+
+- **The directory.** Daily files are
+  `https://www.sec.gov/Archives/edgar/daily-index/{YYYY}/QTR{N}/master.YYYYMMDD.idx`.
+  `full-index/` holds only the quarter's cumulative files; a dated name under it
+  does not exist.
+- **A missing file answers 403, never 404.** The body is
+  `<Error><Code>AccessDenied</Code>…`, the same as a real refusal. Status alone
+  cannot tell them apart, so the run reads the quarter's listing first
+  (`…/QTR{N}/index.json`). A file the listing does not name is
+  `skipped / index_not_published`. `failed` means the listing failed, or a file
+  it names answered non-OK. The error message carries the status, the URL and
+  the body's first 120 characters. A file that was read with no tracked row is
+  `skipped / no_filings`, with `index_file` and the 13D/G counts in metadata.
+  A refusal does not turn the fec-phase red (the opm-fte pattern).
+- **Which file.** The newest `master.*.idx` the listing names. The nightly
+  starts at 21:00Z (16:00 ET), and a day's file is listed around 22:00 ET, so
+  this is the previous business day's file. A weekend re-reads Friday's. In a
+  quarter's first 7 days the previous quarter is listed too.
+  `EDGAR_DAILY_DATE=YYYY-MM-DD` reads exactly that day's file instead. There is
+  no watermark and no catch-up.
+- **Form names.** `SCHEDULE 13D`, `SCHEDULE 13D/A`, `SCHEDULE 13G` and
+  `SCHEDULE 13G/A`, plus the older `SC 13D/G` names.
+  `metadata.rows_13dg_by_form` counts every 13D/13G-looking name, so a third
+  renaming shows up there.
+- **Dry mode: `EDGAR_DAILY_WRITES = false`** (`edgar/index.ts`). The run does
+  everything up to the writes. It fetches at most 200 tracked filings, parses
+  their cover pages and stops: no `shareholders` row, no edge, no review-queue
+  row, no `pipeline_state` key. It logs `complete` with `metadata.dry_run: true`,
+  `index_file`, `rows_13dg`, `rows_tracked`, `filings_fetched`, `not_fetched`,
+  `documents_found`, `fetch_errors`, `holders_parsed`, `holders_with_pct`,
+  `unparsed` and up to 5 `samples`. To switch the writes on, flip the constant
+  in a commit (its test pins it false on purpose). cc-278's local read of
+  `master.20261113.idx` parsed 0 holders from 95 filings. A tracked CIK is also
+  often the filer rather than the subject (Morgan Stanley: 47 of 95 rows). Read
+  those before flipping it.
+
+```bash
+node scripts/db-query.mjs --prod "SELECT started_at, status, error_message, metadata - 'peak_rss_mb' AS meta FROM data_sync_log WHERE pipeline = 'edgar_daily' ORDER BY started_at DESC LIMIT 5"
+```
+
+### IRS 990 archives and `partial` (FIX-1400)
+
+`irs990.yml` (Mon 15:00Z) downloads each year's TEOS ZIPs and streams them
+through `unzipper`, which inflates with Node's zlib — Deflate (ZIP method 8)
+only. Some archives are Deflate64 (method 9: `2025_TEOS_XML_05A.zip` and
+`_11B.zip`). zlib fails those with `invalid distance too far back` or
+`too many length or distance symbols`. For those two messages only, the run
+lists the archive with the runner's Info-ZIP `unzip` and extracts just the
+needed `{OBJECT_ID}_public.xml` entries. That needs the binary: the workflow
+step `unzip Deflate64 support (FIX-1400)` prints the build's `USE_DEFLATE64`
+line. Without the binary, the original error stands.
+
+The run ends **`partial`** when a download or extract failure leaves needed
+object ids unresolved. `metadata.zips_failed` lists `[{zip, error}]` and
+`metadata.object_ids_unresolved` lists the ids. A downloads page that lists no
+archive counts as a download failure. `metadata.zips_via_unzip` names the
+archives the fallback read. A clean run is `complete` with no new key. The
+year's watermark stays withheld while ids remain, so the next Monday retries
+them.
+
 ### Windows-Specific: Exit Code Fix
 
 On Windows, Node.js pipelines may crash with **exit code 3221226505** (Windows/Node libuv issue). This is fixed in the codebase by appending:
