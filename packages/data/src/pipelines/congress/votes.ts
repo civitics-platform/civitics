@@ -59,7 +59,22 @@ import {
   type InsertFailure,
   type SkippedRoll,
 } from "./vote-bill-guard";
-import { looksLikeRoll, probeSessionRolls } from "./roll-probe";
+import {
+  BLOCKED_LIMIT,
+  BLOCKED_RETRY_DELAYS_MS,
+  looksLikeRoll,
+  probeSessionRolls,
+  type RollProbeSummary,
+} from "./roll-probe";
+import {
+  closesTail,
+  mergeSenateUnstored,
+  readSenateUnstored,
+  senateSkipSets,
+  senateUnstoredLine,
+  writeSenateUnstored,
+  SENATE_PACE_MS,
+} from "./senate-unstored";
 import { XMLParser } from "fast-xml-parser";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect } from "../../lib/heavy-rebuild";
@@ -826,16 +841,28 @@ export async function runVotesPipeline(
     console.info(`  Pre-loaded ${senateExistingIds.size} existing Senate roll IDs`);
   }
 
+  // FIX-1407: the rolls earlier runs fetched as rolls and could not store, and
+  // which past sessions' ends are already known. One read; a failed one is a
+  // loud line and an empty record (tonight fetches them all again).
+  const senateToday = new Date().toISOString().slice(0, 10);
+  const senateRecord = await readSenateUnstored(db, CURRENT_CONGRESS);
+  const senateSkip = senateSkipSets(senateRecord, senateToday);
+  const senateProbes: Array<{ session: number; year: number; summary: RollProbeSummary }> = [];
+
   // Pass 1: fetch + parse XML for all novel rolls; buffer bill args + vote data.
   // FIX-1324: the same walk as the House — senate.gov answered past the last
   // roll with a 200 HTML page, and since 10-23 answers everything 403.
-  for (const { session } of sessions) {
+  // FIX-1407: the polite walk — the current session first and each session's
+  // new rolls before its gaps, known-unstored rolls skipped, 403/429 retried as
+  // blocked, GETs paced. senate.gov serves a few dozen GETs and then 403s, so
+  // the new rolls go out first.
+  for (const { session, year } of [...sessions].sort((a, b) => b.year - a.year)) {
     console.info(`\n  Senate session ${session} — collecting rolls...`);
 
     const folderKey = `vote${CURRENT_CONGRESS}${session}`;
     const padded = (rollNum: number) => String(rollNum).padStart(5, "0");
 
-    await probeSessionRolls({
+    const summary = await probeSessionRolls({
       label: `Senate session ${session}`,
       rootTag: SENATE_ROLL_ROOT,
       rollCallIdFor: (rollNum) => `senate-${CURRENT_CONGRESS}-${session}-${padded(rollNum)}`,
@@ -846,6 +873,12 @@ export async function runVotesPipeline(
       fetchText,
       parse: parseSenateRoll,
       log: (line) => console.info(line),
+      seen: senateSkip.seen,
+      recheck: senateSkip.recheck,
+      order: "tail-first",
+      skipTail: senateRecord.sessions[String(session)]?.tail_closed === true,
+      blocked: { retryDelaysMs: BLOCKED_RETRY_DELAYS_MS, limit: BLOCKED_LIMIT },
+      paceMs: SENATE_PACE_MS,
     }, ({ rollNum, rollCallId, url, parsed: root }) => {
       try {
         const voteDateStr  = String(root["vote_date"] ?? "");
@@ -935,6 +968,7 @@ export async function runVotesPipeline(
         console.error(`    Senate roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
     });
+    senateProbes.push({ session, year, summary });
   }
 
   stampMintStatuses(senateBillArgs, senateRollBuffer);
@@ -998,6 +1032,20 @@ export async function runVotesPipeline(
   votesInserted += senateWrite.inserted;
   skippedRolls.push(...senateWrite.skipped);
   insertFailures.push(...senateWrite.insertFailures);
+
+  // FIX-1407: fold tonight into the record — every roll skipped before its
+  // insert, with why (never an insert failure); drop what is stored now; close
+  // a past session's tail that ended cleanly past the end. One write.
+  {
+    const nowYear = new Date().getUTCFullYear();
+    const merged = mergeSenateUnstored(senateRecord, {
+      unstored: senateWrite.unstored,
+      stored: new Set([...senateExistingIds, ...senateWrite.landed]),
+      tailClosed: senateProbes.filter((p) => closesTail(p.year, p.summary.tail, nowYear)).map((p) => p.session),
+    }, senateToday);
+    console.info(senateUnstoredLine(merged.record, merged.added, senateSkip.recheck.size, merged.pruned));
+    await writeSenateUnstored(db, CURRENT_CONGRESS, merged.record);
+  }
 
   // FIX-1257: the House pass, for the Senate. Live since FIX-1260 —
   // senateRollResult() reads <vote_result>; before it, `root["result"]` read an

@@ -221,6 +221,18 @@ export interface WriteRollsDeps<R extends RollForWrite, V> {
   log(line: string): void;
 }
 
+/**
+ * FIX-1407: why a roll that parsed did not land. `no_proposal_reference` is a
+ * roll with no bill reference the parser reads; `bill_unresolved` is one whose
+ * reference resolved to no proposal this run. The guard's reasons are its own.
+ */
+export type UnstoredReason =
+  | "no_proposal_reference"
+  | "bill_unresolved"
+  | "no_voted_at"
+  | SkipReason
+  | "no_matchable_records";
+
 export interface WriteRollsResult {
   inserted: number;
   skipped: SkippedRoll[];
@@ -231,6 +243,8 @@ export interface WriteRollsResult {
    * serve as status evidence.
    */
   landed: string[];
+  /** FIX-1407: every roll skipped before its insert, and why. An insert failure is never here. */
+  unstored: Array<{ roll: string; reason: UnstoredReason }>;
 }
 
 /**
@@ -242,15 +256,17 @@ export async function writeRollVotes<R extends RollForWrite, V>(
   rolls: readonly R[],
   deps: WriteRollsDeps<R, V>,
 ): Promise<WriteRollsResult> {
-  const out: WriteRollsResult = { inserted: 0, skipped: [], insertFailures: [], landed: [] };
+  const out: WriteRollsResult = { inserted: 0, skipped: [], insertFailures: [], landed: [], unstored: [] };
   for (const roll of rolls) {
     const proposalId = deps.proposalIdFor(roll.billKey);
     if (!proposalId) {
       deps.log(`    ${roll.rollCallId}: no proposal reference, skipping vote records`);
+      out.unstored.push({ roll: roll.rollCallId, reason: roll.billKey ? "bill_unresolved" : "no_proposal_reference" });
       continue;
     }
     if (!roll.votedAt) {
       deps.log(`    ${roll.rollCallId}: no voted_at, skipping (column is NOT NULL)`);
+      out.unstored.push({ roll: roll.rollCallId, reason: "no_voted_at" });
       continue;
     }
     const a = roll.billKey ? deps.absent.get(roll.billKey) : undefined;
@@ -263,11 +279,13 @@ export async function writeRollVotes<R extends RollForWrite, V>(
         reason: a.reason,
         holder_proposal_id: a.holder_proposal_id,
       });
+      out.unstored.push({ roll: roll.rollCallId, reason: a.reason });
       continue;
     }
     const records = deps.build(roll, proposalId, new Date(roll.votedAt).toISOString());
     if (records.length === 0) {
       deps.log(`    ${roll.rollCallId}: no matchable vote records`);
+      out.unstored.push({ roll: roll.rollCallId, reason: "no_matchable_records" });
       continue;
     }
     const { error } = await deps.insert(records);
