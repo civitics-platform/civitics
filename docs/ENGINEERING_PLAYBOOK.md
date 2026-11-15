@@ -55,6 +55,9 @@ FIX-1377). New rule **C13**.
 **Extended 2026-11-14** with contract-flow's one-pass stage (cc-280, FIX-1384).
 New rule **B6**.
 
+**Extended 2026-11-15** with the vote edge rule (cc-283, FIX-1409). New rule
+**E12**.
+
 ---
 
 ## A. Data-shape regimes
@@ -1656,3 +1659,26 @@ display cache. When the request-path cost is counting rather than aggregating, a
 exact count taken daily beats a planner estimate taken constantly — the price is
 freshness, so surface it rather than hide it. *FIX-735, FIX-736, FIX-1146,
 FIX-1095*
+
+### E12. A `DISTINCT ON … ORDER BY <date>, <uuid>` picks at random inside a day. Break the tie on the domain's own sequence.
+
+Both EC vote arms kept one edge per (official, bill) with `ORDER BY …,
+voted_at DESC NULLS LAST, id DESC`. `voted_at` is a `timestamptz`, which reads
+as "the latest roll wins". But it is a date in practice: 46 of the clone's
+983,626 vote rows carry a time of day. 173,038 (official, bill, day) groups hold
+more than one roll, and inside each one `id`, a uuid, picked the roll. Ordering
+the same rows by the roll number (the trailing integer of `roll_call_id`) moves
+the deciding roll for **72,788 House and 13,040 Senate pairs**, 85,828 of
+517,046. The bug sat under a second, louder one (no question rule at all, so a
+cloture or amendment roll could decide the edge), and a census of the tie
+groups is what found it. A uuid tiebreak makes the result deterministic for a
+given heap, so no test that reruns the query sees it change. It is random only
+with respect to what the reader means.
+
+**Apply:** before trusting a "latest" pick, count the ties on its leading sort
+key (`GROUP BY <partition>, <key> HAVING count(*) > 1`). If they are not ~0,
+the tiebreak is part of the meaning. Order by the source's own sequence (a roll
+number, a filing sequence, an amendment index), and keep the surrogate id only
+as the last, never-reached key. Check what precision the column actually
+carries, not the type it is declared as. *FIX-1409 ·
+`20261117000000_fix1409_vote_edge_question_rule.sql` · cc-283 read 5*

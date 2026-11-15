@@ -34,7 +34,9 @@ edges from `votes`; `co_sponsorship`; `appointment` / `holds_position` (career
 history plus matched `irs990_officers`); `oversight`. The scheduled path is the `ec-crawl` unit
 (`run_entity_connections_rebuild`, sync-log pipeline `entity_connections_rebuild`).
 `pnpm --filter @civitics/data data:rebuild-connections` refreshes derived edges
-against the local Docker DB.
+against the local Docker DB. Which roll decides a vote edge (FIX-1409: final,
+else advance at 0.250, by roll number inside a day) and the `_votes_full()`
+merge: `docs/OPERATIONS.md` §The official → bill vote edge.
 
 ---
 
