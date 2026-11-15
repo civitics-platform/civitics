@@ -520,6 +520,15 @@ Reflect:
 
 ---
 
+## Open designs (parked 2026-11-14)
+
+Moved from `docs/FIXES.md` by cc-284. Both re-open at the next graph design session (`docs/PHASE_GOALS.md`, Phase 2 · Graph Enhancements).
+
+- **Attribution on the graph routes — was FIX-405.** (1) The per-edge model: one source, a `(from_source, to_source)` pair, or a source typed by relationship? (2) Attribution after aggregation: when N edges collapse into one chord arc, what does `attribution.primary` name — the most common source, the union, or null? (3) The cost of a per-row `source_count` on list endpoints: benchmark first, and materialize `attribution_source_count` if it becomes a hotspot.
+- **Governing bodies, jurisdictions and meetings on the graph — was FIX-468, its design half.** Does a governing body become a node with member and jurisdiction edges, or a group that expands to its members? Do jurisdictions seed as geographic group expansions or as nodes? Are meetings worth graph presence at all? Should the hard-coded presets (`apps/civitics/app/graph/EmptyStatePresets.tsx`) derive from `governing_bodies` rows, so the two mechanisms become one? The guard half shipped with FIX-764, and institutions already seed as gb-backed groups (FIX-490).
+
+---
+
 ## Done log
 
 When a FIX in this plan lands, append a one-liner here so future readers see what

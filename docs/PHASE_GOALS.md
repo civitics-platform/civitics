@@ -9,7 +9,9 @@
 > Phase 2 pipelines were re-verified and are still skeletons — see the annotations.
 >
 > **Percentages** are a simple checkbox ratio over the phase's own `- [ ]` / `- [x]`
-> bullets (sub-bullets and notes don't count). `/api/phases` parses these header
+> bullets (sub-bullets and notes don't count, nor do the parked `— was FIX-NNN;
+> re-open when …` lines: deferred features moved from `FIXES.md` on 2026-11-14,
+> each waiting on the event it names). `/api/phases` parses these header
 > lines at runtime — see `apps/civitics/app/api/phases/route.ts` (FIX-1078). Keep the
 > `` `~NN% complete` `` / `` `Planned` `` token shape intact or the public
 > Development Progress section on `/dashboard` drops to its static fallback.
@@ -91,6 +93,7 @@
   - `GlobalSearch` component — nav (Cmd/Ctrl+K, dropdown) + hero (full-width) variants
   - `/search` full results page — tabs (All/Officials/Proposals/Agencies), grouped results
   - GIN trigram indexes — migration `0008_search_indexes.sql` applied
+- [ ] Trending / Most Commented / New tabs on `/proposals` — was FIX-029; re-open when proposals carry comments and human page views pass about 1,000 a day
 
 ### Graph Features
 - [x] Connection graph with D3 force simulation (`packages/graph/src/ForceGraph.tsx`)
@@ -163,6 +166,7 @@
 - [x] Budget alerts system — threshold alerts surfaced in admin dashboard
 - [x] Configurable thresholds — admin-adjustable budget limits via dashboard UI
 - [x] Admin dashboard controls — manual pipeline triggers, alert history, limit config
+- [ ] Billable egress in the `connection_graph_live` kill switch — was FIX-603; re-open when Supabase exposes billable egress through its Management API, or a monthly figure is wired by hand
 
 ### Diagnostic Tools
 - [x] Graph snapshot API — `/api/graph/snapshot`
@@ -207,6 +211,7 @@
 - [x] Alert history — past threshold breaches logged and viewable
 - [x] Admin-only dashboard controls — gated by `ADMIN_EMAIL` env var
 - [ ] Custom storage domain — still the R2-issued `pub-*.r2.dev` subdomain (`CLOUDFLARE_R2_PUBLIC_URL_DOCUMENTS`); no custom hostname bound yet
+- [ ] Live activity spliced over the cached jurisdiction payload — was FIX-670; re-open when someone reports stale jurisdiction activity
 
 ### Database (live prod counts, audited 2026-08-22)
 
@@ -245,6 +250,8 @@ constantly — treat them as an order-of-magnitude snapshot, not a target.
 - [x] Position tracking on proposals — `PositionSection` on proposal + initiative detail pages; writes `entity_positions` (21 rows on prod), history in `position_events`
 - [x] Follow officials and agencies — `FollowButton` on officials, institutions, jurisdictions, and initiatives; `user_follows` (9 rows on prod) surfaced in `/desk` via `WatchingModule`
   - `notifications` table exists and is wired, but has not fired yet (0 rows) — worth a look before calling the loop closed
+- [ ] jurisdiction_admin / staff / institution_admin claim flows — was FIX-561; re-open when the first feature needs one of those roles
+- [ ] Sybil ↔ brigade corroboration join — was FIX-881; re-open when `abuse_events` holds post-launch traffic and `data:sybil-scan` has appended real candidates on prod (2026-11-15: 1 row in `abuse_events`, 0 in `brigade_candidates`, 0 in `sybil_candidates`)
 
 ### Shipped since 2026-03 (not in the original plan)
 
@@ -297,6 +304,7 @@ both directions.
 - [x] Community presets — user-saved named views
   - Shipped as **localStorage**-backed saved views (`civitics_presets`, `packages/graph/src/saved-views.ts`, FIX-817), not the originally-specced `graph_presets` table — that table was never created
   - The Browse explorer's `SavedViewsRail` reads the same contract; a DB-backed store (FIX-763) remains the longer-term merge target
+- [ ] Source attribution on the graph routes, per node and per edge — was FIX-405; re-open at the next graph design session (the open questions are in `docs/GRAPH_PLAN.md` §Open designs)
 
 ### AI Power Features
 - [ ] Connection mapping queries
@@ -314,6 +322,7 @@ both directions.
 - [ ] First paying institutional customer
 - [ ] Open Collective donations active
 - [ ] First grant received
+- [ ] Per-pair transaction ledger behind a graph edge (paid tier) — was FIX-830; re-open when the credit or revenue mechanism is live
 
 ### Data Coverage Expansion (carried forward from rebuild spec)
 
