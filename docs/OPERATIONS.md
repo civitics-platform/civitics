@@ -249,9 +249,10 @@ GitHub does not run a `.github/workflows/*.yml` it cannot parse. What it does in
 - **Every push to `main` makes a failed run of that workflow, at 0 s**, whatever the push
   changed and whether or not the file has a `push:` trigger (`irs990.yml` has none).
   Docs-only and `[skip vercel]` pushes count too: GitHub cannot read the file's `on:`,
-  so it cannot tell that the push is not one of its events. `gh run list --workflow <file>` shows `failure … push … 0s`,
-  and the run page says it likely failed because of a workflow file issue, with the
-  parser's line and column.
+  so it cannot tell that the push is not one of its events.
+- **What it looks like:** `gh run list --workflow <file>` shows `failure … push … 0s`.
+  `gh run view <id>` prints `This run likely failed because of a workflow file issue.`
+  and nothing more. `pnpm check:workflows <file>` gives the line and column.
 - **Its `on.schedule` never fires.** The schedule lives inside the file. `irs990.yml`
   did not parse from `fa3a54cd` (cc-278, 2026-11-14 ~04:53Z) to `c63d2784` (cc-282,
   2026-11-15 05:15Z). That was 19 zero-second push failures. Had it gone on to Mon 11-16,
