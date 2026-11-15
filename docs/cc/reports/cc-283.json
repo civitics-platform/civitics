@@ -1,0 +1,48 @@
+{
+  "cc": "283",
+  "prompt": "cc-prompt-283-fix1409-vote-edge-latest-final-class-roll-advance-tier-roll-number-order-sql-question-rule-votes-full-as-merge-clone-proof-no-prod-push.md",
+  "started_at": "2026-11-15T05:13:58Z",
+  "finished_at": "2026-11-15T06:12:00Z",
+  "head_before": "49b76374",
+  "head_after": "f00a278d",
+  "commits": [
+    {
+      "sha": "962a245d",
+      "subject": "feat(congress): FIX-1409 voteQuestionClass and three new passage-questions.json keys (cc-283)"
+    },
+    {
+      "sha": "18a179aa",
+      "subject": "feat(db): FIX-1409 the vote edge rule — final, else advance at 0.250, by roll number inside a day; _votes_full() merges (cc-283)"
+    },
+    {
+      "sha": "67998c7a",
+      "subject": "fix(graph): FIX-1409 the three passage questions leave the procedural filter (cc-283)"
+    },
+    {
+      "sha": "8fc15c71",
+      "subject": "[skip vercel] docs(ops): the vote edge rule and the _votes_full() merge — runbook, playbook E12, project steps (cc-283)"
+    },
+    {
+      "sha": "f00a278d",
+      "subject": "[skip vercel] chore(fixes): file FIX-1416 — 143 Senate nomination rolls are stored on proposals typed bill, minted 2026-04-22 with a vote tally as the bill number (cc-283)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1416"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1409",
+      "what": "the supervised prod merge: the migration pushed, rebuild_entity_connections_votes_full() run once under its own claim; the NOTICE line's five counts beside the clone's; vote edges by type and strength before and after; the pairs whose type changed, per chamber; VACUUM (ANALYZE) on entity_connections after; then the first nightly's incremental arm on the new body",
+      "after": "2026-11-18T05:00Z"
+    }
+  ]
+}
