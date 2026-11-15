@@ -18,10 +18,17 @@
 // the list below and its test; docs/CLOUDFLARE.md §Origin auth, "The beacon
 // routes", says how to reverse the flag on past rows.
 //
+// THE EDGE BLOCK. Since 2026-11-14T01:34:46Z the same ten strings are blocked
+// at the edge by a clause in Cloudflare's `Common Exploit Paths` rule
+// (docs/CLOUDFLARE.md §3, "The fleet clause"), so a request carrying one never
+// reaches the app. The flag here still labels any such request that does reach
+// it, which is every one if that clause is ever removed. The rule cannot read
+// this list: a change to one is a change to both, by hand.
+//
 // THE COST OF A FALSE POSITIVE. A real Windows user still on one of these ten
-// releases loses only telemetry: their page_views row is labelled
-// `chrome-133-142` (still written, so still countable). No page, API or
-// limiter behaviour changes for them.
+// releases gets Cloudflare's 403 on every path. If the edge clause goes, the
+// cost falls back to telemetry: their page_views row is labelled
+// `chrome-133-142` (still written, so still countable).
 
 /** The ten user agents audit §12 classifies as the fleet (`userAgent_in`). */
 export const CHROME_FLEET_UAS: ReadonlySet<string> = Object.freeze(
