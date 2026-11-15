@@ -1,5 +1,5 @@
 {
-  "_doc": "FIX-1257/FIX-1261 — the roll-call questions that ARE a vote on a measure's passage (or adoption) in one chamber, lowercased with whitespace collapsed. ONE list, read by bill-status.ts (the nightly) and scripts/lib/bill-status-evidence.mjs (the cc-185 manifests), so the backfills and the writer cannot disagree. Picked by meaning from prod's distinct vote_question values (cc-185 read 2, 2026-10-03 23:01 UTC). NOT here: cloture, motions to proceed/table/recommit/commit/refer/discharge, amendments, 'On Ordering the Previous Question', 'On Consideration of the Resolution', the Senate's bare 'On the Motion' (the motion is named only in vote_title), 'On the Nomination' (a PN is not a bill), and both veto-override questions (a different stage). Concurrence questions ARE here: a concur vote that passed proves the measure passed this chamber (and the other), so passed_chamber is a true lower bound.",
+  "_doc": "FIX-1257/FIX-1261 — the roll-call questions that ARE a vote on a measure's passage (or adoption) in one chamber, lowercased with whitespace collapsed. ONE list, read by bill-status.ts (the nightly) and scripts/lib/bill-status-evidence.mjs (the cc-185 manifests), so the backfills and the writer cannot disagree. Picked by meaning from prod's distinct vote_question values (cc-185 read 2, 2026-10-03 23:01 UTC). NOT here: cloture, motions to proceed/table/recommit/commit/refer/discharge, amendments, 'On Ordering the Previous Question', 'On Consideration of the Resolution', the Senate's bare 'On the Motion' (the motion is named only in vote_title), 'On the Nomination' (a PN is not a bill), and both veto-override questions (a different stage). Concurrence questions ARE here: a concur vote that passed proves the measure passed this chamber (and the other), so passed_chamber is a true lower bound. FIX-1409: `nomination`, `veto_override` and `advance` are read ONLY by the official → bill vote-edge rule (bill-status.ts voteQuestionClass, and its SQL twin public.vote_question_class in 20261117000000_fix1409_vote_edge_question_rule.sql, whose literals a test holds equal to these five keys). house + senate + nomination + veto_override are tier `final`; `advance` (a yes moves the measure forward) is tier 2. isPassageQuestion and bill status read house + senate only.",
   "house": [
     "on passage",
     "on passage of the bill",
@@ -29,5 +29,19 @@
     "on the resolution",
     "on the concurrent resolution",
     "on the conference report"
+  ],
+  "nomination": [
+    "on the nomination"
+  ],
+  "veto_override": [
+    "on overriding the veto",
+    "passage, objections of the president to the contrary notwithstanding"
+  ],
+  "advance": [
+    "on the cloture motion",
+    "on cloture on the motion to proceed",
+    "on the motion to proceed",
+    "on the motion to discharge",
+    "on motion to discharge"
   ]
 }

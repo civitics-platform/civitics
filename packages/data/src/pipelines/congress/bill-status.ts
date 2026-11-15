@@ -81,6 +81,43 @@ export function isPassageQuestion(voteQuestion: string | null | undefined): bool
 }
 
 /**
+ * FIX-1409 — which rolls may decide an official → bill vote edge. `final` (the
+ * passage lists, plus `nomination` and `veto_override`) decides it at strength
+ * 0.500; `advance` (a yes moves the measure forward: cloture, proceed,
+ * discharge) only when the member has no final roll on the bill, at 0.250;
+ * `other` (amendments, table, recommit, the previous question, …) never.
+ */
+export type VoteQuestionClass = "final" | "advance" | "other";
+
+const FINAL_QUESTIONS: ReadonlySet<string> = new Set([
+  ...passageQuestions.house,
+  ...passageQuestions.senate,
+  ...passageQuestions.nomination,
+  ...passageQuestions.veto_override,
+]);
+const ADVANCE_QUESTIONS: ReadonlySet<string> = new Set(passageQuestions.advance);
+
+/** The two federal roll_call_id shapes (votes.ts): `2026-house-123`, `senate-119-2-00250`. */
+export const FEDERAL_ROLL_CALL_ID = /^(?:[0-9]{4}-house|senate-[0-9]+-[0-9]+)-[0-9]+$/;
+
+/**
+ * The class of one roll. Only federal rolls are classed by question: another
+ * collector's roll (Legistar, a state body) is `final` whatever its question,
+ * because those questions are not censused and classing them `other` would
+ * delete local edges. SQL twin: public.vote_roll_class().
+ */
+export function voteQuestionClass(
+  voteQuestion: string | null | undefined,
+  rollCallId: string | null | undefined,
+): VoteQuestionClass {
+  if (!FEDERAL_ROLL_CALL_ID.test(rollCallId ?? "")) return "final";
+  const q = (voteQuestion ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (FINAL_QUESTIONS.has(q)) return "final";
+  if (ADVANCE_QUESTIONS.has(q)) return "advance";
+  return "other";
+}
+
+/**
  * FIX-1261 — the status a vote-path mint takes when no roll in the run proves
  * passage: the measure reached the floor, and that is all a roll proves. Never
  * `failed`: a failed roll is a failed MOTION — a recommit, an amendment, even a
