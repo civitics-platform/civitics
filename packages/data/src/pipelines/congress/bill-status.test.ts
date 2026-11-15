@@ -15,6 +15,8 @@ import assert from "node:assert/strict";
 import {
   mapBillStatus,
   isPassageQuestion,
+  voteQuestionClass,
+  FEDERAL_ROLL_CALL_ID,
   rollPassageAdvances,
   mintStatuses,
   stampMintStatuses,
@@ -22,6 +24,7 @@ import {
   type RollEvidence,
 } from "./bill-status";
 import type { ProposalStatus } from "./status-rank";
+import passageQuestions from "./passage-questions.json";
 
 const TEXTS: Array<[string | undefined, ProposalStatus | null]> = [
   // stage-less: null (each was `introduced` before FIX-1257)
@@ -282,4 +285,81 @@ test("FIX-1261 rollPassageAdvances uses the extended list — a resolution adopt
     () => "hres9",
   );
   assert.deepEqual(pairs, [{ id: "hres9", status: "passed_chamber", via: "2026-house-202" }]);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1409 — voteQuestionClass: which rolls may decide an official → bill vote
+// edge. The SQL twin (public.vote_roll_class) is held equal to it on every
+// distinct roll of the clone by fix1409-vote-edge-rule.test.ts.
+// ---------------------------------------------------------------------------
+
+const HOUSE_ROLL = "2026-house-123";
+const SENATE_ROLL = "senate-119-2-00250";
+
+test("FIX-1409 voteQuestionClass — every string of the five keys classes as its tier, on both federal shapes", () => {
+  const tiers: Array<[string[], "final" | "advance"]> = [
+    [passageQuestions.house, "final"],
+    [passageQuestions.senate, "final"],
+    [passageQuestions.nomination, "final"],
+    [passageQuestions.veto_override, "final"],
+    [passageQuestions.advance, "advance"],
+  ];
+  for (const [list, tier] of tiers) {
+    assert.ok(list.length > 0);
+    for (const q of list) {
+      for (const id of [HOUSE_ROLL, SENATE_ROLL]) assert.equal(voteQuestionClass(q, id), tier, `${q} @ ${id}`);
+      // the census's casing and spacing
+      assert.equal(voteQuestionClass(`  ${q.toUpperCase().replace(/ /g, "   ")} `, HOUSE_ROLL), tier, q);
+    }
+  }
+  assert.equal(voteQuestionClass("On the Nomination", SENATE_ROLL), "final");
+  assert.equal(voteQuestionClass("Passage, Objections of the President To The Contrary Notwithstanding", HOUSE_ROLL), "final");
+  assert.equal(voteQuestionClass("On Overriding the Veto", SENATE_ROLL), "final");
+  assert.equal(voteQuestionClass("On Cloture on the Motion to Proceed", SENATE_ROLL), "advance");
+  assert.equal(voteQuestionClass("On Motion to Discharge", HOUSE_ROLL), "advance");
+});
+
+test("FIX-1409 voteQuestionClass — D2's never-list (a yes is against, or not on the measure) classes other", () => {
+  for (const q of [
+    "On Motion to Table", "On the Motion to Table", "Table Motion to Reconsider", "Table Motion to Refer",
+    "On Motion to Recommit", "On the Motion to Recommit", "On Motion to Commit", "On Motion to Commit with Instructions",
+    "On Ordering the Previous Question",
+    "On Agreeing to the Amendment", "On Agreeing to the Amendment, as Modified", "On the Amendment",
+    "On the Point of Order", "On the Decision of the Chair",
+    "On the Motion", // the Senate's bare motion: named only in vote_title
+    "On the Motion to Adjourn",
+    "On Consideration of the Resolution", "On Motion to Refer", "On Motion to Reconsider",
+    "", "   ",
+  ]) {
+    assert.equal(voteQuestionClass(q, HOUSE_ROLL), "other", q);
+    assert.equal(voteQuestionClass(q, SENATE_ROLL), "other", q);
+  }
+  assert.equal(voteQuestionClass(null, HOUSE_ROLL), "other");
+  assert.equal(voteQuestionClass(undefined, SENATE_ROLL), "other");
+});
+
+test("FIX-1409 voteQuestionClass — D9: another collector's roll is final whatever its question", () => {
+  // Legistar stores a bare event id (legistar/mappers.ts), and a null question.
+  for (const id of ["123456", "franklin-prop-hb03-passage", "franklin-prop-cm11-passage", "", null, undefined]) {
+    for (const q of ["On Motion to Recommit", "On Passage", "On Adoption", null]) {
+      assert.equal(voteQuestionClass(q, id), "final", `${q} @ ${id}`);
+    }
+  }
+  // Only the two shapes votes.ts writes are federal; near misses are not.
+  for (const id of [HOUSE_ROLL, "2019-house-1001", SENATE_ROLL, "senate-118-1-00001"]) assert.ok(FEDERAL_ROLL_CALL_ID.test(id), id);
+  for (const id of ["26-house-123", "2026-house-", "house-2026-123", "senate-119-00250", "senate-119-2-", "x2026-house-123", "2026-house-123x"]) {
+    assert.ok(!FEDERAL_ROLL_CALL_ID.test(id), id);
+  }
+});
+
+test("FIX-1409 isPassageQuestion is unchanged: house + senate in, the three new keys out", () => {
+  for (const q of [...passageQuestions.house, ...passageQuestions.senate]) assert.equal(isPassageQuestion(q), true, q);
+  for (const q of [...passageQuestions.nomination, ...passageQuestions.veto_override, ...passageQuestions.advance]) {
+    assert.equal(isPassageQuestion(q), false, q);
+  }
+  // The new keys share no string with house / senate (the JSON is one list per stage).
+  const passage = new Set([...passageQuestions.house, ...passageQuestions.senate]);
+  for (const q of [...passageQuestions.nomination, ...passageQuestions.veto_override, ...passageQuestions.advance]) {
+    assert.ok(!passage.has(q), q);
+  }
 });
