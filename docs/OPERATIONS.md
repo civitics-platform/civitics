@@ -958,6 +958,78 @@ A blocked night adds `first HTTP 403 at GET n on roll r`.
 node scripts/db-query.mjs --prod "SELECT value, updated_at FROM pipeline_state WHERE key = 'congress_votes:senate_rolls:119'"
 ```
 
+### The official → bill vote edge (FIX-1409)
+
+**Prod is NOT on this rule yet.** `20261117000000_fix1409_vote_edge_question_rule.sql`
+landed on `main` in cc-283 and was not pushed. The prod push and its one
+`_votes_full()` merge are a supervised step (`docs/cc/projects/congress-ids.md`
+s19). Until then prod's arms run the old bodies (md5 `4e34295b…` / `584de460…`),
+and the graph route's procedural filter stays.
+
+The votes arms of the EC rebuild keep one `vote_yes` / `vote_no` / `vote_abstain`
+edge per (official, bill). Which roll decides it:
+
+- **Tiers.** `public.vote_question_class(q)` classes a question `final`,
+  `advance` or `other`. `final` is `passage-questions.json`'s `house`, `senate`,
+  `nomination` and `veto_override` keys. `advance` is its `advance` key: cloture,
+  the motion to proceed, the motion to discharge (a yes moves the measure on).
+  Everything else is `other`: amendments, table, recommit, the previous
+  question, points of order, the Senate's bare `On the Motion`. The JSON is the
+  source; a test holds the SQL literals equal to its five keys, and
+  `voteQuestionClass()` (`bill-status.ts`) is the TS twin. `isPassageQuestion()`
+  and bill status read `house` + `senate` only.
+- **Only federal rolls are classed.** `public.vote_roll_class(q, roll_call_id)`
+  applies the question's class to `<year>-house-<n>` and
+  `senate-<congress>-<session>-<n>` ids. Any other collector's roll (Legistar, a
+  state body) is `final`.
+- **The pick.** The member's `final` rolls if any, else their `advance` rolls,
+  else no edge. Inside a tier: `voted_at DESC`, then the roll number (the
+  trailing integer of `roll_call_id`) DESC, then `id DESC`. `voted_at` is
+  a date in practice (46 of 983,626 clone rows carry a time of day), so the
+  roll number is what orders a vote-a-rama day.
+- **The edge.** `strength` 0.500 for a final edge, 0.250 for an advance edge.
+  `evidence_ids = ARRAY[<the deciding vote>]`, `occurred_at` its date, no
+  metadata.
+
+**`rebuild_entity_connections_votes_full()` is a merge.** It builds the set once,
+then deletes the edges whose pair left the set, replaces the ones whose type
+changed (delete, then insert; never an UPDATE of a key column), updates the ones
+whose strength, date or evidence moved (stamping `derived_at`, which the stats
+arm's fingerprint reads), and inserts the missing. It ends with one NOTICE:
+
+```
+[votes_full] merge: deleted 10728 / retyped 33482 / updated 63907 / inserted 0 / untouched 410005
+```
+
+That is the clone's first merge (cc-283): 31.4 s, against 73.7 s for a
+delete-all + insert of the same 507,394 edges. A second call reads `… / 0 / 0 /
+0 / 0 / untouched 507394` (15.9 s). The returned rows are each type's count in
+the set, as before. Follow it with `VACUUM (ANALYZE) public.entity_connections`
+(27.1 s on the clone; 108,117 dead tuples). Nothing scheduled calls
+`_votes_full()`. Every `ec-crawl` / `rebuild-ec-incremental*` command is
+`'incremental'`, so it runs only by hand or through the incremental arm's
+NULL-watermark fall-through.
+
+**What only the merge removes.** The incremental arm keys its dirty set on a
+vote row's CURRENT (official, bill), so an edge whose pair moved is never
+retired. That covers a vote re-attributed to another official, or re-pointed to
+another bill. The clone held 1,076 such edges: 48 Senate officials' votes were
+re-attributed to 48 others on 2026-08-01.
+
+**Readers a 0.250 edge meets** (cc-283 read 7; none filters on strength in SQL):
+
+| reader | effect on an advance edge |
+|---|---|
+| `/api/graph/sunburst` | sized `strength × 1,000,000`, so half a final edge's wedge; sorted by strength before the top-10 cut |
+| `/api/graph/snapshot` | `ORDER BY strength DESC` then `LIMIT` (default 100) |
+| `get_group_connections` | `ORDER BY amount_cents DESC NULLS LAST, strength DESC LIMIT` |
+| ForceGraph "Min strength" slider | default 0; at 0.3 and above it hides 0.250 edges |
+| `/api/graph/connections` procedural filter | drops an edge whose every roll starts with a procedural prefix. `on the cloture motion`, `on the motion to proceed` and `on the motion` (which also catches `on the motion to discharge`) hide most Senate advance edges until the filter goes |
+
+Rollback: `scripts/fix1409-revert-vote-edge-question-rule.sql` restores the two
+old bodies verbatim and drops nothing. The next `_votes_full()` under them is
+the old delete-all + insert.
+
 ### The EDGAR daily 13D/G scan (FIX-1394, FIX-1410)
 
 `edgar_daily` (`runEdgarDailyPipeline()` in `packages/data/src/pipelines/edgar/`,

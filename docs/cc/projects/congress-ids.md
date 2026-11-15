@@ -23,6 +23,9 @@ steps:
   - {id: s15, kind: cc, ref: "cc-277", title: "FIX-1408 the Senate's amendment rolls — the parent bill from <amendment_to_document_number> when <document> names none, metadata.amendment_number on each row, SENATE_UNSTORED_VERSION 2, the graph prefix 'on the amendment'; FIX-1409 (the EC vote arm) filed, not built", done: 2026-11-14}
   - {id: s16, kind: receipt, ref: "FIX-1408", title: "the nightlies after the ff: per night and session the Senate line and the record line; on prod, Senate rolls and vote rows carrying metadata.amendment_number per session, their distinct parent bills, the record's remaining no_proposal_reference count with five ids named, the proposals minted for an amendment's parent. Met when both sessions' gap passes have completed once at v2 and every roll still unstored is named with its reason", after: 2026-11-17T01:00Z}
   - {id: s17, kind: receipt, ref: "FIX-1409", title: "the same nights: Senate (official, bill) pairs on prod whose latest roll carries metadata.amendment_number, beside cc-277 read 3's local baseline (29,070 pairs, 11,452 decided by a non-passage, non-nomination roll) — a reading, not a close", after: 2026-11-17T01:00Z}
+  - {id: s18, kind: cc, ref: "cc-283", title: "FIX-1409 the vote edge rule, built and proven on the clone — vote_question_class / vote_roll_class from passage-questions.json (three new keys), final else advance at 0.250, roll number inside a day; _votes_full() a merge; the graph's three passage prefixes out. 20261117000000 lands on main NOT pushed", done: 2026-11-15}
+  - {id: s19, kind: op, ref: "FIX-1409", title: "the supervised prod merge — db:push:prod carries 20261117000000 alone; rebuild_entity_connections_votes_full() once under its own claim, its NOTICE beside the clone's (deleted 10,728 / retyped 33,482 / updated 63,907 / inserted 0 / untouched 410,005); VACUUM (ANALYZE) entity_connections after", after: 2026-11-18T05:00Z}
+  - {id: s20, kind: receipt, ref: "FIX-1409", title: "vote edges on prod by type and strength before and after, the retyped pairs per chamber, n_dead_tup after the vacuum; then the first ec-crawl votes arm on the new body (md5 efb7d5f6…) — its dirty pairs equal to the rule", after: 2026-11-19T05:00Z}
 ---
 
 # Congress-legislators FEC ids (FIX-1189)
@@ -51,3 +54,13 @@ carries the amendment's number in `votes.metadata`, and bumps the record to v2
 so every roll is fetched once more. The polite walk's gap pass lands them; no
 backfill. FIX-1409 is what that exposes: the EC vote arm lets an official's
 latest roll on a bill decide the edge, whatever its question.
+
+**The vote edge rule (s18–s20, FIX-1409).** cc-283 built the rule and proved it
+on the clone; prod is not on it. An official → bill edge now comes from the
+member's latest `final` roll on the bill (the passage lists, nominations, veto
+overrides), else an `advance` roll (cloture, proceed, discharge) at strength
+0.250, else no edge; a same-day tie goes to the higher roll number, not a uuid.
+`_votes_full()` merges instead of deleting and re-inserting every vote edge. The
+next prompt pushes the migration and runs the one merge, supervised; until then
+prod's nightly arm runs the old body. Runbook: `docs/OPERATIONS.md` §The
+official → bill vote edge.
