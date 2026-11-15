@@ -242,6 +242,35 @@ git push origin feature/fix-<id>:main     # rejected if main moved: rebase, retr
 git commit -m "[skip vercel] chore: next change"
 ```
 
+### A workflow file that does not parse (FIX-1414)
+
+GitHub does not run a `.github/workflows/*.yml` it cannot parse. What it does instead:
+
+- **Every push to `main` makes a failed run of that workflow, at 0 s**, whatever the push
+  changed and whether or not the file has a `push:` trigger (`irs990.yml` has none).
+  Docs-only and `[skip vercel]` pushes count too: GitHub cannot read the file's `on:`,
+  so it cannot tell that the push is not one of its events. `gh run list --workflow <file>` shows `failure … push … 0s`,
+  and the run page says it likely failed because of a workflow file issue, with the
+  parser's line and column.
+- **Its `on.schedule` never fires.** The schedule lives inside the file. `irs990.yml`
+  did not parse from `fa3a54cd` (cc-278, 2026-11-14 ~04:53Z) to `c63d2784` (cc-282,
+  2026-11-15 05:15Z). That was 19 zero-second push failures. Had it gone on to Mon 11-16,
+  the 15:00Z slot would not have run.
+- **The usual cause** is a plain-scalar `run:` whose text holds a `: ` (colon-space) or
+  starts with a YAML indicator (`*`, `&`, `!`, `{`, `[`, `#`). In irs990.yml it was
+  `echo "unzip: no Deflate64 line …"` at 100:57. Put such a command in a `|` block
+  scalar.
+
+**The guard:** `pnpm check:workflows` (`scripts/check-workflows-parse.mjs`) parses every
+workflow file with js-yaml. It fails on the first one that does not parse, printing
+`file:line:col`, and on one with no top-level `jobs` key. It takes file paths to check
+just those. `tests.yml` runs it as a blocking step after the install. Its `paths-ignore`
+is `docs/**` only, so a workflow-only push is gated. It is **not** in the pre-push hook:
+a worktree that has not re-installed has no js-yaml. Run it before pushing any
+`.github/workflows/**` change. `pnpm check:workflows:test` is its fixture suite. Its
+kill proof reads `fa3a54cd` from history, so it needs a full clone. It parses only, so
+expressions, action inputs and cron strings are not linted.
+
 ### FIXES workflow — mechanics
 
 The rules are in root `CLAUDE.md` §FIXES Workflow, the trailer vocabulary in

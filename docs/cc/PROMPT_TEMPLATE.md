@@ -369,19 +369,24 @@ passing, and both failures the clock rather than the data.
 
 - `pnpm build` (or `turbo run typecheck` + `lint` for a code-only change) before
   any non-`[skip vercel]` commit.
-- **`tests.yml` runs NINE blocking checks** (FIX-1307 added `check:job-registry`):
-  `typecheck` · `lint` · `check:reads` · `check:render-timeouts` ·
-  `check:workflow-parity` · `check:proconfig` · `check:no-store-routes` · the
-  three unit suites (`@civitics/data`, `@civitics/app-civitics`,
-  `@civitics/db`). Run the ones a change can plausibly break before pushing,
-  not after. `check:render-timeouts` also fails a `revalidate` page that reads
+- **`tests.yml` runs THIRTEEN blocking steps** (FIX-1414 added
+  `check:workflows`): `typecheck` · `lint` · `check:reads` ·
+  `check:render-timeouts` · `check:workflow-parity` · `check:workflows` ·
+  `check:proconfig` · `check:no-store-routes` · `check:job-registry` (after its
+  `:test`, FIX-1307) · `db-query:test` (FIX-1373) · the three unit suites
+  (`@civitics/data`, `@civitics/app-civitics`, `@civitics/db`). Run the ones a
+  change can plausibly break before pushing, not after. A
+  `.github/workflows/**` change runs `check:workflows`. `check:render-timeouts` also fails a `revalidate` page that reads
   through `withDbTimeout` without calling `assertRenderNotDegraded()`
   (FIX-1227).
 - The `scripts/test-*.mjs` suites are fast and dependency-free — run them
   (`fixes:test`, `fix:add:test`, `cc:verify:test`, `board:test`,
   `session:worktree:test`, `drain:test`, `check:proconfig:test`,
   `check:no-store-routes:test`, `check:render-timeouts:test`, `check:job-registry:test`,
-  `check:doc-links:test`, `session:held:test`, `hook:test`, `fix1258:test`). `cc:verify:test`
+  `check:doc-links:test`, `session:held:test`, `hook:test`, `fix1258:test`,
+  `check:workflows:test`). `check:workflows:test` is the one exception to
+  dependency-free: the check it runs imports js-yaml (a root devDependency), and
+  its kill proof reads `fa3a54cd` from history. `cc:verify:test`
   also covers `cc:prompt`; `fixes:test` also runs `session:held:test`.
   `board:test` (which also runs the phase-goals pin) and `pnpm check:doc-links`
   run in `fixes-integrity.yml` on every push (FIX-1243), as do

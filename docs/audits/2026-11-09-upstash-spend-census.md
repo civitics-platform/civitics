@@ -1377,3 +1377,66 @@ Top paths: `/` 26 · `/api/officials/5201c5c4-…/responsiveness` 25 · `/offici
 27–103 an hour, each from a fresh IP. Since 01:35Z the origin sees ~50 requests an hour,
 and none are the fleet. Most of them are the pager and three search crawlers. Real
 visitors account for ~12 requests an hour and about one page view every two hours.
+
+## §17 cc-282 — the first day after the Block: FIX-1403 closes on window B ([[FIX-1403]]) (2026-11-15; appended, nothing above edited)
+
+**Window B = 2026-11-14T02:00Z → 2026-11-15T05:00Z, 27 full hours.** It starts at the
+first full hour after the 01:34:46.93Z Block. The rule was read live at ~05:17Z and is
+unchanged: `Common Exploit Paths` v2, `last_updated` 01:34:46.929874Z, ruleset v6. Its
+ten strings equal `CHROME_FLEET_UAS`, diffed by script.
+
+| clause | B | bar |
+|---|---|---|
+| (a) the fleet at the origin | **0 of 3,978** edge requests (0.00 %) | ≤ 1 % |
+| (b) flagged `page_views` | **0** in every hour | ≤ 2 an hour |
+| (c) `is_bot = false` rows, clock hours 06–23Z | **6**, against 7 (11-12) and 12 (11-13) | ≥ half their mean (4.75) |
+
+- **(a)** The fleet's edge ran 113–171 an hour; the worst hour was 11-14 04Z (171 edge,
+  94 × 403, 0 origin). Statuses over B: 403 2,289 (57.5 %) · 204 1,670 · 499 16 · 200 3.
+  The three 200s are Cloudflare's own block-page assets (`/cdn-cgi/styles/cf.errors.css`
+  and two `/cdn-cgi/images/*`), with origin 0.
+- **(c)** B by hour: 1 at 02Z, 04Z, 09Z, 21Z and 23Z on 11-14, 3 at 06Z, 0 otherwise.
+  That is 8 over 27 h. Every total here is under 30, so (c) shows only that human rows
+  did not vanish. It cannot measure a small loss. The first baseline's 06Z hour is
+  valid: the flag deployed at 05:07:32Z, and the fleet was not beaconing then.
+
+**The second farm (§16's stale strings), over B.**
+
+- **Non-fleet Chrome at the edge:** 1,957 requests, 1,118 × 403, 12–76 an hour.
+- **The farm-shaped 403s** (one request per IP over B, Chrome below 150): **842 from
+  842 IPs** (14 IPv6) on **40 strings, Chrome 58–149**. That is ~31 an hour, against
+  §16's ~34, so the farm is steady and not growing.
+- **14 strings carry 793 of the 842:** Windows Chrome 99 / 100 / 101 / 104 / 107 / 110 /
+  116 and Mac Chrome 119 / 120 / 123 / 124 / 131 / 133 / 136, at 45–71 IPs each. The
+  other 49 rows spread over 26 strings, among them declared crawlers (Amazonbot,
+  Amzn-SearchBot, Epochal-Search) and two Edge strings.
+- **Countries:** BR 184 · US 97 · PK 36 · GB 33 · AR 32 · CO 25 · VN 25 · IQ 22.
+- **Did one reach the origin?** One farm string did, but not from a farm row. Mac
+  `Chrome/125.0.0.0` was 403'd twice as the farm (single `/donors/*` pages from two
+  `34.x` addresses). The same string reached the origin 4 times from one IPv6 in
+  Cloudflare's `2a06:98c0::/29`: `/.git/config` and `/.git/HEAD` at 11-15 00Z, 307
+  then 404. That is a `.git` scanner sharing the string. None of the 14 main strings
+  reached the origin.
+
+**Who reached the origin over B:** 1,335 requests on 24 user agents.
+
+- `curl/8.18.0`, the outage pager: 498.
+- Crawlers: bingbot 223 · Googlebot smartphone (Chrome/153) 210 · OAI-SearchBot 102 ·
+  Googlebot/2.1 51.
+- Windows Chrome/157: 59.
+- Everything else is at or under 27 each.
+
+**The cost, UTC day 11-14** (complete; 1 h 35 min of it is before the Block):
+
+| | 11-13 | 11-14 | change |
+|---|---:|---:|---:|
+| origin-reaching requests, all UAs | 17,222 | **2,452** | −85.8 % |
+| … of which 00–01Z (the Block at 01:34:46Z) | | 1,346 | |
+| … 02–23Z | | 1,106 (50 / h) | |
+| Upstash `daily_commands` at the last tick | 9,637 (23:31:11Z) | **3,963** (23:31:03Z) | −58.9 % |
+| … full day, × 1440 / 1411 | 9,835 | 4,044 | |
+
+§1's floor F is 2,449 a day, so 11-14 spent ~1,595 commands above it, with 1 h 35 min
+of fleet traffic inside. The day's one edge spike was 17Z: 2,777 requests, mostly to the
+apex `civitics.com`, 1,457 × 403 and 41 at the origin. It moved the edge total, not the
+origin. 11-15 is the first full day with no fleet in it.
