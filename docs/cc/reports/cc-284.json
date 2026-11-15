@@ -1,0 +1,98 @@
+{
+  "cc": "284",
+  "prompt": "cc-prompt-284-pre-1000-fix-triage-records-seven-deferred-features-to-phase-goals-fix468-fix095-redirected-fix839-fix508-fix957-close-on-prod-reads.md",
+  "started_at": "2026-11-15T05:13:53Z",
+  "finished_at": "2026-11-15T05:32:00Z",
+  "head_before": "49b76374",
+  "head_after": "e753f217",
+  "commits": [
+    {
+      "sha": "6fdc612e",
+      "subject": "[skip vercel] chore(fixes): file FIX-1415 — the dashboard's phase card reads its percentages and task list from PHASE_GOALS.md; supersedes FIX-095 (cc-284)"
+    },
+    {
+      "sha": "7baaf4bd",
+      "subject": "[skip vercel] docs(roadmap): seven deferred features parked in PHASE_GOALS.md with their re-open events, and FIX-405 / FIX-468's open graph designs in GRAPH_PLAN.md (cc-284)"
+    },
+    {
+      "sha": "ae41d4ac",
+      "subject": "[skip vercel] docs(audits): the pre-1000 FIX triage, with the reads and their numbers, one section per FIX (cc-284)"
+    },
+    {
+      "sha": "380bd8fd",
+      "subject": "[skip vercel] chore(fixes): close FIX-029 — redirected to docs/PHASE_GOALS.md (Phase 1 · Core Pages): re-open when proposals carry comments and human page views pass about 1,000 a day (cc-284)"
+    },
+    {
+      "sha": "f6e501af",
+      "subject": "[skip vercel] chore(fixes): close FIX-405 — redirected to docs/PHASE_GOALS.md (Phase 2 · Graph Enhancements): re-open at the next graph design session; its three open questions are in docs/GRAPH_PLAN.md (cc-284)"
+    },
+    {
+      "sha": "fe3b130a",
+      "subject": "[skip vercel] chore(fixes): close FIX-561 — redirected to docs/PHASE_GOALS.md (Phase 1 · Community & Auth): re-open when the first feature needs a jurisdiction_admin, staff or institution_admin role (cc-284)"
+    },
+    {
+      "sha": "1435ab58",
+      "subject": "[skip vercel] chore(fixes): close FIX-603 — redirected to docs/PHASE_GOALS.md (Phase 1 · Cost Management System): re-open when Supabase exposes billable egress through its Management API, or a monthly figure is wired by hand (cc-284)"
+    },
+    {
+      "sha": "d108d57f",
+      "subject": "[skip vercel] chore(fixes): close FIX-670 — redirected to docs/PHASE_GOALS.md (Phase 1 · Infrastructure): re-open when someone reports stale jurisdiction activity (cc-284)"
+    },
+    {
+      "sha": "92299fe8",
+      "subject": "[skip vercel] chore(fixes): close FIX-830 — redirected to docs/PHASE_GOALS.md (Phase 2 · Revenue): re-open when the credit or revenue mechanism is live (cc-284)"
+    },
+    {
+      "sha": "542e4966",
+      "subject": "[skip vercel] chore(fixes): close FIX-881 — redirected to docs/PHASE_GOALS.md (Phase 1 · Community & Auth): re-open when abuse_events holds post-launch traffic and data:sybil-scan has appended real candidates on prod (today 1 / 0 / 0 rows) (cc-284)"
+    },
+    {
+      "sha": "2179bdc2",
+      "subject": "[skip vercel] chore(fixes): close FIX-468 — redirected: the guard half shipped with FIX-764 (every Add-to-graph control is gated by graphSeedable and GraphPage drops any other kind, so no path seeds a kind the graph cannot resolve); the design half is in docs/GRAPH_PLAN.md (cc-284)"
+    },
+    {
+      "sha": "7f13ce5c",
+      "subject": "[skip vercel] chore(fixes): close FIX-095 — redirected to FIX-1415: the dashboard's phase card reads its percentages and task list from PHASE_GOALS.md at build time (cc-284)"
+    },
+    {
+      "sha": "69a6f481",
+      "subject": "[skip vercel] chore(fixes): close FIX-839 — no-op on prod: pgss epoch 2026-10-25 13:25:52Z (20 d 15 h 52 m, dealloc 0), the three per-official chord RPCs 0 calls so no maximum, and 0 statement-timeout cancels naming them in 7 d of postgres_logs (cc-284)"
+    },
+    {
+      "sha": "f320c544",
+      "subject": "[skip vercel] chore(fixes): close FIX-508 — no-op on prod: query_districts 50 calls, mean 252.0 ms, max 1,041.4 ms in the 20 d 15 h pgss epoch, and 0 statement-timeout cancels naming it in 7 d of postgres_logs (cc-284)"
+    },
+    {
+      "sha": "5afff52c",
+      "subject": "[skip vercel] chore(fixes): close FIX-957 — on prod: fec_cycle_watermark and fec_cycle_full_pass_at are live; cycle 2026's full pass is stamped 2026-11-08 21:39:54Z; the 07-27 running row was reaped 07-27 08:21Z and the nightly's reap_stale_sync_log(60) guards the rest; trigger suppression is not built (cc-284)"
+    },
+    {
+      "sha": "e753f217",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-284 — nine close as redirected, FIX-839 and FIX-508 as no-op, FIX-957 on prod; FIX-1415 filed (27 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-029",
+    "FIX-405",
+    "FIX-561",
+    "FIX-603",
+    "FIX-670",
+    "FIX-830",
+    "FIX-881",
+    "FIX-468",
+    "FIX-095",
+    "FIX-839",
+    "FIX-508",
+    "FIX-957"
+  ],
+  "fixes_filed": [
+    "FIX-1415"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "hygiene",
+  "owed": []
+}
