@@ -119,6 +119,16 @@ jobs:
       - name: Workflow resource-parity guard
         run: pnpm check:workflow-parity
 
+      # Blocking (FIX-1414) — every .github/workflows/*.yml goes through a real
+      # YAML parser (js-yaml, a root devDependency) and must have a top-level
+      # `jobs` key. GitHub does not run a file it cannot parse: it records a
+      # zero-second "workflow file issue" failure on every push and the file's
+      # schedule never fires. irs990.yml did that for a day after fa3a54cd (a
+      # plain-scalar `run:` with ": " in its echoed text, 100:57). Parse only:
+      # expressions and action inputs are not linted. Needs the install above.
+      - name: Workflow parse guard
+        run: pnpm check:workflows
+
       # Blocking (FIX-1128) — flags a migration that decorates a routine with
       # `SET statement_timeout`, in a CREATE header or via ALTER FUNCTION. That
       # form bounds nothing: the timer is armed once, at the start of the

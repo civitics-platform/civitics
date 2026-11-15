@@ -46,6 +46,8 @@
     "check:render-timeouts": "node scripts/check-render-timeouts.mjs",
     "check:render-timeouts:test": "node scripts/test-check-render-timeouts.mjs",
     "check:workflow-parity": "node scripts/check-workflow-parity.mjs",
+    "check:workflows": "node scripts/check-workflows-parse.mjs",
+    "check:workflows:test": "node scripts/test-check-workflows-parse.mjs",
     "check:proconfig": "node scripts/check-proconfig-timeouts.mjs",
     "check:proconfig:test": "node scripts/test-check-proconfig.mjs",
     "check:no-store-routes": "node scripts/check-no-store-routes.mjs",
@@ -63,6 +65,7 @@
     "db:clone:prod": "node scripts/db-clone-prod.mjs"
   },
   "devDependencies": {
+    "js-yaml": "4.1.1",
     "supabase": "2.78.1",
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
