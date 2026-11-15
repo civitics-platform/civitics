@@ -1,0 +1,56 @@
+{
+  "cc": "282",
+  "prompt": "cc-prompt-282-irs990-yml-run-line-does-not-parse-block-scalar-fix-workflow-parse-check-in-ci-fix1403-close-window-b-view-telemetry-header.md",
+  "started_at": "2026-11-15T05:11:41Z",
+  "finished_at": "2026-11-15T06:02:00Z",
+  "head_before": "49b76374",
+  "head_after": "cea7bb7c",
+  "commits": [
+    {
+      "sha": "6537f6da",
+      "subject": "[skip vercel] chore(fixes): file FIX-1414 — a workflow file that does not parse fails every push as a zero-second run and stops its own schedule, and no check parses the workflow files (cc-282)"
+    },
+    {
+      "sha": "c63d2784",
+      "subject": "fix(ci): FIX-1414 irs990.yml parses again — the Deflate64 step's run: is a | block scalar, so the colon-space inside its echoed string is no longer read as a mapping (cc-282)"
+    },
+    {
+      "sha": "6127e307",
+      "subject": "feat(ci): FIX-1414 check:workflows parses every workflow file with a real YAML parser and fails one with no jobs key, blocking in tests.yml (cc-282)"
+    },
+    {
+      "sha": "35830202",
+      "subject": "[skip vercel] docs(app): view-telemetry's header says the ten fleet strings are blocked at the edge since 2026-11-14T01:34:46Z, and what the flag still does (cc-282)"
+    },
+    {
+      "sha": "93b25d64",
+      "subject": "[skip vercel] docs(ops): a workflow file that does not parse, and check:workflows — OPERATIONS, the template's tests.yml count (thirteen), census §17, the first day after the Block (cc-282)"
+    },
+    {
+      "sha": "2c89d79d",
+      "subject": "chore(fixes): close FIX-1403 on prod — window B 2026-11-14T02Z → 11-15T05Z (27 h): the fleet 3,978 at the edge, 2,289 × 403, 0 at the origin; flagged page_views 0 in its worst hour; is_bot = false rows 6 over 06–23Z against 7 (11-12) and 12 (11-13) (cc-282)"
+    },
+    {
+      "sha": "eb98546c",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-282 — FIX-1414 closes local-only (the receipt is Mon 11-16's irs990 slot) and FIX-1403 closes on prod (window B, 27 h after the edge Block) (25 open)"
+    },
+    {
+      "sha": "cea7bb7c",
+      "subject": "[skip vercel] docs(ops): what a workflow-file-issue run prints — gh run view gives one line and no position; check:workflows gives the line and column (cc-282)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1414",
+    "FIX-1403"
+  ],
+  "fixes_filed": [
+    "FIX-1414"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "hygiene",
+  "owed": []
+}
