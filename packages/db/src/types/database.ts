@@ -8236,6 +8236,14 @@ export type Database = {
         }
         Returns: string
       }
+      vote_question_class: {
+        Args: { p_vote_question: string }
+        Returns: string
+      }
+      vote_roll_class: {
+        Args: { p_roll_call_id: string; p_vote_question: string }
+        Returns: string
+      }
       watermark_horizon: { Args: never; Returns: string }
     }
     Enums: {
