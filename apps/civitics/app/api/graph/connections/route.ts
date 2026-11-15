@@ -227,6 +227,7 @@ function mapEdgeType(dbType: string): EdgeType {
  * matching vote has a procedural vote_question. Connections with no matching
  * vote rows are kept (trust the existing edge).
  */
+// FIX-1409: packages/data/src/pipelines/congress/passage-questions.json is the list of passage questions; none may sit here.
 const PROCEDURAL_PREFIXES = [
   "on the cloture motion",
   "on the motion to proceed",
@@ -235,9 +236,6 @@ const PROCEDURAL_PREFIXES = [
   "on ordering the previous question",
   "on agreeing to the amendment",
   "on the amendment", // the Senate's wording (FIX-1408)
-  "on the conference report",
-  "on the joint resolution",
-  "on the resolution",
   "on the motion",
 ];
 
