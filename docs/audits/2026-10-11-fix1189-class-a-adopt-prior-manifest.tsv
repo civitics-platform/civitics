@@ -5,12 +5,39 @@
 # prompt applies it under the script's own claim (rule 42: committed before any
 # dry run). Audit of record: docs/audits/2026-10-11-fix1189-other-office-double-claim-audit.md
 #
-# WHAT A ROW WOULD AUTHORISE (FIX-1288 shape C, --adopt-prior): the survivor
-# (a sitting member, live id = the chamber held) ADOPTS the stub's id into
-# source_ids.prior_fec_candidate_ids and keeps its live id; the stub's FR rows
-# move to the survivor (colliding losers deleted, fresher row kept — see the
-# audit §4(c)); the stub's id retires to merged_fec_candidate_ids. One
-# transaction, then manifest-scoped rollups; --defer-tails.
+# WHAT A ROW WOULD AUTHORISE (FIX-1288 shape C, --adopt-prior, as FIX-1302
+# rebuilt it in cc-289): the survivor (a sitting member, live id = the chamber
+# held) ADOPTS the stub's id into source_ids.prior_fec_candidate_ids and keeps
+# its live id; the stub's FR rows move to the survivor; the stub's id retires to
+# merged_fec_candidate_ids. One transaction, then manifest-scoped rollups;
+# --defer-tails. Two FIX-1302 rules decide the pair:
+#   D1 the gate. A first-name key that refuses (disagreement or undecidable) is
+#      overridden when legislators-current.json lists BOTH the survivor's live
+#      id and the row's fec_id under the survivor's bioguide. One OVERRIDE line
+#      per row. Every other gate check still applies.
+#   D2 the collisions, by (relationship_type, from_id, cycle_year):
+#      stale        survivor row updated before the stub row was created ->
+#                   the fresher row stays (the stub's), the other is deleted;
+#      ie_duplicate not stale, an IE type, amounts within 2 % -> one filing:
+#                   the fresher row stays, never summed;
+#      live         everything else, a donation pair equal to the cent too ->
+#                   the writer's merge: the survivor's row takes amount +
+#                   amount, tx_count + tx_count, the later occurred_at; the
+#                   stub's row is deleted.
+#   The money check allows a fall of exactly the stale and ie_duplicate losers,
+#   per type (donation, ie_support, ie_oppose); live pairs conserve to the cent.
+#
+# CRAIG'S ANSWERS (audit §5):
+#   Q2 (2026-11-14): John James S8MI00372 and Wesley Bell S4MO00250 ride the
+#      class-A apply.
+#   Q3 (2026-11-14): a bioguide-keyed dataset listing of both ids overrides the
+#      first-name key, so all 22 rows land.
+#   Q4 (2026-11-15): a shape-C merge sums the live-both collisions and deletes
+#      only the stale ones; a pair that is one filing written under two ids is
+#      kept once, not summed.
+#   Two cells are Cowork's reading of Q4, for Craig to confirm at the go: a
+#   live donation pair equal to the cent is SUMMED, and a live IE pair within
+#   2 % is a duplicate (DUPLICATE_BAND_BP, adopt-prior-rules.ts).
 #
 # POPULATION: docs/receipts/2026-10-12.json legislator_ids.complete (nightly
 # GHA run 38174539706, started 2026-10-11T22:43:19Z), double_claim 46,
@@ -39,10 +66,15 @@
 #   Ted Budd       TED vs THE (Theodore)    Tom Cotton  TOM vs THO (Thomas)
 # A refused pair is reported and the run continues; those 4 rows stay listed
 # here so the dry run's 18/4 split is the expected result, not a surprise.
+# SUPERSEDED by D1 (cc-289): the 4 land on the override. Read 8 re-read the
+# dataset at the same ETag on 2026-11-16 and every one of the 22 listings names
+# both ids. The clone dry run accepted 22 with 4 OVERRIDE lines and 0 refused.
 #
 # COLLISION PREVIEW (audit §4(c)): 4,410 colliding (type, from_id, cycle) rows,
 # $22,181,468 of losers the fresher-row rule would delete; $8,721,644 of that
-# is on survivor rows refreshed AFTER the stub row was first written.
+# is on survivor rows refreshed AFTER the stub row was first written. Under D2
+# the live pairs are summed, not deleted. cc-289's report carries the clone's
+# table by class and prod's IE slice.
 survivor	dup	fec_id	name	evidence
 526e530f-ea39-4a01-bc24-33f02bf0a22a	44c85a80-4585-4611-95a6-a6b195940fc1	H8NJ03206	Andy Kim (S)  <-  Andy Kim (Candidate for Representative)	congress-legislators id.fec[] for K000394 lists H8NJ03206, S4NJ00466 (ETag W/"6ab4f9aa-166a83"); terms: rep NJ-3 2019-01-03..2024-12-08 (3 terms) (prior, ended); now sen NJ 2024-12-09..2031-01-03 (2 terms) -> live S4NJ00466; stub 44c85a80 (fec_bulk_cn) holds H8NJ03206 (cc-222 audit §2)
 fa237ff5-a496-4f4a-97cb-fed07a08efd0	03d38fae-b058-4c98-8933-1750a4cfdfad	H8LA00017	Bill Cassidy (S)  <-  William Cassidy (Candidate for Representative)	congress-legislators id.fec[] for C001075 lists H8LA00017, S4LA00107 (ETag W/"6ab4f9aa-166a83"); terms: rep LA-6 2009-01-06..2015-01-03 (3 terms) (prior, ended); now sen LA 2015-01-06..2027-01-03 (2 terms) -> live S4LA00107; stub 03d38fae (fec_bulk_ie) holds H8LA00017 (cc-222 audit §2)

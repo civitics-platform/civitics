@@ -743,6 +743,59 @@ Step 6, after step 5 (hard-FK rewrites) and before the winner-merge step:
      AND eq.entity_id   = lr.loser_id::text;
 ```
 
+### Retiring a member's other-office stub — `--adopt-prior` (FIX-1288, FIX-1302)
+
+Some sitting members have a second `officials` row: a candidate stub that holds
+the FEC id of an office they held or ran for earlier. `--adopt-prior` retires
+the stub under its member. The member keeps the live id and adds the stub's id
+to `source_ids.prior_fec_candidate_ids`. The stub's FR rows move to the member,
+and the stub's id goes to `merged_fec_candidate_ids`. It is a `--manifest`
+option, and every row needs a non-empty `evidence` cell. The class-A manifest is
+`docs/audits/2026-10-11-fix1189-class-a-adopt-prior-manifest.tsv`.
+
+```bash
+cd packages/data
+pnpm run data:merge:official-dupes -- --manifest <tsv> --adopt-prior --defer-tails            # dry run: runs the DML, rolls back
+pnpm run data:merge:official-dupes -- --manifest <tsv> --adopt-prior --defer-tails --apply
+```
+
+**The first-name override.** The gate compares the first three letters of
+each side's first name. The FEC candidate file stores the legal first name, so
+Bill Cassidy (BIL) and his stub William Cassidy (WIL) disagree. Under
+`--adopt-prior`, and for an adopted pair only, a refusing key is overridden when
+`legislators-current.json` lists **both** the member's live id and the pair's id
+under the member's bioguide (`source_ids.congress_gov`). The run reads that file
+once, before its transaction, the way O1 does. Pass `--legislators-file <path>`
+to use a saved copy instead. Each override prints one `OVERRIDE` line with the
+name, both keys, the bioguide and the listing. A pair with no bioguide, or
+whose listing lacks either id, stays refused, and the reason says why. Every
+other gate check still applies.
+
+**The collision classes.** Some colliding pairs share
+`(relationship_type, from_id, cycle_year)`. For an adopt-prior pair, each one
+is classed (`packages/data/src/scripts/adopt-prior-rules.ts`):
+
+- **stale.** The member's row was last updated before the stub's row was
+  created. It is residue of an earlier binding. The fresher row stays and the
+  other is deleted.
+- **ie_duplicate.** Not stale, the type is `ie_support` or `ie_oppose`, and the
+  amounts are equal or within 2 % of the larger. It is one filing written under
+  two ids. The fresher row stays and the other is deleted. They are never summed.
+- **live.** Everything else, including a donation pair equal to the cent. The
+  member's row takes the writer's merge: amount + amount, `tx_count` +
+  `tx_count`, and the later `occurred_at`. The stub's row is deleted. Every
+  other field keeps the member's value.
+
+A pair that is not adopt-prior keeps the older rule (the fresher row stays) for
+every collision. The 2 % band and "sum an equal donation pair" are one
+constant each, `DUPLICATE_BAND_BP`.
+
+**The money check.** The run prints a table by type and class, with pairs,
+dollars deleted and dollars summed. For donation, ie_support and ie_oppose,
+it then checks that each type's drop equals exactly the deleted `stale` and
+`ie_duplicate` losers. Summed `live` pairs conserve to the cent. Any
+difference rolls the run back.
+
 ### Regenerating `database.ts` (`pnpm db:types`)
 
 *Moved from `packages/db/CLAUDE.md` by cc-246; the rule stays there.*
