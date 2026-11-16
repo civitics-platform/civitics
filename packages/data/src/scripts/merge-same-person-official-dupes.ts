@@ -44,6 +44,13 @@
  * FEC binding refreshes). Shape follows the established asymmetric-FR-merge:
  * pre-delete the losing colliding row, then UPDATE `to_id` on the winner.
  *
+ * FIX-1302 — the one exception is an `--adopt-prior` pair (shape C). Its two
+ * rows are two DIFFERENT CAND_IDs, and the weekly writer itself sums a donor who
+ * gave under both, so each collision is classed (./adopt-prior-rules,
+ * classifyCollision): `stale` and `ie_duplicate` keep the fresher row as above;
+ * `live` takes the writer's merge — the survivor's row gets the sum and the
+ * stub's row is deleted. Every other pair keeps the rule above, byte for byte.
+ *
  * NO `officials` ROW IS DELETED
  * ----------------------------
  * "Neutralise" means the duplicate ends up holding zero financial_relationships
@@ -72,8 +79,11 @@
  *   pnpm --filter @civitics/data data:merge:official-dupes -- --apply  # commit
  *   … -- --manifest <tsv> --adopt-prior   # FIX-1288 shape C: an other-chamber
  *                                        # stub's id goes to the survivor's prior
+ *   … -- --adopt-prior --legislators-file <json>   # FIX-1302: a saved
+ *                                        # legislators-current.json instead of the fetch
  */
 
+import * as fs from "fs";
 import { Client } from "pg";
 import {
   type ClassifiedRow,
@@ -92,6 +102,15 @@ import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
 import { sqlFoldUpper } from "../pipelines/congress/diacritics";
+import { parseLegislators } from "../pipelines/congress/legislator-ids";
+import { fetchFeed, LEGISLATORS_CURRENT_URL } from "../pipelines/congress/legislator-ids-report";
+import { ROSTER_FLOOR } from "../pipelines/congress/reconcile-former-members";
+import {
+  COLLISION_CLASSES,
+  classifyCollision,
+  firstNameKeyGate,
+  SUMMABLE_TYPES,
+} from "./adopt-prior-rules";
 
 /** Sanity bound — the FIX-930 clone measured 47 eligible pairs. */
 const MAX_PAIRS = 200;
@@ -254,6 +273,34 @@ interface Pair {
   evidence?: string;
   /** FIX-1288 — the survivor's live id, set by the gate on an ADOPT-PRIOR pair. */
   survivorLiveId?: string;
+  /** FIX-1302 D1 — set when the dataset listing overrode a refusing first-name key. */
+  override?: string;
+}
+
+/**
+ * FIX-1302 D1 — the congress-legislators dataset, read ONCE per --adopt-prior
+ * run, before the merge transaction opens (a fetch never runs inside it). The
+ * fetch is O1's own (`fetchFeed`, legislator-ids-report.ts): the same URL, one
+ * retry, the same roster floor. `--legislators-file` reads a saved copy instead.
+ * Returns bioguide → `id.fec[]`.
+ */
+async function readLegislatorListings(
+  file: string | null,
+): Promise<{ listings: Map<string, string[]>; ref: string }> {
+  if (file) {
+    const parsed = parseLegislators(JSON.parse(fs.readFileSync(file, "utf8")));
+    return {
+      listings: new Map(parsed.map((l) => [l.bioguide, l.fec])),
+      ref: `${file} (${parsed.length} members)`,
+    };
+  }
+  const feed = await fetchFeed(LEGISLATORS_CURRENT_URL, ROSTER_FLOOR);
+  return {
+    listings: new Map(feed.listings.map((l) => [l.bioguide, l.fec])),
+    ref:
+      `${feed.ref.url} (${feed.listings.length} members, ETag ${feed.ref.etag ?? "?"}, ` +
+      `Last-Modified ${feed.ref.last_modified ?? "?"})`,
+  };
 }
 
 /**
@@ -267,6 +314,25 @@ interface Pair {
  * re-written copy, and predate the window by design.
  */
 const REPAIR_WINDOW_START = "2026-08-02";
+
+/**
+ * FIX-1165 / FIX-1302 D3 — the money resident on this run's officials, per
+ * summable type (./adopt-prior-rules SUMMABLE_TYPES: donation and both IE types).
+ * Keyed on the manifest, never platform-wide (FIX-1165 measured the platform
+ * form at 2m28s for a two-official change). Read before and after the merge.
+ */
+const MANIFEST_MONEY_SQL = `
+SELECT fr.relationship_type::text                 AS type,
+       COALESCE(sum(fr.amount_cents), 0)::text    AS cents
+  FROM financial_relationships fr
+ WHERE fr.to_type = 'official'
+   AND fr.relationship_type::text IN (${SUMMABLE_TYPES.map((t) => `'${t}'`).join(", ")})
+   AND fr.to_id = ANY(ARRAY(
+         SELECT survivor FROM _manifest
+         UNION SELECT dup FROM _manifest
+         UNION SELECT stub FROM _trio
+         UNION SELECT claimant FROM _trio WHERE claimant IS NOT NULL))
+ GROUP BY 1`;
 
 /**
  * FIX-955 repair manifest — pairs this script ALREADY merged that a later FEC
@@ -735,11 +801,17 @@ SELECT s.id        AS "survivor",
  * pair's id, and the manifest row carries evidence. Step 1 then appends the id
  * to `prior_fec_candidate_ids` instead of writing it live. Every other check
  * still applies — the stub must still be an empty shell.
+ *
+ * FIX-1302 D1 — on an adopted pair only, a first-name key that refuses
+ * (disagreement or undecidable) is overridden when the congress-legislators
+ * listing for the survivor's bioguide names BOTH the survivor's live id and the
+ * pair's id (firstNameKeyGate, ./adopt-prior-rules). The FEC candidate file
+ * stores the legal first name, so the key alone refuses Cassidy BIL/WIL.
  */
 async function verifySharedIdInDb(
   client: Client,
   pairs: Pair[],
-  opts: { adoptPrior: boolean },
+  opts: { adoptPrior: boolean; listings: ReadonlyMap<string, readonly string[]> | null },
 ): Promise<{ ok: Pair[]; rejected: DroppedPair[] }> {
   if (pairs.length === 0) return { ok: [], rejected: [] };
   const rows = await q<{
@@ -750,6 +822,7 @@ async function verifySharedIdInDb(
     dup_tier: string | null;
     dup_fec: string | null;
     survivor_fec: string | null;
+    survivor_bioguide: string | null;
     survivor_claims_it: boolean | null;
     survivor_fkey: string | null;
     dup_fkey: string | null;
@@ -763,6 +836,8 @@ async function verifySharedIdInDb(
             d.source_ids->>'fec_candidate_id' AS dup_fec,
             -- FIX-1288 — the survivor's live id, which --adopt-prior's gate decodes.
             s.source_ids->>'fec_candidate_id' AS survivor_fec,
+            -- FIX-1302 D1 — the bioguide the dataset listing is keyed on.
+            NULLIF(s.source_ids->>'congress_gov', '') AS survivor_bioguide,
             -- FIX-1187 identity test: current-office id OR a prior-office one.
             (${authoritativeClaimsJsonb("s")} ? m.fec_id) AS survivor_claims_it,
             -- FIX-929's 3-letter first-name key. '' means "cannot compare",
@@ -852,21 +927,23 @@ async function verifySharedIdInDb(
       }
     }
     // FIX-929 — undecidable is not agreement. A row with fewer than three
-    // comparable first-name letters is refused, not waved through.
-    if (!r.survivor_fkey || !r.dup_fkey) {
-      rejected.push({
-        name: p.name,
-        reason: `first-name key is undecidable (${r.survivor_fkey ?? "-"} vs ${r.dup_fkey ?? "-"})`,
-      });
+    // comparable first-name letters is refused, not waved through. FIX-1302 D1 —
+    // an ADOPTED pair is the one exception: the dataset listing of both ids
+    // overrides a refusing key. A pair the survivor already claims never is.
+    const key = firstNameKeyGate({
+      survivorKey: r.survivor_fkey,
+      dupKey: r.dup_fkey,
+      adoption:
+        pair.cls === "adopt-prior"
+          ? { bioguide: r.survivor_bioguide, survivorLiveId: pair.survivorLiveId!, pairId: p.fecId }
+          : null,
+      listings: opts.listings,
+    });
+    if (key.verdict === "refuse") {
+      rejected.push({ name: p.name, reason: key.reason });
       continue;
     }
-    if (r.survivor_fkey !== r.dup_fkey) {
-      rejected.push({
-        name: p.name,
-        reason: `first names disagree (${r.survivor_fkey} vs ${r.dup_fkey}) — a FIX-934 question, not a merge`,
-      });
-      continue;
-    }
+    if (key.verdict === "override") pair = { ...pair, override: key.detail };
     // Decision 5: money + provenance and nothing else. FIX-940's lesson — the
     // "money and nothing else" assumption was once wrong by 1,755 votes — so
     // this is a hard refusal, not a warning. A stub caught here is FIX-1020's
@@ -1230,9 +1307,10 @@ async function renderTrioRows(client: Client): Promise<number> {
 
 /**
  * The trio writes. Runs inside the repair transaction, after the pair merge.
- * Returns the donation cents it deleted, for the conservation proof.
+ * Returns the cents it deleted PER relationship_type, for the conservation
+ * proof (FIX-1302 D3 checks donation and both IE types).
  */
-async function runTrioRevert(client: Client): Promise<bigint> {
+async function runTrioRevert(client: Client): Promise<Map<string, bigint>> {
   console.info("\nTrio revert (rows affected):");
 
   // (i) Delete the theft. The predicate re-asserts window + counterpart even
@@ -1252,9 +1330,9 @@ async function runTrioRevert(client: Client): Promise<bigint> {
       RETURNING fr.relationship_type, fr.amount_cents`,
     [REPAIR_WINDOW_START],
   );
-  let deletedDonationCents = 0n;
-  for (const r of res.rows as Array<{ relationship_type: string; amount_cents: string }>) {
-    if (r.relationship_type === "donation") deletedDonationCents += BigInt(r.amount_cents);
+  const deletedCents = new Map<string, bigint>();
+  for (const r of res.rows as Array<{ relationship_type: string; amount_cents: string | null }>) {
+    deletedCents.set(r.relationship_type, (deletedCents.get(r.relationship_type) ?? 0n) + BigInt(r.amount_cents ?? 0));
   }
   console.info(`  ${"FR delete stolen copies (trio stubs)".padEnd(50)} ${String(res.rowCount ?? 0).padStart(9)}`);
 
@@ -1330,7 +1408,7 @@ async function runTrioRevert(client: Client): Promise<bigint> {
     throw new Error(`${lostMarker?.n} trio stub(s) lost merged_fec_candidate_id — refusing`);
   }
 
-  return deletedDonationCents;
+  return deletedCents;
 }
 
 /**
@@ -1737,6 +1815,24 @@ async function main(): Promise<void> {
    * non-empty `evidence` column. See verifySharedIdInDb and merge step 1.
    */
   const adoptPrior = argv.includes("--adopt-prior");
+  /**
+   * FIX-1302 D1 — a saved legislators-current.json for the first-name override,
+   * in place of the fetch (the tests and a rerun against a known ETag use it).
+   */
+  const legislatorsFile = (() => {
+    const i = argv.indexOf("--legislators-file");
+    if (i === -1) return null;
+    const v = argv[i + 1];
+    if (!v || v.startsWith("--")) {
+      console.error("✗ --legislators-file needs a path.");
+      process.exit(1);
+    }
+    return v;
+  })();
+  if (legislatorsFile && !adoptPrior) {
+    console.error("✗ --legislators-file is an --adopt-prior option");
+    process.exit(1);
+  }
   const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
   const allowProd = argv.includes("--allow-prod");
   const defer = deferTails(argv);
@@ -2001,6 +2097,8 @@ async function main(): Promise<void> {
    * Senate stub's money moves. Empty in every other mode.
    */
   const promotions: Array<{ survivor: string; currentId: string; priorId: string; name: string }> = [];
+  /** FIX-1302 D1 — bioguide → id.fec[]; read once, only under --adopt-prior. */
+  let listings: Map<string, string[]> | null = null;
   if (pairArg) {
     // FIX-1165 — the manifest path. Two ids in, both re-read HERE by primary
     // key, every fact the merge acts on recomputed keyed on them. No derivation.
@@ -2193,6 +2291,23 @@ async function main(): Promise<void> {
       candidates = unique.kept;
       console.info(`  ${candidates.length} pair(s) selected; gates re-applied server-side below.`);
       for (const d of unique.dropped) console.info(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+      // FIX-1302 D1 — the dataset, once, outside the merge transaction. A read
+      // that fails stops the run: the override cannot be judged without it.
+      if (adoptPrior) {
+        try {
+          const read = await readLegislatorListings(legislatorsFile);
+          listings = read.listings;
+          console.info(`  congress-legislators: ${read.ref}`);
+        } catch (err) {
+          console.error(
+            `✗ --adopt-prior could not read the congress-legislators dataset: ` +
+              `${err instanceof Error ? err.message : String(err)}\n` +
+              `  Re-run, or pass --legislators-file <saved legislators-current.json>.`,
+          );
+          await client.end();
+          process.exit(1);
+        }
+      }
     }
   } else if (ownSeat) {
     // FIX-953 — structural selection, no overlap ranking. See
@@ -2344,7 +2459,7 @@ async function main(): Promise<void> {
     const { ok: pairs, rejected } = repairResplit
       ? await verifyRepairInDb(client, candidates)
       : sharedIdManifestPath || promoteManifestPath
-        ? await verifySharedIdInDb(client, candidates, { adoptPrior })
+        ? await verifySharedIdInDb(client, candidates, { adoptPrior, listings })
         : ownSeat
           ? await verifyOwnSeatInDb(client, candidates)
           : await verifyManifestInDb(client, candidates);
@@ -2358,6 +2473,9 @@ async function main(): Promise<void> {
             ? `  ADOPT-PRIOR ${p.name.padEnd(49)} ${p.fecId} → prior_fec_candidate_ids (live ${p.survivorLiveId} kept)`
             : `  MERGE    ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`,
         );
+        // FIX-1302 D1 — one line per override: the name, both keys, the
+        // bioguide, the listing.
+        if (p.override) console.info(`  OVERRIDE ${p.name.padEnd(52)} ${p.override}`);
       }
     }
     if (rejected.length > 0) {
@@ -2431,19 +2549,10 @@ async function main(): Promise<void> {
     // The invariant is unchanged: a merge MOVES money, so the total resident on
     // the officials in the manifest must not fall except by the collision losers
     // this run deliberately drops.
-    const [platformBefore] = await q<{ officials: string; cents: string }>(
-      client,
-      `SELECT count(DISTINCT fr.to_id)::text            AS officials,
-              COALESCE(sum(fr.amount_cents), 0)::text   AS cents
-         FROM financial_relationships fr
-        WHERE fr.to_type = 'official'
-          AND fr.relationship_type = 'donation'
-          AND fr.to_id = ANY(ARRAY(
-                SELECT survivor FROM _manifest
-                UNION SELECT dup FROM _manifest
-                UNION SELECT stub FROM _trio
-                UNION SELECT claimant FROM _trio WHERE claimant IS NOT NULL))`,
-    );
+    // FIX-1302 D3 — per type, and the IE types too: an ie_duplicate loser is IE
+    // money, so a donation-only check could not hold it to the cent. A `live`
+    // collision is summed, not dropped, and so conserves.
+    const platformBefore = await q<{ type: string; cents: string }>(client, MANIFEST_MONEY_SQL);
 
     await client.query(`
       CREATE TEMP TABLE _pair_before ON COMMIT DROP AS
@@ -2506,33 +2615,120 @@ async function main(): Promise<void> {
       CREATE INDEX ON _collision(surv_row);
       CREATE INDEX ON _collision(dup_row);
     `);
+
+    // ── FIX-1302 D2 — class an ADOPT-PRIOR pair's collisions ─────────────
+    // _collision above is today's, byte for byte, and so is keep_dup for every
+    // row. Only the collisions of an --adopt-prior pair are classed, in
+    // classifyCollision (./adopt-prior-rules, the one implementation), and their
+    // class and keep_dup land in _collision_class. Every other pair leaves no row
+    // there, so the keep_dup rewrite and the live sum below never touch it.
+    await client.query(`
+      CREATE TEMP TABLE _collision_class (dup_row uuid PRIMARY KEY, cls text NOT NULL,
+                                          keep_dup boolean NOT NULL) ON COMMIT DROP;
+    `);
+    const adoptDups = pairs.filter((p) => p.cls === "adopt-prior").map((p) => p.dup);
+    if (adoptDups.length > 0) {
+      const facts = await q<{
+        type: string;
+        dup_row: string;
+        surv_cents: string | null;
+        dup_cents: string | null;
+        surv_upd_us: string;
+        dup_created_us: string;
+        dup_upd_us: string;
+      }>(
+        client,
+        // Microseconds, so the comparisons are the timestamptz's own.
+        `SELECT c.relationship_type::text AS type, c.dup_row::text AS dup_row,
+                c.surv_cents::text AS surv_cents, c.dup_cents::text AS dup_cents,
+                floor(extract(epoch FROM c.surv_upd)   * 1000000)::bigint::text AS surv_upd_us,
+                floor(extract(epoch FROM d.created_at) * 1000000)::bigint::text AS dup_created_us,
+                floor(extract(epoch FROM c.dup_upd)    * 1000000)::bigint::text AS dup_upd_us
+           FROM _collision c
+           JOIN financial_relationships d ON d.id = c.dup_row
+          WHERE d.to_id = ANY($1::uuid[])`,
+        [adoptDups],
+      );
+      const rows = facts.map((f) => ({
+        dupRow: f.dup_row,
+        ...classifyCollision({
+          type: f.type,
+          survCents: f.surv_cents === null ? null : BigInt(f.surv_cents),
+          dupCents: f.dup_cents === null ? null : BigInt(f.dup_cents),
+          survUpdatedUs: BigInt(f.surv_upd_us),
+          dupCreatedUs: BigInt(f.dup_created_us),
+          dupUpdatedUs: BigInt(f.dup_upd_us),
+        }),
+      }));
+      await client.query(
+        `INSERT INTO _collision_class (dup_row, cls, keep_dup)
+         SELECT * FROM unnest($1::uuid[], $2::text[], $3::boolean[])`,
+        [rows.map((r) => r.dupRow), rows.map((r) => r.cls), rows.map((r) => r.keepDup)],
+      );
+      await client.query(`
+        UPDATE _collision c SET keep_dup = k.keep_dup
+          FROM _collision_class k WHERE k.dup_row = c.dup_row;
+      `);
+    }
+
+    // FIX-1302 D3 — the table: per type and class, pairs, dollars deleted and
+    // dollars summed. `fresher` is today's rule (a pair that is not adopt-prior).
     const collisions = await q<{
       relationship_type: string;
+      cls: string;
       pairs: string;
       dup_fresher: string;
       surv_fresher: string;
       ties: string;
-      loser_cents: string;
+      deleted_cents: string;
+      summed_cents: string;
     }>(
       client,
-      `SELECT relationship_type,
-              count(*)::text                                        AS pairs,
-              count(*) FILTER (WHERE dup_upd > surv_upd)::text      AS dup_fresher,
-              count(*) FILTER (WHERE dup_upd < surv_upd)::text      AS surv_fresher,
-              count(*) FILTER (WHERE dup_upd = surv_upd)::text      AS ties,
-              COALESCE(sum(CASE WHEN keep_dup THEN surv_cents ELSE dup_cents END), 0)::text AS loser_cents
-         FROM _collision GROUP BY 1 ORDER BY 1`,
+      `SELECT c.relationship_type::text                               AS relationship_type,
+              COALESCE(k.cls, 'fresher')                              AS cls,
+              count(*)::text                                          AS pairs,
+              count(*) FILTER (WHERE c.dup_upd > c.surv_upd)::text    AS dup_fresher,
+              count(*) FILTER (WHERE c.dup_upd < c.surv_upd)::text    AS surv_fresher,
+              count(*) FILTER (WHERE c.dup_upd = c.surv_upd)::text    AS ties,
+              COALESCE(sum(CASE WHEN k.cls = 'live' THEN 0
+                                WHEN c.keep_dup THEN c.surv_cents ELSE c.dup_cents END), 0)::text AS deleted_cents,
+              COALESCE(sum(CASE WHEN k.cls = 'live' THEN c.dup_cents ELSE 0 END), 0)::text AS summed_cents
+         FROM _collision c
+         LEFT JOIN _collision_class k ON k.dup_row = c.dup_row
+        GROUP BY 1, 2 ORDER BY 1, 2`,
     );
-    console.info("\nColliding (relationship_type, from_id, cycle_year) pairs — keep the fresher row:");
-    console.info(`  ${"type".padEnd(14)}${"pairs".padStart(9)}${"dup+".padStart(9)}${"surv+".padStart(9)}${"ties".padStart(7)}   loser dollars`);
-    let deletedDonationCents = 0n;
+    const classOrder = ["fresher", ...COLLISION_CLASSES];
+    collisions.sort(
+      (a, b) =>
+        a.relationship_type.localeCompare(b.relationship_type) ||
+        classOrder.indexOf(a.cls) - classOrder.indexOf(b.cls),
+    );
+    console.info(
+      "\nColliding (relationship_type, from_id, cycle_year) pairs — " +
+        "fresher: keep the fresher row; adopt-prior pairs by class (FIX-1302):",
+    );
+    console.info(
+      `  ${"type".padEnd(12)}${"class".padEnd(20)}${"pairs".padStart(7)}${"dup+".padStart(7)}` +
+        `${"surv+".padStart(7)}${"ties".padStart(6)}${"deleted".padStart(16)}${"summed".padStart(16)}`,
+    );
+    /** Per type, the dollars this run drops: every loser except a summed one. */
+    const deletedCents = new Map<string, bigint>();
+    let summedCents = 0n;
+    let livePairs = 0;
     for (const c of collisions) {
       console.info(
-        `  ${c.relationship_type.padEnd(14)}${c.pairs.padStart(9)}${c.dup_fresher.padStart(9)}` +
-          `${c.surv_fresher.padStart(9)}${c.ties.padStart(7)}   ${usd(c.loser_cents)}`,
+        `  ${c.relationship_type.padEnd(12)}${c.cls.padEnd(20)}${c.pairs.padStart(7)}${c.dup_fresher.padStart(7)}` +
+          `${c.surv_fresher.padStart(7)}${c.ties.padStart(6)}${usd(c.deleted_cents).padStart(16)}` +
+          `${usd(c.summed_cents).padStart(16)}`,
       );
-      if (c.relationship_type === "donation") deletedDonationCents = BigInt(c.loser_cents);
+      deletedCents.set(
+        c.relationship_type,
+        (deletedCents.get(c.relationship_type) ?? 0n) + BigInt(c.deleted_cents),
+      );
+      summedCents += BigInt(c.summed_cents);
+      if (c.cls === "live") livePairs += Number(c.pairs);
     }
+    const deletedDonationCents = deletedCents.get("donation") ?? 0n;
 
     // ── The merge ───────────────────────────────────────────────────────
     console.info("\nMerge (rows affected):");
@@ -2585,6 +2781,46 @@ async function main(): Promise<void> {
          AND NOT (o.source_ids ? 'fec_id')
          AND ((o.role_title = 'Senator'        AND upper(left(d.source_ids->>'fec_id',1)) = 'S')
            OR (o.role_title = 'Representative' AND upper(left(d.source_ids->>'fec_id',1)) = 'H'))`);
+
+    // 2a′. FIX-1302 D2 — a `live` collision of an adopt-prior pair takes the
+    //     writer's merge (fec-bulk/writer.ts, upsertDonationRelationshipsBatch):
+    //     amount + amount, tx_count + tx_count, the later occurred_at, onto the
+    //     SURVIVOR's row. Its keep_dup is false, so 2a below deletes the stub's
+    //     row and keeps this one. Every field the writer's merge does not define
+    //     keeps the survivor's value: source_url, started_at / ended_at,
+    //     created_at, fec_filing_id, is_in_kind, is_bundled and every other
+    //     metadata key (fec_committee_id, source, support_oppose, aggregated…).
+    //     occurred_at stays NULL on a started_at row (the table's CHECK allows
+    //     one or the other). updated_at is the BEFORE UPDATE trigger's now(),
+    //     exactly as for a row 2b moves.
+    const summed = await run(client, "FR sum live collisions onto the survivor row", `
+      UPDATE financial_relationships s
+         SET amount_cents = COALESCE(s.amount_cents, 0) + COALESCE(d.amount_cents, 0),
+             occurred_at  = CASE WHEN s.occurred_at IS NULL OR d.occurred_at IS NULL THEN s.occurred_at
+                                 ELSE GREATEST(s.occurred_at, d.occurred_at) END,
+             metadata     = CASE WHEN s.metadata ? 'tx_count' OR d.metadata ? 'tx_count'
+                                 THEN s.metadata || jsonb_build_object('tx_count',
+                                        COALESCE((s.metadata->>'tx_count')::numeric, 0)
+                                      + COALESCE((d.metadata->>'tx_count')::numeric, 0))
+                                 ELSE s.metadata END
+        FROM _collision c
+        JOIN _collision_class k ON k.dup_row = c.dup_row AND k.cls = 'live'
+        JOIN financial_relationships d ON d.id = c.dup_row
+       WHERE s.id = c.surv_row`);
+    const [sumMiss] = await q<{ n: string }>(
+      client,
+      `SELECT count(*)::text AS n
+         FROM _collision c
+         JOIN _collision_class k ON k.dup_row = c.dup_row AND k.cls = 'live'
+         JOIN financial_relationships s ON s.id = c.surv_row
+        WHERE s.amount_cents IS DISTINCT FROM COALESCE(c.surv_cents, 0) + COALESCE(c.dup_cents, 0)`,
+    );
+    if (summed !== livePairs || sumMiss?.n !== "0") {
+      throw new Error(
+        `live sum: ${summed} row(s) summed for ${livePairs} live pair(s), ` +
+          `${sumMiss?.n} survivor row(s) not equal to the two amounts' sum`,
+      );
+    }
 
     // 2a. Delete the losing side of each collision. Never a bare DELETE of one
     //     side — the loser is whichever row is STALER.
@@ -2690,7 +2926,7 @@ async function main(): Promise<void> {
     // FIX-960 — the trio revert runs in the SAME transaction so the
     // conservation proof below covers it: its deletions are part of the
     // platform drop this run must account for to the cent.
-    let trioDeletedCents = 0n;
+    let trioDeletedCents = new Map<string, bigint>();
     if (repairResplit && trioLive.length > 0) {
       trioDeletedCents = await runTrioRevert(client);
     }
@@ -2722,24 +2958,25 @@ async function main(): Promise<void> {
     // right the first time.
 
     // ── Conservation proof, both directions ─────────────────────────────
-    // FIX-1165 — the same keyed read as the baseline above.
-    const [platformAfter] = await q<{ officials: string; cents: string }>(
-      client,
-      `SELECT count(DISTINCT fr.to_id)::text            AS officials,
-              COALESCE(sum(fr.amount_cents), 0)::text   AS cents
-         FROM financial_relationships fr
-        WHERE fr.to_type = 'official'
-          AND fr.relationship_type = 'donation'
-          AND fr.to_id = ANY(ARRAY(
-                SELECT survivor FROM _manifest
-                UNION SELECT dup FROM _manifest
-                UNION SELECT stub FROM _trio
-                UNION SELECT claimant FROM _trio WHERE claimant IS NOT NULL))`,
+    // FIX-1165 — the same keyed read as the baseline above. FIX-1302 D3 — per
+    // type: each type's drop must equal exactly its deleted losers (stale,
+    // ie_duplicate, today's fresher rule) plus the trio's deletes. A summed
+    // `live` pair moves its dollars onto the survivor's row and drops nothing.
+    const platformAfter = await q<{ type: string; cents: string }>(client, MANIFEST_MONEY_SQL);
+    const centsOf = (rows: Array<{ type: string; cents: string }>, t: string): bigint =>
+      BigInt(rows.find((r) => r.type === t)?.cents ?? "0");
+    const money = SUMMABLE_TYPES.map((t) => {
+      const before = centsOf(platformBefore, t);
+      const after = centsOf(platformAfter, t);
+      const deleted = deletedCents.get(t) ?? 0n;
+      const trio = trioDeletedCents.get(t) ?? 0n;
+      return { type: t, before, after, deleted, trio, delta: before - after - deleted - trio };
+    });
+    // Losers of a type outside SUMMABLE_TYPES are deleted by today's rule but
+    // not counted above; say so rather than let the check look complete.
+    const uncounted = [...deletedCents.keys()].filter(
+      (t) => !(SUMMABLE_TYPES as readonly string[]).includes(t),
     );
-    const beforeCents = BigInt(platformBefore?.cents ?? "0");
-    const afterCents = BigInt(platformAfter?.cents ?? "0");
-    const observedDrop = beforeCents - afterCents;
-    const dropDelta = observedDrop - deletedDonationCents - trioDeletedCents;
 
     // No official OUTSIDE the manifest may change by a single cent.
     const strays = await q<{
@@ -2798,11 +3035,20 @@ async function main(): Promise<void> {
     const sumAfter = report.reduce((s, r) => s + BigInt(r.surv_after) + BigInt(r.dup_after), 0n);
 
     console.info("\n── Conservation ─────────────────────────────────────────");
-    console.info(`  manifest-scoped donation dollars:      ${usd(beforeCents.toString())} → ${usd(afterCents.toString())}`);
-    console.info(`  observed drop:                          ${usd(observedDrop.toString())}`);
-    console.info(`  deleted colliding losers:               ${usd(deletedDonationCents.toString())}`);
-    console.info(`  deleted trio stolen copies:             ${usd(trioDeletedCents.toString())}`);
-    console.info(`  difference (must be $0):                ${usd(dropDelta.toString())}  ${dropDelta === 0n ? "OK" : "FAIL"}`);
+    console.info(
+      `  manifest-scoped dollars, by type: before → after, drop = deleted losers + trio (difference must be $0)`,
+    );
+    for (const m of money) {
+      console.info(
+        `    ${m.type.padEnd(11)} ${usd(m.before.toString())} → ${usd(m.after.toString())}   ` +
+          `drop ${usd((m.before - m.after).toString())}   deleted losers ${usd(m.deleted.toString())}   ` +
+          `trio ${usd(m.trio.toString())}   difference ${usd(m.delta.toString())}  ${m.delta === 0n ? "OK" : "FAIL"}`,
+      );
+    }
+    if (uncounted.length > 0) {
+      console.info(`    ! losers of ${uncounted.join(", ")} are deleted but not in this check`);
+    }
+    console.info(`  live collisions summed onto survivor rows (conserved): ${livePairs.toLocaleString()} pair(s), ${usd(summedCents.toString())}`);
     console.info(`  manifest pair dollars:                  ${usd(sumBefore.toString())} → ${usd(sumAfter.toString())}`);
     console.info(`  FR rows moved onto survivors:           ${moved.toLocaleString()}`);
     console.info(`  duplicates still holding money:         0  OK`);
@@ -2811,7 +3057,7 @@ async function main(): Promise<void> {
       console.info(`    STRAY ${s.official_id} ${(s.full_name ?? "?").padEnd(28)} ${s.before_cents} → ${s.after_cents}`);
     }
 
-    const dropOk = dropDelta === 0n;
+    const dropOk = money.every((m) => m.delta === 0n);
     const strayOk = strays.length === 0;
     const pairOk = sumAfter === sumBefore - deletedDonationCents;
     console.info(`  manifest pair conservation:             ${pairOk ? "OK" : "FAIL"}`);

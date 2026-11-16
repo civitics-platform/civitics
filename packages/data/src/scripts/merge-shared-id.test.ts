@@ -17,6 +17,13 @@ import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as path from "path";
 import { readManifest } from "./remediation-manifest";
+import {
+  classifyCollision,
+  DUPLICATE_BAND_BP,
+  firstNameKeyGate,
+  withinBand,
+  type CollisionFacts,
+} from "./adopt-prior-rules";
 
 const SCRIPT = fs.readFileSync(
   path.join(__dirname, "merge-same-person-official-dupes.ts"),
@@ -104,9 +111,18 @@ test("FIX-1187 the identity test accepts a PRIOR-office claim, not just the curr
 });
 
 test("FIX-1187 an undecidable first-name key is refused, never read as agreement", () => {
+  // FIX-1302 moved the key into firstNameKeyGate (./adopt-prior-rules); the
+  // gate hands it both keys and refuses on its verdict.
   const body = sharedIdGateBody();
-  assert.ok(body.includes("first-name key is undecidable"));
-  assert.ok(body.includes("!r.survivor_fkey || !r.dup_fkey"));
+  assert.ok(body.includes("firstNameKeyGate({"));
+  assert.ok(body.includes("survivorKey: r.survivor_fkey"));
+  assert.ok(body.includes("dupKey: r.dup_fkey"));
+  assert.ok(body.includes('if (key.verdict === "refuse")'));
+  for (const [s, d] of [[null, "WIL"], ["BIL", null], [null, null]] as const) {
+    const v = firstNameKeyGate({ survivorKey: s, dupKey: d, adoption: null, listings: null });
+    assert.equal(v.verdict, "refuse");
+    assert.match((v as { reason: string }).reason, /^first-name key is undecidable/);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -494,4 +510,273 @@ test("FIX-1288 (e) the Luján manifest: four required columns, ONE other-chamber
   assert.equal(r["fec_id"]![0], "H", "the stub's id is the House id");
   assert.equal(live[0], "S", "the survivor's live id is the Senate id");
   assert.notEqual(live[0], r["fec_id"]![0], "the shape C case: other-chamber live id");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1302 (cc-289) — D1: the dataset listing overrides the first-name key
+// ---------------------------------------------------------------------------
+
+/** Cassidy's case: C001075 lists both his House and Senate ids. */
+const CASSIDY = { bioguide: "C001075", survivorLiveId: "S4LA00107", pairId: "H8LA00017" };
+const LISTINGS = new Map<string, readonly string[]>([
+  ["C001075", ["H8LA00017", "S4LA00107"]],
+  ["B001299", ["S4IN00196"]], // lacks the House id
+]);
+const BANKS_LACKING = { bioguide: "B001299", survivorLiveId: "S4IN00196", pairId: "H6IN03229" };
+
+test("FIX-1302 D1 a disagreeing key with a listing of BOTH ids is accepted, with the override line", () => {
+  const v = firstNameKeyGate({ survivorKey: "BIL", dupKey: "WIL", adoption: CASSIDY, listings: LISTINGS });
+  assert.equal(v.verdict, "override");
+  const detail = (v as { detail: string }).detail;
+  // the line names both keys, the bioguide and the listing
+  for (const tok of ["BIL", "WIL", "C001075", "H8LA00017", "S4LA00107"]) {
+    assert.ok(detail.includes(tok), `override line lacks ${tok}: ${detail}`);
+  }
+});
+
+test("FIX-1302 D1 a listing that lacks either id refuses, naming what is missing", () => {
+  for (const adoption of [
+    BANKS_LACKING, // lacks the pair's id
+    { bioguide: "C001075", survivorLiveId: "S9LA99999", pairId: "H8LA00017" }, // lacks the live id
+  ]) {
+    const v = firstNameKeyGate({ survivorKey: "JIM", dupKey: "JAM", adoption, listings: LISTINGS });
+    assert.equal(v.verdict, "refuse");
+    const reason = (v as { reason: string }).reason;
+    assert.match(reason, /^first names disagree \(JIM vs JAM\)/, "today's refusal leads the reason");
+    assert.match(reason, /lacks (H6IN03229|S9LA99999)/);
+  }
+});
+
+test("FIX-1302 D1 no bioguide, a bioguide the dataset does not list, or no dataset, refuses", () => {
+  const noBio = firstNameKeyGate({
+    survivorKey: "TED", dupKey: "THE", adoption: { ...CASSIDY, bioguide: null }, listings: LISTINGS,
+  });
+  assert.equal(noBio.verdict, "refuse");
+  assert.match((noBio as { reason: string }).reason, /no bioguide/);
+  const unlisted = firstNameKeyGate({
+    survivorKey: "TOM", dupKey: "THO", adoption: { ...CASSIDY, bioguide: "X000000" }, listings: LISTINGS,
+  });
+  assert.equal(unlisted.verdict, "refuse");
+  assert.match((unlisted as { reason: string }).reason, /X000000 is not in legislators-current/);
+  const unread = firstNameKeyGate({ survivorKey: "BIL", dupKey: "WIL", adoption: CASSIDY, listings: null });
+  assert.equal(unread.verdict, "refuse");
+});
+
+test("FIX-1302 D1 the flag absent (no adoption) is today's refusal, byte for byte", () => {
+  assert.deepEqual(firstNameKeyGate({ survivorKey: "BIL", dupKey: "WIL", adoption: null, listings: LISTINGS }), {
+    verdict: "refuse",
+    reason: "first names disagree (BIL vs WIL) — a FIX-934 question, not a merge",
+  });
+  assert.deepEqual(firstNameKeyGate({ survivorKey: "S", dupKey: null, adoption: null, listings: LISTINGS }), {
+    verdict: "refuse",
+    reason: "first-name key is undecidable (S vs -)",
+  });
+});
+
+test("FIX-1302 D1 an undecidable key behaves the same way as a disagreeing one", () => {
+  const ok = firstNameKeyGate({ survivorKey: null, dupKey: "WIL", adoption: CASSIDY, listings: LISTINGS });
+  assert.equal(ok.verdict, "override");
+  const lacks = firstNameKeyGate({ survivorKey: null, dupKey: "JAM", adoption: BANKS_LACKING, listings: LISTINGS });
+  assert.equal(lacks.verdict, "refuse");
+  assert.match((lacks as { reason: string }).reason, /^first-name key is undecidable/);
+  const noBio = firstNameKeyGate({
+    survivorKey: "BIL", dupKey: null, adoption: { ...CASSIDY, bioguide: null }, listings: LISTINGS,
+  });
+  assert.equal(noBio.verdict, "refuse");
+  assert.deepEqual(firstNameKeyGate({ survivorKey: null, dupKey: "WIL", adoption: null, listings: LISTINGS }), {
+    verdict: "refuse",
+    reason: "first-name key is undecidable (- vs WIL)",
+  });
+});
+
+test("FIX-1302 D1 an agreeing key never consults the dataset", () => {
+  assert.deepEqual(
+    firstNameKeyGate({ survivorKey: "AND", dupKey: "AND", adoption: { ...CASSIDY, bioguide: null }, listings: null }),
+    { verdict: "agree" },
+  );
+});
+
+test("FIX-1302 D1 the gate offers the override to an ADOPTED pair only, and prints one line per override", () => {
+  const body = sharedIdGateBody();
+  assert.ok(body.includes("NULLIF(s.source_ids->>'congress_gov', '') AS survivor_bioguide"));
+  const call = body.slice(body.indexOf("firstNameKeyGate({"), body.indexOf('if (key.verdict === "refuse")'));
+  assert.ok(
+    /adoption:\s*pair\.cls === "adopt-prior"\s*\?/.test(call),
+    "a pair the survivor already claims must never reach the override",
+  );
+  assert.ok(call.includes(": null"), "every other pair gets no adoption facts");
+  // the later gates still run on an overridden pair
+  const after = body.slice(body.indexOf('if (key.verdict === "override")'));
+  assert.ok(after.includes('r.dup_attachments !== "0"'), "the empty-shell check still follows the override");
+  assert.ok(SCRIPT.includes("OVERRIDE ${p.name.padEnd(52)} ${p.override}"));
+  // the dataset is read before the merge transaction, never inside it
+  const read = SCRIPT.indexOf("await readLegislatorListings(legislatorsFile)");
+  assert.ok(read !== -1 && read < SCRIPT.lastIndexOf('await client.query("BEGIN")'));
+  assert.ok(SCRIPT.includes("✗ --legislators-file is an --adopt-prior option"));
+});
+
+test("FIX-1302 D1 the four refused class-A rows: each evidence listing names both ids", () => {
+  // The evidence cells record the listing at ETag W/"6ab4f9aa-166a83"; cc-289
+  // re-read the same ETag on 2026-11-16 and found 22/22 list both.
+  const m = readManifest(path.join(AUDITS, "2026-10-11-fix1189-class-a-adopt-prior-manifest.tsv"));
+  assert.equal(m.rows.length, 22);
+  for (const fec of ["H8LA00017", "H6IN03229", "H6NC13129", "H2AR04083"]) {
+    const r = m.rows.find((x) => x["fec_id"] === fec);
+    assert.ok(r, `${fec} is in the manifest`);
+    const ev = r["evidence"]!;
+    const listed = /lists ([A-Z0-9, ]+) \(ETag/.exec(ev)?.[1]?.split(", ") ?? [];
+    const liveId = /-> live ([A-Z0-9]{9})/.exec(ev)?.[1];
+    assert.ok(liveId && listed.includes(liveId) && listed.includes(fec), `${r["name"]}: ${ev}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1302 (cc-289) — D2: the collision classifier
+// ---------------------------------------------------------------------------
+
+const us = (iso: string): bigint => BigInt(Date.parse(iso)) * 1000n;
+/** A live pair: the survivor's row refreshed after the stub's row was written. */
+const liveFacts = (o: Partial<CollisionFacts>): CollisionFacts => ({
+  type: "donation",
+  survCents: 500000n,
+  dupCents: 1500000n,
+  survUpdatedUs: us("2026-09-01T00:00:00Z"),
+  dupCreatedUs: us("2026-05-11T00:00:00Z"),
+  dupUpdatedUs: us("2026-09-08T00:00:00Z"),
+  ...o,
+});
+
+test("FIX-1302 D2 stale: the survivor's row predates the stub's row — the fresher row stays", () => {
+  // Moore's $62,000 pair (audit §4(c)): survivor last touched 05-01, stub row from 05-11.
+  const v = classifyCollision(
+    liveFacts({ survCents: 6200000n, dupCents: 6200000n, survUpdatedUs: us("2026-05-01T00:00:00Z") }),
+  );
+  assert.deepEqual(v, { cls: "stale", keepDup: true });
+  // stale wins over every other test, IE included
+  assert.equal(classifyCollision(liveFacts({ type: "ie_support", survUpdatedUs: us("2026-05-01T00:00:00Z") })).cls, "stale");
+  // the boundary is strict: updated AT the stub's creation instant is not stale…
+  assert.notEqual(classifyCollision(liveFacts({ survUpdatedUs: us("2026-05-11T00:00:00Z") })).cls, "stale");
+  // …and one microsecond earlier is
+  assert.equal(classifyCollision(liveFacts({ survUpdatedUs: us("2026-05-11T00:00:00Z") - 1n })).cls, "stale");
+});
+
+test("FIX-1302 D2 ie_duplicate: an IE pair equal or within 2 % — kept once, never summed", () => {
+  for (const type of ["ie_support", "ie_oppose"]) {
+    assert.deepEqual(classifyCollision(liveFacts({ type, survCents: 21855190n, dupCents: 21855190n })), {
+      cls: "ie_duplicate",
+      keepDup: true,
+    });
+  }
+  // the fresher row is the one kept: here the survivor's, refreshed after the stub's last write
+  assert.deepEqual(
+    classifyCollision(
+      liveFacts({ type: "ie_support", survCents: 100n, dupCents: 100n, survUpdatedUs: us("2026-10-01T00:00:00Z") }),
+    ),
+    { cls: "ie_duplicate", keepDup: false },
+  );
+});
+
+test("FIX-1302 D2 the 2 % edge, both sides", () => {
+  // exactly 2 % of the larger is inside the band; one cent more is outside
+  assert.equal(classifyCollision(liveFacts({ type: "ie_support", survCents: 1000000n, dupCents: 980000n })).cls, "ie_duplicate");
+  assert.equal(classifyCollision(liveFacts({ type: "ie_support", survCents: 1000000n, dupCents: 979999n })).cls, "live");
+  // symmetric in which side is larger
+  assert.equal(classifyCollision(liveFacts({ type: "ie_oppose", survCents: 980000n, dupCents: 1000000n })).cls, "ie_duplicate");
+  assert.equal(classifyCollision(liveFacts({ type: "ie_oppose", survCents: 979999n, dupCents: 1000000n })).cls, "live");
+  assert.equal(withinBand(1000000n, 980000n, 200), true);
+  assert.equal(withinBand(1000000n, 979999n, 200), false);
+});
+
+test("FIX-1302 D2 live: a donation pair EQUAL TO THE CENT is summed, like any live donation pair", () => {
+  assert.deepEqual(classifyCollision(liveFacts({ survCents: 250000n, dupCents: 250000n })), { cls: "live", keepDup: false });
+  assert.deepEqual(classifyCollision(liveFacts({})), { cls: "live", keepDup: false });
+  // an IE pair more than 2 % apart is live too (Gallego 2024 on prod: $52,861 vs $2,694)
+  assert.deepEqual(classifyCollision(liveFacts({ type: "ie_support", survCents: 269442n, dupCents: 5286142n })), {
+    cls: "live",
+    keepDup: false,
+  });
+});
+
+test("FIX-1302 D2 each of Cowork's two cells is one constant", () => {
+  assert.equal(DUPLICATE_BAND_BP.donation, null, "a live donation pair is always summed");
+  assert.equal(DUPLICATE_BAND_BP.ie_support, 200, "within 2 % is one IE filing");
+  assert.equal(DUPLICATE_BAND_BP.ie_oppose, 200);
+});
+
+test("FIX-1302 D2 a live collision of a type the writer does not merge throws", () => {
+  assert.throws(() => classifyCollision(liveFacts({ type: "contract" })), /no shape-C merge rule for a live contract/);
+  // a stale one of any type keeps today's rule
+  assert.equal(classifyCollision(liveFacts({ type: "contract", survUpdatedUs: us("2026-01-01T00:00:00Z") })).cls, "stale");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1302 (cc-289) — a pair that is not adopt-prior: today's SQL, unchanged
+// ---------------------------------------------------------------------------
+
+const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+test("FIX-1302 the _collision CTAS and the two loser DELETEs are de65d66's, byte for byte", () => {
+  assert.equal(
+    norm(collisionCtas()),
+    norm(`CREATE TEMP TABLE _collision ON COMMIT DROP AS
+        SELECT d.relationship_type,
+               s.id AS surv_row, d.id AS dup_row,
+               s.updated_at AS surv_upd, d.updated_at AS dup_upd,
+               s.amount_cents AS surv_cents, d.amount_cents AS dup_cents,
+               (d.updated_at >= s.updated_at) AS keep_dup
+          FROM _manifest m
+          JOIN financial_relationships d
+            ON d.to_type='official' AND d.to_id = m.dup
+          JOIN financial_relationships s
+            ON s.to_type='official' AND s.to_id = m.survivor
+           AND s.relationship_type = d.relationship_type
+           AND s.from_id           = d.from_id
+           AND s.cycle_year        = d.cycle_year;`),
+  );
+  assert.equal(
+    statementAfter("FR delete colliding losers (survivor side)"),
+    "\n      DELETE FROM financial_relationships fr\n       USING _collision c\n" +
+      "       WHERE fr.id = c.surv_row AND c.keep_dup",
+  );
+  assert.equal(
+    statementAfter("FR delete colliding losers (duplicate side)"),
+    "\n      DELETE FROM financial_relationships fr\n       USING _collision c\n" +
+      "       WHERE fr.id = c.dup_row AND NOT c.keep_dup",
+  );
+});
+
+test("FIX-1302 only an adopt-prior pair's collisions are classed; nothing else reads a class", () => {
+  // The fill is guarded on the adopted dups, and is the ONLY write to _collision_class.
+  assert.ok(SCRIPT.includes('const adoptDups = pairs.filter((p) => p.cls === "adopt-prior").map((p) => p.dup);'));
+  assert.equal(SCRIPT.split("INSERT INTO _collision_class").length - 1, 1);
+  const fill = SCRIPT.slice(SCRIPT.indexOf("if (adoptDups.length > 0) {"), SCRIPT.indexOf("FIX-1302 D3 — the table"));
+  assert.ok(fill.includes("INSERT INTO _collision_class"), "the fill sits inside the adopt-only branch");
+  assert.ok(fill.includes("WHERE d.to_id = ANY($1::uuid[])"), "keyed on the adopted stubs");
+  // keep_dup is rewritten only through a join to _collision_class: a pair with
+  // no class row keeps the CTAS's (d.updated_at >= s.updated_at)
+  const rewrite = fill.slice(fill.indexOf("UPDATE _collision c SET keep_dup"));
+  assert.ok(rewrite.includes("FROM _collision_class k WHERE k.dup_row = c.dup_row"));
+  // the live sum touches only rows classed live, and runs before the deletes
+  const sum = statementAfter("FR sum live collisions onto the survivor row");
+  assert.ok(sum.includes("JOIN _collision_class k ON k.dup_row = c.dup_row AND k.cls = 'live'"));
+  assert.ok(
+    SCRIPT.indexOf('"FR sum live collisions onto the survivor row"') <
+      SCRIPT.indexOf('"FR delete colliding losers (survivor side)"'),
+    "the stub's amounts are read before its row is deleted",
+  );
+  // the writer's merge: sum amount, sum tx_count, the later occurred_at
+  assert.ok(sum.includes("COALESCE(s.amount_cents, 0) + COALESCE(d.amount_cents, 0)"));
+  assert.ok(sum.includes("'tx_count'"));
+  assert.ok(sum.includes("GREATEST(s.occurred_at, d.occurred_at)"));
+  assert.equal(/updated_at/.test(sum), false, "updated_at is the trigger's, as for a moved row");
+});
+
+test("FIX-1302 D3 conservation is per type over donation and both IE types", () => {
+  const sql = sqlConst("MANIFEST_MONEY_SQL");
+  assert.ok(sql.includes("GROUP BY 1"));
+  assert.ok(sql.includes("SUMMABLE_TYPES"));
+  assert.ok(SCRIPT.includes("before - after - deleted - trio"), "each type's drop equals exactly its deleted losers");
+  assert.ok(SCRIPT.includes("const dropOk = money.every((m) => m.delta === 0n);"));
+  // a summed live pair is not a deleted loser
+  assert.ok(SCRIPT.includes("sum(CASE WHEN k.cls = 'live' THEN 0"));
 });
