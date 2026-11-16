@@ -1,0 +1,37 @@
+{
+  "cc": "289",
+  "prompt": "cc-prompt-289-fix1302-adopt-prior-gate-bioguide-listing-overrides-first-name-key-shape-c-collision-table-stale-ie-duplicate-live-sum-clone-apply-prod-reads-only.md",
+  "started_at": "2026-11-16T02:30:49Z",
+  "finished_at": "2026-11-16T03:12:00Z",
+  "head_before": "d0804af2",
+  "head_after": "ee23ccdd",
+  "commits": [
+    {
+      "sha": "ffb25fbb",
+      "subject": "feat(data): FIX-1302 --adopt-prior — a bioguide listing of both ids overrides the first-name key; shape-C collisions classed stale / ie_duplicate / live (cc-289)"
+    },
+    {
+      "sha": "ee23ccdd",
+      "subject": "[skip vercel] docs(ops): FIX-1302 the --adopt-prior runbook (the override, the three classes), the class-A manifest header to D1/D2 with Craig's answers, congress-ids steps (cc-289)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "read 7, the donation side on prod: the 300 s bound fired on the 19-pair batch while prod was I/O-degraded (15 ms per stub row on the EXPLAIN pair, over 38 ms on the batch). The STOP's per-pair fallback needs about 22 statements against the cap of 8, so it was not run. Prod's IE side was read in full. The clone's donation table stands in, and the supervised dry run's printed table is the prod measurement.",
+    "read 6b as first written (the stubs' FR by type, without R7's join settings): the 180 s bound fired. It was replaced by an Index Only Scan read on financial_relationships_donor_rollup_idx (29 s)."
+  ],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1302",
+      "what": "the supervised prod apply of the class-A manifest under --adopt-prior --defer-tails with the override and the collision table: the gate's 22 lines, the collision table beside this run's read 7, the money invariant, the manifest-scoped tails, and O1's double_claim count after the next nightly",
+      "after": "2026-11-19T05:00Z"
+    }
+  ]
+}
