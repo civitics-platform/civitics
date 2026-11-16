@@ -11,10 +11,15 @@
 > **Percentages** are a simple checkbox ratio over the phase's own `- [ ]` / `- [x]`
 > bullets (sub-bullets and notes don't count, nor do the parked `— was FIX-NNN;
 > re-open when …` lines: deferred features moved from `FIXES.md` on 2026-11-14,
-> each waiting on the event it names). `/api/phases` parses these header
-> lines at runtime — see `apps/civitics/app/api/phases/route.ts` (FIX-1078). Keep the
-> `` `~NN% complete` `` / `` `Planned` `` token shape intact or the public
-> Development Progress section on `/dashboard` drops to its static fallback.
+> each waiting on the event it names). The public Development Progress card on
+> `/dashboard` computes that ratio from the checkboxes at build time and lists the
+> current phase's unchecked bullets (`apps/civitics/src/lib/phase-goals.ts`,
+> FIX-1415). There is no static fallback: a file that does not parse hides the card.
+> Each header's `` `~NN% complete` `` / `` `Planned` `` token must agree with the
+> ratio to within 1 point (`Planned` = nothing checked, `✓` = 100);
+> `scripts/test-phase-goals.mjs` fails CI (`fixes-integrity`) when it does not, and the
+> board quotes the token verbatim, so keep its shape. A docs-only commit does not
+> deploy, so a checkbox change reaches the card with the next app deploy.
 
 ---
 

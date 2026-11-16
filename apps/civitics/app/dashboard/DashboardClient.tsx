@@ -41,6 +41,8 @@ import { useIsAdmin } from "@/lib/use-is-admin";
 import { formatDurationMs, runDurationMs } from "@/lib/pipeline-runtime-stats";
 // FIX-1097 — type only; the parse itself runs server-side in /api/shipped.
 import type { ShippedEntry } from "@/lib/done-log";
+// FIX-1415 — type only; /api/phases parses docs/PHASE_GOALS.md at build time.
+import type { PhaseBar, CurrentPhase } from "@/lib/phase-goals";
 // FIX-1094 — snapshot-age cue. Import-safe from a client component by
 // construction: snapshot-freshness.ts has no imports at all (that is why the
 // constant was moved out of _lib/status-snapshot.ts, which pulls in @civitics/db).
@@ -669,41 +671,6 @@ const SELF_TEST_LABELS: Record<string, string> = {
   open_comment_count_sane: "Comment-period count sane",
   search_index_fresh: "Search index fresh",
 };
-
-// ── Phase / task data (FIX 4) ────────────────────────────────────────────────
-
-// Rendered until /api/phases resolves. Labels mirror the ## headers in
-// docs/PHASE_GOALS.md — they had drifted to a set of names that appear
-// nowhere in that document (FIX-1078).
-const PHASES_FALLBACK = [
-  { name: "Phase 0", label: "Scaffold", pct: 100, done: true },
-  { name: "Phase 1", label: "MVP", pct: 88, done: false },
-  { name: "Phase 2", label: "Growth", pct: 0, done: false },
-  { name: "Phase 3", label: "Social App", pct: 0, done: false },
-  { name: "Phase 4", label: "Blockchain", pct: 0, done: false },
-  { name: "Phase 5", label: "Global", pct: 0, done: false },
-];
-
-const PHASE1_TASKS: Array<{ label: string; done: boolean }> = [
-  { label: "Entity connections pipeline", done: true },
-  { label: "AI cost management system", done: true },
-  { label: "Entity tagging system", done: true },
-  { label: "Plain language summaries", done: true },
-  { label: "Graph visualization studio (Force, Chord, Treemap, Sunburst, Comparison)", done: true },
-  { label: "Nightly auto-sync pipeline", done: true },
-  { label: "Vote categorization", done: true },
-  { label: "Nomination vote tracking", done: true },
-  { label: "Claude diagnostic API", done: true },
-  { label: "packages/ui component library", done: true },
-  { label: "Dashboard redesign", done: true },
-  { label: "Search across all entities", done: false },
-  { label: "Basic credit system", done: false },
-  { label: "'What does this mean for me'", done: false },
-  { label: "User auth via Supabase", done: false },
-  { label: "Community commenting", done: false },
-  { label: "Position tracking", done: false },
-  { label: "Follow officials/agencies", done: false },
-];
 
 // ── Pipeline freshness helper ────────────────────────────────────────────────
 
@@ -2178,21 +2145,27 @@ function ActivitySection({
 
 // PlatformCostsSection is now DB-driven — imported from ./PlatformCostsSection
 
-type PhaseData = { name: string; label: string; pct: number; done: boolean };
-
 function DevelopmentProgressSection() {
-  const [phases, setPhases] = useState<PhaseData[]>(PHASES_FALLBACK);
+  // FIX-1415 — starts EMPTY, like `shipped`: the bars and the open items come
+  // from docs/PHASE_GOALS.md via /api/phases (computed from its checkboxes at
+  // build time) or not at all. The hand-kept PHASES_FALLBACK (Phase 1 at 88 %)
+  // and PHASE1_TASKS (five checked bullets listed as not done) are gone.
+  const [phases, setPhases] = useState<PhaseBar[]>([]);
+  const [current, setCurrent] = useState<CurrentPhase | null>(null);
   // FIX-1097 — real recent ships from docs/done.log. Starts EMPTY (no
-  // fallback list): phases have a known-good static shape to fall back on,
-  // "what shipped last week" does not, and inventing one would publish an
+  // fallback list): inventing "what shipped last week" would publish an
   // unbacked claim. Empty → the block simply does not render.
   const [shipped, setShipped] = useState<ShippedEntry[]>([]);
 
   useEffect(() => {
     fetch("/api/phases")
       .then((r) => r.json())
-      .then((d) => { if (d.phases?.length) setPhases(d.phases as PhaseData[]); })
-      .catch(() => {/* keep fallback */});
+      .then((d) => {
+        if (!Array.isArray(d.phases) || d.phases.length === 0) return;
+        setPhases(d.phases as PhaseBar[]);
+        setCurrent((d.current as CurrentPhase | undefined) ?? null);
+      })
+      .catch(() => {/* phases stay hidden */});
   }, []);
 
   useEffect(() => {
@@ -2212,57 +2185,64 @@ function DevelopmentProgressSection() {
     ? `${currentPhase.name} of ${phases.length}`
     : undefined;
 
+  if (phases.length === 0 && shipped.length === 0) return null;
+
   return (
     <SectionCard>
       <SectionHeader icon={<Rocket size={16} />} title="Development Progress" description={phaseSummary} />
-      <div className="mt-4 space-y-3">
-        {phases.map((phase) => (
-          <div key={phase.name}>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-sm font-medium text-ink">
-                {phase.name} — {phase.label}
-                {phase.done && <span className="ml-2 text-green-ink">✓</span>}
-              </span>
-              <span className="tabular-nums text-sm text-ink-soft">{phase.pct}%</span>
+      {phases.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {phases.map((phase) => (
+            <div key={phase.name}>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm font-medium text-ink">
+                  {phase.name} — {phase.label}
+                  {phase.done && <span className="ml-2 text-green-ink">✓</span>}
+                </span>
+                <span className="tabular-nums text-sm text-ink-soft">{phase.pct}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-rule/30">
+                <div
+                  className={`h-full rounded-full transition-all duration-200 ${
+                    phase.done ? "bg-green-ink" : phase.pct > 0 ? "bg-civic-blue" : "bg-rule/60"
+                  }`}
+                  style={{ width: `${phase.pct}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-rule/30">
-              <div
-                className={`h-full rounded-full transition-all duration-200 ${
-                  phase.done ? "bg-green-ink" : phase.pct > 0 ? "bg-civic-blue" : "bg-rule/60"
-                }`}
-                style={{ width: `${phase.pct}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-6 border-t border-rule/60 pt-4">
-        <p className="mb-2 text-xs font-semibold text-ink-soft">Phase 1 Tasks</p>
-        <ul className="space-y-1">
-          {PHASE1_TASKS.map((task) => (
-            <li key={task.label} className="flex items-start gap-2">
-              <span
-                className={`mt-0.5 shrink-0 text-xs ${
-                  task.done ? "text-green-ink" : "text-ink-soft/60"
-                }`}
-              >
-                {task.done ? "✓" : "○"}
-              </span>
-              <span
-                className={`text-xs ${task.done ? "text-ink" : "text-ink-soft"}`}
-              >
-                {task.label}
-              </span>
-            </li>
           ))}
-        </ul>
-      </div>
+        </div>
+      )}
+      {/* FIX-1415 — what is left in the current phase, straight off the
+          roadmap's unchecked bullets. No list of done items: the bar already
+          says how many. Parked lines (`— was FIX-NNN; re-open when …`) are in
+          neither count and are only tallied here. */}
+      {current && (
+        <div className="mt-6 border-t border-rule/60 pt-4">
+          <p className="mb-2 text-xs font-semibold text-ink-soft">
+            {`${current.name}: ${current.checked} of ${current.total} done`}
+          </p>
+          <ul className="space-y-1">
+            {current.open.map((item, i) => (
+              <li key={`${i}-${item.label}`} className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 text-xs text-ink-soft/60">○</span>
+                <span className="text-xs text-ink-soft">{item.label}</span>
+              </li>
+            ))}
+          </ul>
+          {current.parked > 0 && (
+            <p className="mt-2 text-xs text-ink-soft/60">
+              {`${current.parked} parked, each waiting on the event its line names`}
+            </p>
+          )}
+        </div>
+      )}
 
-      {/* FIX-1097 — Recently shipped, straight off docs/done.log. The phase
-          bars and the task list above are both hand-maintained claims about
-          progress; this is the append-only record of what actually landed,
-          which is the only part of this section nobody can forget to update.
-          Hidden entirely when the log is empty or unreadable. */}
+      {/* FIX-1097 — Recently shipped, straight off docs/done.log: the
+          append-only record of what actually landed. (The bars and open items
+          above are computed from PHASE_GOALS.md's checkboxes since FIX-1415;
+          before it they were hand-maintained.) Hidden entirely when the log
+          is empty or unreadable. */}
       {shipped.length > 0 && (
         <div className="mt-6 border-t border-rule/60 pt-4">
           <p className="mb-2 text-xs font-semibold text-ink-soft">Recently shipped</p>

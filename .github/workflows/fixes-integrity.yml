@@ -100,7 +100,10 @@ jobs:
       # was local-only. Its fixture done.log was gitignored by `*.log`, and the
       # suite had only ever passed in the worktree that wrote it. The phase-goal
       # test pins the board's copy of the /api/phases header regex to
-      # route.ts. Both pure Node, fixture-driven, ~1s.
+      # apps/civitics/src/lib/phase-goals.ts, and each PHASE_GOALS.md header
+      # token to its checkbox ratio (FIX-1415) — here, because a checkbox edit
+      # is a docs-only commit and tests.yml ignores docs/**. Both pure Node,
+      # fixture-driven, ~1s.
       - name: board + phase-goals unit tests
         run: node scripts/test-board.mjs && node scripts/test-phase-goals.mjs
 

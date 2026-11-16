@@ -7,23 +7,27 @@
 // own percentage token.
 //
 // ── One regex, two copies, pinned ───────────────────────────────────────────
-// apps/civitics/app/api/phases/route.ts parses these headers for /dashboard.
-// Its parser is a module-private function in a Next route file, which may not
-// export anything but route handlers and config, and it imports next/server —
-// so it cannot be imported by a dependency-free script. PHASE_HEADER_RE is
-// therefore a COPY, and scripts/test-phase-goals.mjs reads the route's source
-// and fails if the two literals differ. Change them together.
+// apps/civitics/src/lib/phase-goals.ts is THE parser: /api/phases imports it
+// at build time and the /dashboard card shows each phase's checkbox ratio
+// (FIX-1415). It is TypeScript, which a dependency-free script cannot import,
+// so PHASE_HEADER_RE here is a COPY, and scripts/test-phase-goals.mjs reads
+// that file's source and fails if the two literals differ. Change them
+// together.
 //
-// What the board does NOT do: derive or display a goal's checkbox state. The
-// `- [ ]` / `- [x]` bullets are hand-audited, and the percentage in the header
-// is the document's own claim; the board quotes it verbatim.
+// ── The header token is pinned to the ratio ─────────────────────────────────
+// The board quotes each header's token verbatim (`~96%`, `Planned`); the card
+// computes the ratio. countPhaseBullets() is a twin of the app's counter so
+// scripts/test-phase-goals.mjs can hold the token within 1 point of the ratio
+// in fixes-integrity.yml — the one workflow that runs on a docs-only commit,
+// which is what a checkbox edit is (tests.yml ignores docs/**). The app's
+// phase-goals.test.ts imports this file and asserts the two counters agree.
 //
 // Dependency-free Node, matching its siblings in scripts/.
 
 /**
- * Copied VERBATIM from route.ts `parsePhases` (FIX-1078 — the three header
- * shapes: `100% complete`, `~88% complete`, `Planned`). Groups: 1 `Phase N`,
- * 2 label, 3 the digits (absent for `Planned`).
+ * Copied VERBATIM from apps/civitics/src/lib/phase-goals.ts (FIX-1078 — the
+ * three header shapes: `100% complete`, `~88% complete`, `Planned`). Groups:
+ * 1 `Phase N`, 2 label, 3 the digits (absent for `Planned`).
  */
 export const PHASE_HEADER_RE =
   /^## (Phase \d+) — ([^\n`]+?)(?:\s*✓)?\s*`[^`]+`\s*`(?:~?(\d+)% complete|Planned)`/gm;
@@ -73,6 +77,47 @@ export function parsePhaseHeaders(md) {
     offset += line.length + 1;
   }
   return phases.map(({ offset: _o, ...rest }) => rest);
+}
+
+/**
+ * Per phase header: the top-level `- [x]` / `- [ ]` bullets between it and the
+ * next `## ` line. Indented bullets do not count; a line carrying
+ * `— was FIX-<digits>;` is parked and in neither count. The twin of
+ * parsePhaseGoals() in apps/civitics/src/lib/phase-goals.ts (FIX-1415).
+ *
+ * @param {string} md PHASE_GOALS.md text
+ * @returns {{name: string, checked: number, open: number, parked: number, pct: number}[]}
+ *   `pct` = round(100 × checked / (checked + open)), 0 with no bullets.
+ */
+export function countPhaseBullets(md) {
+  const text = String(md ?? "").replace(/\r\n/g, "\n");
+  const re = new RegExp(PHASE_HEADER_RE.source, PHASE_HEADER_RE.flags);
+  const starts = new Map();
+  let m;
+  while ((m = re.exec(text)) !== null) starts.set(m.index, m[1].trim());
+  const out = [];
+  let cur = null;
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    const name = starts.get(offset);
+    offset += line.length + 1;
+    if (name !== undefined) {
+      cur = { name, checked: 0, open: 0, parked: 0, pct: 0 };
+      out.push(cur);
+      continue;
+    }
+    if (line.startsWith("## ")) { cur = null; continue; }
+    const b = cur && /^- \[([ xX])\] /.exec(line);
+    if (!b) continue;
+    if (/— was FIX-\d+;/.test(line)) cur.parked++;
+    else if (b[1] === " ") cur.open++;
+    else cur.checked++;
+  }
+  for (const p of out) {
+    const total = p.checked + p.open;
+    p.pct = total === 0 ? 0 : Math.round((100 * p.checked) / total);
+  }
+  return out;
 }
 
 /**
