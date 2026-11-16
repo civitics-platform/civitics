@@ -1,0 +1,35 @@
+{
+  "cc": "290",
+  "prompt": "cc-prompt-290-fix1415-dashboard-phase-card-from-phase-goals-checkbox-ratio-build-time-route-open-items-list-no-hand-kept-fallbacks-header-token-pinned-by-test.md",
+  "started_at": "2026-11-16T02:30:50Z",
+  "finished_at": "2026-11-16T04:40:00Z",
+  "head_before": "d0804af2",
+  "head_after": "f0f40275",
+  "commits": [
+    {
+      "sha": "ab5a6ec4",
+      "subject": "feat(dashboard): FIX-1415 the phase card is computed from PHASE_GOALS.md's checkboxes at build time; the current phase's open items replace the hand-kept task list (cc-290)"
+    },
+    {
+      "sha": "f0f40275",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-290 — FIX-1415 closes local-only (the receipt is prod /dashboard's card and /api/phases' new payload after the deploy) (25 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1415"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1415",
+      "what": "prod after the deploy: /dashboard's Development Progress card shows the computed percentages and the current phase's open rows, and /api/phases answers the new payload with no fallback key (Craig's look, or the next prod-reads prompt)",
+      "after": "2026-11-16T06:00Z"
+    }
+  ]
+}
