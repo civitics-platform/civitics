@@ -1,0 +1,84 @@
+{
+  "cc": "291",
+  "prompt": "cc-prompt-291-nightly-fallback-stands-down-on-unreadable-db-when-github-shows-the-dispatched-run-irs990-officials-read-retry-fix1181-linker-off-postgrest-fix1417-mapvote-fix1293-reopen.md",
+  "started_at": "2026-11-17T05:42:27Z",
+  "finished_at": "2026-11-17T06:13:00Z",
+  "head_before": "fbcbeb34",
+  "head_after": "556fdbf3",
+  "commits": [
+    {
+      "sha": "96dc6df9",
+      "subject": "[skip vercel] chore(fixes): file FIX-1418 (the nightly fallback fails open into a stall), FIX-1419 (irs990's officials read has no retry), FIX-1420 (fixes-integrity's reopen assertion reads the live log) and FIX-1421 (a cancelled unit's sync row stays running; cc-292 builds it) (cc-291)"
+    },
+    {
+      "sha": "fd91c4a9",
+      "subject": "fix(nightly): FIX-1418 the schedule: fallback stands down on an unreadable DB when GitHub shows the night's dispatched run (cc-291)"
+    },
+    {
+      "sha": "76f94061",
+      "subject": "fix(irs990): FIX-1419 the officials page read retries 5 s then 15 s on the page that failed, keeping the keyset cursor (cc-291)"
+    },
+    {
+      "sha": "197cbd4d",
+      "subject": "fix(data): FIX-1181 link_officials_to_districts leaves PostgREST's 8 s: direct pg bounded at 60 s by its caller, outcome recorded as district_link in the run's data_sync_log (cc-291)"
+    },
+    {
+      "sha": "f9e3564a",
+      "subject": "fix(congress): FIX-1417 mapVote stops storing a cast it does not know as not_voting; Guilty / Not Guilty map to yes / no; the verdict roll's manifest and its local apply (cc-291)"
+    },
+    {
+      "sha": "88bca881",
+      "subject": "[skip vercel] chore(hygiene): FIX-1420 the reopen assertion reads the fixture, not the live done.log; ARCHITECTURE.md's phase table and Phase 1 list become a pointer to PHASE_GOALS.md; /api/shipped's stale /api/phases comments (cc-291)"
+    },
+    {
+      "sha": "8c5c353d",
+      "subject": "[skip vercel] chore(fixes): reopen FIX-1293 — cc-286 read 6: 31 of 48 status ticks read ec_crawl_health >= 1 s over the 11-15 landing, max 55,300 ms, 7 null tiles at >= 8 s; idle ticks 2.8 s through PostgREST against 10.8 ms direct (cc-291)"
+    },
+    {
+      "sha": "556fdbf3",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-291 — FIX-1418, FIX-1419, FIX-1181 and FIX-1420 close local-only (each receipt is a later run on prod); FIX-1293 reopened; FIX-1417 and FIX-1421 stay open (28 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1418",
+    "FIX-1419",
+    "FIX-1181",
+    "FIX-1420"
+  ],
+  "fixes_filed": [
+    "FIX-1421",
+    "FIX-1418",
+    "FIX-1419",
+    "FIX-1420"
+  ],
+  "fixes_reopened": [
+    "FIX-1293"
+  ],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "owed": [
+    {
+      "fix": "FIX-1181",
+      "what": "three nightlies after the deploy: each OpenStates link step's recorded district_link (ok, ms, linked), no 57014 on link_officials_to_districts in the Logs API, and whether the skip (if built) fired — none was built (the counters cannot tell unchanged from changed)",
+      "after": "2026-11-21T01:00Z"
+    },
+    {
+      "fix": "FIX-1417",
+      "what": "the verdict roll's manifest applied on prod by a supervised prompt: senate-117-1-00059's rows by vote before and after, equal to the local apply's (not_voting=78 → no=37 yes=41)",
+      "after": "2026-11-20T05:00Z"
+    },
+    {
+      "fix": "FIX-1400",
+      "what": "the next irs990 run that reaches the archives (Craig's hand dispatch, or the first Tuesday slot once cc-292 lands): the unzip Deflate64 line, each 2025 archive's line, rows inserted / failed, and any officials-read retry it logged",
+      "after": "2026-11-18T01:00Z"
+    },
+    {
+      "fix": "FIX-1418",
+      "what": "the next schedule-triggered nightly run: its preflight lines verbatim; a night whose DB read fails stands down naming the dispatched run; a readable night is not a miss",
+      "after": "2026-11-23T12:00Z"
+    }
+  ]
+}
