@@ -18,6 +18,7 @@
 
 import { rowsOrThrow, afterKey } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
+import { retryWithBackoff } from "../utils";
 import type { ParsedFiling, ParsedOfficer, ParsedGrantOut } from "./parse";
 
 const FILING_CHUNK   = 100;
@@ -244,28 +245,50 @@ export async function insertFiling(
  *
  * Bench: with ~5k elected officials + ~10k tier=candidate rows, this is a
  * single 15k-row SELECT, well under 100ms.
+ *
+ * FIX-1419 (cc-291 D5): each page read is tried three times, 5 s and then 15 s
+ * apart, on the page that failed, with the keyset cursor unchanged. Mon
+ * 2026-11-16's run (43980962350) died 10 s in on one statement timeout on one
+ * page, before any archive. Exhausted tries throw the same
+ * `officials load failed: …` as before. `opts.sleep` is for tests.
  */
+export const OFFICIALS_PAGE_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000];
+
 export async function loadOfficialsByCanonicalName(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   // Pull in pages (Supabase default cap is 1000 rows per request).
   const PAGE = 1000;
+  const tries = OFFICIALS_PAGE_RETRY_DELAYS_MS.length + 1;
   let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   for (;;) {
     type OfficialNameRow = {
       id: string; full_name: string | null;
       first_name: string | null; last_name: string | null;
     };
-    const { data, error }: { data: OfficialNameRow[] | null; error: { message: string } | null } =
-      await afterKey(db
-        .from("officials")
-        .select("id, full_name, first_name, last_name")
-        // FIX-760 total order / FIX-984 keyset key — the same column serves both.
-        .order("id")
-        .limit(PAGE), "id", afterId);
-    if (error) throw new Error(`officials load failed: ${error.message}`);
+    const cursor: string | null = afterId;
+    const data: OfficialNameRow[] | null = await retryWithBackoff(async () => {
+      const { data: page, error }: { data: OfficialNameRow[] | null; error: { message: string } | null } =
+        await afterKey(db
+          .from("officials")
+          .select("id, full_name, first_name, last_name")
+          // FIX-760 total order / FIX-984 keyset key — the same column serves both.
+          .order("id")
+          .limit(PAGE), "id", cursor);
+      if (error) throw new Error(`officials load failed: ${error.message}`);
+      return page;
+    }, {
+      delaysMs: OFFICIALS_PAGE_RETRY_DELAYS_MS,
+      sleep: opts.sleep,
+      onRetry: (n, err, waitMs) =>
+        console.warn(
+          `    [irs990] ${err.message} (page after ${cursor ?? "<start>"}, try ${n} of ${tries}) — ` +
+            `trying again in ${waitMs / 1000} s`,
+        ),
+    });
     if (!data || data.length === 0) break;
     for (const row of data) {
       // Build canonical from first+last so apostrophes/middle-init quirks in
