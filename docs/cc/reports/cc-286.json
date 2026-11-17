@@ -1,0 +1,74 @@
+{
+  "cc": "286",
+  "prompt": "cc-prompt-286-mon-records-the-box-drop-night-post-landing-pass-rung-second-event-io-samples-2-stale-mirror-hold-donor-staging-bound-vacuums-status-ticks-budget-estimate-tier-memo-inputs.md",
+  "started_at": "2026-11-17T02:34:24Z",
+  "finished_at": "2026-11-17T03:00:00Z",
+  "head_before": "f82abe01",
+  "head_after": "324cad6b",
+  "commits": [
+    {
+      "sha": "f21298e8",
+      "subject": "[skip vercel] docs(audits): the 11-16 pass — 15-min buckets Sun 23:00Z → Tue 01:45Z, the three holds (02:38:27Z / 06:12:25Z / 12:26:23Z) and their skips by mirror age, 414 startup timeouts (277 in the pass) beside 11-02's 270 and 11-09's 306 (cc-286)"
+    },
+    {
+      "sha": "3d7d828b",
+      "subject": "chore(fixes): record FIX-1375 on prod — the rung's second event, Mon 11-16's post-landing pass under io_samples 2: 8 io_saturated + 70 io_throttled skips (02:43:02Z → 14:51:00Z) under three holds (02:38:27Z, 06:12:25Z, 12:26:23Z → 14:52:24Z), longest streak 5; 277 startup timeouts in the pass (414 on 11-16) against 11-09's 306 and 11-02's 270 (cc-286)"
+    },
+    {
+      "sha": "9a35789b",
+      "subject": "chore(fixes): record FIX-1393 on prod — the first non-resumed donor_rollup_rebuild_bulk staging under the 2,400 s transaction_timeout completed: 23:37:00Z Sun, 694 targets, 22 chunks run inside 2,101 s before a fork_failures backoff at chunk 23 (resumed 12:17Z, complete); no override set; no cron row with a transaction timeout, termination or lost connection (cc-286)"
+    },
+    {
+      "sha": "8899520e",
+      "subject": "chore(fixes): record FIX-1313 on prod — 72 h of live ticks (11-14 05:01Z → 11-17 02:31Z, 135): all 26 counter moves within ±10 % of the estimate at the tick before (p50 −0.03 %, worst −0.07 %, −24 to −213 commands, never high); basis estimate 134 / counter 1 (estimate_note \\\"newest prior tick is 119 min old (> 90)\\\" ×1); flag_written true on 135 of 135; state clear throughout (cc-286)"
+    },
+    {
+      "sha": "324cad6b",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-286 — FIX-1375, FIX-1393 and FIX-1313 recorded on prod; FIX-1399 stays open (277 startup timeouts in the pass ≥ the STOP row's 100), FIX-1392 stays open (27 open)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1399 NOT closed (Item 2): the STOP row read 3 (vi) fired, with 277 job startup timeouts in the pass (414 on 11-16), at or over 100. Item 2's three clauses all held: the dial reads 2; H-a (02:38:27Z) and H-c (12:26:23Z) were set on the 2nd consecutive throttle sample; read 3 (iv) is empty. FIX-1399 stays open and is re-owed. Whether the clauses alone close it is Craig's call or the tier memo's.",
+    "FIX-1396 NOT recorded: ecs-vacuum-analyze fell due 18:07Z Mon and armed 18:33:01Z (−00:26:00), so it sat 12 ticks behind group ec. 9 of those ticks were behind an ORPHANED data_sync_log running row (the 12:25:00Z ec-crawl unit, cancelled 12:56:22Z), which the tick's 6 h c_running_win read as live (ec-crawl) until ~18:25Z. Its arm against the pass's ecs windows (20:39Z Mon → 01:37Z Tue) has not happened yet: n_dead 48,532 is under its line, and the floor falls ~18:37Z 11-17. The officials half is read and stated below.",
+    "FIX-1293 NOT recorded (missed): 31 of 48 status ticks (23:01Z Sun → 01:31Z Tue) read ec_crawl_health ≥ 1 s, max 55,300 ms. 7 tiles were null, each at ≥ 8 s (the service_role 57014 class). The pgss PostgREST entry reads 992 calls, mean 1,092.2 ms, cumulative since 10-25. Not reopened: the prompt files and reopens nothing, so a reopen is Craig's call.",
+    "FIX-1360 NOT recorded: unexercised. The dispatched run pushed de65d66..754d532 at 23:35:14Z; the fallback checked out 754d532 and pushed once (754d532..d0804af, 02:16:01Z), with no race warning.",
+    "FIX-1392 H1's receipt not exercised: 0 box: io_throttled skips on a stale mirror. All 12 skips under a standing hold with the mirror > 180 s were refused first by stale (4) or fork_failures (8). FIX-1392 stays open (the prompt's rule).",
+    "Not run: the 57014 census (data:census:cancellations:prod) is not among the prompt's sanctioned instruments. The 7 null tiles are read as 57014s from their ≥ 8 s section walls, not from the Logs API.",
+    "My slip: 9a35789b's body says cron.job_run_details holds 417 failures since 11-13, 416 startup timeouts and one cancel. The read says 418: 417 startup timeouts and one ec-crawl cancel. The subject's claims stand. Not amended (no-amend rule); corrected here."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1399",
+      "what": "the next drop night's post-landing pass (Sun 11-22) under io_samples 2: holds (instant, MB/s, sample of the streak), no arm into a standing hold, AND fewer than 100 job startup timeouts in the pass; or Craig / the tier memo rules on 11-16's three held clauses against its 277",
+      "after": "2026-11-23T12:00Z"
+    },
+    {
+      "fix": "FIX-1392",
+      "what": "H1's receipt: the first box: io_throttled skip stamped on a STALE mirror (memory.age_seconds > 180, throttle_until in the future); on 11-16 stale (4) and fork_failures (8) refused every such row first",
+      "after": "2026-11-23T12:00Z"
+    },
+    {
+      "fix": "FIX-1396",
+      "what": "ecs-vacuum-analyze's first arm after the pass's ecs windows (20:39Z Mon → 01:37Z Tue): on its line or the ~18:37Z 11-17 floor, not held past due by more than a tick (11-16's 18:33Z arm sat 12 ticks, 9 behind an orphaned running row)",
+      "after": "2026-11-18T01:00Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "the status ticks through the next landing (Sun 11-22): ec_crawl_health under 1 s on every tick and no null tile / 57014; pgss mean <= 150 ms measured as a delta from a baseline (the PostgREST entry is cumulative since 10-25)",
+      "after": "2026-11-23T12:00Z"
+    },
+    {
+      "fix": "FIX-1360",
+      "what": "the next drop-night fallback that collides on the receipts file — green with its regenerated receipt on main after the dispatched run's; unexercised nights are not misses",
+      "after": "2026-11-23T12:00Z"
+    }
+  ]
+}
