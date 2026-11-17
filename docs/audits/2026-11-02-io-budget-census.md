@@ -394,3 +394,121 @@ p50 / p95 / max, io_time p95 / max, minutes at io_time ≥ 90 %, the all-disk
 MB/s, and the dashboard's daily %. The halving trades RAM for exactly these
 reads. Root-volume reads (swap and file-backed faults) may FALL if the freed
 RAM goes to the page cache, while `/data` reads RISE. Read both.
+
+## The 11-16 pass (cc-286, read-only prod)
+
+The second drop night's post-landing pass under the rung: `io_samples` 2
+(FIX-1399) and the stale-mirror hold (FIX-1392 H1), both live since
+2026-11-11 01:10:43Z. The landing was fec_bulk complete, 4,159,334 rows,
+21:09:25 → 23:24:39Z Sun 11-15. The pass ran from the first ec-crawl arm after
+the landing (02:27:02Z Mon, donations window 1/16) to the closing unit
+(ecs window 16/16, then the complete unit armed 01:33Z, reaped **01:39:00Z
+Tue**). That is 23 h 12 min, against 11-09's 02:41 → 22:21Z.
+
+The sources are cc-266's: `dispatch_log` (box readings per row),
+`cron.job_run_details` and the off-box ring (`data:box-health:series --hours
+30`, 768 samples from 11-15 20:36Z). The table starts at Sun 23:00Z, the
+landing's tail, so the stall before the pass's first arm is in it. Quiet runs
+(no skip, no timeout) are merged. **Bold** = startup timeouts.
+
+| 15-min bucket (Z) | ticks | io_sat / io_thr / fork / stale skips | armed | streak max | io max | st10 max | mirror age max | startup timeouts | ring n | ring io max | busy ≥ 90 % at ≤ 12 MB/s (MB/s) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 11-15 23:00 | 7 | 0/0/0/0 |  | — | — | — | — | 0 | 8 | 76.1 | — |
+| 11-15 23:15 | 8 | 1/0/0/0 | fe-crawl 23:25 | 2 | 92 | 0 | 40 | 0 | 7 | 100 | — |
+| 11-15 23:30 | 7 | 0/0/0/0 | donor-rollup-refresh 23:35, entity-tags-vacuum-analyze 23:37 | 1 | 99.3 | 0 | 35 | 0 | 8 | 99.3 | donor bulk armed 23:35:01 on streak 1 (99.3 %, 86.25 MB/s) |
+| 11-15 23:45 | 8 | 0/0/0/0 |  | — | — | — | — | 0 | 7 | 89 | — |
+| **11-16 00:00** | 6 | 0/0/4/0 | fe-crawl 00:03 | 1 | 100 | 5 | 176 | **7** | 4 | 100 | 00:10(8.93) |
+| **11-16 00:15** | 7 | 0/0/4/0 |  | 1 | 100 | 6 | 762 | **9** | 2 | 81.5 | — |
+| **11-16 00:30** | 5 | 0/0/5/0 |  | 0 | 59.4 | 13 | 314 | **10** | 4 | 59.4 | — |
+| **11-16 00:45** | 2 | 0/0/1/0 |  | 0 | 29.7 | 4 | 31 | **11** | 2 | 96 | 00:52(7.34) |
+| **11-16 01:00** | 4 | 0/0/3/1 |  | 1 | 96 | 16 | 876 | **18** | 3 | 98.9 | 01:14(6.17) |
+| **11-16 01:15** | 4 | 0/0/2/2 |  | 1 | 98.9 | 15 | 883 | **23** | 0 | — | — |
+| **11-16 01:30** | 4 | 0/0/1/3 |  | 1 | 98.9 | 15 | 1733 | **20** | 2 | — | — |
+| **11-16 01:45** | 5 | 0/0/4/1 |  | 1 | 98.9 | 12 | 2678 | **15** | 2 | 30.2 | — |
+| **11-16 02:00** | 4 | 0/0/1/3 |  | 1 | 98.9 | 16 | 3541 | **21** | 1 | — | — |
+| **11-16 02:15** | 8 | 0/0/6/0 | ec-crawl 02:27 | 1 | 98.9 | 11 | 3751 | **3** | 6 | 7.7 | — |
+| **11-16 02:30** | 7 | 0/1/5/0 |  | 4 | 100 | 3 | 161 | **3** | 5 | 100 | 02:38(8.09) 02:40(10.51) 02:42(8.82); hold set 02:38:27 (2nd sample) |
+| **11-16 02:45** | 1 | 0/0/0/1 |  | 4 | 98 | 0 | 667 | **24** | 0 | — | — |
+| **11-16 03:00** | 5 | 0/0/4/1 |  | 4 | 98 | 14 | 1397 | **12** | 5 | 1.2 | — |
+| 11-16 03:15 | 8 | 0/8/0/0 |  | 0 | 0.1 | 0 | 37 | 0 | 7 | 0.1 | — |
+| 11-16 03:30 | 7 | 0/6/0/0 | fe-crawl 03:43 | 0 | 3.8 | 0 | 37 | 0 | 8 | 3.8 | hold H-a ends 03:42:25 |
+| 11-16 03:45 → 05:45 | 7–8 | 0 | fe-inbound-rollup-refresh, ec-crawl ×3, vote-stats-refresh, fe-crawl ×2, fe-vacuum-analyze | 0 | 55.9 | 0 | 37 | 0 | 7–8 | 84.1 | — |
+| **11-16 06:00** | 7 | 2/1/0/0 | refresh-derived-mvs-daily 06:01 | 3 | 97.3 | 0 | 165 | **3** | 7 | 100 | 06:12(6.26); hold set 06:12:25 (3rd sample) |
+| 11-16 06:15 | 8 | 0/3/5/0 |  | 5 | 100 | 3 | 165 | 0 | 7 | 100 | 06:16(7.96) 06:18(6.13) |
+| 11-16 06:30 | 7 | 0/7/0/0 |  | 0 | 4 | 0 | 37 | 0 | 8 | 4 | — |
+| 11-16 06:45 | 8 | 0/8/0/0 |  | 0 | 0.4 | 0 | 37 | 0 | 7 | 0.4 | — |
+| 11-16 07:00 | 7 | 0/7/0/0 |  | 0 | 1.7 | 0 | 37 | 0 | 8 | 1.7 | — |
+| 11-16 07:15 | 8 | 0/2/0/0 | fr-vacuum-analyze 07:19, ec-crawl 07:21, fe-crawl 07:25, rule-taggers-daily 07:27 | 1 | 97 | 0 | 38 | 0 | 7 | 97 | hold H-b ends 07:18:24 → 4 arms in 8 min |
+| **11-16 07:30** | 2 | 0/0/0/1 |  | 0 | 66.1 | 10 | 271 | **22** | 4 | 95 | — |
+| **11-16 07:45** | 1 | 0/0/1/0 |  | 0 | 41.4 | 14 | 524 | **32** | 0 | — | — |
+| **11-16 08:00** | 0 | 0/0/0/0 |  | — | — | — | — | **34** | 1 | — | — |
+| **11-16 08:15** | 4 | 0/0/1/3 |  | 0 | 32.4 | 22 | 281 | **15** | 2 | 32.4 | — |
+| **11-16 08:30** | 4 | 0/0/4/0 |  | 0 | — | 15 | 1075 | **15** | 0 | — | — |
+| **11-16 08:45** | 6 | 0/0/6/0 |  | 0 | 0.2 | 10 | 1803 | **11** | 2 | 0.2 | — |
+| 11-16 09:00 | 7 | 0/0/2/0 | ec-crawl 09:05, fe-crawl 09:07 | 0 | 3.6 | 5 | 37 | 0 | 7 | 98.9 | 09:14(7.44) |
+| **11-16 09:15** | 5 | 0/0/2/0 |  | 1 | 98.9 | 15 | 522 | **16** | 2 | 88 | — |
+| **11-16 09:30** | 6 | 0/0/5/1 |  | 1 | 54 | 15 | 180 | **8** | 6 | 54 | — |
+| **11-16 09:45** | 6 | 0/0/2/0 | ec-crawl 09:45 | 1 | 95.7 | 10 | 37 | **10** | 5 | 95.7 | 09:58(6.26) |
+| **11-16 10:00** | 6 | 0/0/5/1 |  | 0 | 39.4 | 10 | 411 | **8** | 5 | 39.4 | — |
+| 11-16 10:15 → 11:45 | 7–8 | 0 | ec-crawl, fe-crawl, ec-vacuum-analyze | 0 | 0.4 | 0 | 37 | 0 | 7–8 | 94.1 | — |
+| 11-16 12:00 | 7 | 2/0/0/0 | fe-crawl 12:01, ec-crawl 12:03, donor-rollup-refresh 12:13 | 3 | 99.4 | 0 | 37 | 0 | 8 | 99.4 | — |
+| 11-16 12:15 | 8 | 0/2/0/0 | ec-crawl 12:23 | 2 | 100 | 0 | 47 | 0 | 7 | 100 | 12:24(8.03) 12:26(9.9); hold set 12:26:23 (2nd sample) |
+| **11-16 12:30** | 4 | 0/2/2/0 |  | 1 | 95.4 | 8 | 278 | **15** | 4 | 100 | 12:30(10.74) 12:32(9.19) |
+| **11-16 12:45** | 7 | 0/0/7/0 |  | 1 | 98.9 | 13 | 300 | **6** | 5 | 98.9 | 12:56(7.26) |
+| **11-16 13:00** | 4 | 0/0/3/1 |  | 0 | 80 | 14 | 508 | **14** | 4 | 80 | — |
+| **11-16 13:15** | 8 | 0/2/6/0 |  | 2 | 99.9 | 7 | 875 | **3** | 6 | 99.9 | 13:26(7.3) 13:28(6.92); hold extended 13:28:24 |
+| **11-16 13:30** | 6 | 0/1/5/0 |  | 3 | 100 | 5 | 167 | **8** | 5 | 100 | 13:30(6.69) 13:36(7.33) 13:38(7.75) 13:40(7.44) |
+| **11-16 13:45** | 4 | 0/0/3/1 |  | 4 | 97.2 | 8 | 402 | **15** | 2 | 95.1 | 13:52(7.68) |
+| **11-16 14:00** | 7 | 0/1/6/0 |  | 4 | 6.5 | 13 | 37 | **3** | 8 | 6.5 | — |
+| 11-16 14:15 | 8 | 0/8/0/0 |  | 0 | 0.1 | 0 | 37 | 0 | 7 | 0.1 | — |
+| 11-16 14:30 | 7 | 0/7/0/0 |  | 0 | 2.6 | 0 | 37 | 0 | 8 | 2.6 | — |
+| 11-16 14:45 | 8 | 0/4/0/0 | fe-crawl 14:53, odbt-vacuum-analyze 14:59 | 0 | 67 | 0 | 37 | 0 | 7 | 67 | hold H-c ends 14:52:24 |
+| 11-16 15:00 → 17:45 | 7–8 | 0 | fe-crawl ×6 | 0 | 0.2 | 0 | 37 | 0 | 7–8 | 4.6 | — |
+| 11-16 18:00 | 7 | 0/0/0/0 | fe-crawl 18:13 | 0 | 0.1 | 0 | 37 | 0 | 8 | 3.1 | ecs-vacuum due 18:07, held 12 ticks (group ec) |
+| 11-16 18:15 | 8 | 0/0/0/0 | ec-crawl 18:27 | 0 | 0.2 | 0 | 37 | 0 | 7 | 0.2 | ec-crawl armed 18:27 (−06:05:34): an orphaned running row held it live from 12:57 |
+| 11-16 18:30 | 7 | 0/0/0/0 | ecs-vacuum-analyze 18:33, fe-crawl 18:43 | 0 | 82.2 | 0 | 37 | 0 | 8 | 82.2 | ecs-vacuum armed 18:33:01 (−00:26:00) |
+| 11-16 18:45 → 21:00 | 7–8 | 0 | ec-crawl ×10, fe-crawl ×4, ec-vacuum-analyze, nightly, officials-vacuum-analyze | 0 | 86.2 | 0 | 41 | 0 | 6–8 | 100 | — |
+| 11-16 21:15 | 8 | 3/0/0/0 | fe-crawl 21:21, ec-crawl 21:29 | 4 | 100 | 0 | 40 | 0 | 7 | 100 | — |
+| 11-16 21:30 → 00:00 | 7–8 | 0 | ec-crawl ×9, fe-crawl ×6, entity-tags-vacuum-analyze, agency-staffing-rollup-refresh | 0 | 69.5 | 0 | 39 | 0 | 7–8 | 100 | — |
+| 11-17 00:15 | 8 | 0/0/0/0 | donor-rollup-refresh 00:15, odt-vacuum-analyze 00:21, ec-crawl 00:25, osdr-vacuum-analyze 00:27 | 1 | 99.9 | 0 | 37 | 0 | 7 | 86.3 | donor bulk armed 00:15:00 on streak 1 (99.9 %, 27.86 MB/s) |
+| 11-17 00:30 | 7 | 0/0/0/0 | ec-crawl 00:41, fe-crawl 00:43 | 0 | 0.1 | 0 | 37 | 0 | 8 | 100 | — |
+| 11-17 00:45 | 8 | 1/0/0/0 | refresh-derived-mvs-weekly 00:47 | 2 | 94.1 | 0 | 37 | 0 | 7 | 94.1 | — |
+| 11-17 01:00 → 01:15 | 7–8 | 0 | ec-crawl, fe-crawl | 0 | 61.1 | 0 | 37 | 0 | 7–8 | 100 | — |
+| 11-17 01:30 | 7 | 0/0/0/0 | ec-crawl 01:33 | 0 | 3 | 0 | 36 | 0 | 8 | 66.1 | closing unit armed 01:33, reaped 01:39:00 |
+
+**The holds** (the mirror's samples; the ring's at :22 the same minute):
+
+| hold | set | io % / all-disk MB/s at the set | sample of the streak | refreshed | throttle_until (final) | skips under it (mirror ≤ 180 s / > 180 s) | arms inside |
+|---|---|---|---|---|---|---|---|
+| H-a | 02:38:27Z | 97 / 8.09 | 2nd | 02:40:23, 02:42:25 | 03:42:25Z | io_throttled 15 / 0, fork_failures 6 / 0, stale 0 / 2 | none (fe-crawl 03:43:01) |
+| H-b | 06:12:25Z | 97.3 / 6.26 | 3rd: the 2nd (06:08, 96.2 %) read 27.56 MB/s, over the floor | 06:16:36, 06:18:24 | 07:18:24Z | io_throttled 28 / 0, fork_failures 5 / 0 | none (fr-vacuum-analyze 07:19:01) |
+| H-c | 12:26:23Z | 100 / 9.9 | 2nd | 12:32:24, 13:28:24, 13:30:23, 13:38:24, 13:40:31, 13:52:24 | 14:52:24Z | io_throttled 27 / 0, fork_failures 24 / 8, stale 0 / 2 | none (fe-crawl 14:53:02) |
+
+- **No ARMED row since 11-13 carries a `throttle_until` later than its arm.**
+  The three arms that carry one each came 36–38 s after it expired.
+- **No `box: io_throttled` skip was stamped on a stale mirror.** Twelve skips
+  fell under a standing hold with the mirror > 180 s old. Each was refused
+  first by `stale` (4) or `fork_failures` (8), which rank above the hold.
+- **Startup timeouts: 414 on 11-16, all 00:00 → 14:02Z.** 137 fell before the
+  pass's first arm, under the donor bulk's staging (armed 23:35:01Z on a
+  streak of 1) and the `schedule:` fallback, which failed open on its
+  `already_ran` read at 00:34:20Z. **277 fell inside the pass.** Of those,
+  103 were under a hold (H-a 36, H-b 3, H-c 64) and 174 were outside one.
+  171 of the 174 came in 07:30 → 10:15Z. That stall began when H-b expired
+  and four units armed in eight minutes: fr-vacuum-analyze, ec-crawl,
+  fe-crawl (97 %, 128.84 MB/s, streak 1, ran 2,876.8 s against a p50 of
+  0.1 s) and rule-taggers-daily (83.3 %, ran 5,116.1 s against a p50 of
+  181.1 s). The ring then gapped 30 and 32 min, and no hold was set again
+  until 12:26Z.
+- **H2** (60–89.9 % at ≤ 12 MB/s): 18 box rows on 11-16, 15 of them in the
+  pass, and 17 ring samples. **H3** (a stale mirror with
+  `startup_timeouts_10m` 1 or 2): 0.
+
+**Beside it:**
+
+- **11-02** (§2): 270 startup timeouts 03:45 → 08:15Z, no rung.
+- **11-09** (cc-266): 306 in 05:00 → 11:15Z under `io_samples` 3. There were
+  two holds (08:32:25Z, 14:23Z) and one arm into a standing hold, on a 404 s
+  mirror (donor-rollup-refresh 08:39:49Z).
+- **11-16:** 414, 277 of them in the pass, under `io_samples` 2. There were
+  three holds and no arm into one.
