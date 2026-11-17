@@ -112,6 +112,13 @@ const swapped = parseDoneLog(
 );
 assertEq("order decides: a reopen AFTER the close -> OPEN", statusOf(deriveStatus(swapped), "FIX-103"), "open");
 
+// FIX-1420: the trailing-reopen premise is asserted on the fixture. It used to
+// read the live done.log, so it went red whenever no live id happened to end on
+// a reopen row (a fact about the backlog, not about the derivation) and
+// fixes-integrity.yml skipped every later step behind it.
+assertTrue("at least one id derives OPEN via a trailing reopen",
+  [...st.values()].some((v) => v.status === "open" && v.lastRow.sha === "reopen"));
+
 // -- 3. The live log — the premise the strip rests on -----------------------
 console.log("\nlive docs/done.log:");
 const liveRows = parseDoneLog(readFileSync(resolve(REPO_ROOT, "docs/done.log"), "utf8"));
@@ -119,8 +126,6 @@ const liveStatus = deriveStatus(liveRows);
 assertTrue("parses > 1000 rows", liveRows.length > 1000, `got ${liveRows.length}`);
 assertTrue("every row names a FIX id", liveRows.every((r) => /^FIX-\d+$/.test(r.id)),
   `offenders: ${liveRows.filter((r) => !/^FIX-\d+$/.test(r.id)).slice(0, 3).map((r) => `L${r.lineNo} ${r.id}`).join(", ")}`);
-assertTrue("at least one id derives OPEN via a trailing reopen",
-  [...liveStatus.values()].some((v) => v.status === "open" && v.lastRow.sha === "reopen"));
 
 // -- 4. fixes-md — the shape rules that replaced the checkbox ---------------
 console.log("\nfixes-md bullet shape:");

@@ -545,27 +545,8 @@ Limits are updatable via the admin dashboard without a code deploy.
 
 ## Phase Roadmap
 
-See `docs/PHASE_GOALS.md` for task-level tracking. Summary:
-
-| Phase | Status | Done When |
-|-------|--------|----------|
-| **Phase 0** — Scaffold | ✅ 100% | Monorepo, DB, first page live |
-| **Phase 1** — MVP | 🔄 ~88% | Vote backfill, auth end-to-end, 500 users, grant apps |
-| **Phase 2** — Growth | Planned | Self-sustaining revenue, first institutional API customer |
-| **Phase 3** — Social App | Planned | COMMONS token sim, social feed, bipartisan mechanics |
-| **Phase 4** — Blockchain | Planned | On-chain credits, warrant canary, smart contract audit |
-| **Phase 5** — Global | Planned | UK/Canada deployment, multilingual support |
-
-### Active Phase 1 Remaining Tasks
-
-- Vote backfill completion — 51k/227k vote connections live, full 227k pending IO recovery
-- `vote_category` full data population on all proposals
-- Search ranking improvements (Elizabeth Warren and some senators not appearing)
-- Community commenting UI (`civic_comments` table exists, no frontend yet)
-- Position tracking on proposals
-- Follow officials/agencies
-- 500 beta users
-- Grant applications submitted
+Phases, their percentages and every open task live in [`docs/PHASE_GOALS.md`](PHASE_GOALS.md).
+The `/dashboard?tab=operations` Development Progress card is computed from that file at build time (FIX-1415).
 
 ### Phase 2.5 (Current Focus: Guardrails + Stability)
 
