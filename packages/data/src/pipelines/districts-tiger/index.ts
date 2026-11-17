@@ -33,6 +33,7 @@ import { open as openShapefile } from "shapefile";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
+import { linkOfficialsToDistricts } from "../../lib/district-link";
 import { STATE_DATA, seedJurisdictions } from "../../jurisdictions/us-states";
 
 const TIGER_YEAR = "2024";
@@ -424,10 +425,12 @@ export async function runTigerDistrictsPipeline(
     // state_abbr + chamber + district_id, normalising leading zeros (TIGER
     // pads "002", OpenStates says "2"). Done as a single SQL UPDATE via the
     // RPC link_officials_to_districts() defined in the same migration.
-    const linkRes = await db.rpc("link_officials_to_districts" as never).single();
-    const linked = (linkRes.data as unknown as number | null) ?? 0;
-    if (linkRes.error) {
-      console.warn(`  link_officials_to_districts error: ${linkRes.error.message}`);
+    // FIX-1181: direct pg with a 60 s bound, not PostgREST's 8 s, and the
+    // outcome rides this run's data_sync_log row.
+    const districtLink = await linkOfficialsToDistricts();
+    const linked = districtLink.linked;
+    if (!districtLink.ok) {
+      console.warn(`  link_officials_to_districts error: ${districtLink.error}`);
     } else {
       console.info(`  Linked ${linked} officials to district jurisdictions (state legs)`);
     }
@@ -444,7 +447,13 @@ export async function runTigerDistrictsPipeline(
     }
 
     const estimatedMb = +(bytesDownloaded / 1024 / 1024).toFixed(2);
-    const result: PipelineResult = { inserted: totalInserted, updated: linked, failed: totalFailed, estimatedMb };
+    const result: PipelineResult = {
+      inserted: totalInserted,
+      updated: linked,
+      failed: totalFailed,
+      estimatedMb,
+      metadata: { district_link: districtLink },
+    };
 
     console.info("\n  ──────────────────────────────────────────────────");
     console.info(`  TIGER ${TIGER_YEAR} districts report`);

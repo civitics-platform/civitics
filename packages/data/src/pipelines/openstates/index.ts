@@ -19,6 +19,7 @@ import { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { sleep, fetchJson, QuotaExhaustedError } from "../utils";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
+import { linkOfficialsToDistricts } from "../../lib/district-link";
 import { STATE_DATA } from "../../jurisdictions/us-states";
 import { legislatureShapeFor } from "../../jurisdictions/legislature-shapes";
 import {
@@ -435,20 +436,14 @@ export async function runOpenStatesPipeline(
     // The writer now merges metadata rather than replacing it, so existing
     // links already survive; this call is what links legislators seen for the
     // first time (and corrects a genuinely changed district) in the SAME run
-    // rather than leaving them dark until the next nightly. Cheap, idempotent,
-    // and a no-op returning 0 when nothing changed. Warn-and-continue: a
-    // linker failure must not fail a pipeline that already landed its rows.
-    let districtLinked = 0;
-    try {
-      const linkRes = await db.rpc("link_officials_to_districts" as never).single();
-      if (linkRes.error) {
-        console.warn(`  link_officials_to_districts: ${linkRes.error.message}`);
-      } else {
-        districtLinked = (linkRes.data as unknown as number | null) ?? 0;
-      }
-    } catch (err) {
-      console.warn(`  link_officials_to_districts threw: ${err instanceof Error ? err.message : err}`);
-    }
+    // rather than leaving them dark until the next nightly. Idempotent, and a
+    // no-op returning 0 when nothing changed. Warn-and-continue: a linker
+    // failure must not fail a pipeline that already landed its rows. FIX-1181:
+    // direct pg with a 60 s bound, not PostgREST's 8 s, and the outcome rides
+    // this run's data_sync_log row.
+    const districtLink = await linkOfficialsToDistricts();
+    if (!districtLink.ok) console.warn(`  link_officials_to_districts: ${districtLink.error}`);
+    const districtLinked = districtLink.linked;
 
     const totalInserted = officialsInserted + billsInserted;
     const totalUpdated = officialsUpdated + billsUpdated;
@@ -460,6 +455,7 @@ export async function runOpenStatesPipeline(
       updated: totalUpdated,
       failed: totalFailed,
       estimatedMb,
+      metadata: { district_link: districtLink },
     };
 
     console.info("\n  ──────────────────────────────────────────────────");

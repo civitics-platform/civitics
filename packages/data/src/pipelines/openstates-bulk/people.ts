@@ -23,6 +23,7 @@ import { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 import { slugifyGoverningBodies } from "../../lib/slugify-governing-bodies";
+import { linkOfficialsToDistricts } from "../../lib/district-link";
 import { STATE_DATA, seedJurisdictions } from "../../jurisdictions/us-states";
 import {
   resolveGoverningBodies,
@@ -259,22 +260,21 @@ export async function runBulkPeoplePipeline(
     // each upsert, so any prior `district_jurisdiction_id` would be lost.
     // The linker RPC (added in 20260428061525) re-derives the link from
     // (state, chamber, district_name) → (state_abbr, chamber, district_id).
-    // Cheap (single SQL UPDATE) and idempotent. No-op if the TIGER districts
-    // pipeline hasn't been run yet — the JOIN simply matches nothing.
-    let linked = 0;
-    try {
-      const linkRes = await db.rpc("link_officials_to_districts" as never).single();
-      if (linkRes.error) {
-        console.warn(`  link_officials_to_districts: ${linkRes.error.message}`);
-      } else {
-        linked = (linkRes.data as unknown as number | null) ?? 0;
-      }
-    } catch (err) {
-      console.warn(`  link_officials_to_districts threw: ${err instanceof Error ? err.message : err}`);
-    }
+    // Idempotent. No-op if the TIGER districts pipeline hasn't been run yet —
+    // the JOIN simply matches nothing. FIX-1181: direct pg with a 60 s bound,
+    // not PostgREST's 8 s, and the outcome rides this run's data_sync_log row.
+    const districtLink = await linkOfficialsToDistricts();
+    if (!districtLink.ok) console.warn(`  link_officials_to_districts: ${districtLink.error}`);
+    const linked = districtLink.linked;
 
     const estimatedMb = +(bytesDownloaded / 1024 / 1024).toFixed(2);
-    const result: PipelineResult = { inserted, updated, failed, estimatedMb };
+    const result: PipelineResult = {
+      inserted,
+      updated,
+      failed,
+      estimatedMb,
+      metadata: { district_link: districtLink },
+    };
 
     console.info("\n  ──────────────────────────────────────────────────");
     console.info("  OpenStates bulk people report");
