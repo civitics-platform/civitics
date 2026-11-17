@@ -48,11 +48,24 @@
  * run id — so rows from this run's own id are ignored, and a re-run does the
  * work it was asked to.
  *
- * Pure, so the decision is unit-testable without the DB; the read and the
- * `$GITHUB_OUTPUT` write live in scripts/nightly-preflight.ts.
+ * AN UNREADABLE DB (FIX-1418, cc-291). The read is tried three times, 20 s
+ * and then 40 s apart. If all three fail, the preflight asks GitHub for
+ * nightly.yml's `workflow_dispatch` runs: one that is not this run and whose
+ * `created_at` names this nominal day stands every phase down, whatever its
+ * status. With no such run, or no answer from GitHub, it FAILS OPEN as before.
+ * That branch is the lapse net for a night the dispatcher never armed. On Mon
+ * 2026-11-16 the fallback could not read the table, failed open, and redid a
+ * night the dispatched run had finished an hour earlier, for 1 h 40 m inside a
+ * stall. A DB too slow for one indexed read is the worst moment to add a
+ * night's work.
+ *
+ * The decisions are pure, so they are unit-testable without the DB or GitHub.
+ * The orchestration takes its I/O injected (`resolvePreflight`), and the real
+ * reads and the `$GITHUB_OUTPUT` write live in scripts/nightly-preflight.ts.
  */
 
 import type { NightlyPhase } from "./index";
+import { retryWithBackoff } from "./utils";
 import { nominalSlotInstant } from "./weekly-gate";
 
 /**
@@ -239,4 +252,182 @@ export function failOpenOutputs(day: string | null): Record<string, string> {
   for (const phase of PREFLIGHT_PHASES) out[PREFLIGHT_OUTPUT[phase]] = "false";
   if (day !== null) out["nominal_day"] = day;
   return out;
+}
+
+// ── FIX-1418 — the DB is unreadable: does GitHub show the night's run? ──────
+
+/** D1: the read is tried once, then once after each of these waits. */
+export const PREFLIGHT_READ_RETRY_DELAYS_MS: readonly number[] = [20_000, 40_000];
+
+/**
+ * The offset the dispatcher passes (`slot_offset_hours: "3"`,
+ * apps/civitics/src/lib/gha-dispatch.ts), so a dispatched run's `created_at`
+ * names its nominal day through {@link nominalDay}, the same function the run
+ * stamped its rows with.
+ */
+export const DISPATCH_SLOT_OFFSET_HOURS = 3;
+
+/** One nightly.yml run as GitHub's REST API lists it, narrowed to what D2 reads. */
+export interface DispatchedNightlyRun {
+  id: string;
+  created_at: string;
+  status: string | null;
+  conclusion: string | null;
+}
+
+/**
+ * `GET /repos/{repo}/actions/workflows/nightly.yml/runs` → the runs. A body
+ * that is not that shape is `null` (GitHub unreadable), never a throw; a run
+ * missing its id or created_at is dropped.
+ */
+export function parseWorkflowRuns(body: unknown): DispatchedNightlyRun[] | null {
+  const list = (body as { workflow_runs?: unknown } | null)?.workflow_runs;
+  if (!Array.isArray(list)) return null;
+  const out: DispatchedNightlyRun[] = [];
+  for (const r of list as Array<Record<string, unknown> | null>) {
+    const id = r?.["id"];
+    const created = r?.["created_at"];
+    if ((typeof id !== "number" && typeof id !== "string") || typeof created !== "string") continue;
+    out.push({
+      id: String(id),
+      created_at: created,
+      status: typeof r?.["status"] === "string" ? (r["status"] as string) : null,
+      conclusion: typeof r?.["conclusion"] === "string" ? (r["conclusion"] as string) : null,
+    });
+  }
+  return out;
+}
+
+/** Does a dispatched run created at `createdAt` name nominal day `day`? */
+export function runCoversDay(createdAt: string, day: string): boolean {
+  const t = Date.parse(createdAt);
+  return !Number.isNaN(t) && nominalDay(new Date(t), DISPATCH_SLOT_OFFSET_HOURS) === day;
+}
+
+export interface UnreadableVerdict {
+  /** true → every phase `already_ran=true`; false → today's FAIL OPEN. */
+  standDown: boolean;
+  /** One line, printed as the step's notice (stand down) or warning (fail open). */
+  reason: string;
+  /** The covering runs, newest first; empty when it fails open. */
+  covering: DispatchedNightlyRun[];
+}
+
+const FAIL_OPEN_TAIL = "FAIL OPEN: already_ran=false for every phase, this run does the night's work";
+
+/**
+ * D2 / D3 — the DB stayed unreadable after `tries` reads. `runs` is GitHub's
+ * `workflow_dispatch` list for nightly.yml (newest first), or `null` when
+ * GitHub could not be read either. A run COVERS the day when it is not this
+ * run and its `created_at` names this nominal day; any covering run, in any
+ * status, stands the whole run down. Otherwise FAIL OPEN, unchanged.
+ */
+export function decideUnreadable(args: {
+  day: string;
+  runId: string | null;
+  runs: readonly DispatchedNightlyRun[] | null;
+  tries: number;
+}): UnreadableVerdict {
+  const { day, runId, runs, tries } = args;
+  const head = `DB unreadable after ${tries} tries`;
+  if (runs === null) {
+    return { standDown: false, reason: `${head}, and GitHub's run list unreadable too — ${FAIL_OPEN_TAIL}`, covering: [] };
+  }
+  const covering = runs.filter((r) => r.id !== runId && runCoversDay(r.created_at, day));
+  if (covering.length === 0) {
+    return {
+      standDown: false,
+      reason:
+        `${head}, and none of the ${runs.length} workflow_dispatch run(s) GitHub lists names nominal day ${day} ` +
+        `— ${FAIL_OPEN_TAIL}`,
+      covering: [],
+    };
+  }
+  const c = covering[0]!;
+  return {
+    standDown: true,
+    reason:
+      `${head}; GitHub shows dispatched run ${c.id} (${c.status ?? "?"} / ${c.conclusion ?? "—"}, created ${c.created_at}) ` +
+      `for nominal day ${day} — every phase stands down (FIX-1418)`,
+    covering,
+  };
+}
+
+/** Every phase `already_ran=true` — the D2 stand-down. */
+export function standDownOutputs(day: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const phase of PREFLIGHT_PHASES) out[PREFLIGHT_OUTPUT[phase]] = "true";
+  out["nominal_day"] = day;
+  return out;
+}
+
+/** What {@link resolvePreflight} reads through. The script passes the real ones. */
+export interface PreflightIo {
+  readRows(day: string): Promise<PriorNightlyRow[]>;
+  /** GitHub's workflow_dispatch runs, or null. Must not throw; a throw is read as null. */
+  listDispatchedRuns(): Promise<DispatchedNightlyRun[] | null>;
+  sleep(ms: number): Promise<void>;
+  info(line: string): void;
+  warn(line: string): void;
+}
+
+/**
+ * The whole preflight, with its I/O injected: read (with D1's retries), decide
+ * per phase, and on an unreadable DB ask GitHub (D2) before failing open (D3).
+ * Returns the `$GITHUB_OUTPUT` lines. An unguarded trigger reads neither the DB
+ * nor GitHub.
+ */
+export async function resolvePreflight(
+  args: { day: string; dispatchedBy: string | null; runId: string | null },
+  io: PreflightIo,
+  delaysMs: readonly number[] = PREFLIGHT_READ_RETRY_DELAYS_MS,
+): Promise<Record<string, string>> {
+  const { day, dispatchedBy, runId } = args;
+  const tries = delaysMs.length + 1;
+  let rows: PriorNightlyRow[] = [];
+  if (dispatchedBy !== null && GUARDED_TRIGGERS.includes(dispatchedBy)) {
+    try {
+      rows = await retryWithBackoff(() => io.readRows(day), {
+        delaysMs,
+        sleep: io.sleep,
+        onRetry: (n, err, waitMs) =>
+          io.warn(
+            `[preflight] data_sync_log read ${n} of ${tries} failed (${err.message}) — trying again in ${waitMs / 1000} s`,
+          ),
+      });
+    } catch (err) {
+      io.warn(
+        `[preflight] could not read data_sync_log (${err instanceof Error ? err.message : String(err)}) ` +
+          `after ${tries} tries — asking GitHub for the night's dispatched run`,
+      );
+      let runs: DispatchedNightlyRun[] | null;
+      try {
+        runs = await io.listDispatchedRuns();
+      } catch {
+        runs = null;
+      }
+      const v = decideUnreadable({ day, runId, runs, tries });
+      if (v.standDown) {
+        io.info(`::notice::[preflight] ${v.reason}`);
+        return standDownOutputs(day);
+      }
+      io.warn(`[preflight] ${v.reason}`);
+      return failOpenOutputs(day);
+    }
+  }
+
+  for (const r of rows) {
+    io.info(
+      `[preflight]   row ${r.id} phase=${r.phase ?? "all"} status=${r.status} started=${r.started_at} ` +
+        `run=${r.github_run_id ?? "—"} dispatched_by=${r.dispatched_by ?? "—"}`,
+    );
+  }
+  const verdicts = decideAllPhases({ nominalDay: day, dispatchedBy, runId, rows });
+  // One line per phase. `::notice::` renders as an annotation on the run page,
+  // so a fallback that stood a phase down says why without anyone opening the log.
+  for (const phase of PREFLIGHT_PHASES) {
+    const v = verdicts[phase];
+    io.info(`${v.alreadyRan ? "::notice::" : ""}[preflight] ${v.reason}`);
+  }
+  return preflightOutputs(verdicts, day);
 }

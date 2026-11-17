@@ -9,20 +9,24 @@
  * enrichment job. The decision itself is pipelines/nightly-preflight.ts — see
  * its header for what counts, per phase, and whom it guards.
  *
- * NEVER FAILS THE JOB. It exits 0 on every path, and on any failure to read it
- * answers `false` for EVERY phase — FAIL OPEN, the FIX-950 reader's rule: a
- * preflight that crashed must not cost the night. A duplicate nightly is
- * idempotent upserts and a second pass of load; a missing one is a lost day.
- * The workflow step also carries `continue-on-error: true`, so even an
- * uncatchable crash here leaves the outputs unset, which the gates read as
- * "not already ran".
+ * NEVER FAILS THE JOB. It exits 0 on every path. A read that still fails after
+ * three tries (20 s, 40 s apart) asks GitHub whether the night's dispatched run
+ * exists. If one does, every phase stands down (FIX-1418). If none does, or
+ * GitHub cannot be read either, it answers `false` for EVERY phase: FAIL OPEN,
+ * the FIX-950 reader's rule. A preflight that crashed must not cost the night.
+ * A duplicate nightly is idempotent upserts and a second pass of load; a
+ * missing one is a lost day. The workflow step also carries
+ * `continue-on-error: true`, so even an uncatchable crash here leaves the
+ * outputs unset, which the gates read as "not already ran".
  *
  *   pnpm data:nightly:preflight                           # local (.env.local)
  *   pnpm data:nightly:preflight:ci                        # GHA, adds --allow-prod
  *   pnpm data:nightly:preflight -- --now 2026-09-24T21:00:05Z   # a fixed clock, for proofs
  *
  * Inputs (env): NIGHTLY_SLOT_OFFSET_HOURS, NIGHTLY_DISPATCHED_BY, GITHUB_RUN_ID,
- * GITHUB_OUTPUT. All optional; absent dispatched_by means "not guarded".
+ * GITHUB_OUTPUT, GITHUB_REPOSITORY, GH_TOKEN. All optional; absent
+ * dispatched_by means "not guarded", and absent GITHUB_REPOSITORY means GitHub
+ * is not asked (the unreadable branch fails open).
  */
 
 import { appendFileSync } from "node:fs";
@@ -30,15 +34,17 @@ import { createAdminClient } from "@civitics/db";
 import { readSlotOffsetHours, SLOT_OFFSET_ENV } from "../pipelines/weekly-gate";
 import {
   DISPATCHED_BY_ENV,
-  GUARDED_TRIGGERS,
-  PREFLIGHT_PHASES,
-  decideAllPhases,
   failOpenOutputs,
   nominalDay,
-  preflightOutputs,
+  parseWorkflowRuns,
   readDispatchedBy,
+  resolvePreflight,
+  type DispatchedNightlyRun,
   type PriorNightlyRow,
 } from "../pipelines/nightly-preflight";
+
+/** D4: the GitHub read is bounded, and it never throws out of main(). */
+const GITHUB_READ_TIMEOUT_MS = 10_000;
 
 function parseNow(argv: string[]): Date {
   const i = argv.indexOf("--now");
@@ -89,6 +95,41 @@ async function readRows(day: string): Promise<PriorNightlyRow[]> {
   }));
 }
 
+/**
+ * FIX-1418 D2/D4 — nightly.yml's `workflow_dispatch` runs, newest 20, through
+ * the job's own `GH_TOKEN` (`actions: read`). `null` on any failure: no repo,
+ * a non-2xx, a timeout, a body of another shape. Never throws.
+ */
+async function listDispatchedRuns(): Promise<DispatchedNightlyRun[] | null> {
+  const repo = process.env["GITHUB_REPOSITORY"];
+  if (!repo) {
+    console.warn("[preflight] GITHUB_REPOSITORY unset — cannot ask GitHub for the dispatched run");
+    return null;
+  }
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/nightly.yml/runs?event=workflow_dispatch&per_page=20`;
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "civitics-nightly-preflight",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const token = process.env["GH_TOKEN"];
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(GITHUB_READ_TIMEOUT_MS) });
+    if (!res.ok) {
+      console.warn(`[preflight] GitHub run list answered ${res.status} ${res.statusText}`);
+      return null;
+    }
+    const runs = parseWorkflowRuns(await res.json());
+    if (runs === null) console.warn("[preflight] GitHub run list was not the expected shape");
+    else console.info(`[preflight] GitHub lists ${runs.length} workflow_dispatch run(s) of nightly.yml`);
+    return runs;
+  } catch (err) {
+    console.warn(`[preflight] GitHub run list unreadable (${err instanceof Error ? err.message : String(err)})`);
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const now = parseNow(process.argv.slice(2));
   const slotOffsetHours = readSlotOffsetHours(process.env[SLOT_OFFSET_ENV]);
@@ -100,35 +141,15 @@ async function main(): Promise<void> {
       `dispatched_by=${dispatchedBy ?? "(unset)"} run=${runId ?? "(none)"}`,
   );
 
-  // Unguarded triggers never read the DB: there is nothing the answer could change.
-  let rows: PriorNightlyRow[] = [];
-  if (dispatchedBy !== null && GUARDED_TRIGGERS.includes(dispatchedBy)) {
-    try {
-      rows = await readRows(day);
-    } catch (err) {
-      console.warn(
-        `[preflight] could not read data_sync_log (${err instanceof Error ? err.message : String(err)}) — ` +
-          "FAIL OPEN: already_ran=false for every phase, this run does the night's work",
-      );
-      writeOutputs(failOpenOutputs(day));
-      return;
-    }
-  }
-
-  for (const r of rows) {
-    console.info(
-      `[preflight]   row ${r.id} phase=${r.phase ?? "all"} status=${r.status} started=${r.started_at} ` +
-        `run=${r.github_run_id ?? "—"} dispatched_by=${r.dispatched_by ?? "—"}`,
-    );
-  }
-  const verdicts = decideAllPhases({ nominalDay: day, dispatchedBy, runId, rows });
-  // One line per phase. `::notice::` renders as an annotation on the run page,
-  // so a fallback that stood a phase down says why without anyone opening the log.
-  for (const phase of PREFLIGHT_PHASES) {
-    const v = verdicts[phase];
-    console.info(`${v.alreadyRan ? "::notice::" : ""}[preflight] ${v.reason}`);
-  }
-  writeOutputs(preflightOutputs(verdicts, day));
+  // Unguarded triggers read neither the DB nor GitHub: nothing the answer could change.
+  const outputs = await resolvePreflight({ day, dispatchedBy, runId }, {
+    readRows,
+    listDispatchedRuns,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    info: (line) => console.info(line),
+    warn: (line) => console.warn(line),
+  });
+  writeOutputs(outputs);
 }
 
 main().catch((err: unknown) => {

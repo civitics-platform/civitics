@@ -19,11 +19,18 @@ import {
   PREFLIGHT_PHASES,
   decideAllPhases,
   decidePreflight,
+  decideUnreadable,
   failOpenOutputs,
   nightlyRunStamp,
   nominalDay,
+  parseWorkflowRuns,
   preflightOutputs,
   readDispatchedBy,
+  resolvePreflight,
+  runCoversDay,
+  standDownOutputs,
+  type DispatchedNightlyRun,
+  type PreflightIo,
   type PreflightPhase,
   type PriorNightlyRow,
 } from "./nightly-preflight";
@@ -284,4 +291,211 @@ test("the phase list is the tree's: each phase has a :ci entrypoint, a job, and 
     );
   }
   assert.ok(!/needs\.fec-phase\.outputs\.already_ran != 'true'/.test(yml), "no job gates on the FEC verdict alone");
+});
+
+// ── FIX-1418 — an unreadable DB stands down when GitHub shows the night's run ─
+
+/**
+ * GitHub's `GET /repos/civitics-platform/civitics/actions/workflows/nightly.yml/
+ * runs?event=workflow_dispatch&per_page=20`, read 2026-11-17 (cc-291), trimmed
+ * to the newest three runs and the fields the parser reads plus `event`.
+ * 43761700351 is the dispatched run that finished nominal day 2026-11-16 at
+ * 23:35:17Z. The `schedule:` fallback 43781070231 (created 00:33:25Z) could not
+ * read data_sync_log at 00:34:20Z and redid the night.
+ */
+const GITHUB_BODY = {
+  total_count: 82,
+  workflow_runs: [
+    { id: 43956461273, event: "workflow_dispatch", created_at: "2026-11-16T21:05:23Z", status: "completed", conclusion: "success" },
+    { id: 43761700351, event: "workflow_dispatch", created_at: "2026-11-15T21:05:22Z", status: "completed", conclusion: "success" },
+    { id: 43640928940, event: "workflow_dispatch", created_at: "2026-11-14T21:05:22Z", status: "completed", conclusion: "success" },
+  ],
+};
+const MON_DAY = "2026-11-16";
+const MON_FALLBACK = "43781070231";
+
+test("parseWorkflowRuns: GitHub's run list → id / created_at / status / conclusion; another shape is null", () => {
+  assert.deepEqual(parseWorkflowRuns(GITHUB_BODY)?.[1], {
+    id: "43761700351",
+    created_at: "2026-11-15T21:05:22Z",
+    status: "completed",
+    conclusion: "success",
+  });
+  assert.equal(parseWorkflowRuns(GITHUB_BODY)?.length, 3);
+  for (const bad of [null, undefined, "nope", { message: "Bad credentials" }, { workflow_runs: "x" }]) {
+    assert.equal(parseWorkflowRuns(bad), null, JSON.stringify(bad));
+  }
+  // A run missing its id or created_at is dropped, not guessed.
+  assert.deepEqual(parseWorkflowRuns({ workflow_runs: [{ id: 1 }, { created_at: "2026-11-15T21:05:22Z" }, null] }), []);
+  // An in-flight run has no conclusion yet.
+  assert.deepEqual(
+    parseWorkflowRuns({ workflow_runs: [{ id: 7, created_at: "2026-11-15T21:05:22Z", status: "in_progress", conclusion: null }] }),
+    [{ id: "7", created_at: "2026-11-15T21:05:22Z", status: "in_progress", conclusion: null }],
+  );
+});
+
+test("runCoversDay: a dispatched run's created_at names its day through nominalDay(·, 3)", () => {
+  assert.equal(runCoversDay("2026-11-15T21:05:22Z", MON_DAY), true);
+  // A dispatch that started late still names the same day (the window is [21:00, 21:00)).
+  assert.equal(runCoversDay("2026-11-16T20:59:59Z", MON_DAY), true);
+  assert.equal(runCoversDay("2026-11-16T21:05:23Z", MON_DAY), false, "the next slot's run names 11-17");
+  assert.equal(runCoversDay("2026-11-14T21:05:22Z", MON_DAY), false, "the previous slot's run names 11-15");
+  assert.equal(runCoversDay("not a date", MON_DAY), false);
+});
+
+test("D2: Mon 11-16 replayed — a covering run stands every phase down, naming it", () => {
+  const runs = parseWorkflowRuns(GITHUB_BODY);
+  const v = decideUnreadable({ day: MON_DAY, runId: MON_FALLBACK, runs, tries: 3 });
+  assert.equal(v.standDown, true, v.reason);
+  assert.deepEqual(v.covering.map((r) => r.id), ["43761700351"]);
+  assert.match(
+    v.reason,
+    /^DB unreadable after 3 tries; GitHub shows dispatched run 43761700351 \(completed \/ success, created 2026-11-15T21:05:22Z\) for nominal day 2026-11-16/,
+  );
+  assert.deepEqual(standDownOutputs(MON_DAY), {
+    already_ran: "true",
+    already_ran_enrichment_heavy: "true",
+    already_ran_enrichment_light: "true",
+    already_ran_enrichment_tail: "true",
+    nominal_day: MON_DAY,
+  });
+});
+
+test("D2: any status or conclusion covers — a run still in flight, cancelled, or failed", () => {
+  const cases: Array<[string, string | null]> = [
+    ["in_progress", null],
+    ["queued", null],
+    ["completed", "cancelled"],
+    ["completed", "failure"],
+  ];
+  for (const [status, conclusion] of cases) {
+    const v = decideUnreadable({
+      day: MON_DAY,
+      runId: MON_FALLBACK,
+      runs: [{ id: "43761700351", created_at: "2026-11-15T21:05:22Z", status, conclusion }],
+      tries: 3,
+    });
+    assert.equal(v.standDown, true, `${status}/${String(conclusion)}`);
+    assert.ok(v.reason.includes(`(${status} / ${conclusion ?? "—"},`), v.reason);
+  }
+});
+
+test("D3: only this run's own id → FAIL OPEN", () => {
+  // A dispatched run that is itself unreadable must not stand itself down.
+  const v = decideUnreadable({
+    day: MON_DAY,
+    runId: "43761700351",
+    runs: [{ id: "43761700351", created_at: "2026-11-15T21:05:22Z", status: "in_progress", conclusion: null }],
+    tries: 3,
+  });
+  assert.equal(v.standDown, false);
+  assert.match(v.reason, /none of the 1 workflow_dispatch run\(s\) GitHub lists names nominal day 2026-11-16 — FAIL OPEN/);
+});
+
+test("D3: a run for the previous nominal day → FAIL OPEN (the dispatcher never armed tonight)", () => {
+  const v = decideUnreadable({
+    day: MON_DAY,
+    runId: MON_FALLBACK,
+    runs: [{ id: "43640928940", created_at: "2026-11-14T21:05:22Z", status: "completed", conclusion: "success" }],
+    tries: 3,
+  });
+  assert.equal(v.standDown, false);
+  assert.deepEqual(v.covering, []);
+});
+
+test("D3: GitHub unreadable (null) → FAIL OPEN, today's line", () => {
+  const v = decideUnreadable({ day: MON_DAY, runId: MON_FALLBACK, runs: null, tries: 3 });
+  assert.equal(v.standDown, false);
+  assert.match(v.reason, /GitHub's run list unreadable too — FAIL OPEN: already_ran=false for every phase, this run does the night's work$/);
+});
+
+/** A recording PreflightIo: reads fail `failures` times, then answer `rows`. */
+function fakeIo(opts: {
+  failures: number;
+  rows?: PriorNightlyRow[];
+  runs?: DispatchedNightlyRun[] | null;
+  githubThrows?: boolean;
+}) {
+  const calls = { reads: 0, github: 0, sleeps: [] as number[], info: [] as string[], warn: [] as string[] };
+  const io: PreflightIo = {
+    readRows: async () => {
+      calls.reads++;
+      if (calls.reads <= opts.failures) throw new Error("canceling statement due to statement timeout");
+      return opts.rows ?? [];
+    },
+    listDispatchedRuns: async () => {
+      calls.github++;
+      if (opts.githubThrows) throw new Error("boom");
+      return opts.runs === undefined ? null : opts.runs;
+    },
+    sleep: async (ms) => {
+      calls.sleeps.push(ms);
+    },
+    info: (l) => calls.info.push(l),
+    warn: (l) => calls.warn.push(l),
+  };
+  return { io, calls };
+}
+
+test("D1: the read is retried 20 s then 40 s — the sleeps are injected, not served", async () => {
+  const { io, calls } = fakeIo({ failures: 2, rows: [row({ phase: "fec", github_run_id: "43761700351" })] });
+  const out = await resolvePreflight({ day: MON_DAY, dispatchedBy: "schedule", runId: MON_FALLBACK }, io);
+  assert.equal(calls.reads, 3);
+  assert.deepEqual(calls.sleeps, [20_000, 40_000]);
+  assert.equal(calls.github, 0, "a read that succeeds on the third try never asks GitHub");
+  assert.equal(out["already_ran"], "true");
+  assert.equal(out["already_ran_enrichment_heavy"], "false");
+  assert.equal(calls.warn.length, 2);
+  assert.match(
+    calls.warn[0] ?? "",
+    /data_sync_log read 1 of 3 failed \(canceling statement due to statement timeout\) — trying again in 20 s/,
+  );
+});
+
+test("D1 + D2: three failed reads, then GitHub shows the run → every phase stands down with a notice", async () => {
+  const { io, calls } = fakeIo({ failures: 3, runs: parseWorkflowRuns(GITHUB_BODY) });
+  const out = await resolvePreflight({ day: MON_DAY, dispatchedBy: "schedule", runId: MON_FALLBACK }, io);
+  assert.equal(calls.reads, 3);
+  assert.deepEqual(calls.sleeps, [20_000, 40_000]);
+  assert.equal(calls.github, 1);
+  assert.deepEqual(out, standDownOutputs(MON_DAY));
+  const notice = calls.info.find((l) => l.startsWith("::notice::"));
+  assert.match(notice ?? "", /DB unreadable after 3 tries; GitHub shows dispatched run 43761700351 \(completed \/ success/);
+});
+
+test("D3 through resolvePreflight: GitHub null, empty, or a reader that throws fails open", async () => {
+  const cases: Array<Parameters<typeof fakeIo>[0]> = [
+    { failures: 3 },
+    { failures: 3, githubThrows: true },
+    { failures: 3, runs: [] },
+  ];
+  for (const opts of cases) {
+    const { io, calls } = fakeIo(opts);
+    const out = await resolvePreflight({ day: MON_DAY, dispatchedBy: "dispatcher", runId: "43761700351" }, io);
+    assert.deepEqual(out, failOpenOutputs(MON_DAY), JSON.stringify(opts));
+    assert.equal(calls.github, 1);
+    assert.ok(calls.warn.some((l) => /FAIL OPEN: already_ran=false for every phase/.test(l)), JSON.stringify(opts));
+  }
+});
+
+test("an unguarded trigger never reads the DB and never asks GitHub", async () => {
+  for (const by of ["manual", null, "someone-else"]) {
+    const { io, calls } = fakeIo({ failures: 99, runs: parseWorkflowRuns(GITHUB_BODY) });
+    const out = await resolvePreflight({ day: MON_DAY, dispatchedBy: by, runId: "444" }, io);
+    assert.equal(calls.reads, 0, String(by));
+    assert.equal(calls.github, 0, String(by));
+    assert.deepEqual(calls.sleeps, []);
+    assert.deepEqual(out, failOpenOutputs(MON_DAY), "a human dispatch always runs");
+  }
+});
+
+test("nightly.yml gives the preflight step its token and fec-phase actions: read (D4)", () => {
+  const yml = readFileSync(join(__dirname, "..", "..", "..", "..", ".github", "workflows", "nightly.yml"), "utf8").replace(
+    /\r\n/g,
+    "\n",
+  );
+  const job = yml.slice(yml.indexOf("\n  fec-phase:"), yml.indexOf("\n  enrichment-heavy-phase:"));
+  assert.match(job, /\n {4}permissions:\n {6}contents: read\n {6}actions: read\n/);
+  const step = job.slice(job.indexOf("id: preflight"), job.indexOf("- name: Run FEC phase"));
+  assert.match(step, /GH_TOKEN: \$\{\{ github\.token \}\}/);
 });

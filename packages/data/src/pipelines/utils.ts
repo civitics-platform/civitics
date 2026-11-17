@@ -122,6 +122,10 @@ export async function postJson<T>(
  * Small times a chunk out mid-write) where a short backoff recovers the chunk.
  * `fn` must throw to signal a retry — Supabase's `{ data, error }` shape returns
  * errors instead of throwing, so wrap such calls to `throw new Error(error.message)`.
+ *
+ * `delaysMs` (cc-291) replaces the doubling with an explicit schedule — one
+ * wait per retry, so `[5_000, 15_000]` is three tries — and `sleep` lets a test
+ * inject the waits instead of serving them.
  */
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -129,12 +133,15 @@ export async function retryWithBackoff<T>(
     attempts?: number;
     baseMs?: number;
     maxMs?: number;
-    onRetry?: (attempt: number, err: Error) => void;
+    delaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
+    onRetry?: (attempt: number, err: Error, waitMs: number) => void;
   } = {},
 ): Promise<T> {
-  const attempts = opts.attempts ?? 4;
+  const attempts = opts.delaysMs ? opts.delaysMs.length + 1 : (opts.attempts ?? 4);
   const baseMs = opts.baseMs ?? 500;
   const maxMs = opts.maxMs ?? 8_000;
+  const wait = opts.sleep ?? sleep;
 
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -143,9 +150,9 @@ export async function retryWithBackoff<T>(
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
       if (attempt < attempts - 1) {
-        const backoffMs = Math.min(baseMs * Math.pow(2, attempt), maxMs);
-        opts.onRetry?.(attempt + 1, lastErr);
-        await sleep(backoffMs);
+        const backoffMs = opts.delaysMs?.[attempt] ?? Math.min(baseMs * Math.pow(2, attempt), maxMs);
+        opts.onRetry?.(attempt + 1, lastErr, backoffMs);
+        await wait(backoffMs);
       }
     }
   }

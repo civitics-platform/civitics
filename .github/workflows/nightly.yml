@@ -88,6 +88,17 @@ on:
       # alone. Do not delete the cron; it is the backstop the dispatcher's
       # liveness stamp is measured against.
       #
+      # AN UNREADABLE DB (FIX-1418, cc-291). The preflight's read is tried three
+      # times, 20 s then 40 s apart. If it still fails, the preflight asks
+      # GitHub (GH_TOKEN, `actions: read`) for this file's workflow_dispatch
+      # runs. One that is not this run and whose created_at names the same
+      # nominal day stands every phase down, in any status, with a notice
+      # naming it. With no such run, or no answer from GitHub, it FAILS OPEN
+      # and does the night as before; that is the lapse net for a night the
+      # dispatcher never armed. On Mon 2026-11-16 the fallback could not read
+      # data_sync_log at 00:34:20Z and redid, for 1 h 40 m inside a stall, a
+      # night run 43761700351 had finished at 23:35:17Z.
+      #
       # This is workflow_dispatch through the REST API, not repository_dispatch:
       # the latter is a webhook event for external systems with a free-form
       # payload and would need a new `on:` trigger; this needs neither.
@@ -151,6 +162,12 @@ jobs:
 
   fec-phase:
     runs-on: ubuntu-latest
+    # FIX-1418 (cc-291 D4): the preflight reads this workflow's run list when
+    # the DB cannot answer. A job-level block replaces the workflow's, so
+    # `contents: read` (checkout) is restated beside `actions: read`.
+    permissions:
+      contents: read
+      actions: read
     # FIX-689 (stopgap): raised 120→150. The Sunday FEC-bulk indiv stage
     # routinely overruns 120 min on the Pro Micro. Interim cushion until the
     # ingest-resumability PR (watermark-resumable Vercel Workflow ingest) lands
@@ -307,11 +324,14 @@ jobs:
       # writes the four outputs declared above. See
       # packages/data/src/pipelines/nightly-preflight.ts for what counts and
       # whom it guards. continue-on-error: a crashed preflight must never cost
-      # the night; the script itself also answers false for every phase on
-      # every failure.
+      # the night. The script answers false for every phase on every failure,
+      # except a DB that stays unreadable while GitHub shows the night's
+      # dispatched run (FIX-1418); GH_TOKEN is for that one read.
       - name: Already ran for this nominal day? (FIX-1218)
         id: preflight
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: pnpm --filter @civitics/data data:nightly:preflight:ci
 
       - name: Run FEC phase
