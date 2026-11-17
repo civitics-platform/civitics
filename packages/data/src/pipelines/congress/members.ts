@@ -200,15 +200,40 @@ export function mapParty(partyName: string): string {
 }
 
 /**
- * Map Congress.gov vote strings to our internal vote values.
+ * FIX-1417 — a cast {@link mapVote} does not know. It is thrown, never
+ * defaulted. `writeRollVotes` (vote-bill-guard.ts) catches it, stores nothing
+ * for that roll, and names the roll `unknown_cast`.
  */
-export function mapVote(voteStr: string): string {
+export class UnknownCastError extends Error {
+  readonly cast: string;
+  constructor(cast: string) {
+    super(`unknown cast '${cast}'`);
+    this.name = "UnknownCastError";
+    this.cast = cast;
+  }
+}
+
+/**
+ * Map House Clerk / Senate LIS vote strings to our internal vote values.
+ *
+ * FIX-1417: an unknown string used to fall through to `not_voting`. The 2021
+ * impeachment verdict roll (senate-117-1-00059, "Guilty or Not Guilty") is 78
+ * invented `not_voting` rows that way. A verdict is the chamber's yes / no on
+ * the article, so `Guilty` maps to yes and `Not Guilty` to no. Anything else
+ * throws {@link UnknownCastError}: a roll is stored whole or not at all, never
+ * with a member row the source did not say. Teaching this function a new cast
+ * also means bumping SENATE_UNSTORED_VERSION (senate-unstored.ts), so the
+ * Senate rolls recorded `unknown_cast` are fetched once more.
+ */
+export function mapVote(voteStr: string): "yes" | "no" | "not_voting" | "present" {
   const v = voteStr.trim().toLowerCase();
   if (v === "yea" || v === "aye") return "yes";
   if (v === "nay" || v === "no") return "no";
+  if (v === "guilty") return "yes";
+  if (v === "not guilty") return "no";
   if (v === "not voting" || v === "not_voting") return "not_voting";
   if (v === "present") return "present";
-  return "not_voting";
+  throw new UnknownCastError(voteStr);
 }
 
 /**

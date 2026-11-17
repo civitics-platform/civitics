@@ -13,10 +13,11 @@
  *   value  { v, sessions: { "<n>": { tail_closed, rolls: { <roll_call_id>:
  *            { reason, seen_at } } } } }
  *
- * - `no_proposal_reference` and `no_voted_at` belong to the roll under today's
- *   parser: skipped for as long as `v` equals SENATE_UNSTORED_VERSION. Bump the
- *   constant when the parser learns to store such a roll (a new document type,
- *   the nomination stage): a record of another version is dropped whole, its
+ * - `no_proposal_reference`, `no_voted_at` and `unknown_cast` (FIX-1417) belong
+ *   to the roll under today's parser: skipped for as long as `v` equals
+ *   SENATE_UNSTORED_VERSION. Bump the constant when the parser learns to store
+ *   such a roll (a new document type, the nomination stage, a cast mapVote
+ *   learns): a record of another version is dropped whole, its
  *   `tail_closed` flags with it, and every roll is fetched again once.
  * - Every other reason can change without a code change (a bill_details row
  *   lands, a member map is fixed, a resolve that failed succeeds): skipped for
@@ -53,8 +54,16 @@ export const RETRY_ABSENT_DAYS = 7;
 /** The Senate's pacing between GETs (FIX-1407 D5). */
 export const SENATE_PACE_MS = { base: 1500, jitter: 500 } as const;
 
-/** Reasons that are the roll's own under today's parser. */
-const PARSER_REASONS: ReadonlySet<UnstoredReason> = new Set<UnstoredReason>(["no_proposal_reference", "no_voted_at"]);
+/**
+ * Reasons that are the roll's own under today's parser. FIX-1417:
+ * `unknown_cast` is one — a cast mapVote does not know stays unknown until
+ * the code learns it, and that change bumps SENATE_UNSTORED_VERSION.
+ */
+const PARSER_REASONS: ReadonlySet<UnstoredReason> = new Set<UnstoredReason>([
+  "no_proposal_reference",
+  "no_voted_at",
+  "unknown_cast",
+]);
 
 const REASONS: ReadonlySet<string> = new Set<UnstoredReason>([
   "no_proposal_reference",
@@ -63,6 +72,7 @@ const REASONS: ReadonlySet<string> = new Set<UnstoredReason>([
   "bill_details_key_collision",
   "bill_details_landing_failed",
   "no_matchable_records",
+  "unknown_cast",
 ]);
 
 export function senateUnstoredKey(congress: number): string {
@@ -223,6 +233,7 @@ export function senateUnstoredLine(
   ];
   if (by.bill_unresolved) parts.push(`${by.bill_unresolved} bill unresolved`);
   if (by.no_matchable_records) parts.push(`${by.no_matchable_records} no matchable votes`);
+  if (by.unknown_cast) parts.push(`${by.unknown_cast} unknown cast`);
   const closed = Object.entries(rec.sessions)
     .filter(([, s]) => s.tail_closed)
     .map(([k]) => k)

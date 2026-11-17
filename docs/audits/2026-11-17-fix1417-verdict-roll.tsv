@@ -1,0 +1,101 @@
+lis_member_id	member_key	last_name	first_name	party	state	cast	vote	vote_id	official_id
+S354	baldwin:WI	Baldwin	Tammy	D	WI	Guilty	yes	19f3021b-fe99-49c6-b955-9788676efb6e	7fe9c3a6-69d1-40fd-9737-14b68c5b46f9
+S317	barrasso:WY	Barrasso	John	R	WY	Not Guilty	no	58f1a487-b0ca-4587-960e-632eac47f462	2e09c070-376c-4417-9a8e-9f04bf4ab72b
+S330	bennet:CO	Bennet	Michael	D	CO	Guilty	yes	099b8a59-372b-4ae1-9e6f-191485c4a3f6	cdffad75-cc85-462f-8030-8237632acb94
+S396	blackburn:TN	Blackburn	Marsha	R	TN	Not Guilty	no	d037ed59-c9db-4f86-b3d1-9cd88d91931d	4a8644ab-956e-4c64-addc-65822cd549b8
+S341	blumenthal:CT	Blumenthal	Richard	D	CT	Guilty	yes	5516cc7d-b9fd-4161-b6e4-34277de49d91	e4a60bbf-651f-44b8-bda0-31d33e98319f
+S342	blunt:MO	Blunt	Roy	R	MO	Not Guilty	no		
+S370	booker:NJ	Booker	Cory	D	NJ	Guilty	yes	e5d8928f-3740-4335-8b95-6e767aed801a	6b2fea3f-b5fb-4903-b57a-2c6a5ae0401e
+S343	boozman:AR	Boozman	John	R	AR	Not Guilty	no	99858bd5-7f3d-4340-a20f-f88acc92298e	0dda6984-32b7-4d6e-88ec-d883763d63aa
+S397	braun:IN	Braun	Mike	R	IN	Not Guilty	no		
+S307	brown:OH	Brown	Sherrod	D	OH	Guilty	yes		
+S300	burr:NC	Burr	Richard	R	NC	Guilty	yes		
+S275	cantwell:WA	Cantwell	Maria	D	WA	Guilty	yes	165c8dc6-ab29-49bb-a003-899f1e84ee79	4ca98eee-59a8-4211-b6fc-a1451f9becb7
+S372	capito:WV	Capito	Shelley	R	WV	Not Guilty	no	6ec434b0-2d52-453e-9166-af2fdbcccd6f	32388aeb-d379-4297-be5c-3ea5e46ff3ea
+S308	cardin:MD	Cardin	Ben	D	MD	Guilty	yes		
+S277	carper:DE	Carper	Thomas	D	DE	Guilty	yes		
+S309	casey:PA	Casey	Bob	D	PA	Guilty	yes		
+S373	cassidy:LA	Cassidy	Bill	R	LA	Guilty	yes	629a2d98-c5e4-43c6-81ce-029d6b498045	fa237ff5-a496-4f4a-97cb-fed07a08efd0
+S252	collins:ME	Collins	Susan	R	ME	Guilty	yes	e33b7ad5-c509-4461-a957-e17d29bc747d	3e559d5c-0763-4f3f-b654-7ae93f1a2a93
+S337	coons:DE	Coons	Christopher	D	DE	Guilty	yes	941affe6-1ff5-47c2-9cbc-ced67b7b14a6	c0a258b7-4d6b-4137-b0f7-1cceb644cc4d
+S287	cornyn:TX	Cornyn	John	R	TX	Not Guilty	no	6ce8ac70-541a-4d30-93ed-dae34f2f9347	dc92c0f8-bdf2-4391-b4b1-26b6afc83849
+S385	cortez masto:NV	Cortez Masto	Catherine	D	NV	Guilty	yes	4ec442a7-2156-4205-9c4c-c3d6c3e63f02	f498e8ac-a876-4777-8215-915e6b34d3e7
+S374	cotton:AR	Cotton	Tom	R	AR	Not Guilty	no	a184a3c3-fb6d-4c6d-a83c-e68805e08bc0	033ba554-ee71-4609-b531-1252ce4ee531
+S398	cramer:ND	Cramer	Kevin	R	ND	Not Guilty	no	9332cc1e-4d0a-410c-a064-6374476f6675	7aa932bb-f40c-44bf-8408-83860ef0f339
+S266	crapo:ID	Crapo	Mike	R	ID	Not Guilty	no	1312156b-4b04-419e-a8e6-a378fddbca34	6f0aabbc-6365-4e59-ac1b-4efad1f71fcb
+S355	cruz:TX	Cruz	Ted	R	TX	Not Guilty	no	81f56511-3126-45d3-81d7-392e9d261d60	a350def0-25fe-423d-b613-e273dc23ea84
+S375	daines:MT	Daines	Steve	R	MT	Not Guilty	no	15e643e5-ae88-4bfa-a1d0-836a3cb4be75	f9b9bf43-d061-42bb-a6b4-e76fac125a2b
+S386	duckworth:IL	Duckworth	Tammy	D	IL	Guilty	yes	565b445b-0f02-4d63-8a61-8b1aa5f13f34	9e6b66e1-09d5-49cf-83dd-bff1a8700ea7
+S253	durbin:IL	Durbin	Richard	D	IL	Guilty	yes	70ae9c0b-4f82-4c65-be2f-537b9650eec1	24163175-2f58-4a2e-bfeb-ecdd68ab9ac9
+S376	ernst:IA	Ernst	Joni	R	IA	Not Guilty	no	f6957cd4-d8b2-4e3a-8d05-9a6a592de227	b3b3687e-bea7-404e-95ed-ead660a5af46
+S221	feinstein:CA	Feinstein	Dianne	D	CA	Guilty	yes		
+S357	fischer:NE	Fischer	Deb	R	NE	Not Guilty	no	7b6c939c-c8df-4362-a76a-115bd213d231	d8399eec-61cb-4a96-ae9e-ddbf3b9c18e7
+S331	gillibrand:NY	Gillibrand	Kirsten	D	NY	Guilty	yes	ec6a7d83-4824-4b79-9724-8cc0746a318a	248a39e9-ac14-4d3b-8657-f3a821fcf3e5
+S293	graham:SC	Graham	Lindsey	R	SC	Not Guilty	no	e6ae01ac-a604-4d0a-8105-63ba2bb3d1b7	dd6e334e-ef46-4f39-b2d9-3df5a85094d2
+S153	grassley:IA	Grassley	Charles	R	IA	Not Guilty	no	6a578213-c711-42bc-b252-ba3dc254015d	44845d16-71db-4563-aa3c-28cad31f13e3
+S407	hagerty:TN	Hagerty	Bill	R	TN	Not Guilty	no	c9edf6e1-c84c-4dcf-b12c-89fb420b6111	5489eb1d-4c10-4999-afb7-1223677f5536
+S388	hassan:NH	Hassan	Maggie	D	NH	Guilty	yes	e632cb3f-d3e1-4503-84b7-6588446aaec1	18c46a64-d7e4-4044-a3d9-d5329dd498db
+S399	hawley:MO	Hawley	Josh	R	MO	Not Guilty	no	413cac1e-adbf-4b05-a73e-44ca7405e9b8	1b02877c-770a-4e88-8639-4265bdf69caf
+S359	heinrich:NM	Heinrich	Martin	D	NM	Guilty	yes	738ed964-ea37-442a-8360-250eae1439e8	f2e35edd-e242-4919-890f-b8ca7fe0d9bd
+S408	hickenlooper:CO	Hickenlooper	John	D	CO	Guilty	yes	c12d4b28-bacd-479c-b9a4-43bb886da694	d5e8be45-e5ff-4a3f-84ac-23f9c6fcc3de
+S361	hirono:HI	Hirono	Mazie	D	HI	Guilty	yes	39262f0a-cdb0-4456-808b-6e2f1ae29776	b077712a-90d1-43db-a6c9-d057ae821844
+S344	hoeven:ND	Hoeven	John	R	ND	Not Guilty	no	f5c1dbe1-0853-431c-8171-827269dedeb3	a3b00145-5e8d-4af8-ae48-51d53897ce0f
+S395	hyde-smith:MS	Hyde-Smith	Cindy	R	MS	Not Guilty	no	145fa36e-e5ac-44a3-bc7e-ead90768be39	1e7b4217-8b8c-49cf-9b14-3ad6c853615d
+S236	inhofe:OK	Inhofe	Jim	R	OK	Not Guilty	no		
+S345	johnson:WI	Johnson	Ron	R	WI	Not Guilty	no	8fabc916-b48e-47fe-ac3f-3d35bb564432	68bc1882-cadf-4fc2-a467-3b95dfca2622
+S362	kaine:VA	Kaine	Timothy	D	VA	Guilty	yes	0ec40f1e-f57d-42de-9302-ce796c197c1c	f3fcc128-60f5-4056-934f-b85ece863110
+S406	kelly:AZ	Kelly	Mark	D	AZ	Guilty	yes	17d160f3-2426-4a1c-8c4c-565d35f2bfa8	57daf850-8043-4b04-a4c0-05e7a59131d5
+S389	kennedy:LA	Kennedy	John	R	LA	Not Guilty	no	09e8b8ae-5135-4788-b013-e2e64f871e2e	17376219-7437-41da-9731-0a885ecba6e2
+S363	king:ME	King	Angus	I	ME	Guilty	yes	ac0e839c-99fd-4db5-b5f7-66c6a80f8b14	40ff9a6f-ec9b-4fb1-8754-0bb84bad1b45
+S311	klobuchar:MN	Klobuchar	Amy	D	MN	Guilty	yes	3bae991e-b8b3-44c9-bd3c-30858a1fb498	6f7c8adb-6eff-4ca5-b2ab-4ff35f7711d7
+S378	lankford:OK	Lankford	James	R	OK	Not Guilty	no	0b74e26f-4ec6-45b9-a670-a9ad6e898b39	c489979d-6543-4823-95e8-9a25e1cc88d5
+S057	leahy:VT	Leahy	Patrick	D	VT	Guilty	yes		
+S346	lee:UT	Lee	Mike	R	UT	Not Guilty	no	66ba5aa4-0635-4ce1-b02b-9b2f0bb699d5	8ed0d7ca-af58-40ae-9d44-55828414c78d
+S409	lujan:NM	Lujan	Ben	D	NM	Guilty	yes		
+S410	lummis:WY	Lummis	Cynthia	R	WY	Not Guilty	no	d0f3afe9-9f72-42db-9d57-bc69dd525ee2	a911c906-1a02-4ba2-af8d-5dcca21c89fd
+S338	manchin:WV	Manchin	Joseph	D	WV	Guilty	yes		
+S369	markey:MA	Markey	Edward	D	MA	Guilty	yes	e97ce741-9e2b-494f-8c01-49560dfebfc7	bb23212c-9844-4ffa-8172-d92655440dd1
+S411	marshall:KS	Marshall	Roger	R	KS	Not Guilty	no	99b9ba1a-21a0-486a-b219-e94abbaa4965	27090d3a-ed66-47de-8f45-24a262cf9e35
+S174	mcconnell:KY	McConnell	Mitch	R	KY	Not Guilty	no	7b3884ea-bf3e-4421-aaba-6c47709558db	54027211-27be-47f1-9749-34fe0e56d50c
+S306	menendez:NJ	Menendez	Robert	D	NJ	Guilty	yes		
+S322	merkley:OR	Merkley	Jeff	D	OR	Guilty	yes	fe01c95c-c0a0-406e-8bab-2459345b31fd	e7afbf02-9908-4c2f-a443-cc7a00741761
+S347	moran:KS	Moran	Jerry	R	KS	Not Guilty	no	f66dc8fa-e43b-49fb-b16a-636a04a8c83d	38308099-457d-488d-8794-3fd3aabf44ce
+S288	murkowski:AK	Murkowski	Lisa	R	AK	Guilty	yes	d289a53b-f8b4-41a1-bb9a-6f17291c28a5	150c8d4e-14fd-4323-bd13-bc36ac36523b
+S364	murphy:CT	Murphy	Christopher	D	CT	Guilty	yes	a6be0c27-d0f8-4167-a87d-81ddc5cbdef7	742abc8e-9320-42b7-a9d4-e7c06e935907
+S229	murray:WA	Murray	Patty	D	WA	Guilty	yes	403a26f4-f705-4d54-b86d-80f9eb47c903	768815ff-08e9-47ac-9079-3ddf44fbad0a
+S414	ossoff:GA	Ossoff	Jon	D	GA	Guilty	yes	a24f606f-5843-4b98-8c17-8472d8d4b6da	1376dc1e-f697-40b2-8c0f-780f8fe8ea00
+S413	padilla:CA	Padilla	Alex	D	CA	Guilty	yes	47fd8661-bc20-4512-b706-9fca3c1f6e9e	094be99e-d059-4558-82a1-8a24c4b2c98c
+S348	paul:KY	Paul	Rand	R	KY	Not Guilty	no	631794ed-3393-42bc-9be0-e9fccba86b28	32fcf663-c7f1-49ca-8ec6-b86973434633
+S380	peters:MI	Peters	Gary	D	MI	Guilty	yes	ab235906-a6d8-41a7-8cdc-6a583556b140	efd0cd51-0f21-4f54-a702-2aaf762a0368
+S349	portman:OH	Portman	Rob	R	OH	Not Guilty	no		
+S259	reed:RI	Reed	John	D	RI	Guilty	yes	d2700979-9ba5-4fb9-8fa0-7db3f8971519	52bce3fa-b134-4e85-abb5-299318fb9d48
+S323	risch:ID	Risch	James	R	ID	Not Guilty	no	4997eaac-3539-4d68-85f6-a909b1fe09f8	04afc81e-f922-4ad5-97f5-522021337a7f
+S401	romney:UT	Romney	Mitt	R	UT	Guilty	yes		
+S402	rosen:NV	Rosen	Jacklyn	D	NV	Guilty	yes	39ea71a0-951c-4643-9fad-e12191082f9e	a333edfb-4091-48f6-a08e-181f7dc646a2
+S381	rounds:SD	Rounds	Mike	R	SD	Not Guilty	no	06ae3cf8-971c-420f-8232-af48c05f8436	802d4aed-e324-4075-a8e8-0300daa2c52b
+S350	rubio:FL	Rubio	Marco	R	FL	Not Guilty	no		
+S313	sanders:VT	Sanders	Bernard	I	VT	Guilty	yes	669569bb-f280-46e9-b0fc-90d87c4102e3	83a86ecb-0064-413e-b131-19a122f218f3
+S382	sasse:NE	Sasse	Ben	R	NE	Guilty	yes		
+S353	schatz:HI	Schatz	Brian	D	HI	Guilty	yes	6403d12d-d24a-45c5-b089-5bc5f5195556	f697a9e5-080a-4b9a-9240-211ad695a192
+S270	schumer:NY	Schumer	Charles	D	NY	Guilty	yes	54b5d329-418c-4c8b-abb6-de3178011851	1e6efe79-ed26-416d-aa75-908d6f9a1ff4
+S404	scott:FL	Scott	Rick	R	FL	Not Guilty	no	3bc44cb4-708b-42ac-b3a9-03b13dcc35af	712b7eb0-2698-4305-922b-5ad84832a35d
+S365	scott:SC	Scott	Tim	R	SC	Not Guilty	no	7f374b42-37a9-42fe-92bc-3c8bfcde017b	5c52e3ca-3986-41c1-89f1-b2b27d099c5a
+S324	shaheen:NH	Shaheen	Jeanne	D	NH	Guilty	yes	0749fa04-884a-4939-843f-a66a94332da2	3e452271-e4d4-4bfe-a7a6-062fab2f5bea
+S184	shelby:AL	Shelby	Richard	R	AL	Not Guilty	no		
+S403	sinema:AZ	Sinema	Kyrsten	D	AZ	Guilty	yes		
+S394	smith:MN	Smith	Tina	D	MN	Guilty	yes	cd2ca16b-1a86-4d16-8852-4efadcddb3d7	41d738d2-000c-4781-856b-4a5718d9e30c
+S284	stabenow:MI	Stabenow	Debbie	D	MI	Guilty	yes		
+S383	sullivan:AK	Sullivan	Dan	R	AK	Not Guilty	no	4c392bb0-e7dc-4b03-8a9a-f22b43f9e51d	872e5c89-52eb-425d-8e32-f3d6bb1e6386
+S314	tester:MT	Tester	Jon	D	MT	Guilty	yes		
+S303	thune:SD	Thune	John	R	SD	Not Guilty	no	910262a1-9296-4071-90dc-a2dd407298a0	d0ac116d-2f62-4dd3-8589-53e4756882bc
+S384	tillis:NC	Tillis	Thomas	R	NC	Not Guilty	no	2c2409ee-7b73-41dc-adba-f3481dc1dc02	2271adc1-254c-4bdf-ba8b-7112609680da
+S351	toomey:PA	Toomey	Patrick	R	PA	Guilty	yes		
+S412	tuberville:AL	Tuberville	Tommy	R	AL	Not Guilty	no	eacc2b16-33ba-464e-b674-f2f1bcc719f2	cf7cddcc-cf96-4c3d-8681-48b3e6c05d41
+S390	van hollen:MD	Van Hollen	Chris	D	MD	Guilty	yes	7b5eab97-0961-45ca-8e8b-8a904905c28a	82cb033e-efe6-4f33-a12c-46afedc073cc
+S327	warner:VA	Warner	Mark	D	VA	Guilty	yes	3ce0eabe-13d4-48f3-8ab5-e093babd6924	9539fa43-d1b6-42f6-bf08-e340ee807265
+S415	warnock:GA	Warnock	Raphael	D	GA	Guilty	yes	7e651dd6-197f-4dbf-b0ea-400fa3799fae	09241404-0840-42a4-8c8a-2f885950660f
+S366	warren:MA	Warren	Elizabeth	D	MA	Guilty	yes	78257057-23b0-4913-9a3a-267fd4c24d29	183692c1-0f15-4366-bc3e-ed0621f47e29
+S316	whitehouse:RI	Whitehouse	Sheldon	D	RI	Guilty	yes	13afd165-7406-44d9-8233-3a74b73ab774	602156b3-ceba-4bd0-9790-4599b8e72e2a
+S318	wicker:MS	Wicker	Roger	R	MS	Not Guilty	no	0b90941f-1af0-4bc5-8950-799d79bb1aee	93194659-1951-4690-8610-0d33d6522e76
+S247	wyden:OR	Wyden	Ron	D	OR	Guilty	yes	123ba7e1-eb83-4e25-9faf-dfe1723c7700	6ea042c5-3b29-4bc0-ac9e-7639e973d11c
+S391	young:IN	Young	Todd	R	IN	Not Guilty	no	4ed4cf22-fcda-49e2-bd63-d67f6ae27960	1f7f59ae-8899-493e-864b-879b73c063bc

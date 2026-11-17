@@ -34,6 +34,7 @@
  */
 
 import type { BillProposalArgs } from "./bills";
+import { UnknownCastError } from "./members";
 
 export type SkipReason = "bill_details_key_collision" | "bill_details_landing_failed";
 
@@ -231,7 +232,9 @@ export type UnstoredReason =
   | "bill_unresolved"
   | "no_voted_at"
   | SkipReason
-  | "no_matchable_records";
+  | "no_matchable_records"
+  /** FIX-1417: a member's cast mapVote does not know; the whole roll is held back. */
+  | "unknown_cast";
 
 export interface WriteRollsResult {
   inserted: number;
@@ -282,7 +285,17 @@ export async function writeRollVotes<R extends RollForWrite, V>(
       out.unstored.push({ roll: roll.rollCallId, reason: a.reason });
       continue;
     }
-    const records = deps.build(roll, proposalId, new Date(roll.votedAt).toISOString());
+    let records: V[];
+    try {
+      records = deps.build(roll, proposalId, new Date(roll.votedAt).toISOString());
+    } catch (err) {
+      // FIX-1417: one unknown cast holds back the whole roll. No member row
+      // is stored with an invented value, and no partial roll is stored.
+      if (!(err instanceof UnknownCastError)) throw err;
+      deps.log(`    unknown cast '${err.cast}' in ${roll.rollCallId} — the roll is not stored (FIX-1417)`);
+      out.unstored.push({ roll: roll.rollCallId, reason: "unknown_cast" });
+      continue;
+    }
     if (records.length === 0) {
       deps.log(`    ${roll.rollCallId}: no matchable vote records`);
       out.unstored.push({ roll: roll.rollCallId, reason: "no_matchable_records" });
