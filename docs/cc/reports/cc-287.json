@@ -1,0 +1,61 @@
+{
+  "cc": "287",
+  "prompt": "cc-prompt-287-mon-records-the-collectors-three-polite-senate-nights-amendment-rolls-edgar-daily-dry-run-irs990-deflate64-slot-fix1181-reopen-verdict-roll-stored-not-voting.md",
+  "started_at": "2026-11-17T02:34:24Z",
+  "finished_at": "2026-11-17T02:51:00Z",
+  "head_before": "f82abe01",
+  "head_after": "51fa9c45",
+  "commits": [
+    {
+      "sha": "93de6272",
+      "subject": "[skip vercel] chore(fixes): file FIX-1417 — mapVote stores a cast it does not know as not_voting; the 2021 impeachment verdict roll senate-117-1-00059 is 78 not_voting rows on prod (cc-287)"
+    },
+    {
+      "sha": "31c2182b",
+      "subject": "[skip vercel] chore(fixes): reopen FIX-1181 — link_officials_to_districts was cancelled at the 8 s bound 3 times in 4 nights (11-13 21:09:06Z, 11-14 22:37:44Z, 11-16 00:42:12Z), each from an OpenStates pipeline; pgss (11 calls, max 7,908.6 ms) cannot see a cancel (cc-287)"
+    },
+    {
+      "sha": "f31e4ba6",
+      "subject": "[skip vercel] docs(cc): congress-ids s16 and s17 read by cc-287 — 171 amendment rolls on 18 existing parents, 13 named unstored at v 2; 1,240 of 36,041 Senate pairs on prod decided by an amendment roll"
+    },
+    {
+      "sha": "ae986c5a",
+      "subject": "chore(fixes): record FIX-1407 on prod — three nightlies, 0 blocked: 11-14 S2 69 GETs (tail 4 new + 62 gaps) and S1 125 (122 gaps, tail closed), 175 rolls stored; 11-15 and 11-16 S2 3 GETs and S1 0, the tail landed each night (cc-287)"
+    },
+    {
+      "sha": "ac392580",
+      "subject": "chore(fixes): record FIX-1408 on prod — both sessions' gap passes completed at v 2 on 11-14: 171 amendment rolls (S1 113, S2 58; 16,972 rows) on 18 parent bills that already existed, 0 minted; 13 still unstored, each named no_proposal_reference (cc-287)"
+    },
+    {
+      "sha": "556c94a9",
+      "subject": "chore(fixes): record FIX-1394 on prod — no night logged a refused or missing index as no_filings: the 11-14, 11-15 and 11-16 edgar_daily rows are complete, dry, each reading master.20261113.idx (1,432 13D/G rows, 95 tracked) (cc-287)"
+    },
+    {
+      "sha": "51fa9c45",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-287 — FIX-1407, FIX-1408 and FIX-1394 recorded on prod; FIX-1417 filed and FIX-1181 reopened, both open (27 open)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1417"
+  ],
+  "fixes_reopened": [
+    "FIX-1181"
+  ],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1400 record (Item 1): the slot's schedule run 43980962350 started 2026-11-16T23:38:00Z and failed 10 s in at the officials load (statement timeout), before any archive was read. Not met, so no commit. The owed entry is restated.",
+    "Permission prompt, denied: git checkout -- docs/done.log && git diff --stat && node scripts/fix-reopen.mjs FIX-1181 --note '…' (re-appending the uncommitted reopen row with a narrower last sentence). Not worked around. The row as first appended stands; 31c2182b's body scopes its last sentence to the three completed calls this run read."
+  ],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1400",
+      "what": "the next irs990 run that reaches the archives — Mon 11-23 15:00Z is the next schedule slot (GitHub starts it 4-9 h late); a hand dispatch is Craig's call. Quote the unzip Deflate64 line, each 2025 archive's line, rows inserted / failed, the status, and metadata.zips_failed / object_ids_unresolved / zips_via_unzip. Met when the two archives are read and the five filings land, or the run is partial and names them",
+      "after": "2026-11-18T01:00Z"
+    }
+  ]
+}
