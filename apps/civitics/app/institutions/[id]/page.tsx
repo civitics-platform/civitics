@@ -21,6 +21,7 @@ import { PageViewTracker } from "../../components/PageViewTracker";
 import { FormerBadge } from "../../components/FormerBadge";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
+import { FlagDataButton } from "../../components/FlagDataButton";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { OfficialRosterCard, type OfficialRosterData } from "../../components/cards/OfficialRosterCard";
 import { MeetingCard, type MeetingCardData } from "../../components/cards/MeetingCard";
@@ -550,6 +551,11 @@ async function AgencyView({
                 >
                   <SourceBadge attribution={attribution} />
                 </SourceDetailPopover>
+                <FlagDataButton
+                  entityType="agency"
+                  entityId={agency.id}
+                  source={attribution?.primary?.source ?? null}
+                />
               </div>
               <h1 className="mt-1 text-2xl font-bold text-ink leading-tight">
                 {agency.name}
@@ -1087,6 +1093,11 @@ async function GoverningBodyView({
                 >
                   <SourceBadge attribution={attribution} />
                 </SourceDetailPopover>
+                <FlagDataButton
+                  entityType="governing_body"
+                  entityId={institution.id}
+                  source={attribution?.primary?.source ?? null}
+                />
               </div>
               {(jurisdiction || parent) && (
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-soft/70">

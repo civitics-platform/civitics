@@ -21,22 +21,15 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createPublicClient,
   ATTRIBUTION_ENTITY_TYPES,
+  ATTRIBUTION_ENTITY_TABLE,
+  isAttributionEntityType,
   deriveSourceUrl,
   type AttributionDetailResponse,
   type AttributionDetailSource,
-  type AttributionEntityType,
   type AttributionPrimary,
 } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
-
-const ENTITY_TYPE_TO_TABLE: Record<AttributionEntityType, string> = {
-  official:         "officials",
-  proposal:         "proposals",
-  agency:           "agencies",
-  governing_body:   "governing_bodies",
-  financial_entity: "financial_entities",
-};
 
 // Inline because public.source_priority() lives DB-side and we want one
 // round-trip for the xsr fetch (PostgREST can't apply a SQL function in a
@@ -59,10 +52,6 @@ function sourcePriority(src: string): number {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function isAttributionEntityType(s: string): s is AttributionEntityType {
-  return (ATTRIBUTION_ENTITY_TYPES as readonly string[]).includes(s);
-}
-
 export async function GET(
   _req: NextRequest,
   { params }: { params: { type: string; id: string } },
@@ -80,7 +69,7 @@ export async function GET(
   }
 
   const db = createPublicClient();
-  const table = ENTITY_TYPE_TO_TABLE[type];
+  const table = ATTRIBUTION_ENTITY_TABLE[type];
 
   // 1) Confirm the entity exists. For FIX-406 synthetic-source prepend on
   // financial_entity / official, also pull the FEC key + updated_at so we

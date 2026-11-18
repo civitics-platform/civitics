@@ -11,14 +11,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { POLLUTION_TABLES, pollutionCountSql, pollutionLabel } from "./pollution-tables";
 
-test("FIX-825: the watch holds the eight content tables plus auth.users and public.users", () => {
+test("FIX-825: the watch holds the nine content tables plus auth.users and public.users", () => {
   const labels = POLLUTION_TABLES.map(pollutionLabel);
-  assert.equal(labels.length, 10);
-  assert.equal(new Set(labels).size, 10, "no table watched twice");
+  assert.equal(labels.length, 11);
+  assert.equal(new Set(labels).size, 11, "no table watched twice");
   assert.ok(labels.includes("auth.users"));
   assert.ok(labels.includes("public.users"));
   for (const t of [
-    "entity_comments", "content_flags", "comment_ratings", "entity_positions",
+    "entity_comments", "content_flags", "data_flags", "comment_ratings", "entity_positions",
     "position_events", "evidence_cards", "citations", "investigations",
   ]) {
     assert.ok(labels.includes(`public.${t}`), `public.${t} still watched`);

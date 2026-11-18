@@ -18,6 +18,7 @@ export interface PollutionTable {
 export const POLLUTION_TABLES: readonly PollutionTable[] = [
   { schema: "public", table: "entity_comments" },
   { schema: "public", table: "content_flags" },
+  { schema: "public", table: "data_flags" },
   { schema: "public", table: "comment_ratings" },
   { schema: "public", table: "entity_positions" },
   { schema: "public", table: "position_events" },

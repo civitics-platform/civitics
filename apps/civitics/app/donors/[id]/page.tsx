@@ -20,6 +20,7 @@ import {
 import { ShareButton } from "../../officials/components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
+import { FlagDataButton } from "../../components/FlagDataButton";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { SyntheticMark } from "../../components/integrity/Synthetic";
 
@@ -609,6 +610,11 @@ export default async function DonorProfilePage({
                   >
                     <SourceBadge attribution={entity.attribution} />
                   </SourceDetailPopover>
+                  <FlagDataButton
+                    entityType="financial_entity"
+                    entityId={entity.id}
+                    source={entity.attribution?.primary?.source ?? null}
+                  />
                 </div>
 
                 <h1 className="text-2xl font-bold text-ink leading-tight">

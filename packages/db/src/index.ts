@@ -457,6 +457,8 @@ export { fetchAttributionForEntity } from "./attribution";
 export {
   SOURCE_URL_TEMPLATES,
   ATTRIBUTION_ENTITY_TYPES,
+  ATTRIBUTION_ENTITY_TABLE,
+  isAttributionEntityType,
   deriveSourceUrl,
   attributionDetailEndpoint,
 } from "./types/attribution";
