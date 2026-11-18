@@ -71,14 +71,28 @@ export const officialsChecks: Check = async ({ query }) => {
   // 2603 cn24.zip 'Candidate for President' rows (tier=candidate), USPS
   // "Executive Vice President" titles, and other state-legislature
   // "President of the Senate" / pro-tem roles. Tighten to exact canonical
-  // role_title for the sitting POTUS / VPOTUS. Currently returns 0 — the
-  // executive branch is not yet ingested (filed as FIX-321).
-  const president = await query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-       FROM officials
-      WHERE is_active = true
+  // role_title for the sitting POTUS / VPOTUS. The rows come from the
+  // executive seed (FIX-321).
+  //
+  // FIX-1428: a count that is not 1 names its rows, oldest first. The seed's
+  // duplicate inserts read here as vp_count 5 → 12 → … → 43 for six weeks with
+  // an empty sample; one created_at per night is the signature.
+  const execSample = (filter: string, count: number) =>
+    count === 1
+      ? Promise.resolve([])
+      : query<{ id: string; full_name: string; role_title: string; created_at: string }>(
+          `SELECT id, full_name, role_title, created_at
+             FROM officials
+            WHERE ${filter}
+            ORDER BY created_at, id
+            LIMIT 10`,
+        );
+
+  const presidentFilter = `is_active = true
         AND tier = 'elected'
-        AND role_title ~ '^President( of the United States)?$'`,
+        AND role_title ~ '^President( of the United States)?$'`;
+  const president = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM officials WHERE ${presidentFilter}`,
   );
   const presCount = Number(president[0]?.count ?? 0);
   out.push({
@@ -86,16 +100,15 @@ export const officialsChecks: Check = async ({ query }) => {
     severity: presCount === 1 ? "info" : "error",
     expected: 1,
     actual: presCount,
-    sample: [],
+    sample: await execSample(presidentFilter, presCount),
     detail: "Sitting U.S. President.",
   });
 
-  const vp = await query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-       FROM officials
-      WHERE is_active = true
+  const vpFilter = `is_active = true
         AND tier = 'elected'
-        AND role_title ~ '^Vice President( of the United States)?$'`,
+        AND role_title ~ '^Vice President( of the United States)?$'`;
+  const vp = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM officials WHERE ${vpFilter}`,
   );
   const vpCount = Number(vp[0]?.count ?? 0);
   out.push({
@@ -103,7 +116,7 @@ export const officialsChecks: Check = async ({ query }) => {
     severity: vpCount === 1 ? "info" : "error",
     expected: 1,
     actual: vpCount,
-    sample: [],
+    sample: await execSample(vpFilter, vpCount),
     detail: "Sitting U.S. Vice President.",
   });
 
