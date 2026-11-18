@@ -7,6 +7,7 @@ import { AGENCY_FULL_NAMES } from "../components/agencyNames";
 import { AiSummarySection } from "../components/AiSummarySection";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
+import { FlagDataButton } from "../../components/FlagDataButton";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
@@ -452,6 +453,11 @@ export default async function ProposalDetailPage({
             >
               <SourceBadge attribution={proposalRow.attribution} />
             </SourceDetailPopover>
+            <FlagDataButton
+              entityType="proposal"
+              entityId={p.id}
+              source={proposalRow.attribution?.primary?.source ?? null}
+            />
           </div>
 
           {/* Title */}

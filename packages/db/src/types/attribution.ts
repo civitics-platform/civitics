@@ -59,6 +59,23 @@ export const ATTRIBUTION_ENTITY_TYPES: readonly AttributionEntityType[] = [
 ] as const;
 
 /**
+ * The table each attribution entity type lives in. One copy: the SSR helper
+ * (fetchAttributionForEntity), /api/attribution/[type]/[id] and
+ * /api/data-flags (FIX-401) all read it.
+ */
+export const ATTRIBUTION_ENTITY_TABLE: Readonly<Record<AttributionEntityType, string>> = {
+  official:         "officials",
+  proposal:         "proposals",
+  agency:           "agencies",
+  governing_body:   "governing_bodies",
+  financial_entity: "financial_entities",
+};
+
+export function isAttributionEntityType(s: string): s is AttributionEntityType {
+  return (ATTRIBUTION_ENTITY_TYPES as readonly string[]).includes(s);
+}
+
+/**
  * Backlink templates keyed by (source, entity_type). When external_source_refs.source_url
  * is null, the API route derives a URL from `{external_id}`. Unknown
  * (source, entity_type) combos return null — never synthesize a broken URL.

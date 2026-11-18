@@ -62,10 +62,11 @@ const BOT_PATTERNS = [
 // ---------------------------------------------------------------------------
 
 // Participation write surfaces the edge backstops: /api/comments, /api/positions,
-// /api/statements and their nested /[id]/rate, /[id]/flag, /[id]/vote children.
+// /api/statements and their nested /[id]/rate, /[id]/flag, /[id]/vote children,
+// and /api/data-flags (FIX-401; its per-user cap is the table's trigger).
 // Reads of these same paths (GET comment/statement lists) are NOT bucketed — only
 // the mutating verbs are, so normal browsing isn't throttled by the write limit.
-const WRITE_PATH_RE = /^\/api\/(comments|positions|statements)(\/|$)/;
+const WRITE_PATH_RE = /^\/api\/(comments|positions|statements|data-flags)(\/|$)/;
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // SSR entity DETAIL pages (FIX-637). Each of these renders the full per-entity

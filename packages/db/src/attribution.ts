@@ -19,6 +19,7 @@
 
 import type { createAdminClient, createPublicClient, createServerClient } from "./client";
 import {
+  ATTRIBUTION_ENTITY_TABLE,
   attributionDetailEndpoint,
   type AttributionEntityType,
   type AttributionShape,
@@ -32,20 +33,12 @@ type AnyDb =
   | ReturnType<typeof createServerClient>
   | ReturnType<typeof createAdminClient>;
 
-const ENTITY_TYPE_TO_TABLE: Record<AttributionEntityType, string> = {
-  official:         "officials",
-  proposal:         "proposals",
-  agency:           "agencies",
-  governing_body:   "governing_bodies",
-  financial_entity: "financial_entities",
-};
-
 export async function fetchAttributionForEntity(
   db: AnyDb,
   entityType: AttributionEntityType,
   entityId: string,
 ): Promise<AttributionShape> {
-  const table = ENTITY_TYPE_TO_TABLE[entityType];
+  const table = ATTRIBUTION_ENTITY_TABLE[entityType];
 
   const [entityRes, countRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

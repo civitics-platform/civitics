@@ -20,6 +20,7 @@ import {
 } from "@civitics/db";
 import { SourceBadge } from "../../../components/SourceBadge";
 import { SourceDetailPopover } from "../../../components/SourceDetailPopover";
+import { FlagDataButton } from "../../../components/FlagDataButton";
 import { SyntheticMark } from "../../../components/integrity/Synthetic";
 import { initials, titleizeValue } from "./format";
 
@@ -157,11 +158,21 @@ function DetailContent({
         {row.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
       </h3>
       <p className="mb-3 mt-1 font-mono text-[11.5px] text-ink-soft">{detail.subtitle}</p>
-      {attribution && attributionType && (
+      {attributionType && (
         <div className="mb-3">
-          <SourceDetailPopover entityType={attributionType} entityId={detail.id} attribution={attribution}>
-            <SourceBadge attribution={attribution} variant="pill" />
-          </SourceDetailPopover>
+          {attribution && (
+            <SourceDetailPopover entityType={attributionType} entityId={detail.id} attribution={attribution}>
+              <SourceBadge attribution={attribution} variant="pill" />
+            </SourceDetailPopover>
+          )}
+          {/* FIX-401: outside the badge's conditional — a row with no source can still be flagged. */}
+          <FlagDataButton
+            key={detail.id}
+            entityType={attributionType}
+            entityId={detail.id}
+            source={detail.primary_source ?? null}
+            variant="inline"
+          />
         </div>
       )}
 

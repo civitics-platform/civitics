@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient, createAdminClient } from "@civitics/db";
+import { createServerClient, createAdminClient, ATTRIBUTION_ENTITY_TABLE } from "@civitics/db";
 import { fetchChunkedByIds } from "@/lib/paginate";
+import {
+  DATA_FLAG_NAME_COLUMN,
+  DATA_FLAG_PENDING_OR_FILTER,
+  dataFlagEntityPath,
+  parseResolveDataFlag,
+} from "@/lib/data-flags";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +27,23 @@ async function requireAdmin(): Promise<string | null> {
   return user.id;
 }
 
+type NameSpecs = Record<string, { table: string; col: string }>;
+
+const ENDPOINT_NAME_SPECS: NameSpecs = {
+  official: { table: "officials", col: "full_name" },
+  financial_entity: { table: "financial_entities", col: "display_name" },
+  agency: { table: "agencies", col: "name" },
+  governing_body: { table: "governing_bodies", col: "name" },
+};
+
+// FIX-401: the data-flags queue names all five attribution types, proposals too.
+const DATA_FLAG_NAME_SPECS: NameSpecs = Object.fromEntries(
+  (Object.keys(ATTRIBUTION_ENTITY_TABLE) as Array<keyof typeof ATTRIBUTION_ENTITY_TABLE>).map((t) => [
+    t,
+    { table: ATTRIBUTION_ENTITY_TABLE[t], col: DATA_FLAG_NAME_COLUMN[t] },
+  ]),
+);
+
 // ── Investigations PR3 (FIX-585): endpoint-name resolver for evidence-card from/to ──
 // Resolves the (type,id) endpoints of a batch of edge cards to display names so the
 // admin review queue reads as "X --kind--> Y" rather than raw UUIDs. Bounded by the
@@ -29,6 +52,7 @@ async function resolveEndpointNames(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   pairs: { type: string | null; id: string | null }[],
+  specs: NameSpecs = ENDPOINT_NAME_SPECS,
 ): Promise<Map<string, string>> {
   const byType = new Map<string, Set<string>>();
   for (const p of pairs) {
@@ -38,12 +62,6 @@ async function resolveEndpointNames(
     byType.set(p.type, set);
   }
   const out = new Map<string, string>(); // key `${type}:${id}` → name
-  const specs: Record<string, { table: string; col: string }> = {
-    official: { table: "officials", col: "full_name" },
-    financial_entity: { table: "financial_entities", col: "display_name" },
-    agency: { table: "agencies", col: "name" },
-    governing_body: { table: "governing_bodies", col: "name" },
-  };
   await Promise.all(
     [...byType.entries()].map(async ([type, ids]) => {
       const spec = specs[type];
@@ -64,7 +82,7 @@ async function resolveEndpointNames(
   return out;
 }
 
-// GET /api/admin/moderation?queue=comments|promotion|disputes&resolved=0|1
+// GET /api/admin/moderation?queue=comments|promotion|disputes|data_flags&resolved=0|1
 export async function GET(request: NextRequest) {
   const adminId = await requireAdmin();
   if (!adminId) {
@@ -162,6 +180,58 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json({ cards: hydrated });
+  }
+
+  // ── Data-flags queue (FIX-401) ───────────────────────────────────────────────
+  // Readers' flags on data rows. Pending = no admin resolution AND not confidently
+  // auto-classified (the classifier is unbuilt, so today: no admin resolution).
+  // Each row carries the entity's name and page, and the flagger's display name.
+  if (queue === "data_flags") {
+    let q = db
+      .from("data_flags")
+      .select(
+        "id, entity_type, entity_id, source, reason, comment, flagger_user_id, created_at, classification, classification_confidence, admin_resolved_at, resolved_by, resolution",
+      );
+    q = resolved
+      ? q.not("admin_resolved_at", "is", null)
+      : q.is("admin_resolved_at", null).or(DATA_FLAG_PENDING_OR_FILTER);
+    const { data: flags, error } = await q.order("created_at", { ascending: false }).limit(100);
+    if (error) {
+      return NextResponse.json({ error: "Failed to load data flags" }, { status: 500 });
+    }
+    const rows = (flags ?? []) as Array<{
+      id: string;
+      entity_type: keyof typeof ATTRIBUTION_ENTITY_TABLE;
+      entity_id: string;
+      flagger_user_id: string;
+    }>;
+
+    const names = await resolveEndpointNames(
+      db,
+      rows.map((r) => ({ type: r.entity_type, id: r.entity_id })),
+      DATA_FLAG_NAME_SPECS,
+    );
+
+    // .in() bounded: the flags read above is `.limit(100)`, so the flagger set
+    // derived from it is ≤100 — FIX-902
+    const flaggerIds = Array.from(new Set(rows.map((r) => r.flagger_user_id)));
+    const flaggerName = new Map<string, string>();
+    if (flaggerIds.length > 0) {
+      const { data: users, error: usersErr } = await db
+        .from("users")
+        .select("id, display_name")
+        .in("id", flaggerIds);
+      if (usersErr) console.warn("[admin/moderation] data-flag flagger names unreadable", usersErr.message);
+      for (const u of users ?? []) flaggerName.set(u.id, u.display_name ?? "");
+    }
+
+    const hydrated = rows.map((r) => ({
+      ...r,
+      entity_name: names.get(`${r.entity_type}:${r.entity_id}`) ?? "",
+      entity_path: dataFlagEntityPath(r.entity_type, r.entity_id),
+      flagger_name: flaggerName.get(r.flagger_user_id) ?? "",
+    }));
+    return NextResponse.json({ flags: hydrated });
   }
 
   // ── Disputes queue (FIX-585) ─────────────────────────────────────────────────
@@ -310,6 +380,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/moderation
 // Comments:        { flag_id, action: 'dismiss' | 'delete' }              (unchanged)
+// Data flags:      { flag_id, action: 'resolve_data_flag', resolution: 'valid'|'invalid'|'duplicate'|'no_action' }
 // Investigation:   { card_id, action: 'promote'|'reject'|'unpromote'|'clear'|'dismiss_flags' }
 //   promote → promote_evidence_edge; reject → reject_evidence_edge (+ resolve flags);
 //   unpromote → unpromote_evidence_edge; clear → clear_private_person_card;
@@ -320,7 +391,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  let body: { flag_id?: string; card_id?: string; action?: string };
+  let body: { flag_id?: string; card_id?: string; action?: string; resolution?: string };
   try {
     body = await request.json();
   } catch {
@@ -329,6 +400,31 @@ export async function POST(request: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
+
+  // ── Data-flag resolution (FIX-401) ───────────────────────────────────────────
+  if (body.action === "resolve_data_flag") {
+    const parsed = parseResolveDataFlag(body);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const { data: updated, error } = await db
+      .from("data_flags")
+      .update({
+        admin_resolved_at: new Date().toISOString(),
+        resolved_by:       adminId,
+        resolution:        parsed.value.resolution,
+      })
+      .eq("id", parsed.value.flag_id)
+      .is("admin_resolved_at", null)
+      .select("id");
+    if (error) {
+      return NextResponse.json({ error: "Failed to resolve" }, { status: 500 });
+    }
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: "Flag not found or already resolved" }, { status: 409 });
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   // ── Investigation actions (card_id-keyed) ────────────────────────────────────
   if (body.card_id) {

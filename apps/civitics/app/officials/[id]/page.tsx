@@ -35,6 +35,7 @@ import {
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
+import { FlagDataButton } from "../../components/FlagDataButton";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { getCachedOfficial } from "../_lib/get-official";
 import { getOfficialContentBearing } from "../_lib/get-official-content";
@@ -1040,6 +1041,11 @@ export default async function OfficialProfilePage({
                   >
                     <SourceBadge attribution={official.attribution} />
                   </SourceDetailPopover>
+                  <FlagDataButton
+                    entityType="official"
+                    entityId={official.id}
+                    source={official.attribution?.primary?.source ?? null}
+                  />
                 </div>
 
                 <h1 className="font-serif text-2xl font-bold text-ink leading-tight">
