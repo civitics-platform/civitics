@@ -61,6 +61,9 @@ New rule **B6**.
 **Extended 2026-11-18** with three post-landing Mondays under the io: rung
 (cc-292, FIX-1421 / FIX-1423). New rule **C14**.
 
+**Extended 2026-11-18** with the executive seed's nightly duplicates (cc-297,
+FIX-1428 / FIX-1429). New rule **E13**.
+
 ---
 
 ## A. Data-shape regimes
@@ -1717,3 +1720,29 @@ number, a filing sequence, an amendment index), and keep the surrogate id only
 as the last, never-reached key. Check what precision the column actually
 carries, not the type it is declared as. *FIX-1409 ·
 `20261117000000_fix1409_vote_edge_question_rule.sql` · cc-283 read 5*
+
+### E13. A lookup that fails must not read as "not found". Only an empty result inserts.
+
+`executive/seed.ts` looked each executive up with `.maybeSingle()`. On an
+error it logged and `continue`d, so the seed id never entered the existing-row
+map and the write loop took the **insert** branch. One failed lookup made one
+duplicate. From then on `.maybeSingle()` errored every night, because two rows
+matched, so every nightly inserted another while logging `inserted=1` and
+staying green. The weekly audit's `officials.vp_count` read **1 / 5 / 12 / 19 /
+26 / 33 / 43** (10-05 → 11-18) with an empty sample. On 2026-11-18 05:49Z prod
+held **43** Vice President rows, one per nightly from 10-08, and **4** President
+rows from the 11-16 fallback on, all under one seed id each. Nothing
+user-facing hung off the 45 extras: no votes, edges, money or user rows, only
+a tag and a search-index row each. That was luck, not design. A sweep of
+`pipelines/` by shape found eight more sites. Two of them
+(`agency-leadership` nominees, `courtlistener` courts) share the
+self-perpetuating `.maybeSingle()` form, on tables with no unique key.
+
+**Apply:** a lookup ahead of an insert has three outcomes, not two: found,
+absent, failed. Only *absent* inserts. A failed lookup counts as failed and
+writes nothing for that key. Read every match instead of `.maybeSingle()` /
+`.single()`, pick one deterministically (oldest by `created_at, id`), count the
+rest and leave them for a supervised cleanup. A count check that misses its
+expected value samples its rows. Once the data allows it, give the natural key
+a unique index, so the next duplicate fails loudly instead of piling up.
+*FIX-1428, FIX-1429 · `pipelines/executive/seed.ts` · cc-297 reads 3 and 4*
