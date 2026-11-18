@@ -1,12 +1,12 @@
 {
   "nominal_date": "2026-11-18",
-  "generated_at": "2026-11-17T21:18:43.924Z",
+  "generated_at": "2026-11-18T02:41:08.223Z",
   "target": "PROD (Supabase Pro)",
   "target_host": "aws-0-us-west-2.pooler.supabase.com:5432",
   "nightly": {
     "created_at": "2026-11-17T21:05:23Z",
     "run_id": 44176108887,
-    "conclusion": "",
+    "conclusion": "success",
     "jobs": [
       {
         "name": "fec-phase",
@@ -34,9 +34,9 @@
       },
       {
         "name": "receipts",
-        "conclusion": null,
+        "conclusion": "success",
         "started_at": "2026-11-17T21:18:23Z",
-        "completed_at": "0001-01-01T00:00:00Z"
+        "completed_at": "2026-11-17T21:19:03Z"
       }
     ],
     "slot_utc": "21:00",
@@ -90,8 +90,17 @@
         "dispatched_by": "dispatcher",
         "created_at": "2026-11-17T21:05:23Z",
         "offset_hours": 0.08972222222222222,
-        "conclusion": null,
+        "conclusion": "success",
         "already_ran": false
+      },
+      {
+        "run_id": 44224959818,
+        "event": "schedule",
+        "dispatched_by": "schedule",
+        "created_at": "2026-11-18T02:40:17Z",
+        "offset_hours": 5.671388888888889,
+        "conclusion": null,
+        "already_ran": true
       }
     ],
     "dispatcher": {
@@ -158,9 +167,9 @@
       "schedule": "* * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-11-17T21:18:00.256Z",
-      "last_end": "2026-11-17T21:18:00.360Z",
-      "duration_s": 0.104205,
+      "last_start": "2026-11-18T02:41:00.100Z",
+      "last_end": "2026-11-18T02:41:00.245Z",
+      "duration_s": 0.145517,
       "cron_status": "succeeded",
       "return_message": "1 row",
       "sync_status": null,
@@ -198,9 +207,9 @@
       "schedule": "*/2 * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-11-17T21:18:00.254Z",
-      "last_end": "2026-11-17T21:18:00.345Z",
-      "duration_s": 0.09115,
+      "last_start": "2026-11-18T02:40:00.059Z",
+      "last_end": "2026-11-18T02:40:00.122Z",
+      "duration_s": 0.063194,
       "cron_status": "succeeded",
       "return_message": "1 row",
       "sync_status": null,
@@ -216,11 +225,11 @@
       "schedule": "51 1 * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-11-17T01:51:00.096Z",
-      "last_end": "2026-11-17T01:51:00.208Z",
-      "duration_s": 0.111721,
+      "last_start": "2026-11-18T01:51:00.080Z",
+      "last_end": "2026-11-18T01:51:00.219Z",
+      "duration_s": 0.139233,
       "cron_status": "succeeded",
-      "return_message": "DELETE 3053",
+      "return_message": "DELETE 2547",
       "sync_status": null,
       "skip_reason": null,
       "phase_seconds": null,
@@ -234,30 +243,12 @@
       "schedule": "*/2 * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-11-17T21:18:00.253Z",
-      "last_end": "2026-11-17T21:18:00.265Z",
-      "duration_s": 0.012122,
+      "last_start": "2026-11-18T02:40:00.038Z",
+      "last_end": "2026-11-18T02:40:00.053Z",
+      "duration_s": 0.015054,
       "cron_status": "succeeded",
       "return_message": "1 row",
       "sync_status": null,
-      "skip_reason": null,
-      "phase_seconds": null,
-      "band": null,
-      "verdict": "no-band",
-      "detail": "no band in docs/receipts/bands.json"
-    },
-    {
-      "jobname": "disp-fe-crawl-1794949981",
-      "jobid": 2448,
-      "schedule": "17 21 17 11 *",
-      "active": true,
-      "pipeline": "financial_entity_totals_refresh",
-      "last_start": "2026-11-17T21:17:00.105Z",
-      "last_end": "2026-11-17T21:17:00.395Z",
-      "duration_s": 0.289561,
-      "cron_status": "succeeded",
-      "return_message": "CALL",
-      "sync_status": "complete",
       "skip_reason": null,
       "phase_seconds": null,
       "band": null,
@@ -270,9 +261,9 @@
       "schedule": "1-59/2 * * * *",
       "active": true,
       "pipeline": null,
-      "last_start": "2026-11-17T21:17:00.108Z",
-      "last_end": "2026-11-17T21:17:01.913Z",
-      "duration_s": 1.80536,
+      "last_start": "2026-11-18T02:41:00.106Z",
+      "last_end": "2026-11-18T02:41:00.304Z",
+      "duration_s": 0.197563,
       "cron_status": "succeeded",
       "return_message": "CALL",
       "sync_status": null,
@@ -1149,7 +1140,7 @@
       {
         "relation": "entity_connections",
         "pct_all_visible": 100,
-        "n_dead_tup": 0,
+        "n_dead_tup": 177,
         "relpages": 373641
       },
       {
@@ -1406,19 +1397,19 @@
         "acted_via": "pg_cron"
       }
     ],
-    "vercel_liveness_at": "2026-11-17T21:18:18.57556+00:00",
+    "vercel_liveness_at": "2026-11-18T02:40:18.273541+00:00",
     "box_health": {
-      "at": "2026-11-17T21:18:00.2594+00:00",
+      "at": "2026-11-18T02:41:00.101276+00:00",
       "backends": {
-        "active": 1,
-        "client": 15,
+        "active": 2,
+        "client": 9,
         "idle_in_txn": 0,
         "lock_waiting": 0,
         "max_connections": 60,
-        "longest_active_s": null
+        "longest_active_s": 0
       },
-      "probe_ms": 96.9,
-      "oldest_running_s": 0,
+      "probe_ms": 142.1,
+      "oldest_running_s": null,
       "watchdog_runs_10m": {
         "unit": 5,
         "budget": 5
@@ -1428,43 +1419,43 @@
       "startup_timeouts_60m": 0,
       "running_budgeted_jobs": 0,
       "watchdog_max_wall_10m": {
-        "unit": 0.981,
-        "budget": 1.343
+        "unit": 0.088,
+        "budget": 0.217
       }
     },
     "box_health_mem": {
-      "at": "2026-11-17T21:18:23.099515+00:00",
-      "load1": 0.95,
-      "pswpin": 220002469,
-      "pswpout": 242257798,
-      "io_queue": 2.61,
+      "at": "2026-11-18T02:40:22.915338+00:00",
+      "load1": 0.33,
+      "pswpin": 221635999,
+      "pswpout": 244294984,
+      "io_queue": 0.03,
       "oom_kill": 0,
-      "route_at": "2026-11-17T21:18:22.188Z",
-      "scrape_ms": 521,
-      "disk_reads": 256909152,
-      "pgmajfault": 124379152,
-      "disk_writes": 61645552,
-      "io_time_pct": 49.5,
-      "disk_clock_s": 2001634.36,
-      "disk_reads_ps": 853.4,
-      "disk_all_reads": 483037937,
-      "disk_io_time_s": 146584.188,
-      "disk_read_mbps": 22.19,
-      "disk_writes_ps": 722.3,
+      "route_at": "2026-11-18T02:40:22.136Z",
+      "scrape_ms": 418,
+      "disk_reads": 257429812,
+      "pgmajfault": 125265317,
+      "disk_writes": 61753020,
+      "io_time_pct": 0.9,
+      "disk_clock_s": 2020846.0899999996,
+      "disk_reads_ps": 28.2,
+      "disk_all_reads": 485275634,
+      "disk_io_time_s": 146827.071,
+      "disk_read_mbps": 0.78,
+      "disk_writes_ps": 1.5,
       "io_busy_streak": 0,
-      "disk_read_bytes": 5682721564672,
-      "disk_write_mbps": 7.26,
+      "disk_read_bytes": 5704360966144,
+      "disk_write_mbps": 0.07,
       "mem_total_bytes": 948191232,
-      "swap_free_bytes": 621342720,
+      "swap_free_bytes": 647323648,
       "swap_total_bytes": 1073737728,
-      "disk_all_reads_ps": 1053,
-      "disk_all_read_mbps": 26.04,
-      "disk_io_weighted_s": 1585366.712,
-      "disk_written_bytes": 1264860958720,
-      "disk_all_read_bytes": 10493493094400,
-      "disk_all_write_mbps": 8.33,
-      "mem_available_bytes": 415928320,
-      "disk_all_written_bytes": 2300195097600
+      "disk_all_reads_ps": 103.2,
+      "disk_all_read_mbps": 2.36,
+      "disk_io_weighted_s": 1586645.453,
+      "disk_written_bytes": 1271809126400,
+      "disk_all_read_bytes": 10553037002752,
+      "disk_all_write_mbps": 0.11,
+      "mem_available_bytes": 412221440,
+      "disk_all_written_bytes": 2315851643904
     },
     "mem_day": {
       "available": true,
@@ -1728,7 +1719,7 @@
         "peer_running": 21,
         "last_skip_reason": "peer_backoff"
       },
-      "read_at": "2026-11-17T21:18:50.133Z"
+      "read_at": "2026-11-18T02:41:13.319Z"
     },
     "crawl_skips_baseline": {
       "available": true,
@@ -4063,546 +4054,21 @@
     }
   },
   "unit_dispatcher": {
-    "last_tick_at": "2026-11-17T21:17:01.900894+00:00",
+    "last_tick_at": "2026-11-18T02:41:00.301401+00:00",
     "last_tick_source": "pg_cron",
     "ticks_60m": 30,
     "expected_ticks_60m": 30,
     "decisions_24h": {
-      "armed": 89,
-      "reaped": 89,
-      "skipped": 2,
-      "nothing_due": 629
+      "armed": 76,
+      "reaped": 76,
+      "nothing_due": 644
     },
-    "live_count": 2,
+    "live_count": 0,
     "eligible_rows": 35,
     "pause": false
   },
   "dispatched": {
     "firings": [
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794863461",
-        "armed_for": "2026-11-16T21:13:00Z",
-        "reaped_at": "2026-11-16T21:19:00.817Z",
-        "unit_ms": 300631,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "nightly",
-        "armed_jobname": "gha_dispatch_request_nightly",
-        "armed_for": "2026-11-16T21:01:00.126Z",
-        "reaped_at": "2026-11-16T21:21:00.413Z",
-        "unit_ms": 890307,
-        "reason": "succeeded: GHA",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 10573,
-          "source": "cc-258 census, FIX-1373. The unit is the GHA run (runner github_actions, N2, FIX-1336): prod dispatch_log reaped `succeeded%` 2026-10-23 → 2026-11-01, n=10, p50 1,115.1 s, max 7,048.3 s (Sun 11-01, the drop night; Sun 10-25 7,036.8 s); ceil(1.5 × 7048.316) = 10573. ONE band for a weekday run and a drop night: a weekday nightly 3× its p50 still reads in-band (the donor-rollup-refresh limitation, one band per job)."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794864060",
-        "armed_for": "2026-11-16T21:23:00Z",
-        "reaped_at": "2026-11-16T21:25:00.856Z",
-        "unit_ms": 174,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794864540",
-        "armed_for": "2026-11-16T21:31:00Z",
-        "reaped_at": "2026-11-16T21:37:00.168Z",
-        "unit_ms": 269026,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794865740",
-        "armed_for": "2026-11-16T21:51:00Z",
-        "reaped_at": "2026-11-16T21:53:02.593Z",
-        "unit_ms": 3356,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794865620",
-        "armed_for": "2026-11-16T21:49:00Z",
-        "reaped_at": "2026-11-16T21:55:00.605Z",
-        "unit_ms": 267777,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794866700",
-        "armed_for": "2026-11-16T22:07:00Z",
-        "reaped_at": "2026-11-16T22:13:00.147Z",
-        "unit_ms": 269068,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794867420",
-        "armed_for": "2026-11-16T22:19:00Z",
-        "reaped_at": "2026-11-16T22:21:00.157Z",
-        "unit_ms": 130,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794867780",
-        "armed_for": "2026-11-16T22:25:00Z",
-        "reaped_at": "2026-11-16T22:31:00.228Z",
-        "unit_ms": 259061,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794868860",
-        "armed_for": "2026-11-16T22:43:00Z",
-        "reaped_at": "2026-11-16T22:49:00.203Z",
-        "unit_ms": 258234,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794869101",
-        "armed_for": "2026-11-16T22:47:00Z",
-        "reaped_at": "2026-11-16T22:49:00.205Z",
-        "unit_ms": 130,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794869940",
-        "armed_for": "2026-11-16T23:01:00Z",
-        "reaped_at": "2026-11-16T23:07:00.199Z",
-        "unit_ms": 251659,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794870780",
-        "armed_for": "2026-11-16T23:17:00Z",
-        "reaped_at": "2026-11-16T23:19:00.098Z",
-        "unit_ms": 143,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794871020",
-        "armed_for": "2026-11-16T23:19:00Z",
-        "reaped_at": "2026-11-16T23:25:00.556Z",
-        "unit_ms": 248259,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794872100",
-        "armed_for": "2026-11-16T23:37:00Z",
-        "reaped_at": "2026-11-16T23:43:00.397Z",
-        "unit_ms": 246308,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794872580",
-        "armed_for": "2026-11-16T23:47:00Z",
-        "reaped_at": "2026-11-16T23:49:00.437Z",
-        "unit_ms": 177,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "entity-tags-vacuum-analyze",
-        "armed_jobname": "disp-entity-tags-vacuum-analyze-1794872700",
-        "armed_for": "2026-11-16T23:47:00Z",
-        "reaped_at": "2026-11-16T23:49:00.438Z",
-        "unit_ms": 48255,
-        "reason": "succeeded: VACUUM",
-        "status": "succeeded",
-        "band": null,
-        "verdict": "no-band",
-        "detail": "no band in docs/receipts/bands.json"
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794873180",
-        "armed_for": "2026-11-16T23:55:00Z",
-        "reaped_at": "2026-11-16T23:59:00.260Z",
-        "unit_ms": 234306,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "agency-staffing-rollup-refresh",
-        "armed_jobname": "disp-agency-staffing-rollup-refresh-1794873900",
-        "armed_for": "2026-11-17T00:07:00Z",
-        "reaped_at": "2026-11-17T00:09:00.206Z",
-        "unit_ms": 46859,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": null,
-        "verdict": "no-band",
-        "detail": "no band in docs/receipts/bands.json"
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794874140",
-        "armed_for": "2026-11-17T00:11:00Z",
-        "reaped_at": "2026-11-17T00:15:00.324Z",
-        "unit_ms": 234798,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794874381",
-        "armed_for": "2026-11-17T00:17:00Z",
-        "reaped_at": "2026-11-17T00:19:00.323Z",
-        "unit_ms": 112,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "donor-rollup-refresh",
-        "armed_jobname": "disp-donor-rollup-refresh-1794874500",
-        "armed_for": "2026-11-17T00:17:00Z",
-        "reaped_at": "2026-11-17T00:21:00.225Z",
-        "unit_ms": 214213,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 400,
-          "source": "cc-prompt-123 D3 (09:00 firing <= 400 / 12:00 firing ~ 0). THE SCHEMA CANNOT EXPRESS THE SECOND HALF: bands are keyed by job name only, and this job's two daily firings have different expected costs, so the looser ceiling is used and the 12:00 firing is trivially in-band. See docs/receipts/README.md."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "odt-vacuum-analyze",
-        "armed_jobname": "disp-odt-vacuum-analyze-1794874860",
-        "armed_for": "2026-11-17T00:23:00Z",
-        "reaped_at": "2026-11-17T00:25:00.192Z",
-        "unit_ms": 91,
-        "reason": "succeeded: VACUUM",
-        "status": "succeeded",
-        "band": null,
-        "verdict": "no-band",
-        "detail": "no band in docs/receipts/bands.json"
-      },
-      {
-        "job": "osdr-vacuum-analyze",
-        "armed_jobname": "disp-osdr-vacuum-analyze-1794875220",
-        "armed_for": "2026-11-17T00:29:00Z",
-        "reaped_at": "2026-11-17T00:29:03.467Z",
-        "unit_ms": 1128,
-        "reason": "succeeded: VACUUM",
-        "status": "succeeded",
-        "band": null,
-        "verdict": "no-band",
-        "detail": "no band in docs/receipts/bands.json"
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794875100",
-        "armed_for": "2026-11-17T00:27:00Z",
-        "reaped_at": "2026-11-17T00:31:00.213Z",
-        "unit_ms": 217707,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794876060",
-        "armed_for": "2026-11-17T00:43:00Z",
-        "reaped_at": "2026-11-17T00:47:00.209Z",
-        "unit_ms": 208932,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794876180",
-        "armed_for": "2026-11-17T00:47:00Z",
-        "reaped_at": "2026-11-17T00:49:00.177Z",
-        "unit_ms": 204,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "refresh-derived-mvs-weekly",
-        "armed_jobname": "disp-refresh-derived-mvs-weekly-1794876420",
-        "armed_for": "2026-11-17T00:49:00Z",
-        "reaped_at": "2026-11-17T01:17:00.197Z",
-        "unit_ms": 1605396,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": null,
-        "verdict": "no-band",
-        "detail": "no band in docs/receipts/bands.json"
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794878220",
-        "armed_for": "2026-11-17T01:19:00Z",
-        "reaped_at": "2026-11-17T01:23:00.156Z",
-        "unit_ms": 177390,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794878340",
-        "armed_for": "2026-11-17T01:21:00Z",
-        "reaped_at": "2026-11-17T01:23:00.159Z",
-        "unit_ms": 3232,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "ec-crawl",
-        "armed_jobname": "disp-ec-crawl-1794879180",
-        "armed_for": "2026-11-17T01:35:00Z",
-        "reaped_at": "2026-11-17T01:39:00.134Z",
-        "unit_ms": 138829,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 1769,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794880020",
-        "armed_for": "2026-11-17T01:49:00Z",
-        "reaped_at": "2026-11-17T01:51:00.249Z",
-        "unit_ms": 128,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-inbound-rollup-refresh",
-        "armed_jobname": "disp-fe-inbound-rollup-refresh-1794881580",
-        "armed_for": "2026-11-17T02:17:00Z",
-        "reaped_at": "2026-11-17T02:19:00.172Z",
-        "unit_ms": 91,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 205,
-          "source": "cc-258 census, FIX-1373. Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=15, p50 0.1 s, max 136.5 s (11-02 02:17Z, after the drop night; 10-26 108.7 s the same); ceil(1.5 × 136.462) = 205. A Monday unit after a drop night is the costly one."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
-      {
-        "job": "fe-crawl",
-        "armed_jobname": "disp-fe-crawl-1794881940",
-        "armed_for": "2026-11-17T02:21:00Z",
-        "reaped_at": "2026-11-17T02:23:00.129Z",
-        "unit_ms": 140,
-        "reason": "succeeded: CALL",
-        "status": "succeeded",
-        "band": {
-          "lo_s": 0,
-          "hi_s": 685,
-          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
-        },
-        "verdict": "in-band",
-        "detail": null
-      },
       {
         "job": "fe-crawl",
         "armed_jobname": "disp-fe-crawl-1794883620",
@@ -5454,20 +4920,344 @@
         "band": null,
         "verdict": "no-band",
         "detail": "no band in docs/receipts/bands.json"
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794949981",
+        "armed_for": "2026-11-17T21:17:00Z",
+        "reaped_at": "2026-11-17T21:19:00.202Z",
+        "unit_ms": 290,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "nightly",
+        "armed_jobname": "gha_dispatch_request_nightly",
+        "armed_for": "2026-11-17T21:01:00.061Z",
+        "reaped_at": "2026-11-17T21:19:00.242Z",
+        "unit_ms": 741726,
+        "reason": "succeeded: GHA",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 10573,
+          "source": "cc-258 census, FIX-1373. The unit is the GHA run (runner github_actions, N2, FIX-1336): prod dispatch_log reaped `succeeded%` 2026-10-23 → 2026-11-01, n=10, p50 1,115.1 s, max 7,048.3 s (Sun 11-01, the drop night; Sun 10-25 7,036.8 s); ceil(1.5 × 7048.316) = 10573. ONE band for a weekday run and a drop night: a weekday nightly 3× its p50 still reads in-band (the donor-rollup-refresh limitation, one band per job)."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "entity-tags-vacuum-analyze",
+        "armed_jobname": "disp-entity-tags-vacuum-analyze-1794950340",
+        "armed_for": "2026-11-17T21:21:00Z",
+        "reaped_at": "2026-11-17T21:23:00.762Z",
+        "unit_ms": 68859,
+        "reason": "succeeded: VACUUM",
+        "status": "succeeded",
+        "band": null,
+        "verdict": "no-band",
+        "detail": "no band in docs/receipts/bands.json"
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794951780",
+        "armed_for": "2026-11-17T21:47:00Z",
+        "reaped_at": "2026-11-17T21:49:00.087Z",
+        "unit_ms": 93,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794953580",
+        "armed_for": "2026-11-17T22:17:00Z",
+        "reaped_at": "2026-11-17T22:19:00.142Z",
+        "unit_ms": 199,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794955380",
+        "armed_for": "2026-11-17T22:47:00Z",
+        "reaped_at": "2026-11-17T22:49:00.090Z",
+        "unit_ms": 107,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794957180",
+        "armed_for": "2026-11-17T23:17:00Z",
+        "reaped_at": "2026-11-17T23:19:00.137Z",
+        "unit_ms": 248,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794958980",
+        "armed_for": "2026-11-17T23:47:00Z",
+        "reaped_at": "2026-11-17T23:49:00.083Z",
+        "unit_ms": 125,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794960780",
+        "armed_for": "2026-11-18T00:17:00Z",
+        "reaped_at": "2026-11-18T00:19:00.100Z",
+        "unit_ms": 166,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "donor-rollup-refresh",
+        "armed_jobname": "disp-donor-rollup-refresh-1794960900",
+        "armed_for": "2026-11-18T00:17:00Z",
+        "reaped_at": "2026-11-18T00:19:00.101Z",
+        "unit_ms": 151,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 400,
+          "source": "cc-prompt-123 D3 (09:00 firing <= 400 / 12:00 firing ~ 0). THE SCHEMA CANNOT EXPRESS THE SECOND HALF: bands are keyed by job name only, and this job's two daily firings have different expected costs, so the looser ceiling is used and the 12:00 firing is trivially in-band. See docs/receipts/README.md."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "odt-vacuum-analyze",
+        "armed_jobname": "disp-odt-vacuum-analyze-1794961620",
+        "armed_for": "2026-11-18T00:29:00Z",
+        "reaped_at": "2026-11-18T00:31:00.093Z",
+        "unit_ms": 240,
+        "reason": "succeeded: VACUUM",
+        "status": "succeeded",
+        "band": null,
+        "verdict": "no-band",
+        "detail": "no band in docs/receipts/bands.json"
+      },
+      {
+        "job": "osdr-vacuum-analyze",
+        "armed_jobname": "disp-osdr-vacuum-analyze-1794961860",
+        "armed_for": "2026-11-18T00:33:00Z",
+        "reaped_at": "2026-11-18T00:35:00.156Z",
+        "unit_ms": 183,
+        "reason": "succeeded: VACUUM",
+        "status": "succeeded",
+        "band": null,
+        "verdict": "no-band",
+        "detail": "no band in docs/receipts/bands.json"
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794962580",
+        "armed_for": "2026-11-18T00:47:00Z",
+        "reaped_at": "2026-11-18T00:49:00.153Z",
+        "unit_ms": 105,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794964380",
+        "armed_for": "2026-11-18T01:17:00Z",
+        "reaped_at": "2026-11-18T01:19:00.145Z",
+        "unit_ms": 160,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794966180",
+        "armed_for": "2026-11-18T01:47:00Z",
+        "reaped_at": "2026-11-18T01:49:00.129Z",
+        "unit_ms": 80,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "ec-crawl",
+        "armed_jobname": "disp-ec-crawl-1794966780",
+        "armed_for": "2026-11-18T01:55:00Z",
+        "reaped_at": "2026-11-18T01:57:00.194Z",
+        "unit_ms": 16917,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 1769,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "ec-crawl",
+        "armed_jobname": "disp-ec-crawl-1794967620",
+        "armed_for": "2026-11-18T02:09:00Z",
+        "reaped_at": "2026-11-18T02:11:00.223Z",
+        "unit_ms": 57296,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 1769,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-crawl",
+        "armed_jobname": "disp-fe-crawl-1794967980",
+        "armed_for": "2026-11-18T02:17:00Z",
+        "reaped_at": "2026-11-18T02:19:00.242Z",
+        "unit_ms": 89,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 685,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (one disp- one-shot = one crawl unit). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=638, p50 0.1 s (most units find nothing dirty), max 456.2 s (11-01 23:29Z, the drop night); ceil(1.5 × 456.155) = 685. No reap's unit reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "fe-inbound-rollup-refresh",
+        "armed_jobname": "disp-fe-inbound-rollup-refresh-1794968340",
+        "armed_for": "2026-11-18T02:21:00Z",
+        "reaped_at": "2026-11-18T02:23:00.174Z",
+        "unit_ms": 101,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 205,
+          "source": "cc-258 census, FIX-1373. Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=15, p50 0.1 s, max 136.5 s (11-02 02:17Z, after the drop night; 10-26 108.7 s the same); ceil(1.5 × 136.462) = 205. A Monday unit after a drop night is the costly one."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "ec-crawl",
+        "armed_jobname": "disp-ec-crawl-1794968460",
+        "armed_for": "2026-11-18T02:23:00Z",
+        "reaped_at": "2026-11-18T02:25:00.212Z",
+        "unit_ms": 59811,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 1769,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
+      },
+      {
+        "job": "ec-crawl",
+        "armed_jobname": "disp-ec-crawl-1794969300",
+        "armed_for": "2026-11-18T02:37:00Z",
+        "reaped_at": "2026-11-18T02:39:00.238Z",
+        "unit_ms": 50787,
+        "reason": "succeeded: CALL",
+        "status": "succeeded",
+        "band": {
+          "lo_s": 0,
+          "hi_s": 1769,
+          "source": "cc-258 census, FIX-1373. A PER-UNIT band (each disp- one-shot is one crawl unit; dispatch_log.unit_ms). Prod dispatch_log reaped `succeeded%` 2026-10-19 → 2026-11-02, n=248, p50 30.1 s, max 1,179.1 s (10-25 07:21Z); ceil(1.5 × 1179.148) = 1769. EXCLUDED: the 2026-11-02 03:53Z unit (2,079.3 s), which ran through the 03:54–04:27Z box stall (pg_cron job startup timeouts, load1 31) past its own 1800 s budget — a box event, not the crawl's normal. 40 of the 249 reaps have no data_sync_log row (the advisory-lock-held path writes none); none reads skipped."
+        },
+        "verdict": "in-band",
+        "detail": null
       }
     ],
     "missed_24h": 0
   },
   "stall_minutes": {
-    "stall_minutes": 18,
-    "runs_over_10s": 18,
+    "stall_minutes": 5,
+    "runs_over_10s": 5,
     "probe": 0,
     "watchdogs": 0,
-    "tick": 18,
+    "tick": 5,
     "startup_timeouts": 0
   },
   "job_registry": {
-    "snapshot_at": "2026-11-17T21:18:50.878Z",
+    "snapshot_at": "2026-11-18T02:41:13.515Z",
     "rows": [
       {
         "job": "abuse-events-retention",
@@ -6405,205 +6195,205 @@
     {
       "key": "nightly_phases",
       "sql": "\nSELECT started_at, status,\n       metadata->>'phase'                        AS phase,\n       (metadata->>'duration_ms')::numeric/1000  AS duration_s,\n       (metadata->>'peak_rss_mb')::numeric       AS peak_rss_mb,\n       metadata->>'skip_reason'                  AS skip_reason,\n       (metadata->>'is_weekly')::boolean         AS is_weekly,\n       metadata->>'github_run_id'                AS github_run_id,\n       metadata->>'dispatched_by'                AS dispatched_by\nFROM public.data_sync_log\nWHERE pipeline IN ('nightly_cron','nightly_killed')\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at",
-      "elapsed_ms": 84,
+      "elapsed_ms": 27,
       "error": null
     },
     {
       "key": "votes_skips",
       "sql": "\nSELECT rows_failed, metadata->'skipped_rolls' AS skipped_rolls\nFROM public.data_sync_log\nWHERE pipeline = 'congress_votes'\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at DESC\nLIMIT 1",
-      "elapsed_ms": 80,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "tag_rules_kept",
       "sql": "\nSELECT status, rows_inserted,\n       metadata->'kept_total'              AS kept_total,\n       metadata->'kept_proposals'          AS kept_proposals,\n       metadata->'kept_financial_entities' AS kept_financial_entities,\n       metadata->'kept_officials'          AS kept_officials\nFROM public.data_sync_log\nWHERE pipeline = 'tag_rules'\n  AND started_at >= $1::timestamptz\n  AND started_at <  $2::timestamptz\nORDER BY started_at DESC\nLIMIT 1",
-      "elapsed_ms": 80,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "gha_dispatch_nightly",
       "sql": "\nSELECT value\nFROM public.pipeline_state\nWHERE key = 'gha_dispatch_nightly'",
-      "elapsed_ms": 80,
+      "elapsed_ms": 21,
       "error": null
     },
     {
       "key": "cron_jobs",
       "sql": "\nWITH jp AS (\n\nWITH job AS (\n  SELECT j.jobid, j.jobname, j.active, j.schedule,\n         (regexp_match(j.command, '(?:CALL|SELECT)\\s+(?:public\\.)?([a-z_0-9]+)\\s*\\(', 'i'))[1] AS proc\n  FROM cron.job j\n), src AS (\n  SELECT job.*,\n         -- Comment-only lines removed; inline trailing comments left alone,\n         -- since a live literal can sit on a line that ends in one.\n         regexp_replace(pr.prosrc, '(?n)^[ \\t]*--[^\\n]*$', '', 'g') AS body,\n         pr.prosrc AS raw\n  FROM job\n  LEFT JOIN pg_proc pr\n         ON pr.proname = job.proc\n        AND pr.pronamespace = 'public'::regnamespace\n)\nSELECT jobid, jobname, active, schedule, proc,\n       COALESCE(\n         (regexp_match(body, 'data_sync_log\\s*\\([^)]*\\)\\s*VALUES\\s*\\(\\s*''([a-z_0-9]+)''', 'i'))[1],\n         (regexp_match(body, 'c_pipeline\\s+text\\s*:=\\s*''([a-z_0-9]+)''', 'i'))[1]\n       )                                                                AS pipeline,\n       COALESCE(raw ILIKE '%INSERT INTO public.data_sync_log%', false)  AS writes_dsl,\n       COALESCE(raw ILIKE '%prod_session_state%', false)                AS guarded\nFROM src\nORDER BY jobname\n), last_run AS (\n  SELECT DISTINCT ON (d.jobid)\n         d.jobid, d.status, d.return_message, d.start_time, d.end_time\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - make_interval(days => $1::int)\n  ORDER BY d.jobid, d.start_time DESC\n)\nSELECT j.jobid, j.jobname, j.schedule, j.active,\n       jp.pipeline,\n       r.start_time, r.end_time,\n       r.status                                                   AS cron_status,\n       r.return_message,\n       EXTRACT(epoch FROM (r.end_time - r.start_time))::numeric   AS duration_s,\n       s.status                                                   AS sync_status,\n       s.metadata->>'skip_reason'                                 AS skip_reason,\n       -- FIX-1178 (d) — the daily rule-tagger's delete/insert split, when the\n       -- run stamped one. Absent for every other job and for a cadence that\n       -- timed nothing, which renders as an em dash rather than a zero.\n       s.metadata->>'phase_seconds'                               AS phase_seconds\nFROM cron.job j\nJOIN jp ON jp.jobid = j.jobid\nLEFT JOIN last_run r ON r.jobid = j.jobid\nLEFT JOIN LATERAL (\n  SELECT l.status, l.metadata\n  FROM public.data_sync_log l\n  WHERE r.start_time IS NOT NULL\n    AND jp.pipeline IS NOT NULL\n    AND l.pipeline = jp.pipeline\n    AND l.metadata->>'source' LIKE 'pg_cron%'\n    AND l.started_at BETWEEN r.start_time - interval '90 seconds'\n                         AND COALESCE(r.end_time, r.start_time) + interval '90 seconds'\n  ORDER BY abs(EXTRACT(epoch FROM (l.started_at - r.start_time))) ASC\n  LIMIT 1\n) s ON true\nORDER BY j.jobname",
-      "elapsed_ms": 260,
+      "elapsed_ms": 193,
       "error": null
     },
     {
       "key": "daily_run",
       "sql": "\n(SELECT 'latest' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status,\n        metadata->>'skip_reason'                AS skip_reason,\n        (metadata->>'units')::int               AS units,\n        (metadata->>'units_ok')::int            AS units_ok,\n        (metadata->>'elapsed_seconds')::numeric AS elapsed_seconds,\n        metadata->'unit_seconds'                AS unit_seconds,\n        metadata->'vm_before'                   AS vm_before\n FROM public.data_sync_log\n WHERE pipeline = 'refresh_derived_mvs'\n   AND metadata->>'cadence' IS DISTINCT FROM 'weekly'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)",
-      "elapsed_ms": 81,
+      "elapsed_ms": 21,
       "error": null
     },
     {
       "key": "vm_now",
       "sql": "\nSELECT c.relname                                                       AS relation,\n       CASE WHEN c.relpages = 0 THEN NULL\n            ELSE ROUND(100.0 * c.relallvisible / c.relpages, 1) END    AS pct_all_visible,\n       s.n_dead_tup,\n       c.relpages\nFROM pg_class c\nLEFT JOIN pg_stat_user_tables s ON s.relid = c.oid\nWHERE c.oid IN ('public.entity_connections'::regclass,\n                'public.financial_entities'::regclass,\n                'public.financial_relationships'::regclass)\nORDER BY c.relname",
-      "elapsed_ms": 93,
+      "elapsed_ms": 26,
       "error": null
     },
     {
       "key": "weekly_run",
       "sql": "\nSELECT d.start_time AS started_at, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS elapsed_seconds\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = 'refresh-derived-mvs-weekly'\nORDER BY d.start_time DESC\nLIMIT 1",
-      "elapsed_ms": 99,
+      "elapsed_ms": 42,
       "error": null
     },
     {
       "key": "vacuums",
       "sql": "\nSELECT j.jobname, d.start_time, d.status,\n       EXTRACT(epoch FROM (d.end_time - d.start_time))::numeric AS duration_s\nFROM cron.job_run_details d\nJOIN cron.job j ON j.jobid = d.jobid\nWHERE j.jobname = ANY($1::text[])\n  AND d.start_time >= now() - make_interval(days => $2::int)\nORDER BY d.start_time DESC\nLIMIT 24",
-      "elapsed_ms": 127,
+      "elapsed_ms": 76,
       "error": null
     },
     {
       "key": "vm_probes",
       "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key LIKE 'vm_probe:%'\nORDER BY key",
-      "elapsed_ms": 82,
+      "elapsed_ms": 24,
       "error": null
     },
     {
       "key": "fec_state",
       "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('fec_drop_probe','fec_indiv_watermark','fec_bulk_run_state')",
-      "elapsed_ms": 80,
+      "elapsed_ms": 21,
       "error": null
     },
     {
       "key": "fec_emit",
       "sql": "\nSELECT DISTINCT ON (cycle_year, source)\n       cycle_year, source, run_id, started_at, complete_at, keys\nFROM public.fec_emit_runs\nORDER BY cycle_year DESC, source, started_at DESC",
-      "elapsed_ms": 82,
+      "elapsed_ms": 24,
       "error": null
     },
     {
       "key": "fec_emit_keys_est",
       "sql": "\nSELECT reltuples::bigint AS est FROM pg_class WHERE oid = 'public.fec_emit_keys'::regclass",
-      "elapsed_ms": 79,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "prod_session",
       "sql": "SELECT public.prod_session_state() AS state",
-      "elapsed_ms": 90,
+      "elapsed_ms": 27,
       "error": null
     },
     {
       "key": "skips_24h",
       "sql": "\nSELECT pipeline, started_at,\n       metadata->>'skip_reason' AS skip_reason,\n       metadata->>'source'      AS source\nFROM public.data_sync_log\nWHERE status = 'skipped'\n  AND started_at >= now() - interval '24 hours'\nORDER BY started_at DESC\nLIMIT 100",
-      "elapsed_ms": 79,
+      "elapsed_ms": 21,
       "error": null
     },
     {
       "key": "canary",
       "sql": "\nSELECT started_at, metadata->'conditions' AS conditions\nFROM public.data_sync_log\nWHERE pipeline = 'canary_check'\nORDER BY started_at DESC\nLIMIT 1",
-      "elapsed_ms": 84,
+      "elapsed_ms": 25,
       "error": null
     },
     {
       "key": "sld_coverage",
       "sql": "\nSELECT count(*) AS total,\n       count(*) FILTER (WHERE o.metadata->>'district_jurisdiction_id' IS NOT NULL) AS linked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)",
-      "elapsed_ms": 124,
+      "elapsed_ms": 58,
       "error": null
     },
     {
       "key": "sld_residual",
       "sql": "\nSELECT p.name AS state, gb.type AS chamber, count(*) AS unlinked\nFROM officials o\nJOIN governing_bodies gb ON gb.id = o.governing_body_id\nJOIN jurisdictions p ON p.id = gb.jurisdiction_id AND p.type = 'state'\nWHERE gb.type IN ('legislature_lower','legislature_upper')\n  AND o.is_active AND NOT coalesce(o.is_synthetic,false)\n  AND o.metadata->>'district_jurisdiction_id' IS NULL\nGROUP BY p.name, gb.type\nORDER BY count(*) DESC, p.name",
-      "elapsed_ms": 88,
+      "elapsed_ms": 30,
       "error": null
     },
     {
       "key": "forker_24h",
       "sql": "\nSELECT to_char(date_trunc('hour', d.start_time), 'YYYY-MM-DD HH24:00') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '24 hours'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
-      "elapsed_ms": 260,
+      "elapsed_ms": 198,
       "error": null
     },
     {
       "key": "forker_7d",
       "sql": "\nSELECT to_char(date_trunc('day', d.start_time), 'YYYY-MM-DD') AS bucket,\n       count(*)                  AS failures,\n       count(DISTINCT d.jobid)   AS jobs_affected\nFROM cron.job_run_details d\nWHERE d.start_time >= now() - interval '7 days'\n  AND d.status = 'failed'\n  AND d.return_message ILIKE '%startup timeout%'\nGROUP BY 1\nORDER BY 1 DESC",
-      "elapsed_ms": 261,
+      "elapsed_ms": 205,
       "error": null
     },
     {
       "key": "stall_minutes",
       "sql": "\nWITH d AS (\n  SELECT j.jobname, d.start_time, d.end_time - d.start_time > interval '10 seconds' AS slow,\n         (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%') AS startup_timeout\n  FROM cron.job_run_details d\n  LEFT JOIN cron.job j ON j.jobid = d.jobid\n  WHERE d.start_time >= now() - interval '24 hours'\n)\nSELECT count(DISTINCT date_trunc('minute', start_time)) FILTER (WHERE slow AND jobname IN\n         ('box-health-probe', 'cron-job-budget-watchdog', 'derived-mvs-unit-watchdog', 'dispatcher-tick'))::int AS stall_minutes,\n       count(*) FILTER (WHERE slow AND jobname IN\n         ('box-health-probe', 'cron-job-budget-watchdog', 'derived-mvs-unit-watchdog', 'dispatcher-tick'))::int AS runs_over_10s,\n       count(*) FILTER (WHERE slow AND jobname = 'box-health-probe')::int AS probe,\n       count(*) FILTER (WHERE slow AND jobname IN ('cron-job-budget-watchdog', 'derived-mvs-unit-watchdog'))::int AS watchdogs,\n       count(*) FILTER (WHERE slow AND jobname = 'dispatcher-tick')::int AS tick,\n       count(*) FILTER (WHERE startup_timeout)::int AS startup_timeouts\nFROM d",
-      "elapsed_ms": 110,
+      "elapsed_ms": 52,
       "error": null
     },
     {
       "key": "forker_running",
       "sql": "\nWITH bursts AS (\n  SELECT date_trunc('hour', d.start_time) AS bucket, count(*) AS failures\n  FROM cron.job_run_details d\n  WHERE d.start_time >= now() - interval '24 hours'\n    AND d.status = 'failed'\n    AND d.return_message ILIKE '%startup timeout%'\n  GROUP BY 1\n  HAVING count(*) >= $1::int\n)\nSELECT to_char(b.bucket, 'YYYY-MM-DD HH24:00') AS bucket,\n       x.jobname,\n       x.start_time,\n       x.wall_s,\n       x.status\nFROM bursts b\nLEFT JOIN LATERAL (\n  SELECT COALESCE(j.jobname, '(unscheduled jobid ' || d.jobid || ')') AS jobname,\n         d.start_time,\n         EXTRACT(epoch FROM (COALESCE(d.end_time, now()) - d.start_time))::numeric AS wall_s,\n         d.status\n  FROM cron.job_run_details d\n  LEFT JOIN cron.job j ON j.jobid = d.jobid\n  WHERE d.start_time <= b.bucket + interval '1 hour'\n    AND COALESCE(d.end_time, now()) >= b.bucket\n    AND NOT (d.status = 'failed' AND d.return_message ILIKE '%startup timeout%')\n  ORDER BY (COALESCE(d.end_time, now()) - d.start_time) DESC\n  LIMIT 1\n) x ON true\nORDER BY b.bucket DESC",
-      "elapsed_ms": 260,
+      "elapsed_ms": 199,
       "error": null
     },
     {
       "key": "forker_cancels",
       "sql": "\nSELECT acted_at, jobname, age_seconds, budget_seconds, acted_via\nFROM public.cron_job_budget_action\nWHERE acted_at >= now() - interval '7 days'\nORDER BY acted_at DESC\nLIMIT 50",
-      "elapsed_ms": 82,
+      "elapsed_ms": 23,
       "error": null
     },
     {
       "key": "forker_vercel_liveness",
       "sql": "\nSELECT value->>'at' AS at\nFROM public.pipeline_state\nWHERE key = 'cron_watchdog_vercel'",
-      "elapsed_ms": 80,
+      "elapsed_ms": 20,
       "error": null
     },
     {
       "key": "box_health",
       "sql": "\nSELECT key, value\nFROM public.pipeline_state\nWHERE key IN ('box_health', 'box_health_mem')",
-      "elapsed_ms": 80,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "crawl_skips",
       "sql": "\nSELECT key, value->'skips' AS skips, clock_timestamp() AS read_at\nFROM public.pipeline_state\nWHERE key IN ('ec_crawl', 'fe_crawl')",
-      "elapsed_ms": 80,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "crawl_overlaps",
       "sql": "\nSELECT c.pipeline AS crawl, c.status AS crawl_status, c.started_at AS crawl_start, c.completed_at AS crawl_end,\n       d.pipeline AS peer, d.metadata->>'cadence' AS peer_cadence,\n       d.started_at + make_interval(secs => COALESCE((d.metadata->'gate'->>'waited_s')::int, 0)) AS peer_start,\n       d.completed_at AS peer_end\nFROM public.data_sync_log c\nJOIN public.data_sync_log d\n  ON d.pipeline IN ('refresh_derived_mvs', 'run_rule_taggers')\n AND d.status NOT IN ('skipped', 'deferred', 'reaped')\n AND d.started_at >= now() - interval '30 hours'\n AND c.started_at < COALESCE(d.completed_at, now())\n AND COALESCE(c.completed_at, now())\n     > d.started_at + make_interval(secs => COALESCE((d.metadata->'gate'->>'waited_s')::int, 0))\nWHERE c.pipeline IN ('entity_connections_rebuild', 'financial_entity_totals_refresh')\n  AND c.status NOT IN ('skipped', 'deferred', 'reaped')\n  AND c.started_at >= now() - interval '24 hours'\nORDER BY c.started_at",
-      "elapsed_ms": 116,
+      "elapsed_ms": 23,
       "error": null
     },
     {
       "key": "ec_arm_parked",
       "sql": "\nSELECT value\nFROM public.pipeline_state\nWHERE key = 'ec_arm_parked'",
-      "elapsed_ms": 79,
+      "elapsed_ms": 21,
       "error": null
     },
     {
       "key": "dispatcher_landed",
       "sql": "\nSELECT to_regprocedure('public.get_dispatcher_status()') IS NOT NULL AS landed",
-      "elapsed_ms": 79,
+      "elapsed_ms": 21,
       "error": null
     },
     {
       "key": "dispatcher_status",
       "sql": "\nSELECT public.get_dispatcher_status() AS s",
-      "elapsed_ms": 193,
+      "elapsed_ms": 48,
       "error": null
     },
     {
       "key": "dispatched_24h",
       "sql": "\nSELECT job, armed_jobname, armed_for, ticked_at AS reaped_at, unit_ms, reason\nFROM public.dispatch_log\nWHERE decision = 'reaped'\n  AND ticked_at >= now() - interval '24 hours'\nORDER BY ticked_at, id",
-      "elapsed_ms": 81,
+      "elapsed_ms": 23,
       "error": null
     },
     {
       "key": "dispatch_missed_24h",
       "sql": "\nSELECT count(*)::int AS n\nFROM public.dispatch_log\nWHERE decision = 'missed'\n  AND ticked_at >= now() - interval '24 hours'",
-      "elapsed_ms": 80,
+      "elapsed_ms": 22,
       "error": null
     },
     {
       "key": "job_registry",
       "sql": "\nSELECT job, deadline_rule, unit_shape, priority, cost_class, cap_mb, exclusion_group,\n       budget_seconds, gates, phase_lock, by_window_minutes, yield_to, anchor_cadence\nFROM public.job_registry\nORDER BY job",
-      "elapsed_ms": 82,
+      "elapsed_ms": 23,
       "error": null
     },
     {
       "key": "legislator_ids",
       "sql": "\n(SELECT 'latest' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_report'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'complete' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_report'\n   AND status = 'complete'\n ORDER BY started_at DESC\n LIMIT 1)\nUNION ALL\n(SELECT 'bind' AS which, started_at, status, error_message, metadata\n FROM public.data_sync_log\n WHERE pipeline = 'congress_legislator_ids_bind'\n ORDER BY started_at DESC\n LIMIT 1)",
-      "elapsed_ms": 160,
+      "elapsed_ms": 43,
       "error": null
     }
   ]
