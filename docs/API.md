@@ -386,6 +386,44 @@ your own argument.
 
 ---
 
+## Data flags
+
+### `POST /api/data-flags` · auth required
+
+A reader's flag on a data row (FIX-401) — the "Flag this data" control beside
+the source badge on the official, proposal, donor and institution pages and in
+the explorer's detail rail. Entity-level: it flags the record, not a single
+vote, donation or filing. Nothing about flags is ever shown publicly.
+
+**Body:**
+
+```json
+{
+  "entity_type": "official" | "proposal" | "agency" | "governing_body" | "financial_entity",
+  "entity_id": "<uuid>",
+  "reason": "wrong" | "outdated" | "missing_source" | "misspelled" | "other",
+  "comment": "optional, ≤ 500 characters",
+  "source": "optional — the attribution's primary source key, e.g. congress_gov"
+}
+```
+
+**Response:** `{ "flagged": true }`. Idempotent per (entity, user, reason): a
+repeat answers the same and writes nothing; another reason on the same entity
+is a new flag.
+
+| Status | When |
+|---|---|
+| `401` | `{ "error": "Sign in to flag" }` — no session |
+| `400` | a bad `entity_type`, `entity_id`, `reason`, `source`, or a comment over 500 characters |
+| `404` | the entity is not in its table |
+| `429` | the user's 21st flag inside a rolling 24 hours — `{ "error": "You can flag up to 20 things in 24 hours, …" }` |
+
+The 20-per-24-hours cap is enforced by the `data_flags` table's trigger, so it
+also holds for a direct PostgREST insert. The route is in the middleware's
+`write` bucket.
+
+---
+
 ## Connection graph
 
 The graph is the core product — it renders officials, donors, agencies,
@@ -495,6 +533,8 @@ or an admin session and may be restricted further in production.
 | `GET /api/claude/status` · `GET /api/claude/snapshot` | AI service health. |
 | `GET /api/platform/usage` · `GET /api/platform/vercel` · `GET /api/platform/anthropic` | External service usage (admin). |
 | `POST /api/admin/run-pipeline` · `GET/POST /api/admin/budget-config` | Admin-only operational controls. |
+| `GET /api/admin/moderation?queue=comments\|promotion\|disputes\|data_flags&resolved=0\|1` | The dashboard's Content Moderation queues (session email must equal `ADMIN_EMAIL`, else 403). `data_flags` (FIX-401): pending = `admin_resolved_at IS NULL AND (classification IS NULL OR classification_confidence < 0.8)`, newest 100, each row with `entity_name`, `entity_path` and `flagger_name`. |
+| `POST /api/admin/moderation` | Queue actions. Comments `{ flag_id, action: "dismiss"\|"delete" }`; investigation cards `{ card_id, action }`; data flags `{ action: "resolve_data_flag", flag_id, resolution: "valid"\|"invalid"\|"duplicate"\|"no_action" }` — stamps `admin_resolved_at`, `resolved_by`, `resolution`; 400 on any other resolution, 409 once resolved. |
 | `POST /api/track-view` · `POST /api/track-usage` | Client-side page-view and feature-usage telemetry. No-op in development. |
 
 ---

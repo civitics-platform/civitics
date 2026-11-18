@@ -2479,6 +2479,53 @@ plain `SELECT` from `extensions.pg_buffercache`. Rule 429's rolled-back
 
 ---
 
+## Moderation
+
+The admin's queues are the **Content Moderation** card on `/dashboard`
+(`ModerationSection.tsx`), visible only when the signed-in email equals
+`ADMIN_EMAIL`, backed by `/api/admin/moderation` (`docs/API.md` §Internal /
+admin). Four queues: Comments, Promotion, Disputes, Data flags.
+
+### Data flags (FIX-401)
+
+A **data flag** is a reader saying a record is wrong — "Something here is
+wrong", "Out of date", "No source shown", "Name is misspelled", "Something
+else" — through the "Flag this data" control beside the source badge on the
+official, proposal, donor and institution (agency / governing body) pages and
+in the explorer's detail rail. It is entity-level, sign-in only, and never
+shown publicly: no count, no badge change; the flagger sees only "Flagged ·
+thanks". Rows land in `public.data_flags` via `POST /api/data-flags`.
+
+- **The cap:** 20 flags per user per rolling 24 hours. The table's BEFORE
+  INSERT trigger `data_flags_daily_cap` counts on `(flagger_user_id,
+  created_at DESC)` and raises `53400`; the route answers 429 and records a
+  `cap_hit` abuse event. It is in the trigger, not only the route, because
+  the insert-own RLS policy lets a signed-in user insert straight through
+  PostgREST. That direct path is column-scoped: it cannot set `created_at`,
+  a resolution or a classification. The repeat of an (entity, user, reason)
+  is a no-op, even at the cap.
+- **The queue:** Dashboard → Content Moderation → **Data flags**,
+  Pending / Resolved. Pending is `admin_resolved_at IS NULL AND
+  (classification IS NULL OR classification_confidence < 0.8)`. Each card
+  shows the reason, the entity's name and a link to its page, the comment,
+  the flagger's display name and the age. **Valid / Invalid / Duplicate /
+  No action** stamp `admin_resolved_at`, `resolved_by` and `resolution`.
+  Resolving does not change the data: a Valid flag is a pointer to the fix,
+  which goes through the pipeline or a migration as any other correction.
+- **Unwritten columns:** `classification`, `classification_confidence` and
+  `auto_resolved_at` are slots for a future auto-moderator. Nothing writes
+  them; until something does, every unresolved flag is pending.
+- **Promotion:** `promote_candidate_to_elected()` does not move
+  `data_flags` yet (FIX-1427). A flag on a promoted-away official keeps the
+  retired id: its link still lands through `official_redirects`, and the
+  card shows "(name not found)".
+- **Reading it from SQL:** `node scripts/db-query.mjs --prod "SELECT
+  entity_type, reason, count(*) FROM data_flags WHERE admin_resolved_at IS
+  NULL GROUP BY 1, 2"`. The RLS / CHECK / cap proof is
+  `supabase/tests/verify_fix401.sql` (`--local --file`, rolls back).
+
+---
+
 ## Troubleshooting
 
 ### Site Down / Timeouts
