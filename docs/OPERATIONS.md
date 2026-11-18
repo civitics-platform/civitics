@@ -1013,11 +1013,23 @@ node scripts/db-query.mjs --prod "SELECT value, updated_at FROM pipeline_state W
 
 ### The official → bill vote edge (FIX-1409)
 
-**Prod is NOT on this rule yet.** `20261117000000_fix1409_vote_edge_question_rule.sql`
-landed on `main` in cc-283 and was not pushed. The prod push and its one
-`_votes_full()` merge are a supervised step (`docs/cc/projects/congress-ids.md`
-s19). Until then prod's arms run the old bodies (md5 `4e34295b…` / `584de460…`),
-and the graph route's procedural filter stays.
+**Prod is on this rule since 2026-11-18 (cc-288).** `20261117000000` was pushed
+alone as a class-P push (claim 02:33:29.650Z → 02:33:30.888Z; head 562, arms
+`efb7d5f6…` / `0c9c5fa6…`). The one `_votes_full()` merge ran under its own
+claim 02:53:26.579Z → 02:56:10.677Z (164.1 s, db-query's 5 s abort pause
+included):
+
+```
+prod  [votes_full] merge: deleted 11125 / retyped 34076 / updated 67766 / inserted 0 / untouched 415443
+clone [votes_full] merge: deleted 10728 / retyped 33482 / updated 63907 / inserted 0 / untouched 410005
+```
+
+Prod's line equals the read-only predicted merge to the row (34.8 s; the merge
+took ~4.5× that). Vote edges went from 528,410 (all 0.500) to 517,285, and the
+`EXCEPT ALL` against the rule read 0 / 0. Prod's 11,125 deleted were 10,093
+pairs left with only `other` rolls plus 1,032 orphan Senate edges (FIX-1422).
+The graph route's procedural filter still stands. Lifting it is the next app
+prompt's job.
 
 The votes arms of the EC rebuild keep one `vote_yes` / `vote_no` / `vote_abstain`
 edge per (official, bill). Which roll decides it:
@@ -1057,8 +1069,12 @@ arm's fingerprint reads), and inserts the missing. It ends with one NOTICE:
 That is the clone's first merge (cc-283): 31.4 s, against 73.7 s for a
 delete-all + insert of the same 507,394 edges. A second call reads `… / 0 / 0 /
 0 / 0 / untouched 507394` (15.9 s). The returned rows are each type's count in
-the set, as before. Follow it with `VACUUM (ANALYZE) public.entity_connections`
-(27.1 s on the clone; 108,117 dead tuples). Nothing scheduled calls
+the set, as before. On the clone, follow it with `VACUUM (ANALYZE)
+public.entity_connections` (27.1 s; 108,117 dead tuples). On prod, never vacuum
+by hand. The dispatched row `ec-vacuum-analyze` owns the table's vacuum after a
+merge, on its 60 %-of-trigger line or its 24 h floor (prod's merge left 113,144
+dead, about 21 % of the 540,314 trigger, so the floor fires it). Nothing
+scheduled calls
 `_votes_full()`. Every `ec-crawl` / `rebuild-ec-incremental*` command is
 `'incremental'`, so it runs only by hand or through the incremental arm's
 NULL-watermark fall-through.
