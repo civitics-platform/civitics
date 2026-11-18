@@ -1,13 +1,15 @@
 /**
- * cc-292 — the class-P push (files B and C join in the next two commits):
+ * cc-292 — the class-P push (file C joins in the next commit):
  *   A *_fix1421_reap_closes_a_failed_units_running_rows.sql   (FIX-1421, a PIN MOVE)
+ *   B *_fix1423_ec_crawl_stale_after_25_minutes.sql           (FIX-1423)
  *
  * Runs via:  tsx --test src/__tests__/dispatcher-r17.test.ts
  *
  * Text (no DB, run in CI): A's body is FIX-1361's plus ONLY the close and the
  * reason suffix (a line diff), the close sits in step 3's failed arm, c_running_win,
  * the census, step 3b and the pick are byte-equal, the md5 is the read-back's,
- * the revert is FIX-1361's text; every v_missing element is ::text (rule 421).
+ * the revert is FIX-1361's text; every v_missing element is ::text (rule 421);
+ * B matches on the exact old text and pairs with its revert.
  * Clone (CIVITICS_CLONE_TESTS=1), each inside BEGIN … ROLLBACK: the failed run is
  * fabricated as the reap reads one — a dispatch_log `armed` row with a jobid no
  * cron.job carries (so the reap skips cron.unschedule) and a runid_floor, and a
@@ -38,8 +40,10 @@ function one(suffix: string): string {
 const script = (f: string) => read(path.join(ROOT, "scripts", f));
 
 const A = () => one("_fix1421_reap_closes_a_failed_units_running_rows.sql");
+const B = () => one("_fix1423_ec_crawl_stale_after_25_minutes.sql");
 const LIVE = () => one("_fix1361_dispatcher_anchor_cadence_and_headroom_rung_after_live.sql");
 const REVERT_A = () => script("fix1421-revert-reap-close.sql");
+const REVERT_B = () => script("fix1423-revert-ec-crawl-cadence.sql");
 
 /** FIX-1361's body (history) and this push's. */
 const WAS = "d6a9073bcc4d9084b9d7994324a89b18";
@@ -191,6 +195,24 @@ test("A: owner, grants and comment are FIX-1361's; the revert is FIX-1361's text
   assert.equal(tail(rev), tail(LIVE()));
   assert.ok(rev.includes(`v_d IS DISTINCT FROM '${WAS}'`));
   assert.equal(PIN_LINEAGE[WAS], NOW, "PIN_LINEAGE carries the move");
+});
+
+// ---------------------------------------------------------------------------
+// Text — files B and C
+// ---------------------------------------------------------------------------
+
+test("B: one UPDATE of ec-crawl on its exact old text; the note gains the cc-292 clause; no other column, row or dial", () => {
+  const sql = stripComments(B());
+  const updates = sql.split(/UPDATE public\.job_registry/).slice(1);
+  assert.equal(updates.length, 1);
+  const u = updates[0]!;
+  assert.match(u, /SET deadline_rule = 'stale_after 25 minutes',/);
+  assert.match(u, /note\s+= note \|\| '; cc-292 \(FIX-1423\): 25 minutes from 10 — the post-landing pass',/);
+  assert.match(u, /WHERE job = 'ec-crawl'\s+AND deadline_rule = 'stale_after 10 minutes';/);
+  const cols = /SET([\s\S]*?)WHERE/.exec(u)![1]!.match(/^\s*([a-z_]+)\s*=/gm)!.map((x) => x.trim().replace(/\s*=$/, ""));
+  assert.deepEqual(cols, ["deadline_rule", "note", "updated_at"]);
+  assert.doesNotMatch(sql, /platform_dials|pipeline_state|rollup_watch_overrides|CREATE (OR REPLACE )?(FUNCTION|PROCEDURE)/);
+  assert.match(REVERT_B(), /WHERE job = 'ec-crawl'\s+AND deadline_rule = 'stale_after 25 minutes'/);
 });
 
 // ---------------------------------------------------------------------------
