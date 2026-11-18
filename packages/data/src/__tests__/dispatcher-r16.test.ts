@@ -26,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
-import { read, stripComments, withCurrentPins } from "./lib/migration-text";
+import { atCurrentPins, read, stripComments, withCurrentPins } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -62,6 +62,7 @@ const MD5 = {
   drb: { was: "1de3c10f261899852e11c5867b45bdc5", now: "b7df526046f4911f9cac3c5ace222b60" },
   ech: { was: "e6741c018c5b771343f2fb11e015a341", now: "0365316a209dd5b5db80f81e9364b2b0" },
 };
+/** dispatch_one_unit at cc-267 (FIX-1361, history). cc-292 moved it (FIX-1421): atCurrentPins(DISPATCH) is the live body. */
 const DISPATCH = "d6a9073bcc4d9084b9d7994324a89b18";
 
 const MOVES = [
@@ -601,10 +602,13 @@ test("clone B/D/E/F: each revert restores its md5s and the file re-applies, insi
     record_box_health_mem: MD5.mem.now, get_dispatcher_status: MD5.status.now, box_is_saturated: MD5.box.now,
     prod_op_gate: MD5.gate.now, donor_rollup_rebuild_bulk: MD5.drb.now, get_ec_crawl_health: MD5.ech.now, dispatch_one_unit: DISPATCH,
   };
+  const live = { ...now, dispatch_one_unit: atCurrentPins(DISPATCH) };
   try {
     await c.query("BEGIN");
     try {
-      assert.deepEqual(await md5s(), now, "the clone carries this push");
+      assert.deepEqual(await md5s(), live, "the clone carries this push, and cc-292's dispatch_one_unit on top");
+      // cc-292: its revert first, so B–F re-apply on cc-267's bodies (their read-backs pin d6a9073b…).
+      await c.query(script("fix1421-revert-reap-close.sql"));
       await c.query(script("fix1392-revert-io-hold-stale.sql"));
       await c.query(script("fix1398-revert-status-readings-io.sql"));
       await c.query(script("fix1393-revert-donor-preloop-timeout.sql"));
@@ -617,6 +621,8 @@ test("clone B/D/E/F: each revert restores its md5s and the file re-applies, insi
       assert.equal((await c.query("SELECT io_samples FROM public.platform_dials WHERE id")).rows[0].io_samples, 3);
       for (const f of [B(), C(), D(), E(), F()]) await c.query(f);
       assert.deepEqual(await md5s(), now, "each file re-applies on its prior body");
+      await c.query(one("_fix1421_reap_closes_a_failed_units_running_rows.sql"));
+      assert.deepEqual(await md5s(), live, "cc-292's file re-applies on top");
     } finally {
       await c.query("ROLLBACK");
     }

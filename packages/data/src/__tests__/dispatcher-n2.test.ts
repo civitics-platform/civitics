@@ -389,7 +389,8 @@ test("local: when N2 is applied, the live bodies are this file's (the ec procedu
       // 20261027000000 (cc-251, FIX-1354) replaced these two, and 20261029000000
       // (cc-253, FIX-1361) dispatch_one_unit again; any of those bodies passes, nothing else.
       else if (R4_MD5[name] !== undefined && [R4_MD5[name], atCurrentPins(R4_MD5[name]!)].includes(md5(live ?? ""))) continue;
-      else if (name === "dispatch_one_unit" && md5(live ?? "") === R5_DISPATCH_MD5) continue;
+      // cc-292 (FIX-1421) moved it again: PIN_LINEAGE names the live body.
+      else if (name === "dispatch_one_unit" && [R5_DISPATCH_MD5, atCurrentPins(R5_DISPATCH_MD5)].includes(md5(live ?? ""))) continue;
       else assert.equal(live, prosrc(src, name, kind), `${name} live body is neither the N2 file's nor FIX-1354's`);
       if (kind === "PROCEDURE") assert.equal(r.rows[0]?.cfg, null, `${name} COMMITs; proconfig must stay NULL`);
     }

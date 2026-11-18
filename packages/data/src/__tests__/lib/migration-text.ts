@@ -45,6 +45,9 @@ export const PIN_LINEAGE: Readonly<Record<string, string>> = {
   "4c30523742e280a4b48ea2ec390654d6": "d6bb02aab3eb8c9625275227f564c5c9",
   aaf6cc6552df532eff4a9b21e9780670: "b05961ca6d1cf7e56874071bfe334da1",
   "6488601cf8c09287d540989c0e0fd074": "70a799ab3df2484fc424fe2762ffa797",
+  // cc-292: dispatch_one_unit's reap closes a failed unit's running rows
+  // (FIX-1421, 20261119000000). FIX-1361's d6a9073b… is now its revert's target.
+  d6a9073bcc4d9084b9d7994324a89b18: "142869d4f55f8eae73c7dd49ceae4b7a",
 };
 
 /** A pin's live md5: its lineage followed to the end (a pin can move more than once). */
