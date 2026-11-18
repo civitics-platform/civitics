@@ -30,6 +30,12 @@ name: crs-summaries
 #     (paginated selects + one throttled single-row UPDATE per bill).
 #   - Sunday weekly-enrichment block (nightly's `getDay()===0` path) is a day
 #     later. Saturday 10:00 UTC is clean.
+# FIX-1424 (cc-292): started ON TIME by a Vercel cron on
+# /api/cron/gha-dispatch/crs-summaries (`0 10 * * 6`, apps/civitics/vercel.json),
+# not GitHub's schedule:, which started it 3.7–6.2 h late (10-24 13:44Z …
+# 11-14 16:14Z) and pushed a 350-min run toward the 21:00 UTC nightly. On time,
+# a run that uses the whole budget ends by 15:50 UTC. No schedule: fallback;
+# `gh workflow run crs-summaries.yml` starts it by hand.
 #
 # Rate control lives IN the script: fetchCongressApi already sleeps 200ms and
 # the loop adds the rest to ~800ms/iter (~4,500 req/hr, under the ~5,000/hr
@@ -50,8 +56,6 @@ name: crs-summaries
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 10 * * 6"
 
 permissions:
   contents: read

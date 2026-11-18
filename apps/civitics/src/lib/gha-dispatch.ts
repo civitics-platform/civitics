@@ -6,7 +6,10 @@
  * nights since 09-10, platform-snapshot's every-10-minute cron ran 13 times in 48 h, and
  * sync-canary-check's `0 5` lands 3.7–5.3 h late (cc-150 read 2). A Vercel cron
  * is on time to the minute, so it POSTs the dispatch and the run starts at the
- * slot. The `schedule:` triggers stay as the fallback.
+ * slot. The `schedule:` triggers stay as the fallback — except for irs990,
+ * audit and crs-summaries (FIX-1424, cc-292), which carry none: GitHub started
+ * each 4–9 h late, and a second start hours after the dispatched one is exactly
+ * what moving them fixes.
  *
  * The route (app/api/cron/gha-dispatch) owns auth and the stamp; this module
  * owns everything that can be tested without a network: the allowlist, the
@@ -70,7 +73,14 @@ export interface DispatchTarget {
  * stem's. The legacy `nightly` slot (`0 21 * * *`, `dispatched_by:
  * "vercel-cron"`, gated on the registry row) answered `legacy_off` from N2 on
  * and was removed by FIX-1350 (cc-249); `/api/cron/gha-dispatch/nightly` is now
- * outside the allowlist. The other two declare no inputs and read none.
+ * outside the allowlist. The others declare no inputs and read none.
+ *
+ * FIX-1424 (cc-292): irs990 (Tue 15:00Z), audit (Tue 17:00Z) and
+ * crs-summaries (Sat 10:00Z) — the three prod-touching workflows that still
+ * started on GitHub's `schedule:`. Each is a plain dispatch like
+ * sync-canary-check (no request stamp, no gate). Each declares
+ * `workflow_dispatch: {}`, so no input is sent: an undeclared one is a 422.
+ * The audit's workflow NAME is weekly-integrity-audit; the stem is the FILE's.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
@@ -84,6 +94,9 @@ export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new M
   ],
   ["sync-canary-check", { workflow: "sync-canary-check.yml", stem: "sync-canary-check", inputs: {} }],
   ["platform-snapshot", { workflow: "platform-snapshot.yml", stem: "platform-snapshot", inputs: {} }],
+  ["irs990", { workflow: "irs990.yml", stem: "irs990", inputs: {} }],
+  ["audit", { workflow: "audit.yml", stem: "audit", inputs: {} }],
+  ["crs-summaries", { workflow: "crs-summaries.yml", stem: "crs-summaries", inputs: {} }],
 ]);
 
 /** The allowlist lookup. `null` for anything not in it, including `../x`. */

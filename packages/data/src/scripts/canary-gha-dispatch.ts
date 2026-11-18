@@ -13,10 +13,12 @@
  *     entirely): the Vercel cron is not calling the route at all — the cron was
  *     removed, disabled, or the deployment is down.
  *
- * BOTH ARE REPORT-ONLY. Neither loses a night: every dispatched workflow keeps
- * its `schedule:` trigger as the fallback, so a dead dispatcher degrades to
- * GitHub's own late start, which is where the platform was before FIX-1218. It
- * wants a look, not a page.
+ * BOTH ARE REPORT-ONLY. Neither loses a night: the nightly, sync-canary-check and
+ * platform-snapshot keep their `schedule:` trigger as the fallback, so a dead
+ * dispatcher degrades to GitHub's own late start, which is where the platform
+ * was before FIX-1218. It wants a look, not a page. irs990, audit and
+ * crs-summaries (FIX-1424, cc-292) carry no fallback: a dead dispatcher skips
+ * their week, which the weekly stamp's 169 h says inside a day.
  *
  * Pure: the PostgREST read lives in canary-check.ts.
  */
@@ -28,13 +30,39 @@ export const KEY_DISPATCH_STALE = "gha_dispatch_stale";
  * Stale thresholds per stem, in hours: the cadence plus slack for one missed
  * firing. nightly and sync-canary-check fire daily (25 h = one day plus an
  * hour); platform-snapshot fires every 10 minutes (30 min = two missed
- * firings — one alone is Vercel's documented best-effort delivery).
+ * firings — one alone is Vercel's documented best-effort delivery); irs990,
+ * audit and crs-summaries fire weekly (169 h = a week plus an hour).
  */
 export const DISPATCH_STALE_HOURS: Readonly<Record<string, number>> = {
   nightly: 25,
   "sync-canary-check": 25,
   "platform-snapshot": 0.5,
+  irs990: 169,
+  audit: 169,
+  "crs-summaries": 169,
 };
+
+/**
+ * FIX-1424 (cc-292) — a stem that joined after the route was live has no stamp
+ * until its first slot, because nothing calls the route before then. Until that
+ * slot plus an hour (Vercel's best-effort delivery) an ABSENT stamp is not
+ * stale; from then on it is, like any other stem's. No hand dispatch is needed
+ * to quiet it. A stem that has stamped is judged by its age alone.
+ */
+export const DISPATCH_FIRST_SLOT: Readonly<Record<string, string>> = {
+  "crs-summaries": "2026-11-21T10:00:00Z",
+  irs990: "2026-11-24T15:00:00Z",
+  audit: "2026-11-24T17:00:00Z",
+};
+const FIRST_SLOT_GRACE_MS = 3_600_000;
+
+/** An absent stamp before its stem's first slot (+ grace) is a stem not yet due, not a dead route. */
+function notYetDue(stem: string, now: Date): boolean {
+  const first = DISPATCH_FIRST_SLOT[stem];
+  if (first === undefined) return false;
+  const t = Date.parse(first);
+  return !Number.isNaN(t) && now.getTime() < t + FIRST_SLOT_GRACE_MS;
+}
 
 /** The pipeline_state key for a stem. */
 export function dispatchStampKey(stem: string): string {
@@ -75,7 +103,8 @@ function hoursBetween(at: string | null, now: Date): number | null {
 /**
  * `rows` is `{ [pipeline_state.key]: value }` for whichever gha_dispatch_* rows
  * exist. A stem with NO row is stale: the route has never stamped on this
- * database, which after the deploy means it has never been called.
+ * database, which after the deploy means it has never been called — unless the
+ * stem's first slot (DISPATCH_FIRST_SLOT) has not come yet.
  */
 export function classifyGhaDispatch(
   rows: Record<string, Record<string, unknown> | undefined>,
@@ -94,7 +123,7 @@ export function classifyGhaDispatch(
       detail: typeof v?.["detail"] === "string" ? (v["detail"] as string) : null,
       last_dispatched_at: typeof v?.["last_dispatched_at"] === "string" ? (v["last_dispatched_at"] as string) : null,
       age_hours: age,
-      stale: age === null || age > limit,
+      stale: age === null ? !notYetDue(stem, now) : age > limit,
       refused: status !== null && status !== "dispatched",
     };
   });

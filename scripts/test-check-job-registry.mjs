@@ -10,7 +10,7 @@
 // that passes because it parsed nothing, read the wrong receipts file, or
 // counted a dispatcher one-shot as a missing job. The real tree runs last.
 
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +75,34 @@ console.log("check:job-registry — fixtures");
     'name: extra\non:\n  schedule:\n    - cron: "5 5 * * *"\njobs:\n  run:\n    runs-on: ubuntu-latest\n'));
   check("a workflow with schedule: and no row FAILS",
     r.problems.length === 1 && has(r.problems, "missing registry row for scheduled workflow wf-extra.yml"), dump(r));
+}
+{
+  // FIX-1424 (cc-292): a workflow whose START is a Vercel dispatch carries no schedule:.
+  const WF = join(".github", "workflows", "wf-scheduled.yml");
+  const unscheduled = (root) => edit(root, WF, (t) => t.replace('  schedule:\n    - cron: "0 4 * * 1"\n', ""));
+  const vercel = (root, schedule) => {
+    mkdirSync(join(root, "apps", "civitics"), { recursive: true });
+    writeFileSync(join(root, "apps", "civitics", "vercel.json"), JSON.stringify({
+      crons: [{ path: "/api/cron/gha-dispatch/wf-scheduled", schedule }, { path: "/api/cron/other", schedule: "0 1 * * *" }],
+    }));
+  };
+  const bare = variant(unscheduled);
+  check("a gha row whose workflow lost its schedule: and has no Vercel cron WARNS (seeded ahead?)",
+    bare.problems.length === 0 && bare.warnings.length === 1 && has(bare.warnings, "registry row wf-scheduled matches no cron job"), dump(bare));
+  const v = variant((root) => { unscheduled(root); vercel(root, "0 4 * * 1"); });
+  check("…a Vercel /api/cron/gha-dispatch/<stem> cron on its rule schedules it — PASSES, read off a gha:<stem>.yml unit_call",
+    v.problems.length === 0 && v.warnings.length === 0 && v.stats.vercelDispatches === 1 && v.stats.workflows === 1, dump(v) + JSON.stringify(v.stats));
+  const d = variant((root) => {
+    unscheduled(root);
+    vercel(root, "0 4 * * 1");
+    edit(root, SEED, (t) => t.replace("'gha:wf-scheduled.yml'", "'gha-dispatch:wf-scheduled'"));
+  });
+  check("…and off a gha-dispatch:<stem> unit_call alike", d.problems.length === 0 && d.warnings.length === 0, dump(d));
+  const drift = variant((root) => { unscheduled(root); vercel(root, "0 17 * * 2"); });
+  check("…a Vercel cron that differs from the row's at rule WARNS",
+    drift.problems.length === 0 && drift.warnings.length === 1 &&
+      has(drift.warnings, "wf-scheduled: deadline_rule 'at 0 4 * * 1' differs from vercel.json's /api/cron/gha-dispatch/wf-scheduled schedule '0 17 * * 2'"),
+    dump(drift));
 }
 {
   const r = variant((root) => edit(root, SEED, (t) => t.replace("('job-a', 'pg_cron', 'pipe_a', 'atomic', 'CALL public.proc_a();'", "('job-a', 'pg_cron', 'pipe_a', 'atomic', 'CALL public.proc_missing();'")));

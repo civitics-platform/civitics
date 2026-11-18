@@ -1,7 +1,8 @@
 /**
- * cc-292 — the class-P push (file C joins in the next commit):
+ * cc-292 — the three-file class-P push:
  *   A *_fix1421_reap_closes_a_failed_units_running_rows.sql   (FIX-1421, a PIN MOVE)
  *   B *_fix1423_ec_crawl_stale_after_25_minutes.sql           (FIX-1423)
+ *   C *_fix1424_three_gha_starts_by_vercel_dispatch.sql        (FIX-1424)
  *
  * Runs via:  tsx --test src/__tests__/dispatcher-r17.test.ts
  *
@@ -9,7 +10,7 @@
  * reason suffix (a line diff), the close sits in step 3's failed arm, c_running_win,
  * the census, step 3b and the pick are byte-equal, the md5 is the read-back's,
  * the revert is FIX-1361's text; every v_missing element is ::text (rule 421);
- * B matches on the exact old text and pairs with its revert.
+ * B and C match on the exact old text and pair with their reverts.
  * Clone (CIVITICS_CLONE_TESTS=1), each inside BEGIN … ROLLBACK: the failed run is
  * fabricated as the reap reads one — a dispatch_log `armed` row with a jobid no
  * cron.job carries (so the reap skips cron.unschedule) and a runid_floor, and a
@@ -41,9 +42,11 @@ const script = (f: string) => read(path.join(ROOT, "scripts", f));
 
 const A = () => one("_fix1421_reap_closes_a_failed_units_running_rows.sql");
 const B = () => one("_fix1423_ec_crawl_stale_after_25_minutes.sql");
+const C = () => one("_fix1424_three_gha_starts_by_vercel_dispatch.sql");
 const LIVE = () => one("_fix1361_dispatcher_anchor_cadence_and_headroom_rung_after_live.sql");
 const REVERT_A = () => script("fix1421-revert-reap-close.sql");
 const REVERT_B = () => script("fix1423-revert-ec-crawl-cadence.sql");
+const REVERT_C = () => script("fix1424-revert-gha-dispatch-starts.sql");
 
 /** FIX-1361's body (history) and this push's. */
 const WAS = "d6a9073bcc4d9084b9d7994324a89b18";
@@ -213,6 +216,24 @@ test("B: one UPDATE of ec-crawl on its exact old text; the note gains the cc-292
   assert.deepEqual(cols, ["deadline_rule", "note", "updated_at"]);
   assert.doesNotMatch(sql, /platform_dials|pipeline_state|rollup_watch_overrides|CREATE (OR REPLACE )?(FUNCTION|PROCEDURE)/);
   assert.match(REVERT_B(), /WHERE job = 'ec-crawl'\s+AND deadline_rule = 'stale_after 25 minutes'/);
+});
+
+const STARTS = [
+  { job: "irs990", was: "at 0 15 * * 1", now: "at 0 15 * * 2", wf: "irs990.yml", stem: "irs990" },
+  { job: "audit", was: "at 0 4 * * 1", now: "at 0 17 * * 2", wf: "audit.yml", stem: "audit" },
+  { job: "crs-summaries", was: "at 0 10 * * 6", now: "at 0 10 * * 6", wf: "crs-summaries.yml", stem: "crs-summaries" },
+] as const;
+
+test("C: three UPDATEs, each on its exact old rule AND unit_call, to the Vercel dispatch; the revert matches the new text", () => {
+  const sql = stripComments(C());
+  const rev = stripComments(REVERT_C());
+  for (const s of STARTS) {
+    const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(sql, new RegExp(`\\('${esc(s.job)}',\\s+'${esc(s.was)}',\\s+'gha:${esc(s.wf)}',\\s+'${esc(s.now)}',\\s+'gha-dispatch:${esc(s.stem)}'`), s.job);
+    assert.match(rev, new RegExp(`\\('${esc(s.job)}',\\s+'${esc(s.now)}',\\s+'gha-dispatch:${esc(s.stem)}',\\s+'${esc(s.was)}',\\s+'gha:${esc(s.wf)}'`), `${s.job} revert`);
+  }
+  assert.match(sql, /WHERE job = v\.job AND deadline_rule = v\.was_rule AND unit_call = v\.was_call/);
+  assert.doesNotMatch(sql, /platform_dials|pipeline_state|cron\.|CREATE (OR REPLACE )?(FUNCTION|PROCEDURE)/);
 });
 
 // ---------------------------------------------------------------------------
@@ -434,6 +455,44 @@ test("clone A: FIX-1361's body (the revert) leaves the same row running and read
       assert.equal(await livePin(c), NOW);
       await c.query(A());
       assert.equal(await livePin(c), NOW, "idempotent");
+    } finally {
+      await c.query("ROLLBACK");
+    }
+  } finally {
+    await c.end();
+  }
+});
+
+test("clone B / C: each revert restores the old rows and the file re-applies, inside one rolled-back transaction", async (t) => {
+  const c = await clone(t);
+  if (!c) return;
+  const rows = async () => (await c.query(
+    `SELECT job, deadline_rule, unit_call, (note LIKE '%; cc-292 (FIX-142_): %') AS clause
+       FROM public.job_registry WHERE job IN ('ec-crawl', 'irs990', 'audit', 'crs-summaries') ORDER BY job`,
+  )).rows.map((r: { job: string; deadline_rule: string; unit_call: string; clause: boolean }) =>
+    [r.job, r.deadline_rule, r.job === "ec-crawl" ? null : r.unit_call, r.clause].filter((x) => x !== null).join(" "));
+  const now = [
+    "audit at 0 17 * * 2 gha-dispatch:audit true",
+    "crs-summaries at 0 10 * * 6 gha-dispatch:crs-summaries true",
+    "ec-crawl stale_after 25 minutes true",
+    "irs990 at 0 15 * * 2 gha-dispatch:irs990 true",
+  ];
+  try {
+    await begin(c);
+    try {
+      assert.deepEqual(await rows(), now, "the clone carries B and C");
+      await c.query(REVERT_B());
+      await c.query(REVERT_C());
+      await c.query(REVERT_C());
+      assert.deepEqual(await rows(), [
+        "audit at 0 4 * * 1 gha:audit.yml false",
+        "crs-summaries at 0 10 * * 6 gha:crs-summaries.yml false",
+        "ec-crawl stale_after 10 minutes false",
+        "irs990 at 0 15 * * 1 gha:irs990.yml false",
+      ]);
+      await c.query(B());
+      await c.query(C());
+      assert.deepEqual(await rows(), now, "each file re-applies on the old rows");
     } finally {
       await c.query("ROLLBACK");
     }

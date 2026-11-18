@@ -1,5 +1,6 @@
 /**
- * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly-request | sync-canary-check | platform-snapshot)
+ * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly-request | sync-canary-check | platform-snapshot
+ *                                             | irs990 | audit | crs-summaries)
  *
  * N2 (FIX-1336, cc-243): `nightly-request` fires only on the dispatcher's
  * unconsumed request stamp (pipeline_state.gha_dispatch_request_nightly) and
@@ -24,6 +25,14 @@
  * costs one runner-minute a day — its fec-phase preflight finds the dispatched
  * run's rows for the nominal day and every phase is skipped (FIX-1218 D3). The
  * other two are idempotent by nature.
+ *
+ * FIX-1424 (cc-292): irs990 (`0 15 * * 2`), audit (`0 17 * * 2`) and
+ * crs-summaries (`0 10 * * 6`) have NO `schedule:` fallback. GitHub started
+ * each 4–9 h late (irs990 11-16 at 23:38Z, inside the post-landing pass; the
+ * audit inside the stall, cancelled), and a second start hours after the
+ * dispatched one is the failure the move removes. A dead dispatcher therefore
+ * skips their week; gha_dispatch_<stem> and the canary are the signal, and
+ * `gh workflow run <file>` is the by-hand start.
  *
  * ── THE STAMP, ON EVERY CALL (rule 167) ──────────────────────────────────────
  *

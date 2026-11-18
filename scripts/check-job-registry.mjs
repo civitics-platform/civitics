@@ -12,7 +12,13 @@
 //   - prod's cron.job, as mirrored by the newest docs/receipts/<day>.json →
 //     cron_jobs[] (the nightly's tree-resident copy; active AND inactive rows,
 //     because the registry is the whole catalog);
-//   - every .github/workflows/*.yml with an on.schedule block.
+//   - every .github/workflows/*.yml with an on.schedule block;
+//   - FIX-1424 (cc-292): every apps/civitics/vercel.json cron on
+//     /api/cron/gha-dispatch/<stem>. A workflow whose START is a Vercel
+//     dispatch carries no schedule: block (no late fallback), so its row is
+//     scheduled by that cron — read against a gha:<stem>.yml or a
+//     gha-dispatch:<stem> unit_call alike, because the snapshot carries no
+//     unit_call and the fence keeps the seed's.
 //
 // WHAT IT FLAGS (exit 1)
 //   (i)   a `-- job-registry-seed:begin` … `end` fence that does not parse — a
@@ -30,10 +36,11 @@
 //   and a job seeded by two fences.
 //
 // WHAT IT WARNS ON (exit 0)
-//   (vi)  a registry job in no receipts row, no workflow, not marked
+//   (vi)  a registry job in no receipts row, no workflow, no Vercel dispatch cron, not marked
 //         `INACTIVE on prod` in its note, and not on a dispatched rule (the
 //         dispatcher arms those as one-shots) — a job seeded ahead of its landing
 //   - an `at <cron>` deadline_rule that differs from the live schedule
+//   - an `at <cron>` deadline_rule that differs from its Vercel dispatch cron
 //   - a `no-band` declaration on a job that bands.json does band
 //
 // IGNORED: receipts jobnames matching ^disp- (vii). Those are the dispatcher's
@@ -86,6 +93,25 @@ const BARE_RE = /^(VACUUM \(ANALYZE\) public\.\w+;?|DELETE FROM .+)$/;
 const GHA_RE = /^gha:(.+)$/;
 const GHA_DISPATCH_RE = /^gha-dispatch:(.+)$/;
 const DISPATCHER_JOB_RE = /^disp-/;
+const VERCEL_DISPATCH_RE = /^\/api\/cron\/gha-dispatch\/([a-z0-9-]+)$/;
+
+/**
+ * FIX-1424 (cc-292) — the Vercel crons that START a workflow: stem → schedule,
+ * from apps/civitics/vercel.json under `root`. No file (the fixtures) → empty.
+ */
+export function vercelDispatchCrons(root, problems = []) {
+  const f = join(root, "apps", "civitics", "vercel.json");
+  const out = new Map();
+  if (!existsSync(f)) return out;
+  let v;
+  try { v = JSON.parse(readFileSync(f, "utf8")); }
+  catch (e) { problems.push(`apps/civitics/vercel.json does not parse: ${e.message}`); return out; }
+  for (const c of Array.isArray(v?.crons) ? v.crons : []) {
+    const m = VERCEL_DISPATCH_RE.exec(typeof c?.path === "string" ? c.path : "");
+    if (m) out.set(m[1], typeof c.schedule === "string" ? c.schedule : null);
+  }
+  return out;
+}
 
 /**
  * Split one SQL row tuple — `('a', 'b''c', NULL, 3, true),` — into values.
@@ -416,6 +442,7 @@ export function checkRegistry({ root = ROOT, fencesOnly = false } = {}) {
     if (error) problems.push(`workflow ${f}: ${error}`);
     if (crons.length) scheduled.set(f, crons);
   }
+  const vercelDispatch = vercelDispatchCrons(root, problems);
   const ghaCalls = new Map();
   for (const r of registry.values()) if (typeof r.unit_call === "string") ghaCalls.set(r.unit_call, r);
   for (const [f, crons] of scheduled) {
@@ -462,13 +489,19 @@ export function checkRegistry({ root = ROOT, fencesOnly = false } = {}) {
 
     const inReceipts = cronSchedules.has(r.job);
     const inWorkflow = (gha && scheduled.has(gha[1])) || (dispatch && scheduled.has(`${dispatch[1]}.yml`));
+    // FIX-1424: the START is a Vercel cron on the stem (gha:<stem>.yml or gha-dispatch:<stem>).
+    const stem = gha ? gha[1].replace(/\.ya?ml$/, "") : dispatch ? dispatch[1] : null;
+    const inVercel = stem !== null && vercelDispatch.has(stem);
     const inactive = typeof r.note === "string" && r.note.includes("INACTIVE on prod");
     const rule = ruleOf(r);
     // A pg_cron row on a dispatched rule is armed as a one-shot, so it needs no
     // cron job. entity-tags-vacuum-analyze (FIX-1381) was born this way and never had one.
     const dispatched = r.runner === "pg_cron" && typeof rule === "string" && !rule.startsWith("at ");
-    if (!inReceipts && !inWorkflow && !inactive && !dispatched) {
+    if (!inReceipts && !inWorkflow && !inVercel && !inactive && !dispatched) {
       warnings.push(`registry row ${r.job} matches no cron job in ${recFile ?? "the receipts"} and no scheduled workflow — seeded ahead of its landing? (${where})`);
+    }
+    if (inVercel && typeof rule === "string" && rule.startsWith("at ") && rule.slice(3) !== vercelDispatch.get(stem)) {
+      warnings.push(`${r.job}: deadline_rule '${rule}' differs from vercel.json's /api/cron/gha-dispatch/${stem} schedule '${vercelDispatch.get(stem)}'`);
     }
     if (inReceipts && typeof rule === "string" && rule.startsWith("at ")) {
       const live = cronSchedules.get(r.job);
@@ -484,6 +517,7 @@ export function checkRegistry({ root = ROOT, fencesOnly = false } = {}) {
     notes,
     stats: {
       rows: registry.size, fences, receipts: recFile, cronJobs: cronSchedules.size, workflows: scheduled.size,
+      vercelDispatches: vercelDispatch.size,
       snapshot: snap.file, snapshotAt: snap.snapshotAt, liveRows: snap.rows?.length ?? null,
       returned, updated: info.length - returned,
     },
@@ -509,7 +543,7 @@ function main(argv) {
   const summary =
     `${TAG} ${stats.rows} registry row(s) from ${stats.fences} fence(s); ` +
     `receipts ${stats.receipts ?? "—"}: ${stats.cronJobs} cron job(s); ` +
-    `${stats.workflows} scheduled workflow(s); ${live}${problems.length} problem(s), ${warnings.length} warning(s).`;
+    `${stats.workflows} scheduled workflow(s); ${stats.vercelDispatches} Vercel dispatch cron(s); ${live}${problems.length} problem(s), ${warnings.length} warning(s).`;
   if (problems.length > 0) {
     console.error(summary);
     console.error(

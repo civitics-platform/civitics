@@ -14,11 +14,11 @@ name: irs990
 # fec_bulk overran. Mirrors the FIX-740 phase split and the FIX-291
 # entity-connections extraction.
 #
-# WHY MONDAY 15:00 UTC, AND WHAT IT COSTS. The ordering fec_bulk → IRS-990 is
+# WHY TUESDAY 15:00 UTC, AND WHAT IT COSTS. The ordering fec_bulk → IRS-990 is
 # load-bearing: `resolveGrantRecipient` needs fec-bulk's freshly-upserted PAC
 # entities when a 990 grants to a PAC. Moving 990 BEFORE fec_bulk would break
-# that, so the ordering is preserved by the calendar instead — Monday follows
-# Sunday's fec_bulk PAC upserts. If Sunday's run was killed, Monday's 990 runs
+# that, so the ordering is preserved by the calendar instead — Tuesday follows
+# Sunday's fec_bulk PAC upserts. If Sunday's run was killed, Tuesday's 990 runs
 # against the last-persisted entities rather than fresher ones. That is an
 # ACCEPTED cost, not an oversight: 990s file annually with a ~1-month bulk lag,
 # the index HEAD-watermark (pipeline_state.irs990.index_watermark) short-circuits
@@ -26,21 +26,27 @@ name: irs990
 # next week once the PAC entity lands. A miss here costs a week of grant-edge
 # freshness; the old failure mode cost the entire run, indefinitely.
 #
-# The 15:00 slot is deliberately clear of every known prod window: the nightly
-# (~05:00-06:00 UTC), the 09:00/12:00 pg_cron firings and their 2h budgets, and
-# the 11:05-11:18 arm vacuums. GHA cron drifts by up to hours under queue load,
-# so the gap is sized for drift rather than assuming punctuality.
+# FIX-1424 (cc-292) — Tuesday, not Monday, and started ON TIME. Monday is the
+# post-landing pass: after Sunday's drop the ec crawl rebuilds through Monday
+# into Tuesday (11-16's pass closed Tue 01:37Z). GitHub's own `0 15 * * 1`
+# started this workflow 8–9 h late three weeks running (11-02 23:02Z, 11-09
+# 23:44Z, 11-16 23:38Z), the last inside that pass's IO windows, where it died
+# on its first read. A Vercel cron now fires /api/cron/gha-dispatch/irs990 at
+# `0 15 * * 2` (apps/civitics/vercel.json; FIX-1218's route), which POSTs
+# workflow_dispatch, so the run starts at the slot. There is NO `schedule:`
+# fallback: a second start hours later is exactly what this removes. If the
+# dispatch is refused or never called, pipeline_state.gha_dispatch_irs990 and
+# the canary's gha_dispatch_refused / gha_dispatch_stale say so, and
+# `gh workflow run irs990.yml` starts it by hand.
 #
-# Scheduled weekly + manual (`workflow_dispatch`). Runs against PROD via
+# Dispatched weekly + manual (`workflow_dispatch`). Runs against PROD via
 # `data:irs990:ci`; `--allow-prod` satisfies createAdminClient's prod-write
 # guard. The pipeline self-logs to data_sync_log under pipeline='irs990' via its
-# own startSync/completeSync/failSync. The concurrency group serializes a
-# scheduled firing against any in-flight manual dispatch.
+# own startSync/completeSync/failSync. The concurrency group serializes the
+# dispatched run against any in-flight manual one.
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 15 * * 1"
 
 permissions:
   contents: read

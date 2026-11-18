@@ -33,8 +33,11 @@ function fakeFetch(status: number, body: string, calls: Call[] = []): typeof fet
 const nightly = resolveDispatchTarget("nightly-request") as DispatchTarget;
 
 describe("resolveDispatchTarget — the allowlist", () => {
-  it("knows exactly the three dispatched workflows (the nightly through its request target), keyed by path segment", () => {
+  it("knows exactly the six dispatched workflows (the nightly through its request target), keyed by path segment", () => {
     assert.deepEqual([...GHA_DISPATCH_WORKFLOWS.keys()].sort(), [
+      "audit",
+      "crs-summaries",
+      "irs990",
       "nightly-request",
       "platform-snapshot",
       "sync-canary-check",
@@ -52,7 +55,10 @@ describe("resolveDispatchTarget — the allowlist", () => {
       "../x.yml",
       "..%2Fx",
       "nightly/../audit",
-      "audit",
+      "weekly-integrity-audit",
+      "audit.yml",
+      "AUDIT",
+      "irs990 ",
       "NIGHTLY",
       "nightly.yml",
       "nightly ",
@@ -72,6 +78,13 @@ describe("resolveDispatchTarget — the allowlist", () => {
     assert.deepEqual(resolveDispatchTarget("sync-canary-check")?.inputs, {});
     assert.deepEqual(resolveDispatchTarget("platform-snapshot")?.inputs, {});
     assert.equal(resolveDispatchTarget("sync-canary-check")?.gate, undefined, "ungated: fires on every call");
+  });
+
+  it("FIX-1424 (cc-292): irs990, audit and crs-summaries are plain dispatches — no inputs, no gate, the stem the file's", () => {
+    for (const stem of ["irs990", "audit", "crs-summaries"]) {
+      const t = resolveDispatchTarget(stem) as DispatchTarget;
+      assert.deepEqual(t, { workflow: `${stem}.yml`, stem, inputs: {} }, stem);
+    }
   });
 });
 

@@ -1,15 +1,27 @@
 name: weekly-integrity-audit
 
-# FIX-226 — Weekly read-only integrity audit against prod. Runs Mondays
-# 04:00 UTC, 2h after the Sunday-block of nightly-sync (which fires Sunday
-# 02:00 UTC and includes weekly pipelines). The audit produces dated
-# {YYYY-MM-DD}.md + .json reports under docs/audits/ and commits the
-# markdown back to main, so regressions in invariants surface as diffs
-# in `git log docs/audits/`.
+# FIX-226 — Weekly read-only integrity audit against prod. The audit produces
+# dated {YYYY-MM-DD}.md + .json reports under docs/audits/ and commits the
+# markdown back to main, so regressions in invariants surface as diffs in
+# `git log docs/audits/`.
+#
+# FIX-1424 (cc-292) — Tuesday 17:00 UTC, started ON TIME. The old `0 4 * * 1`
+# reasoned from a 02:00 UTC Sunday nightly that no longer exists (the nightly
+# is 21:00 UTC); Monday is now the post-landing pass, and GitHub started this
+# workflow 6–8 h late every week (10-26 09:44Z, 11-02 11:59Z, 11-09 12:32Z,
+# 11-16 12:26Z — the last inside the stall, cancelled at its 30 min timeout, so
+# no 11-16 report exists). A Vercel cron fires /api/cron/gha-dispatch/audit at
+# `0 17 * * 2` (apps/civitics/vercel.json; FIX-1218's route), which POSTs
+# workflow_dispatch: after the pass, two hours behind irs990's 15:00 UTC. The
+# report's file is still named for the run's UTC date, so it is now a Tuesday.
+# There is NO `schedule:` fallback: a second start hours later is what this
+# removes. pipeline_state.gha_dispatch_audit and the canary say if the dispatch
+# was refused or never called; `gh workflow run audit.yml` starts it by hand.
+# The commit step pushes without a rebase, so a landing on main inside the run's
+# few minutes fails the push; no scheduled job pushes near Tuesday 17:00 UTC
+# (the receipts commit follows the 21:00 nightly, the housekeep bot is Monday).
 
 on:
-  schedule:
-    - cron: "0 4 * * 1"
   workflow_dispatch: {}
 
 permissions:
