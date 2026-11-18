@@ -1,0 +1,54 @@
+{
+  "cc": "288",
+  "prompt": "cc-prompt-288-fix1409-supervised-prod-merge-class-p-push-of-the-vote-edge-rule-then-votes-full-once-under-its-own-claim-predicted-merge-read-first-no-hand-vacuum-fix1381-tuesday-scan.md",
+  "started_at": "2026-11-18T02:25:44Z",
+  "finished_at": "2026-11-18T03:05:00Z",
+  "head_before": "1bd28f6f",
+  "head_after": "eac4c7bc",
+  "commits": [
+    {
+      "sha": "8830f16e",
+      "subject": "[skip vercel] chore(ops): FIX-1409 the prod merge file, one statement run once under its own claim; file FIX-1422 — the incremental votes arm never retires an edge whose pair moved (prod 1,032, all Senate) (cc-288)"
+    },
+    {
+      "sha": "3f324138",
+      "subject": "[skip vercel] docs(ops): FIX-1409 prod is on the vote edge rule — the push and the merge's instants, prod's NOTICE beside the clone's; ec-vacuum-analyze owns the vacuum after a merge; congress-ids s19 and s20 done (cc-288)"
+    },
+    {
+      "sha": "29c39219",
+      "subject": "chore(fixes): close FIX-1409 on prod — the one _votes_full() merge: deleted 11,125 / retyped 34,076 / updated 67,766 / inserted 0 / untouched 415,443 in a 164.1 s claim (02:53:26Z → 02:56:10Z); vote edges after vote_yes 360,495 at 0.500 + 6,999 at 0.250, vote_no 142,818 + 6,973, 517,285 in all; EXCEPT ALL 0 / 0 (cc-288)"
+    },
+    {
+      "sha": "de4db21d",
+      "subject": "chore(fixes): record FIX-1381 on prod — Tue 11-17's rule-taggers-weekly (size_tags, 16:03:00Z → 16:18:39Z, complete, 939 s): phase_seconds scan 63.3 / delete 46.2 / insert 582.6; entity_tags 133,211 relpages, 133,211 all-visible (1.0000) at 2026-11-18 02:30:42Z (cc-288)"
+    },
+    {
+      "sha": "eac4c7bc",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-288 — FIX-1409 closes local+prod (the prod merge equal to its prediction, EXCEPT ALL 0 / 0); FIX-1381 recorded on prod; FIX-1422 filed (27 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1409"
+  ],
+  "fixes_filed": [
+    "FIX-1422"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261117000000_fix1409_vote_edge_question_rule.sql"
+  ],
+  "prod_writes": "TWO writes. (1) ONE gated class-P push of one file, from the primary's packages/data, in the foreground: session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --then db-push-prod. The dry run before it (02:31:44Z) listed exactly 20261117000000_fix1409_vote_edge_question_rule.sql. The five facts: (1) the gate wait started 02:31:55.012Z and read ok=true on poll 1 at 02:33:23.299Z (census pacing held the first poll off the :30 quarter; census pass 0 renders / 0 events in 60 min, edge 0 of 198); (2) blocked_tokens [], so no b: and no a:nightly_next_start token; (3) claim 02:33:29.650Z → 02:33:30.888Z = 1.2 s, 17 guarded pipelines held and 17 cleared; (4) 0 data_sync_log rows inside the claim; (5) 0 dispatch_log ticks inside it (02:33:00 and 02:35:00 bracket it). The file created vote_question_class / vote_roll_class and replaced both vote arms (efb7d5f6… / 0c9c5fa6…); no row written; head 20261116000000 / 561 → 20261117000000 / 562. (2) ONE call of SELECT * FROM public.rebuild_entity_connections_votes_full() (scripts/fix1409-prod-merge.sql) through session:wait-for-gate:prod --expected-minutes 10 --max-wait-minutes 2 under its own claim, with db-query --prod --call --timeout 7min. The first gate attempt at 02:43:00Z never opened (d:cron-job-budget-watchdog, one 3.104 s watchdog run at 02:42:00Z) and exited 7 without claiming; the re-run at 02:53:20Z opened on poll 1. Claim 02:53:26.579Z → 02:56:10.677Z = 164.1 s (db-query's 5 s abort pause included). NOTICE: [votes_full] merge: deleted 11125 / retyped 34076 / updated 67766 / inserted 0 / untouched 415443. Returned vote_yes 367494 / vote_no 149791 / vote_abstain 0. 0 data_sync_log rows and one dispatch tick (02:55:01Z nothing_due) inside the claim. pipeline_state.entity_connections_votes → 2026-11-18 01:56:08Z (the horizon). No VACUUM, ANALYZE, registry row, dial or pause.",
+  "ci": "green",
+  "stopped_items": [
+    "write 2's first gate run (02:43:00Z) did not open in its 2-min wait: d:cron-job-budget-watchdog (max wall 3.104 s over 10 min against 1.0 s), exit 7, no claim, no merge. Re-run once at 02:53:20Z after the run aged out; it opened and the merge ran. The merge statement ran once."
+  ],
+  "lane": "ops",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1409",
+      "what": "ec-vacuum-analyze's first arm after the merge (arm, reap, wall, n_dead_tup after; 113,144 dead at 03:00Z, ~21 % of the 540,314 trigger, so its 24 h floor ~2026-11-18T19:31Z fires it), and the first ec-crawl cycle after the merge: its votes arm complete on the new body (md5 efb7d5f6…), and the entity_connection_stats windows pass's wall beside the last three ordinary passes",
+      "after": "2026-11-19T02:00Z"
+    }
+  ]
+}
