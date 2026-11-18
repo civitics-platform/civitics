@@ -1,0 +1,78 @@
+{
+  "cc": "292",
+  "prompt": "cc-prompt-292-before-sunday-three-file-class-p-push-reap-closes-a-failed-units-running-row-pin-move-ec-crawl-stale-after-25-minutes-irs990-start-by-vercel-dispatch-tuesday-15z.md",
+  "started_at": "2026-11-18T03:33:05Z",
+  "finished_at": "2026-11-18T04:20:12Z",
+  "head_before": "201b619c",
+  "head_after": "2ad8830c",
+  "commits": [
+    {
+      "sha": "cea8834e",
+      "subject": "[skip vercel] chore(fixes): file FIX-1423 (ec-crawl's 10-min rest outruns the Micro's IO refill), FIX-1424 (three prod workflows start on GitHub's late schedule:) and FIX-1425 (two watchdogs cancel one crawl backend; the second escapes FIX-1028's handler) (cc-292)"
+    },
+    {
+      "sha": "c3958500",
+      "subject": "[skip vercel] feat(dispatcher): FIX-1421 the tick's reap closes a failed unit's running rows — 20261119000000, dispatch_one_unit d6a9073b → 142869d4 (cc-292)"
+    },
+    {
+      "sha": "f9fc2cc5",
+      "subject": "[skip vercel] feat(dispatcher): FIX-1423 ec-crawl rests 25 minutes after a unit, not 10 — 20261119001000 (cc-292)"
+    },
+    {
+      "sha": "e8025fad",
+      "subject": "feat(gha): FIX-1424 irs990 (Tue 15:00Z), the weekly audit (Tue 17:00Z) and crs-summaries (Sat 10:00Z) START by Vercel dispatch, schedule: removed — 20261119002000 (cc-292)"
+    },
+    {
+      "sha": "33891f3f",
+      "subject": "[skip vercel] docs(ops): the reap closes a failed unit's running rows, ec-crawl at 25 minutes, three GHA starts on Vercel — on prod 04:13:03Z; playbook C14; dispatcher s31–s34; file FIX-1426 (r12/r14 clone verdict cases drifted) (cc-292)"
+    },
+    {
+      "sha": "2ad8830c",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-292 — FIX-1421, FIX-1423 and FIX-1424 close local-only (prod pushed 04:13:03Z; their receipts are owed); FIX-1423 / 1424 / 1425 / 1426 filed (28 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1421",
+    "FIX-1423",
+    "FIX-1424"
+  ],
+  "fixes_filed": [
+    "FIX-1423",
+    "FIX-1424",
+    "FIX-1425",
+    "FIX-1426"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261119000000_fix1421_reap_closes_a_failed_units_running_rows.sql",
+    "20261119001000_fix1423_ec_crawl_stale_after_25_minutes.sql",
+    "20261119002000_fix1424_three_gha_starts_by_vercel_dispatch.sql"
+  ],
+  "prod_writes": "ONE gated class-P push of exactly the three files, from the primary's packages/data, in the foreground: session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --then db-push-prod --workdir ../.. . Before it: (d′) clear — 0 job startup timeouts in the 3 h to 04:12:40Z, the box-health ring 90 samples with max load1 1.56 (none > 8, last 04:12:22Z); held=false at 04:12:46Z; the dry run at 04:12:50Z listed exactly the three files. The five facts: (1) the gate wait started 04:12:58.167Z and read ok=true on poll 1 (prod_op_gate ok at 04:12:56.454Z; census pass, 1 render / 1 event in 60 min, edge 0 of 186); (2) blocked_tokens [], so no b: and no a:nightly_next_start token; (3) claim 04:13:02.305Z → 04:13:03.416Z = 1.1 s, 17 guarded pipelines held and cleared; (4) 0 data_sync_log rows (0 skipped) started inside the claim; (5) 0 dispatch_log ticks inside it (04:13:00.265Z armed fe-crawl and 04:15:00.443Z bracket it). The files: dispatch_one_unit d6a9073b… → 142869d4f55f8eae73c7dd49ceae4b7a (the other three pins unchanged), ec-crawl stale_after 10 → 25 minutes (1 row), irs990 / audit / crs-summaries to gha-dispatch:<stem> on at 0 15 * * 2 / at 0 17 * * 2 / at 0 10 * * 6 (3 rows). Head 20261117000000 / 562 → 20261119002000 / 565. No call, dial, VACUUM, pause or hand-edited row.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1399",
+      "what": "Mon 11-23's post-landing pass at ec-crawl stale_after 25 minutes: the pass's first arm and close, units and the p50 reap-to-arm gap, the holds (instant, MB/s, sample of the streak), startup timeouts in the pass against 277 / 100, the fallback nightly's preflight lines, and Craig's Disk IO consumed for 11-22 / 11-23 beside 19 % / 96 %",
+      "after": "2026-11-23T12:00Z"
+    },
+    {
+      "fix": "FIX-1423",
+      "what": "the same Monday read, plus the first two quiet-day multi-unit cycles' walls at 25 (projected ~7.9 h for a 17-unit and ~17.7 h for a 35-unit cycle at the hold-kept bound), and the canary's entity_connections_rebuild freshness hours at the pass's close against its 36 h report (projected ≤ ~32.5 h)",
+      "after": "2026-11-21T01:00Z"
+    },
+    {
+      "fix": "FIX-1421",
+      "what": "the first reap of a failed unit that left a running row: the reap row's '; closed N running row(s)', the row reaped with completed_at = the run's end and metadata.reaped_by dispatch_one_unit, the job re-armed on its own rule within its cooldown; an unexercised week is not a miss",
+      "after": "2026-11-23T12:00Z"
+    },
+    {
+      "fix": "FIX-1424",
+      "what": "the first slot of each: crs-summaries Sat 11-21 10:00Z, irs990 Tue 11-24 15:00Z, the audit Tue 11-24 17:00Z — each run's createdAt within 5 min of its slot, event workflow_dispatch, its gha_dispatch_<stem> stamp, no second run that day, the run's status; no audit run on Mon 11-23; and the canary's gha_dispatch_stale silent for the three until their first slots",
+      "after": "2026-11-24T19:00Z"
+    }
+  ]
+}
