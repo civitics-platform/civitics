@@ -1,0 +1,45 @@
+{
+  "cc": "285",
+  "prompt": "cc-prompt-285-fix401-data-flags-table-flag-data-button-beside-source-badge-admin-triage-queue-class-p-push-after-the-fix1409-merge.md",
+  "started_at": "2026-11-18T04:39:13Z",
+  "finished_at": "2026-11-18T05:17:11Z",
+  "head_before": "8a10819f",
+  "head_after": "d0d46d0d",
+  "commits": [
+    {
+      "sha": "07ed74cd",
+      "subject": "feat(db): FIX-401 data_flags — a reader's flag on a data row; RLS select-own / insert-own, the 20-per-24h cap as a BEFORE INSERT trigger — 20261120000000 (cc-285)"
+    },
+    {
+      "sha": "1d2ae4bc",
+      "subject": "feat(app): FIX-401 readers can flag a data row — POST /api/data-flags, \"Flag this data\" beside the source badge on the five sites, a Data flags queue in moderation (cc-285)"
+    },
+    {
+      "sha": "2edbd5d6",
+      "subject": "[skip vercel] docs: data flags — POST /api/data-flags and the moderation queue + resolve_data_flag in API.md; OPERATIONS §Moderation (the cap, the queue, the unwritten auto-moderator columns); PHASE_GOALS Community & Auth line; file FIX-1427 (promotion does not move data_flags) (cc-285)"
+    },
+    {
+      "sha": "6f78aee1",
+      "subject": "chore(fixes): record FIX-401 on prod — one data_flags row through the deployed app: official 83a86ecb… (Bernard Sanders), reason other, source congress_gov, flagged 05:13:42Z by abd54530…; resolved in the dashboard's Data flags queue 05:14:53Z, resolution no_action, resolved_by abd54530… (cc-285)"
+    },
+    {
+      "sha": "d0d46d0d",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-285 — FIX-401 closes local+prod (1d2ae4bc local, the 6f78aee1 prod record); FIX-1427 filed (28 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-401"
+  ],
+  "fixes_filed": [
+    "FIX-1427"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261120000000_fix401_data_flags.sql"
+  ],
+  "prod_writes": "ONE gated class-P push of exactly one file (20261120000000_fix401_data_flags.sql: CREATE TABLE, two indexes, RLS, two policies, grants, one trigger function and its trigger; no rewrite, no data), from the primary's packages/data, in the foreground: session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --reason 'FIX-401 data_flags table' --then 'node ../../scripts/db-push-prod.mjs --workdir ../../../civitics-worktrees/fix-401' (the worktree's migrations; the prompt's --workdir ../.. names the primary, which does not carry the file until the ff). Before it: (d′) clear — 0 job startup timeouts in 474 cron.job_run_details runs in the 3 h to 05:03:23Z, the box-health ring 90 samples with max load1 1.56 (02:56:22Z; none > 8, last 05:02:22Z); held=false at 05:03:31Z (live_writers=1); the dry run at 05:03:31Z listed exactly the one file. The five facts: (1) the gate wait started 05:03:39.235Z and read ok=true on poll 4 at 05:06:39Z (prod_op_gate ok at 05:06:37.566Z; polls 1–3 blocked by e:live_writers; census pass, 2 renders / 2 events in 60 min, ratio 1.01, floor 6; edge 0 of 420); (2) blocked_tokens [e:live_writers] only, so no b: and no a:nightly_next_start token; (3) claim 05:06:43.447Z → 05:06:44.594Z = 1.1 s, 17 guarded pipelines held and cleared; (4) 0 data_sync_log rows started inside the claim; (5) 0 dispatch_log ticks inside it (05:05:00.731Z nothing_due and 05:07:00.172Z bracket it). Read-back 05:07:02Z: data_flags present, RLS on, data_flags_insert_own INSERT authenticated and data_flags_select_own SELECT authenticated, 0 rows, trigger data_flags_daily_cap, table grants authenticated SELECT and service_role SELECT/INSERT/UPDATE (anon none). Head 20261119002000 / 565 → 20261120000000 / 566. The one data_flags row on prod after that was written and resolved by Craig through the deployed app, not by this run. No call, dial, VACUUM, pause or hand-edited row.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "owed": []
+}
