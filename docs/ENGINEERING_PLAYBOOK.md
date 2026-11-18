@@ -58,6 +58,9 @@ New rule **B6**.
 **Extended 2026-11-15** with the vote edge rule (cc-283, FIX-1409). New rule
 **E12**.
 
+**Extended 2026-11-18** with three post-landing Mondays under the io: rung
+(cc-292, FIX-1421 / FIX-1423). New rule **C14**.
+
 ---
 
 ## A. Data-shape regimes
@@ -899,6 +902,38 @@ The mirror half of FIX-1375 landed as `20261104005000`, pushed with cc-263.
 The rung is live, the IO-side twin of the memory rules: `io_throttled` and
 `io_saturated` in `box_is_saturated`, and every reader of that function inherits
 them, including the chunk loops of two running units. *FIX-1375 · cc-264*
+
+### C14. A brake that only holds does not pace. Pace the spender, and close what a dead unit leaves behind.
+
+The io: rung held as designed, and three post-landing Mondays still got worse
+under it:
+
+| landing | Disk IO consumed (Mon) | startup timeouts | rung |
+|---|---:|---:|---|
+| 11-01 / 02 | 88 % | 270 | none |
+| 11-08 / 09 | — | 306 | `io_samples` 3 |
+| 11-15 / 16 | 96 % | 414 (277 in the pass) | `io_samples` 2 |
+
+A hold stops the next unit while the burst budget is already spent. It does
+not change how fast the spender comes back. ec-crawl re-armed 10 min after
+each unit (`stale_after 10 minutes`). Each ecs window reads ~8.8 GB at
+~3,000 IOPS, and the Micro refills its burst only below 500. So the pass
+outran the refill between holds: 11-16's 32-unit pass ran a p50 reap→arm gap
+of 10.0 min, p90 101.6 min (the holds), 23.1 h end to end.
+
+5.5 h of those 23 h were not the IO at all. One unit was cancelled at 12:56Z,
+two watchdogs cancelled the same backend in one call (FIX-1425), and its
+`data_sync_log` row stayed `running`. The tick's census reads such a row as a
+live unit for 6 h, so it held the crawl and group ec until the nightly's
+reaper closed it at 21:05Z. Nothing was running.
+
+**Apply:** when a brake fires and the receipt still worsens, slow the spender.
+Do not tighten the brake. One variable per receipt: ec-crawl to 25 min (fe-crawl's
+value), with `max_concurrent_units` and `io_samples` left as they were. And
+the moment the scheduler knows a unit is dead (its reap reads `failed`), it
+closes the unit's own `running` rows. Leaving that to a 60-minute reaper lets a
+corpse hold a lane for hours.
+*FIX-1423 / FIX-1421 / FIX-1425 · `docs/cc/reports/cc-286.md`, cc-292 · receipt: Mon 11-23's pass*
 
 ---
 

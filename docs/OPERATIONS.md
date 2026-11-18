@@ -1214,6 +1214,34 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 | `/api/cron/platform-snapshot` | `*/30 * * * *` | Platform counts snapshot (FIX-1127, off GHA). FIX-1292 R7 split it for a day (2026-10-10 → 10-11, cc-213 → cc-216); the `/usage` and `/status` half routes remain but no cron fires them | no |
 | `/api/cron/front-door-watch` | `*/15 * * * *` | Front-door wedge detector (FIX-1130) | no |
 | `/api/cron/cron-watchdog` | `*/2 * * * *` | Fires **both** budget watchdogs (FIX-1194) | yes |
+| `/api/cron/gha-dispatch/irs990` | `0 15 * * 2` | STARTS `irs990.yml` (FIX-1424); no `schedule:` fallback | yes |
+| `/api/cron/gha-dispatch/audit` | `0 17 * * 2` | STARTS `audit.yml`, the weekly integrity audit (FIX-1424); no fallback | yes |
+| `/api/cron/gha-dispatch/crs-summaries` | `0 10 * * 6` | STARTS `crs-summaries.yml` (FIX-1424); no fallback | yes |
+
+**Who starts the GitHub workflows (FIX-1218, FIX-1424).** GitHub runs a
+`schedule:` workflow when it gets to it, hours late. So every workflow that
+touches prod is started by a Vercel cron on `/api/cron/gha-dispatch/<stem>`,
+which POSTs `workflow_dispatch` and stamps `pipeline_state.gha_dispatch_<stem>`
+on every call (`dispatched` / `refused` / `error`). `nightly-request`,
+`sync-canary-check` and `platform-snapshot` keep a `schedule:` fallback. irs990
+(Tue 15:00Z, after Sunday's fec_bulk and the post-landing pass), the audit
+(Tue 17:00Z) and crs-summaries (Sat 10:00Z) have none since cc-292. A second
+start hours later is what moving them fixed. The canary reports
+`gha_dispatch_refused` and `gha_dispatch_stale` (169 h for these three; an
+absent stamp is not stale before each stem's first slot). The registry rows
+read `gha-dispatch:<stem>` on their `at` slot; the dispatcher never loops an
+`at` row. `fixes-housekeep.yml` and `refresh-disposable-emails.yml` touch no
+database and stay on `schedule:`.
+
+- **Run one by hand:** `gh workflow run irs990.yml` (or `audit.yml`,
+  `crs-summaries.yml`). The concurrency group serializes it against a
+  dispatched run.
+- **Read the start:** `gh run list --workflow irs990.yml -L 3` (event
+  `workflow_dispatch`, `createdAt` within minutes of the slot) and the stamp:
+  `SELECT value FROM pipeline_state WHERE key = 'gha_dispatch_irs990'`.
+- **Revert:** the app half first (the allowlist entry in
+  `apps/civitics/src/lib/gha-dispatch.ts`, the cron here, the workflow's
+  `schedule:` block), then `scripts/fix1424-revert-gha-dispatch-starts.sql`.
 
 **The two firing paths, and how to tell them apart.** `cron-watchdog` does not
 replace pg_cron's `cron-job-budget-watchdog` and `derived-mvs-unit-watchdog` —
@@ -1848,6 +1876,66 @@ never allowed, so its ratio is confounded. Its Dec 1 12:00Z slot runs alone.
 - **Bands for dispatched rows** come from the census in
   `docs/receipts/README.md` §"Dispatched jobs: the bands census (FIX-1373)":
   ≥ 3 reaped `succeeded` walls since 10-14 → `[0, ceil(1.5 × max)]`.
+
+### The reap closes a failed unit's `running` row (FIX-1421, cc-292)
+
+Step 5 of the tick counts any `data_sync_log` row `status = 'running'` younger
+than 6 h (`c_running_win`) as a live unit of every registry job on its
+pipeline. A unit whose own terminal UPDATE never ran leaves such a row behind.
+On 11-16 that kept `live (ec-crawl)` holding the crawl and group ec from
+12:57Z to ~18:25Z with nothing running, until the nightly's
+`reap_stale_sync_log` closed it at 21:05:57Z. Why that unit's own handler
+missed is FIX-1425: two watchdogs cancelled one backend in one call, and the
+second cancel landed inside the `query_canceled` handler.
+
+From `20261119000000` (pin `142869d4f55f8eae73c7dd49ceae4b7a`, prod 2026-11-18 04:13:03Z) the tick's reap
+closes them itself. When a one-shot's cron run ended **`failed`** and its
+registry row has a `pipeline`, that pipeline's rows still `running` whose
+`started_at` falls inside the run (`job_run_details.start_time` …
+`end_time`) are closed in the same tick:
+
+| column | value |
+|---|---|
+| `status` | `reaped` (the reaper's word) |
+| `completed_at` | the run's `end_time` — the true end, never `now()` |
+| `error_message` | `reaped_orphan — the unit's cron run ended failed: <the run's message, 200 chars>` |
+| `metadata` | `+ reaped: true, reaped_at, reaped_by: 'dispatch_one_unit', armed_jobname` |
+
+- **The reap row says it.** Its `reason` ends `; closed N running row(s)`.
+  Find them with `SELECT * FROM dispatch_log WHERE decision = 'reaped' AND
+  reason LIKE '%; closed %'`, and the rows with `metadata->>'reaped_by' =
+  'dispatch_one_unit'`. A row with `reaped_by` absent was closed by the
+  nightly's `reap_stale_sync_log` instead.
+- **What it never touches:** a `succeeded` run's rows, a row that started
+  before the run, another pipeline's rows, a pipeline-less job's run. Like the
+  reaper's `reaped` rows, a closed row is non-advancing: the `stale_after` /
+  `by` anchor reads `complete | partial` only, so the job re-arms on its own
+  rule, and the failed reap counts toward the I6 cooldown as before.
+- **Revert:** `scripts/fix1421-revert-reap-close.sql` (FIX-1361's body
+  `d6a9073b…` verbatim; pause first, per its header). Rows already closed stay
+  closed.
+
+### ec-crawl rests 25 minutes after a unit (FIX-1423, cc-292)
+
+`ec-crawl`'s registry rule is `stale_after 25 minutes` from `20261119001000` (prod 2026-11-18 04:13:03Z)
+(it was 10; fe-crawl's value). After a Sunday landing each ecs window reads
+~8.8 GB at the volume's ~3,000 IOPS burst; the Micro sustains 500 IOPS and
+refills the burst budget only below that. A 10-minute rest re-armed the crawl
+before the refill. Three Mondays got worse under the io: rung's holds (Disk IO
+consumed 88 % / 96 %, 270 / 306 / 414 startup timeouts).
+
+- **What it moves:** a multi-unit cycle's wall. cc-292's projection, holds kept
+  as an upper bound: 11-16's 32-unit pass 23.1 h (5.5 h of it FIX-1421's
+  orphan) → ~24.8 h, or ~16 h if pacing removes the holds; a quiet 35-unit cycle
+  9.4 h → ~17.7 h. 1-unit cycles are paced by `ec_crawl.min_cycle_interval_minutes`
+  (360) and do not move.
+- **The nearest threshold:** the canary's rollup freshness on
+  `entity_connections_rebuild` (`cadence_hours 24` → report at 36 h without a
+  `complete` row, escalate 60 h). The post-landing pass at the bound reads
+  ~32.5 h. Nothing else reads the crawl's cadence.
+- **Revert:** `scripts/fix1423-revert-ec-crawl-cadence.sql` (the row back to
+  10, matched on 25; no pause needed). One UPDATE either way; no other dial
+  moved with it (`max_concurrent_units` 2, `io_samples` 2).
 
 ### Upgrade Path
 

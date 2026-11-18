@@ -202,9 +202,12 @@ restating it. Each line is a rule that has cost a real session.
 - For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
   the prompt names it.
 - **The dispatcher's bodies** — what a dispatcher prompt's read 2/3 pins, from
-  cc-267 on (2026-11-11 01:10:43Z, FIX-1398 `20261111001000` + FIX-1392
+  cc-292 on (2026-11-18 04:13:03Z, FIX-1421 `20261119000000`; the other three from cc-267,
+  2026-11-11 01:10:43Z, FIX-1398 `20261111001000` + FIX-1392
   `20261111003000`): `md5(prosrc)` of `dispatch_one_unit`
-  **`d6a9073bcc4d9084b9d7994324a89b18`** (unchanged since cc-254) /
+  **`142869d4f55f8eae73c7dd49ceae4b7a`** (the reap closes a failed unit's
+  `running` rows; `d6a9073bcc4d9084b9d7994324a89b18`, cc-254's, is now only
+  FIX-1421's revert target, `scripts/fix1421-revert-reap-close.sql`) /
   `get_dispatcher_status` **`d6bb02aab3eb8c9625275227f564c5c9`**
   (`4c30523742e280a4b48ea2ec390654d6` fix1354 → the io block) /
   `box_is_saturated` **`b05961ca6d1cf7e56874071bfe334da1`**
@@ -218,8 +221,8 @@ restating it. Each line is a rule that has cost a real session.
   them through `withCurrentPins()`, so a new pin move adds a line to `PIN_LINEAGE`
   (`packages/data/src/__tests__/lib/migration-text.ts`); a cron MOVE that older
   read-backs assert against adds a line to `MOVED_LINEAGE` beside it (cc-267,
-  officials). `dispatch_one_unit` is from cc-254 on (2026-10-29 00:18:16Z,
-  FIX-1361 `20261029000000`, cc-253).
+  officials). `dispatch_one_unit`'s `d6a9073b…` held from cc-254 (2026-10-29
+  00:18:16Z, FIX-1361 `20261029000000`, cc-253) to cc-292.
   Lineage: `64c8271e7601095d275c68eff5187931` (FIX-1354
   `20261027000000`, cc-251) is now only FIX-1361's revert target
   (`scripts/fix1361-revert-dispatcher-anchor-rung.sql`); the N2 pair
@@ -398,9 +401,10 @@ passing, and both failures the clock rather than the data.
 - `pnpm fixes:check` after each commit.
 - **A GHA-workflow FIX's receipt is the next run AT ITS SLOT — dispatched or
   scheduled** (rule 71, rewritten by FIX-1218). `nightly.yml`,
-  `sync-canary-check.yml` and `platform-snapshot.yml` are fired by
-  `/api/cron/gha-dispatch/<stem>` (Vercel cron) as `workflow_dispatch`; their
-  `schedule:` runs are fallbacks. Read runs with `gh run list --workflow <file>`
+  `sync-canary-check.yml`, `platform-snapshot.yml`, `irs990.yml`, `audit.yml`
+  and `crs-summaries.yml` are fired by `/api/cron/gha-dispatch/<stem>` (Vercel
+  cron) as `workflow_dispatch`; the first three keep `schedule:` runs as
+  fallbacks, the last three have none (FIX-1424, cc-292). Read runs with `gh run list --workflow <file>`
   WITHOUT `--event schedule`, which now hides the run that did the work, and
   read the dispatcher's own stamp, `pipeline_state.gha_dispatch_<stem>`. Never
   hand-dispatch a nightly to make a receipt: the slot is the receipt.
