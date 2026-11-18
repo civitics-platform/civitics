@@ -1744,6 +1744,72 @@ export type Database = {
         }
         Relationships: []
       }
+      data_flags: {
+        Row: {
+          admin_resolved_at: string | null
+          auto_resolved_at: string | null
+          classification: string | null
+          classification_confidence: number | null
+          comment: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          flagger_user_id: string
+          id: string
+          reason: string
+          resolution: string | null
+          resolved_by: string | null
+          source: string | null
+        }
+        Insert: {
+          admin_resolved_at?: string | null
+          auto_resolved_at?: string | null
+          classification?: string | null
+          classification_confidence?: number | null
+          comment?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          flagger_user_id: string
+          id?: string
+          reason: string
+          resolution?: string | null
+          resolved_by?: string | null
+          source?: string | null
+        }
+        Update: {
+          admin_resolved_at?: string | null
+          auto_resolved_at?: string | null
+          classification?: string | null
+          classification_confidence?: number | null
+          comment?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          flagger_user_id?: string
+          id?: string
+          reason?: string
+          resolution?: string | null
+          resolved_by?: string | null
+          source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_flags_flagger_user_id_fkey"
+            columns: ["flagger_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_flags_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_sync_log: {
         Row: {
           completed_at: string | null
