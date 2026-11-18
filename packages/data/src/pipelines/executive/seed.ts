@@ -14,6 +14,14 @@
  * daily officials block of `runNightlySync`. Pre-fetch + INSERT-or-UPDATE
  * pattern mirrors `congress/officials.ts`.
  *
+ * FIX-1428: the lookup reads EVERY row for the seed id and the oldest wins.
+ * It used `.maybeSingle()` and treated a lookup error as "not found", so one
+ * failed lookup inserted a duplicate — and from then on `.maybeSingle()`
+ * errored every night (two rows match), so every nightly inserted another
+ * while logging inserted=1 (43 Vice Presidents on prod by 2026-11-18). Now an
+ * error writes nothing and counts as `failed`; extra rows are counted as
+ * `duplicates` and left alone for the supervised cleanup (FIX-1429).
+ *
  * Run standalone:
  *   pnpm --filter @civitics/data data:executive-seed
  */
@@ -30,6 +38,8 @@ export interface ExecutiveSeedResult {
   inserted: number;
   updated: number;
   failed: number;
+  /** Rows beyond the oldest for a seed id, summed across executives. */
+  duplicates: number;
 }
 
 interface ExecRecord {
@@ -75,7 +85,7 @@ const CURRENT_EXECUTIVES: ExecRecord[] = [
 
 export async function runExecutiveSeed(opts: { db?: Db } = {}): Promise<ExecutiveSeedResult> {
   const db = opts.db ?? createAdminClient();
-  const out: ExecutiveSeedResult = { inserted: 0, updated: 0, failed: 0 };
+  const out: ExecutiveSeedResult = { inserted: 0, updated: 0, failed: 0, duplicates: 0 };
 
   // Federal jurisdiction (United States, fips_code=00)
   const { data: federal, error: jurErr } = await db
@@ -99,22 +109,40 @@ export async function runExecutiveSeed(opts: { db?: Db } = {}): Promise<Executiv
     throw new Error(`runExecutiveSeed: Office of the President governing body not found (${gbErr?.message ?? "no row"})`);
   }
 
-  // Pre-fetch any existing rows keyed by official_seed_id
-  const existingMap = new Map<string, string>();
+  // Pre-fetch every existing row keyed by official_seed_id, oldest first.
+  // `null` = looked up and absent (insert); a seed id missing from the map
+  // = the lookup failed (write nothing tonight).
+  const existingMap = new Map<string, string | null>();
   for (const exec of CURRENT_EXECUTIVES) {
-    const { data: row, error } = await db
+    const { data: rows, error } = await db
       .from("officials")
-      .select("id")
+      .select("id, created_at")
       .filter("source_ids->>official_seed_id", "eq", exec.seedId)
-      .maybeSingle();
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
     if (error) {
-      console.warn(`  executive seed: lookup ${exec.seedId} failed: ${error.message}`);
+      console.error(`  executive seed: lookup ${exec.seedId} failed: ${error.message} — skipped, no insert and no update`);
+      out.failed++;
       continue;
     }
-    if (row) existingMap.set(exec.seedId, row.id as string);
+    const found = (rows ?? []) as Array<{ id: string }>;
+    const oldest = found[0];
+    if (!oldest) {
+      existingMap.set(exec.seedId, null);
+      continue;
+    }
+    if (found.length > 1) {
+      out.duplicates += found.length - 1;
+      console.warn(
+        `  executive seed: ${exec.seedId} has ${found.length} rows — updating the oldest ${oldest.id}; ${found.length - 1} duplicate(s) left for cleanup`,
+      );
+    }
+    existingMap.set(exec.seedId, oldest.id);
   }
 
   for (const exec of CURRENT_EXECUTIVES) {
+    if (!existingMap.has(exec.seedId)) continue;
+
     const data: OfficialInsert = {
       full_name:         exec.fullName,
       first_name:        exec.firstName,
@@ -155,7 +183,9 @@ export async function runExecutiveSeed(opts: { db?: Db } = {}): Promise<Executiv
     }
   }
 
-  console.info(`  executive seed: inserted=${out.inserted} updated=${out.updated} failed=${out.failed}`);
+  console.info(
+    `  executive seed: inserted=${out.inserted} updated=${out.updated} duplicates=${out.duplicates} failed=${out.failed}`,
+  );
   return out;
 }
 

@@ -609,7 +609,9 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const t0 = Date.now();
     try {
       const r = await runExecutiveSeed({ db });
-      console.info(`[nightly] executive seed — complete in ${Date.now() - t0}ms (inserted=${r.inserted} updated=${r.updated})`);
+      console.info(
+        `[nightly] executive seed — complete in ${Date.now() - t0}ms (inserted=${r.inserted} updated=${r.updated} duplicates=${r.duplicates} failed=${r.failed})`,
+      );
     } catch (err) {
       const msg = errMsg(err);
       console.error("[nightly] executive seed failed (non-fatal):", msg);
