@@ -1924,3 +1924,4 @@
 2026-11-18 | FIX-1424 | e8025fad | local-only | feat(gha): FIX-1424 irs990 (Tue 15:00Z), the weekly audit (Tue 17:00Z) and crs-summaries (Sat 10:00Z) START by Vercel dispatch, schedule: removed — 20261119002000 (cc-292)
 2026-11-18 | FIX-401 | 6f78aee1 | prod-only | chore(fixes): record FIX-401 on prod — one data_flags row through the deployed app: official 83a86ecb… (Bernard Sanders), reason other, source congress_gov, flagged 05:13:42Z by abd54530…; resolved in the dashboard's Data flags queue 05:14:53Z, resolution no_action, resolved_by abd54530… (cc-285)
 2026-11-18 | FIX-401 | 1d2ae4bc | local-only | feat(app): FIX-401 readers can flag a data row — POST /api/data-flags, "Flag this data" beside the source badge on the five sites, a Data flags queue in moderation (cc-285)
+2026-11-18 | FIX-1428 | 0b4dcfb3 | local-only | fix(data): FIX-1428 the executive seed reads every match and updates the oldest; a failed lookup writes nothing (cc-297)
