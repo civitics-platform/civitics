@@ -255,6 +255,7 @@ constantly — treat them as an order-of-magnitude snapshot, not a target.
 - [x] Position tracking on proposals — `PositionSection` on proposal + initiative detail pages; writes `entity_positions` (21 rows on prod), history in `position_events`
 - [x] Follow officials and agencies — `FollowButton` on officials, institutions, jurisdictions, and initiatives; `user_follows` (9 rows on prod) surfaced in `/desk` via `WatchingModule`
   - `notifications` table exists and is wired, but has not fired yet (0 rows) — worth a look before calling the loop closed
+- [x] Flag a data row — `FlagDataButton` beside the source badge on officials, proposals, donors, institutions and the explorer's detail rail; writes `data_flags` (20 per user per 24 h), triaged in the dashboard's Content Moderation → Data flags queue (FIX-401). The auto-moderator columns are unwritten
 - [ ] jurisdiction_admin / staff / institution_admin claim flows — was FIX-561; re-open when the first feature needs one of those roles
 - [ ] Sybil ↔ brigade corroboration join — was FIX-881; re-open when `abuse_events` holds post-launch traffic and `data:sybil-scan` has appended real candidates on prod (2026-11-15: 1 row in `abuse_events`, 0 in `brigade_candidates`, 0 in `sybil_candidates`)
 
