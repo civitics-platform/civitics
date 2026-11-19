@@ -12,14 +12,30 @@
  *   senate-119-1-00062  On the Motion          / Motion Rejected  (S.Amdt. 454 to S.Con.Res. 7)
  * Its <document> is `S.Amdt.` with an empty number; the bill is in
  * <amendment><amendment_to_document_number>.
+ *
+ * FIX-1430 adds a fifth, fetched 2026-11-19 (cc-300) and kept whole, all 100
+ * members:
+ *   senate-115-2-00223  On the Nomination      / Nomination Confirmed (50-48)
+ * Murkowski's cast is a live pair, `<vote_cast crp=" " pair="S375">Present,
+ * Giving Live Pair</vote_cast>`: the only element in the document that carries
+ * attributes, so the only cast the parser hands back as an object.
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as path from "path";
-import { parseSenateRoll, senateBillRef, senateRollResult, senateVoteMetadata, type SenateBillRefContext } from "./votes";
-import { mapVoteResult } from "./members";
+import {
+  parseSenateRoll,
+  senateBillRef,
+  senateMemberFields,
+  senateMemberList,
+  senateRollResult,
+  senateVoteMetadata,
+  xmlText,
+  type SenateBillRefContext,
+} from "./votes";
+import { UnknownCastError, mapVote, mapVoteResult } from "./members";
 import { mintStatuses, rollPassageAdvances, stampMintStatuses } from "./bill-status";
 
 const fixture = (name: string) => fs.readFileSync(path.join(__dirname, "__fixtures__", name), "utf8");
@@ -366,4 +382,86 @@ test("FIX-1408 metadata: byte-identical for every roll with no amendment number;
     JSON.stringify(senateVoteMetadata({ ...senateRollResult(root), amendmentNumber })),
     '{"vote_result":"Motion Rejected","vote_result_text":"Motion Rejected (47-52, 3/5 majority required)","amendment_number":"S.Amdt. 454"}',
   );
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1430 — a live pair's <vote_cast> carries attributes; the cast is its text.
+// ---------------------------------------------------------------------------
+
+const LIVE_PAIR = "lis-senate-115-2-00223-live-pair.xml";
+
+test("FIX-1430 xmlText: a string stays itself, a number is stringified, an object gives its #text, anything else ''", () => {
+  assert.equal(xmlText("Yea"), "Yea");
+  assert.equal(xmlText(""), "");
+  assert.equal(xmlText(2259), "2259");
+  assert.equal(xmlText({ "#text": "Present, Giving Live Pair", "@_pair": "S375" }), "Present, Giving Live Pair");
+  assert.equal(xmlText({ "#text": 42, "@_a": "x" }), "42");
+  // An element with attributes and no text, and the shapes that are not text at all.
+  assert.equal(xmlText({ "@_pair": "S375" }), "");
+  for (const node of [undefined, null, true, [], ["Yea"]]) assert.equal(xmlText(node), "", JSON.stringify(node));
+});
+
+test("FIX-1430 the real roll: the live pair parses to an object, and String() of it is what mapVote used to get", () => {
+  const root = parseSenateRoll(fixture(LIVE_PAIR))!;
+  const members = senateMemberList(root) as Array<Record<string, unknown>>;
+  const murkowski = members.find((m) => m["last_name"] === "Murkowski")!;
+  assert.deepEqual(murkowski["vote_cast"], { "#text": "Present, Giving Live Pair", "@_crp": "", "@_pair": "S375" });
+  // The pre-FIX-1430 read. Revert the helper and the writer is back here.
+  assert.equal(String(murkowski["vote_cast"] ?? ""), "[object Object]");
+  assert.throws(() => mapVote(String(murkowski["vote_cast"] ?? "")), UnknownCastError);
+});
+
+test("FIX-1430 the real roll through the writer's read: 100 members, 50 yes / 48 no / 1 not_voting / 1 present, nothing throws", () => {
+  const root = parseSenateRoll(fixture(LIVE_PAIR))!;
+  const members = senateMemberList(root);
+  assert.equal(members.length, 100);
+  const tally: Record<string, number> = {};
+  for (const m of members) {
+    const { lastName, state, cast } = senateMemberFields(m);
+    assert.ok(lastName.length > 0);
+    assert.match(state, /^[A-Z]{2}$/);
+    const vote = mapVote(cast);
+    tally[vote] = (tally[vote] ?? 0) + 1;
+  }
+  assert.deepEqual(tally, { yes: 50, no: 48, not_voting: 1, present: 1 });
+  // The count block says the same.
+  assert.deepEqual(root["count"], { yeas: 50, nays: 48, present: 1, absent: 1 });
+});
+
+test("FIX-1430 Murkowski: cast present, the pair kept as live_pair_with on her row only", () => {
+  const root = parseSenateRoll(fixture(LIVE_PAIR))!;
+  const fields = senateMemberList(root).map(senateMemberFields);
+  const murkowski = fields.find((f) => f.lastName === "Murkowski")!;
+  assert.deepEqual(murkowski, { lastName: "Murkowski", state: "AK", cast: "Present, Giving Live Pair", livePairWith: "S375" });
+  assert.equal(mapVote(murkowski.cast), "present");
+  assert.deepEqual(fields.filter((f) => f.livePairWith).map((f) => f.lastName), ["Murkowski"]);
+  // S375 is the absent senator the pair is given to: Daines, Not Voting.
+  const members = senateMemberList(root) as Array<Record<string, unknown>>;
+  const partner = members.find((m) => m["lis_member_id"] === "S375")!;
+  assert.equal(partner["last_name"], "Daines");
+  assert.equal(mapVote(senateMemberFields(partner).cast), "not_voting");
+
+  const roll = { ...senateRollResult(root), amendmentNumber: null };
+  assert.equal(
+    JSON.stringify(senateVoteMetadata(roll, murkowski.livePairWith)),
+    '{"vote_result":"Nomination Confirmed","vote_result_text":"Nomination Confirmed (50-48)","live_pair_with":"S375"}',
+  );
+  // Every other row's metadata is what it was.
+  assert.equal(
+    JSON.stringify(senateVoteMetadata(roll, null)),
+    '{"vote_result":"Nomination Confirmed","vote_result_text":"Nomination Confirmed (50-48)"}',
+  );
+});
+
+test("FIX-1430 the four plain fixtures read the same through the helper as through String()", () => {
+  for (const f of [NOMINATION, CLOTURE, BILL_PASSED, AMDT_MOTION]) {
+    for (const m of senateMemberList(parseSenateRoll(fixture(f))!) as Array<Record<string, unknown>>) {
+      assert.deepEqual(senateMemberFields(m), {
+        lastName: String(m["last_name"] ?? "").trim(),
+        state: String(m["state"] ?? "").trim().toUpperCase(),
+        cast: String(m["vote_cast"] ?? ""),
+        livePairWith: null,
+      }, f);
+    }
+  }
 });

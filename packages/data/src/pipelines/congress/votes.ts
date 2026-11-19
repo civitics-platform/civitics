@@ -451,6 +451,52 @@ export function parseSenateRoll(xmlText: string): Record<string, unknown> | null
   return parseRollRoot(xmlText, SENATE_ROLL_ROOT);
 }
 
+/**
+ * FIX-1430 — a parsed element's text. The shared parser keeps attributes, so
+ * an element that carries one parses to `{"#text": …, "@_…": …}` rather than a
+ * string: LIS's live pair is `<vote_cast crp=" " pair="S375">Present, Giving
+ * Live Pair</vote_cast>`, and `String()` of that node is `[object Object]`. A
+ * string stays itself, a number is stringified, an object gives its `#text`,
+ * anything else gives "".
+ */
+export function xmlText(node: unknown): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (node && typeof node === "object" && "#text" in node) return xmlText((node as Record<string, unknown>)["#text"]);
+  return "";
+}
+
+/** A Senate roll's `<members><member>` list (one member parses as an object, not an array). */
+export function senateMemberList(root: Record<string, unknown>): unknown[] {
+  const container = root["members"] as Record<string, unknown> | null;
+  const raw = container?.["member"];
+  return Array.isArray(raw) ? raw : raw ? [raw] : [];
+}
+
+/**
+ * The fields the Senate writer keys on, each read by its text. `livePairWith`
+ * is a live pair's partner, `<vote_cast pair="S375">`: the LIS member id of
+ * the absent senator the pair is given to, or null.
+ */
+export function senateMemberFields(m: unknown): {
+  lastName: string;
+  state: string;
+  cast: string;
+  livePairWith: string | null;
+} {
+  const mObj = (m && typeof m === "object" ? m : {}) as Record<string, unknown>;
+  const castNode = mObj["vote_cast"];
+  const pair = castNode && typeof castNode === "object"
+    ? xmlText((castNode as Record<string, unknown>)["@_pair"]).trim()
+    : "";
+  return {
+    lastName: xmlText(mObj["last_name"]).trim(),
+    state: xmlText(mObj["state"]).trim().toUpperCase(),
+    cast: xmlText(castNode),
+    livePairWith: pair || null,
+  };
+}
+
 /** A House Clerk roll's metadata and vote data, or null when the body is not one. */
 export function parseHouseRoll(
   xmlText: string,
@@ -481,17 +527,22 @@ export function senateRollResult(root: Record<string, unknown>): { resultStr: st
  * A Senate vote row's `metadata`. FIX-1408 adds `amendment_number` only when
  * the roll names one, so every other roll's metadata is byte-identical to what
  * it was. Nothing else rides per row (~100 rows a roll): the purpose and the
- * title stay at `source_url`.
+ * title stay at `source_url`. FIX-1430 adds `live_pair_with` to the one row
+ * whose cast gives a live pair, the partner's LIS member id.
  */
-export function senateVoteMetadata(roll: {
-  resultStr: string;
-  resultText: string;
-  amendmentNumber: string | null;
-}): { vote_result: string; vote_result_text?: string; amendment_number?: string } {
+export function senateVoteMetadata(
+  roll: {
+    resultStr: string;
+    resultText: string;
+    amendmentNumber: string | null;
+  },
+  livePairWith: string | null = null,
+): { vote_result: string; vote_result_text?: string; amendment_number?: string; live_pair_with?: string } {
   return {
     vote_result: roll.resultStr,
     ...(roll.resultText ? { vote_result_text: roll.resultText } : {}),
     ...(roll.amendmentNumber ? { amendment_number: roll.amendmentNumber } : {}),
+    ...(livePairWith ? { live_pair_with: livePairWith } : {}),
   };
 }
 
@@ -1040,14 +1091,7 @@ export async function runVotesPipeline(
         const voteQuestion = String(root["question"] ?? "");
         const { resultStr, resultText } = senateRollResult(root);
 
-        const membersContainer = root["members"] as Record<string, unknown> | null;
-        const memberList: unknown[] = membersContainer
-          ? (Array.isArray(membersContainer["member"])
-              ? membersContainer["member"]
-              : membersContainer["member"]
-                ? [membersContainer["member"]]
-                : [])
-          : [];
+        const memberList = senateMemberList(root);
 
         // FIX-1408: <document> first, then the amendment's target bill.
         const { billKey, args, amendmentNumber, warnings } = senateBillRef(root, rollCallId, {
@@ -1091,10 +1135,8 @@ export async function runVotesPipeline(
     build: (roll, proposalId, votedAtIso) => {
       const voteRecords: VoteInsert[] = [];
       for (const m of roll.memberList) {
-        const mObj     = m as Record<string, unknown>;
-        const lastName = String(mObj["last_name"] ?? "").trim();
-        const state    = String(mObj["state"] ?? "").trim().toUpperCase();
-        const voteText = String(mObj["vote_cast"] ?? "");
+        // FIX-1430: by text — a live pair's <vote_cast> carries attributes.
+        const { lastName, state, cast: voteText, livePairWith } = senateMemberFields(m);
         if (!lastName || !state) continue;
         // Same key function the map was built with — normalization MUST be
         // symmetric or the lookup silently misses (FIX-940).
@@ -1115,7 +1157,7 @@ export async function runVotesPipeline(
           voted_at:         votedAtIso,
           vote_question:    roll.voteQuestion,
           source_url:       roll.url,
-          metadata:         senateVoteMetadata(roll),
+          metadata:         senateVoteMetadata(roll, livePairWith),
         });
       }
       return voteRecords;
