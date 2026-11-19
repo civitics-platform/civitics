@@ -33,6 +33,9 @@
  * `no_proposal_reference` rolls — the Senate's amendment rolls — are fetched
  * once more.
  *
+ * v3 (FIX-1430): mapVote maps `Present, Giving Live Pair` to `present`, so a
+ * roll the v2 record held as `unknown_cast` is fetched once more.
+ *
  * Deleting the row is harmless: the next run fetches everything once, as
  * before FIX-1407. `pipeline_state` is world-readable (its public SELECT
  * policy), so the value holds roll ids, reasons, dates and flags — nothing else.
@@ -45,8 +48,10 @@ import type { UnstoredReason } from "./vote-bill-guard";
  * Bump when the parser learns to store a roll it skips today.
  * v2 (FIX-1408): amendment rolls are stored against their target bill, so
  * every v1 `no_proposal_reference` is fetched once more.
+ * v3 (FIX-1430): a live pair is `present`, so every v2 `unknown_cast` is
+ * fetched once more.
  */
-export const SENATE_UNSTORED_VERSION = 2;
+export const SENATE_UNSTORED_VERSION = 3;
 
 /** A roll skipped for a reason that can clear by itself is fetched again after this many days. */
 export const RETRY_ABSENT_DAYS = 7;

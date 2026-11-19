@@ -224,15 +224,19 @@ export class UnknownCastError extends Error {
  * with a member row the source did not say. Teaching this function a new cast
  * also means bumping SENATE_UNSTORED_VERSION (senate-unstored.ts), so the
  * Senate rolls recorded `unknown_cast` are fetched once more.
+ *
+ * FIX-1430: Senate LIS's `Present, Giving Live Pair` is a senator who is
+ * present and withholds a vote, so it maps to `present`. The cast does not say
+ * which side the pair is on, so `paired_yes` / `paired_no` are not used.
  */
 export function mapVote(voteStr: string): "yes" | "no" | "not_voting" | "present" {
-  const v = voteStr.trim().toLowerCase();
+  const v = voteStr.trim().toLowerCase().replace(/\s+/g, " ");
   if (v === "yea" || v === "aye") return "yes";
   if (v === "nay" || v === "no") return "no";
   if (v === "guilty") return "yes";
   if (v === "not guilty") return "no";
   if (v === "not voting" || v === "not_voting") return "not_voting";
-  if (v === "present") return "present";
+  if (v === "present" || v === "present, giving live pair") return "present";
   throw new UnknownCastError(voteStr);
 }
 

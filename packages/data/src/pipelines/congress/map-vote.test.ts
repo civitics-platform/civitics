@@ -6,6 +6,9 @@
  * mapVote's default. D7: a verdict maps to yes / no; any other unknown cast
  * throws, and the roll writer stores nothing for that roll and names it.
  *
+ * FIX-1430: Senate LIS's `Present, Giving Live Pair` maps to `present`, so one
+ * senator giving a live pair no longer holds the roll's other 99 rows back.
+ *
  * The first tests mapVote has had. No database.
  *
  * Runs via:  tsx --test src/pipelines/congress/map-vote.test.ts
@@ -45,8 +48,16 @@ test("FIX-1417 an impeachment verdict: Guilty → yes, Not Guilty → no", () =>
   assert.equal(mapVote("NOT GUILTY"), "no");
 });
 
+test("FIX-1430 a live pair: Present, Giving Live Pair → present, case-insensitive, whitespace collapsed", () => {
+  for (const cast of ["Present, Giving Live Pair", "PRESENT, GIVING LIVE PAIR", "  Present,  Giving\tLive Pair "]) {
+    assert.equal(mapVote(cast), "present", JSON.stringify(cast));
+  }
+});
+
 test("FIX-1417 an unknown cast throws a named error carrying the string — never not_voting", () => {
-  for (const cast of ["Jeffries", "Present, Giving Live Pair", "", "Abstain"]) {
+  // FIX-1430 maps the live pair and nothing else: an empty cast, a blank one,
+  // and a fragment of the live-pair string all still throw.
+  for (const cast of ["Jeffries", "", "   ", "Abstain", "Giving Live Pair", "Present, Giving"]) {
     assert.throws(
       () => mapVote(cast),
       (err: unknown) => err instanceof UnknownCastError && err.cast === cast && err.message === `unknown cast '${cast}'`,
@@ -60,7 +71,7 @@ test("every value mapVote returns is in the votes.vote CHECK constraint (0001_in
   const m = /vote\s+TEXT NOT NULL\s+CHECK \(vote IN \(([^)]*)\)\)/.exec(sql);
   assert.ok(m, "the CHECK is where the schema puts it");
   const allowed = new Set([...m[1]!.matchAll(/'([a-z_]+)'/g)].map((x) => x[1]));
-  for (const cast of ["Yea", "Nay", "Not Voting", "Present", "Guilty", "Not Guilty"]) {
+  for (const cast of ["Yea", "Nay", "Not Voting", "Present", "Guilty", "Not Guilty", "Present, Giving Live Pair"]) {
     assert.ok(allowed.has(mapVote(cast)), `${cast} → ${mapVote(cast)}`);
   }
 });
@@ -86,14 +97,30 @@ async function write(rolls: Roll[]) {
 
 test("FIX-1417 writer: a roll with one unknown cast stores NOTHING, is named unknown_cast, and the next roll still lands", async () => {
   const { res, inserted, lines } = await write([
-    { rollCallId: "senate-119-2-00300", billKey: "119-S-1", votedAt: "2026-11-01", casts: ["Yea", "Present, Giving Live Pair", "Nay"] },
+    { rollCallId: "senate-119-2-00300", billKey: "119-S-1", votedAt: "2026-11-01", casts: ["Yea", "Abstain", "Nay"] },
     { rollCallId: "senate-119-2-00301", billKey: "119-S-1", votedAt: "2026-11-01", casts: ["Yea", "Nay"] },
   ]);
   assert.deepEqual(inserted.map((r) => r[0]!.roll), ["senate-119-2-00301"], "no insert call for the held roll");
   assert.deepEqual(res.unstored, [{ roll: "senate-119-2-00300", reason: "unknown_cast" }]);
   assert.deepEqual(res.landed, ["senate-119-2-00301"]);
   assert.equal(res.inserted, 2);
-  assert.ok(lines.some((l) => l.includes("unknown cast 'Present, Giving Live Pair' in senate-119-2-00300")), lines.join("\n"));
+  assert.ok(lines.some((l) => l.includes("unknown cast 'Abstain' in senate-119-2-00300")), lines.join("\n"));
+});
+
+test("FIX-1430 writer: a roll with one live pair and 99 known casts stores all 100 rows, the pair as present", async () => {
+  const known = ["Yea", "Nay", "Not Voting"];
+  const casts = Array.from({ length: 99 }, (_, i) => known[i % known.length]!);
+  casts.splice(42, 0, "Present, Giving Live Pair");
+  const { res, inserted } = await write([
+    { rollCallId: "senate-119-2-00300", billKey: "119-S-1", votedAt: "2026-11-01", casts },
+  ]);
+  assert.deepEqual(res.unstored, []);
+  assert.deepEqual(res.landed, ["senate-119-2-00300"]);
+  assert.equal(res.inserted, 100);
+  assert.equal(inserted.length, 1);
+  assert.equal(inserted[0]!.length, 100);
+  assert.equal(inserted[0]![42]!.vote, "present");
+  assert.equal(inserted[0]!.filter((r) => r.vote === "present").length, 1);
 });
 
 test("FIX-1417 writer: the verdict roll's casts land as yes / no", async () => {

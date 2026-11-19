@@ -235,7 +235,6 @@ test("FIX-1407 read: another version is dropped with a line", async () => {
 });
 
 test("FIX-1408 v2: a v1 record — every amendment roll in it a no_proposal_reference — parses to null, and the reader starts over", async () => {
-  assert.equal(SENATE_UNSTORED_VERSION, 2);
   const v1 = {
     v: 1,
     sessions: {
@@ -249,7 +248,35 @@ test("FIX-1408 v2: a v1 record — every amendment roll in it a no_proposal_refe
   assert.deepEqual(r, emptySenateUnstored());
   assert.deepEqual(senateSkipSets(r, "2026-11-15"), { seen: new Set(), recheck: new Set() }, "nothing skipped: roll 62 is fetched again");
   assert.deepEqual(lines, [
-    "  Senate unstored record: congress_votes:senate_rolls:119 is v1, not v2 — starting over (every roll fetched once)",
+    `  Senate unstored record: congress_votes:senate_rolls:119 is v1, not v${SENATE_UNSTORED_VERSION} — starting over (every roll fetched once)`,
+  ]);
+});
+
+test("FIX-1430 v3: a v2 record holding a live-pair roll as unknown_cast parses to null; the roll, the parser reasons and the closed tail are all walked again once", async () => {
+  assert.equal(SENATE_UNSTORED_VERSION, 3);
+  // The prod shape at v2 (the 11-17 / 11-18 nightlies: 13 known, 13 no
+  // reference, session 1's tail closed), plus a roll held since FIX-1417.
+  const v2 = {
+    v: 2,
+    sessions: {
+      "1": { tail_closed: true, rolls: { "senate-119-1-00062": { reason: "no_proposal_reference", seen_at: "2026-11-17" } } },
+      "2": {
+        tail_closed: false,
+        rolls: {
+          "senate-119-2-00014": { reason: "no_proposal_reference", seen_at: "2026-11-17" },
+          "senate-119-2-00268": { reason: "unknown_cast", seen_at: "2026-11-18" },
+        },
+      },
+    },
+  };
+  assert.equal(parseSenateUnstored(v2), null);
+  const lines: string[] = [];
+  const r = await readSenateUnstored(fakeDb({ value: v2 }).db, 119, (l) => lines.push(l));
+  assert.deepEqual(r, emptySenateUnstored());
+  assert.deepEqual(senateSkipSets(r, "2026-11-19"), { seen: new Set(), recheck: new Set() }, "nothing skipped: roll 268 is fetched again");
+  assert.equal(r.sessions["1"]?.tail_closed === true, false, "session 1's tail is walked again once");
+  assert.deepEqual(lines, [
+    "  Senate unstored record: congress_votes:senate_rolls:119 is v2, not v3 — starting over (every roll fetched once)",
   ]);
 });
 
