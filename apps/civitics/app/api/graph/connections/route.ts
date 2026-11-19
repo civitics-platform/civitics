@@ -2,7 +2,7 @@ import { createAdminClient, noStoreFetch, fetchAllKeyset, afterKey } from "@civi
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
-import { voteEdgeTier, VOTE_EDGE_TYPES, VOTE_TIER_FINAL_MIN_STRENGTH } from "@/lib/graph-vote-tier";
+import { voteEdgeTier, VOTE_EDGE_TYPES, VOTE_FINAL_TIER_OR_FILTER } from "@/lib/graph-vote-tier";
 import type { Database } from "@civitics/db";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, EdgeType, NodeTypeV2 as NodeType, IndividualDisplayMode } from "@civitics/graph";
 import { BRACKET_TIERS } from "@civitics/graph";
@@ -279,13 +279,14 @@ export async function GET(request: Request) {
       const OVERSIGHT_TYPES = ["oversight", "appointment", "co_sponsorship", "revolving_door", "contract_award"] as const;
 
       // FIX-1433 — with the toggle off the advance tier is cut in this read's
-      // WHERE, so votes_limit counts only edges that will be shown.
+      // WHERE, so votes_limit counts only edges that will be shown. cc-300: the
+      // cut is exactly voteEdgeTier()'s advance, not every vote edge below 0.5.
       let votesQuery = supabase
         .from("entity_connections")
         .select("*")
         .in("connection_type", VOTE_EDGE_TYPES)
         .or(`from_id.eq.${entityId},to_id.eq.${entityId}`);
-      if (!includeProcedural) votesQuery = votesQuery.gte("strength", VOTE_TIER_FINAL_MIN_STRENGTH);
+      if (!includeProcedural) votesQuery = votesQuery.or(VOTE_FINAL_TIER_OR_FILTER);
 
       const [officialProbeRes, rollupRes, votesRes, oversightRes, investigationRes] = await Promise.all([
         // Cheap PK probe: the rollup keys recipients of BOTH kinds (officials

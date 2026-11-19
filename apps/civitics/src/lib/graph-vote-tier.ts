@@ -52,3 +52,16 @@ export function voteEdgeTier(row: {
   }
   return "final";
 }
+
+/**
+ * cc-300 — the PostgREST `or` filter for a vote read with the toggle off: a
+ * row passes unless voteEdgeTier() calls it advance. `strength >= 0.5` alone
+ * also cut every other vote type, and every other evidence_source, below 0.5.
+ * `neq` is NULL on a NULL evidence_source, so `is.null` keeps that row final.
+ */
+export const VOTE_FINAL_TIER_OR_FILTER = [
+  `connection_type.not.in.(${[...TIERED_TYPES].join(",")})`,
+  "evidence_source.is.null",
+  "evidence_source.neq.votes",
+  `strength.gte.${VOTE_TIER_FINAL_MIN_STRENGTH}`,
+].join(",");
