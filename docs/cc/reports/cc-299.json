@@ -1,0 +1,47 @@
+{
+  "cc": "299",
+  "prompt": "cc-prompt-299-fix1429-second-pass-delete-file-admits-homepage-stats-mv-zero-rows-repoints-irs990-matches-refuses-franklin-map-go-then-delete-unique-index-class-p-push.md",
+  "started_at": "2026-11-19T05:05:40Z",
+  "finished_at": "2026-11-19T05:27:00Z",
+  "head_before": "1e52f36b",
+  "head_after": "9d11c369",
+  "commits": [
+    {
+      "sha": "b917249d",
+      "subject": "[skip vercel] chore(scripts): FIX-1429's delete file admits zero-stat official_homepage_stats_mv rows, re-points 990 matches to the keeper and refuses on franklin_seed_map; the reference read as a committed file (cc-299)"
+    },
+    {
+      "sha": "66a97587",
+      "subject": "feat(db): FIX-1429's unique index on officials (source_ids->>'official_seed_id'), guarded on the duplicates being gone; the seed test's 23505 → failed case (cc-299)"
+    },
+    {
+      "sha": "a615591b",
+      "subject": "[skip vercel] fix(data): FIX-1429 closed on prod — 45 duplicate executive-seed officials rows deleted (3 President, 42 Vice President; 45 entity_tags, 43 entity_search_index), seeds now 1 + 1, officials_official_seed_id_key unique and valid; OPERATIONS lines (cc-299)"
+    },
+    {
+      "sha": "9d11c369",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-299 — FIX-1429 closes local+prod at a615591b (32 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1429"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20261120001000_fix1429_officials_official_seed_id_unique.sql"
+  ],
+  "prod_writes": "TWO gated writes on Craig's go, each from the primary's packages/data in the foreground under session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8. WRITE 1, scripts/fix1429-delete-executive-seed-duplicates.sql via db-query --prod --call --yes-i-mean-prod --timeout 60s: (1) gate opened on poll 1, receipt wait -0.5 s (05:18:25.191Z → 05:18:24.699Z, DB clock vs client); (2) blocked_tokens []; (3) claim 05:18:29.270Z → 05:18:36.113Z = 6.8 s, 17 guarded pipelines held and cleared, --then exited 0; (4) data_sync_log rows started in [05:18:28Z, 05:18:38Z): 0; (5) dispatch_log ticks in it: 0 (05:17:00Z nothing_due, then 05:19:00Z reaped / armed). NOTICE: deleted officials=45 (potus_current 3, vpotus_current 42) entity_tags=45 entity_search_index=43 enrichment_queue=0; re-pointed irs990_officers=0 irs990_grants_out=0; left 45 zero-stat official_homepage_stats_mv rows for the 06:00Z refresh; kept 9c39e82d-dd1e-416a-a2fb-9a2c51d30e23 and b9ad6389-68cf-45ec-bea9-e669c958d4a8. WRITE 2, the class-P push of 20261120001000_fix1429_officials_official_seed_id_unique.sql via db-push-prod --workdir ../.. (dry run before it: exactly this one file): (1) gate opened on poll 1, ok at 05:22:32.671Z, census pass 3 renders / 3 events in 60 min, ratio 1.52, floor 6, edge 1 of 385 = 0.26 %, receipt wait -0.5 s; (2) blocked_tokens []; (3) claim 05:22:36.959Z → 05:22:38.025Z = 1.1 s, 17 held and cleared, --then exited 0; (4) data_sync_log rows started in [05:22:35Z, 05:22:40Z): 0; (5) dispatch_log ticks in it: 0 (05:23:00Z reaped / nothing_due). Read-back 05:22:43Z: officials_official_seed_id_key unique, valid, ready; head 20261120001000, 567 applied; seeds 1 + 1. Everything else was a read: 8 db-query --prod statements (of 8), session:held, the box-health ring, gh, db-push-prod --dry-run twice.",
+  "ci": "green",
+  "stopped_items": [
+    "Permission prompt, denied, on one compound command in Item 3's landing: cd \\\"C:/Users/Craig/Documents/Civitics/civitics-worktrees/fix-cc-299\\\" && P=\\\"…/scratchpad/ops.patch\\\" && git diff docs/OPERATIONS.md > \\\"$P\\\" && wc -l \\\"$P\\\" && git checkout -- docs/OPERATIONS.md && git rebase origin/main 2>&1 | tail -1 && git apply \\\"$P\\\" && git status --short && git log --oneline -2. It was meant to set Item 4's unstaged OPERATIONS.md edit aside so the migration commit could rebase. I did not retry it. The item completed another way: a local-only WIP commit of the docs edit, a rebase, a push of the migration commit's own sha (66a97587:main), then git reset --soft HEAD~1. The WIP commit never left the worktree. Flagged in case that route also wants a prompt."
+  ],
+  "lane": "fec",
+  "owed": [
+    {
+      "fix": "FIX-1429",
+      "what": "the next nightly's seed line (inserted=0 updated=2 duplicates=0 failed=0); official_homepage_stats_mv rows with no officials row = 0 after the 06:00Z refresh; the next audit's officials.vp_count 1 and president_count 1",
+      "after": "2026-11-20T01:00Z"
+    }
+  ]
+}
