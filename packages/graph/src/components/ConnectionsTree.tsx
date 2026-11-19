@@ -105,7 +105,7 @@ export function ConnectionsTree({
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="min-w-0 pr-2">
           <div className="text-[11px] text-ink">Include procedural votes</div>
-          <div className="text-[9px] text-ink-soft/60 leading-tight">Cloture, passage motions, etc.</div>
+          <div className="text-[9px] text-ink-soft/60 leading-tight">Cloture and motions to proceed, on bills with no passage vote</div>
         </div>
         <button
           type="button"

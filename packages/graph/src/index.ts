@@ -51,7 +51,7 @@ export { graphGroupParams } from "./groupQuery";
 
 // ── Presets + connections ───────────────────────────────────────────────────
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
-export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE, DEFAULT_DONATION_LIMIT } from "./connections";
+export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE, DEFAULT_DONATION_LIMIT, connectionEdgeLabel } from "./connections";
 
 // ── Saved views (FIX-817) ───────────────────────────────────────────────────
 export {

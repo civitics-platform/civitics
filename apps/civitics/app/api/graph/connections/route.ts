@@ -2,6 +2,7 @@ import { createAdminClient, noStoreFetch, fetchAllKeyset, afterKey } from "@civi
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
+import { voteEdgeTier, VOTE_EDGE_TYPES, VOTE_TIER_FINAL_MIN_STRENGTH } from "@/lib/graph-vote-tier";
 import type { Database } from "@civitics/db";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, EdgeType, NodeTypeV2 as NodeType, IndividualDisplayMode } from "@civitics/graph";
 import { BRACKET_TIERS } from "@civitics/graph";
@@ -214,117 +215,6 @@ function mapEdgeType(dbType: string): EdgeType {
   }
 }
 
-/**
- * FIX-125: drop vote-type connections whose underlying votes are all procedural.
- *
- * The connections pipeline already skips procedural votes at derivation
- * (voteToConnectionType returns null), so most entity_connections rows are clean.
- * This runtime filter handles legacy rows derived before the procedural skip
- * was tightened, and lets the pipeline's procedural list grow without a re-run.
- *
- * For each vote-type connection (official ↔ proposal), look up the underlying
- * votes by (official_id, proposal_id) and drop the connection only if every
- * matching vote has a procedural vote_question. Connections with no matching
- * vote rows are kept (trust the existing edge).
- */
-// FIX-1409: packages/data/src/pipelines/congress/passage-questions.json is the list of passage questions; none may sit here.
-const PROCEDURAL_PREFIXES = [
-  "on the cloture motion",
-  "on the motion to proceed",
-  "on the motion to table",
-  "on the motion to recommit",
-  "on ordering the previous question",
-  "on agreeing to the amendment",
-  "on the amendment", // the Senate's wording (FIX-1408)
-  "on the motion",
-];
-
-const VOTE_CONN_TYPES = new Set([
-  "vote_yes", "vote_no", "vote_abstain",
-  "nomination_vote_yes", "nomination_vote_no",
-]);
-
-async function filterProceduralConnections(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  connections: ConnectionRow[],
-): Promise<ConnectionRow[]> {
-  const voteConns = connections.filter(c => VOTE_CONN_TYPES.has(c.connection_type));
-  if (voteConns.length === 0) return connections;
-
-  const officialIds = new Set<string>();
-  const proposalIds = new Set<string>();
-  for (const c of voteConns) {
-    const officialId = c.from_type === "official" ? c.from_id : c.to_id;
-    const proposalId = c.from_type === "proposal" ? c.from_id : c.to_id;
-    officialIds.add(officialId);
-    proposalIds.add(proposalId);
-  }
-
-  // FIX-802 — both id lists ride the request URL, so the previous single
-  // .in()+.in() read 414'd once either list grew (FIX-732 class) and the whole
-  // filter failed open silently. Chunk both sides at 100 (≤200 uuids per
-  // request). Pairs in a failed chunk stay un-looked-up → their edges are
-  // kept, preserving the existing fail-open contract.
-  const PROC_CHUNK = 100;
-  const officialIdList = [...officialIds];
-  const proposalIdList = [...proposalIds];
-  const oChunks: string[][] = [];
-  for (let i = 0; i < officialIdList.length; i += PROC_CHUNK) oChunks.push(officialIdList.slice(i, i + PROC_CHUNK));
-  const pChunks: string[][] = [];
-  for (let i = 0; i < proposalIdList.length; i += PROC_CHUNK) pChunks.push(proposalIdList.slice(i, i + PROC_CHUNK));
-
-  if (oChunks.length * pChunks.length > 25) {
-    // Pathological pair space (default view at full expansion) — skip rather
-    // than fan out 100+ lookups. Same fail-open outcome: no edge is hidden.
-    console.warn(`[graph/connections] procedural filter skipped — ${oChunks.length}x${pChunks.length} vote-lookup chunks`);
-    return connections;
-  }
-
-  const pairs: Array<[string[], string[]]> = [];
-  for (const o of oChunks) for (const p of pChunks) pairs.push([o, p]);
-  const results: Array<{ data: unknown; error: { message: string } | null }> = await Promise.all(
-    pairs.map(([o, p]) =>
-      supabase
-        .from("votes")
-        .select("official_id, bill_proposal_id, vote_question")
-        .in("official_id", o)
-        .in("bill_proposal_id", p),
-    ),
-  );
-  const votes: { official_id: string; bill_proposal_id: string; vote_question: string | null }[] = [];
-  for (const r of results) {
-    if (r.error) {
-      console.warn("[graph/connections] procedural vote-lookup chunk failed (fail open):", r.error.message);
-      continue;
-    }
-    votes.push(...((r.data ?? []) as typeof votes));
-  }
-
-  // For each (official, proposal) pair: true if at least one non-procedural vote exists,
-  // false if we saw votes but they were all procedural, missing if no votes were found.
-  const hasSubstantive = new Map<string, boolean>();
-  // vote_question is a first-class votes column (NOT metadata->>'vote_question').
-  // Reading it off metadata returned undefined for every row, so the procedural
-  // filter failed open and treated every vote as substantive.
-  for (const v of votes) {
-    const key = `${v.official_id}|${v.bill_proposal_id}`;
-    const q = String(v.vote_question ?? "").toLowerCase();
-    const isProcedural = PROCEDURAL_PREFIXES.some(p => q.startsWith(p));
-    if (!isProcedural) hasSubstantive.set(key, true);
-    else if (!hasSubstantive.has(key)) hasSubstantive.set(key, false);
-  }
-
-  return connections.filter(c => {
-    if (!VOTE_CONN_TYPES.has(c.connection_type)) return true;
-    const officialId = c.from_type === "official" ? c.from_id : c.to_id;
-    const proposalId = c.from_type === "proposal" ? c.from_id : c.to_id;
-    const flag = hasSubstantive.get(`${officialId}|${proposalId}`);
-    // missing → no vote rows found, keep edge; false → all procedural, drop; true → keep
-    return flag !== false;
-  });
-}
-
 export async function GET(request: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(request.url);
@@ -332,8 +222,10 @@ export async function GET(request: Request) {
   // Server handles up to depth 2 (direct + one smart expansion).
   // Client-side BFS handles further depth filtering on the loaded data.
   const depth = Math.min(parseInt(searchParams.get("depth") ?? "1", 10), 2);
-  // Default: hide procedural votes (cloture, passage motions, etc.).
-  // Pass ?include_procedural=true to show all — for researchers/journalists.
+  // FIX-1433 — "procedural votes" is the vote edge's advance tier (cloture or a
+  // motion to proceed on a bill with no passage vote; strength 0.250 under
+  // FIX-1409), read off the row by voteEdgeTier(). Hidden unless
+  // ?include_procedural=true — for researchers/journalists. No `votes` read.
   const includeProcedural = searchParams.get("include_procedural") === "true";
   // Individual donor display mode (FIX-194).
   // 'bracket'   = aggregate into 4 tier nodes per official (default)
@@ -384,11 +276,16 @@ export async function GET(request: Request) {
       // edges and blew the 5s withDbTimeout under IOWait (the 500 users hit).
       // Votes are capped at votes_limit most recent; oversight-class and
       // investigation reads are capped too — no unbounded EC read remains.
-      const VOTE_TYPES = [
-        "vote_yes", "vote_no", "vote_abstain",
-        "nomination_vote_yes", "nomination_vote_no",
-      ] as const;
       const OVERSIGHT_TYPES = ["oversight", "appointment", "co_sponsorship", "revolving_door", "contract_award"] as const;
+
+      // FIX-1433 — with the toggle off the advance tier is cut in this read's
+      // WHERE, so votes_limit counts only edges that will be shown.
+      let votesQuery = supabase
+        .from("entity_connections")
+        .select("*")
+        .in("connection_type", VOTE_EDGE_TYPES)
+        .or(`from_id.eq.${entityId},to_id.eq.${entityId}`);
+      if (!includeProcedural) votesQuery = votesQuery.gte("strength", VOTE_TIER_FINAL_MIN_STRENGTH);
 
       const [officialProbeRes, rollupRes, votesRes, oversightRes, investigationRes] = await Promise.all([
         // Cheap PK probe: the rollup keys recipients of BOTH kinds (officials
@@ -412,11 +309,7 @@ export async function GET(request: Request) {
           "connections:donor-rollup",
         ),
         withDbTimeout(
-          supabase
-            .from("entity_connections")
-            .select("*")
-            .in("connection_type", VOTE_TYPES)
-            .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+          votesQuery
             .order("occurred_at", { ascending: false, nullsFirst: false })
             .limit(votesLimit),
           5000,
@@ -728,8 +621,11 @@ export async function GET(request: Request) {
         connections = direct;
       }
 
+      // FIX-1433 — the depth-2 expansion reads are type-agnostic and paged by
+      // id, so their advance-tier vote edges drop here; the votes read above
+      // already cut its own in the query.
       if (!includeProcedural) {
-        connections = await filterProceduralConnections(supabase, connections);
+        connections = connections.filter((c) => voteEdgeTier(c) !== "advance");
       }
 
       totalCount = connections.length;
@@ -818,8 +714,10 @@ export async function GET(request: Request) {
       }
       connections = [...connMap.values()];
 
+      // FIX-1433 — the top-10 reads are type-agnostic and paged by id, so
+      // their advance-tier vote edges drop after the read.
       if (!includeProcedural) {
-        connections = await filterProceduralConnections(supabase, connections);
+        connections = connections.filter((c) => voteEdgeTier(c) !== "advance");
       }
     }
 
@@ -1298,6 +1196,8 @@ export async function GET(request: Request) {
         // underlying transaction count (G2 hover labels consume it).
         ...(mvTxCounts.has(c.id) ? { txCount: mvTxCounts.get(c.id) } : {}),
         ...(c.evidence_source ? { evidenceSource: c.evidence_source } : {}),
+        // FIX-1433 — on advance-tier vote edges only; absent means final.
+        ...(voteEdgeTier(c) === "advance" ? { voteTier: "advance" as const } : {}),
         ...(attr
           ? { investigationId: attr.investigationId, investigationTitle: attr.title, reviewedAt: attr.reviewedAt }
           : {}),

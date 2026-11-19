@@ -145,6 +145,24 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
   },
 }
 
+// ── Single-edge labels (FIX-1433) ──────────────────────────────────────────────
+// A vote_yes / vote_no edge with voteTier 'advance' came from a cloture or
+// motion-to-proceed roll on a bill with no passage vote (the FIX-1409 rule).
+// Every site that labels ONE edge reads connectionEdgeLabel(), never the
+// registry label directly, so an advance edge never reads as a passage vote.
+
+const ADVANCE_VOTE_LABELS: Record<string, string> = {
+  vote_yes: 'Voted Yes to advance',
+  vote_no: 'Voted No to advance',
+}
+
+export function connectionEdgeLabel(connectionType: string, voteTier?: string): string {
+  if (voteTier === 'advance' && ADVANCE_VOTE_LABELS[connectionType]) {
+    return ADVANCE_VOTE_LABELS[connectionType]!
+  }
+  return CONNECTION_TYPE_REGISTRY[connectionType]?.label ?? connectionType.replace(/_/g, ' ')
+}
+
 // ── Default connection state for a new GraphView ───────────────────────────────
 //
 // These are the default enabled/opacity/thickness settings for each connection

@@ -12,7 +12,7 @@
  * dead button — it does nothing on purpose.
  */
 
-import { CONNECTION_TYPE_REGISTRY } from "../connections";
+import { connectionEdgeLabel } from "../connections";
 
 export interface EdgeSheetData {
   fromId: string;
@@ -90,7 +90,9 @@ export function EdgeSheet({
   occurredAt,
   onClose,
 }: EdgeSheetProps) {
-  const label = CONNECTION_TYPE_REGISTRY[connectionType]?.label ?? connectionType.replace(/_/g, " ");
+  // Money edges only (FIX-828): a vote edge click opens the proposal instead,
+  // so no voteTier reaches this sheet.
+  const label = connectionEdgeLabel(connectionType);
   const occurredLabel = occurredAt
     ? new Date(occurredAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;

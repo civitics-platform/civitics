@@ -116,6 +116,11 @@ export interface GraphEdge {
    *  (FIX-584/585) — which renders distinctly, filterable, and attributed. Other
    *  derived sources (financial_relationships, votes, …) pass through untouched. */
   evidenceSource?: string
+  /** FIX-1433 — set on a vote_yes / vote_no edge from an advance roll only
+   *  (cloture or a motion to proceed; the bill had no passage vote). Absent
+   *  means final. /api/graph/connections returns these only with
+   *  include_procedural=true. Label it with connectionEdgeLabel(). */
+  voteTier?: 'advance'
   /** Investigation (case-file) id backing an evidence_source==='investigation' edge —
    *  for the attribution popover deep-link to /investigations/[investigationId]. */
   investigationId?: string

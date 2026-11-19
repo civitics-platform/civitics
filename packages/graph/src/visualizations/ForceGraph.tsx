@@ -22,7 +22,7 @@ import type {
   ForceOptions,
   NodeActions,
 } from "../types";
-import { CONNECTION_TYPE_REGISTRY } from "../connections";
+import { CONNECTION_TYPE_REGISTRY, connectionEdgeLabel } from "../connections";
 import { BRACKET_TIERS } from "../types";
 import { Tooltip, useTooltip } from "../components/Tooltip";
 import { NodePopup } from "../components/NodePopup";
@@ -157,6 +157,8 @@ type SimLink = {
   investigationId?: string;
   investigationTitle?: string;
   reviewedAt?: string;
+  // FIX-1433 — 'advance' on a cloture / motion-to-proceed vote edge.
+  voteTier?: "advance";
 };
 
 const linkSrcId = (d: SimLink): string => (d.source as SimNode)?.id ?? d.fromId;
@@ -259,7 +261,7 @@ const VOTE_EDGE_TYPES = new Set([
 ]);
 
 function edgeHoverLabel(d: SimLink): string {
-  const typeLabel = (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType ?? "").replace(/_/g, " ");
+  const typeLabel = connectionEdgeLabel(d.connectionType, d.voteTier);
   if (CONNECTION_TYPE_REGISTRY[d.connectionType]?.hasAmount && d.amountUsd) {
     const base = `${typeLabel} — ${fmtCompactUsd(d.amountUsd)}`;
     return d.txCount ? `${base} · ${d.txCount.toLocaleString("en-US")} txs` : base;
@@ -802,6 +804,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         investigationId: e.investigationId,
         investigationTitle: e.investigationTitle,
         reviewedAt: e.reviewedAt,
+        voteTier: e.voteTier,
         source: (nodeById.get(e.fromId) ?? simNodes[0]!) as SimNode,
         target: (nodeById.get(e.toId)   ?? simNodes[0]!) as SimNode,
       }));
@@ -989,7 +992,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             title: d.investigationTitle ?? "Investigation",
             investigationId: d.investigationId,
             reviewedAt: d.reviewedAt,
-            relationship: (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType ?? "").replace(/_/g, " "),
+            relationship: connectionEdgeLabel(d.connectionType, d.voteTier),
             x: event.clientX - rect.left,
             y: event.clientY - rect.top,
           });
