@@ -1,0 +1,37 @@
+{
+  "cc": "298",
+  "prompt": "cc-prompt-298-fix1429-supervised-delete-of-the-45-duplicate-president-vp-rows-one-gated-statement-then-unique-index-on-the-seed-id-class-p-push-fix1428-nightly-receipt-two-sibling-reads.md",
+  "started_at": "2026-11-19T02:05:01Z",
+  "finished_at": "2026-11-19T02:20:00Z",
+  "head_before": "4c9694c7",
+  "head_after": "904eb3ca",
+  "commits": [
+    {
+      "sha": "4869c6e1",
+      "subject": "chore(fixes): record FIX-1428 on prod — the 11-18 21:06Z nightly's seed line reads inserted=0 updated=2 duplicates=45 failed=0; potus_current 4 and vpotus_current 43 rows, unchanged (cc-298)"
+    },
+    {
+      "sha": "d5b98c23",
+      "subject": "[skip vercel] chore(scripts): FIX-1429's delete of the duplicate executive-seed officials rows, one gated DO block that refuses on any reference outside the three derived tables (cc-298)"
+    },
+    {
+      "sha": "904eb3ca",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-298 — FIX-1428's prod receipt (4869c6e1, prod-only); FIX-1429 stays open, its delete stopped on official_homepage_stats_mv (30 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1428"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 3 (write 1, the delete): STOP-table row 'read 2 — a victim has a row in any table outside the three derived ones' fired. official_homepage_stats_mv holds a row for all 45 victims (vote_count, donor_count, total_donations_cents all 0; refreshed 2026-11-18T06:03:15Z). Per that row no go was asked (D4 skipped) and nothing was deleted.",
+    "Item 4 (write 2, the unique index migration and its class-P push): not built. Its guard needs the delete first.",
+    "Item 5 (close FIX-1429, the OPERATIONS.md lines): not done. FIX-1429 stays OPEN."
+  ],
+  "lane": "fec",
+  "owed": []
+}
