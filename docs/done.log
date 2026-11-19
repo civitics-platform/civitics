@@ -1925,3 +1925,5 @@
 2026-11-18 | FIX-401 | 6f78aee1 | prod-only | chore(fixes): record FIX-401 on prod — one data_flags row through the deployed app: official 83a86ecb… (Bernard Sanders), reason other, source congress_gov, flagged 05:13:42Z by abd54530…; resolved in the dashboard's Data flags queue 05:14:53Z, resolution no_action, resolved_by abd54530… (cc-285)
 2026-11-18 | FIX-401 | 1d2ae4bc | local-only | feat(app): FIX-401 readers can flag a data row — POST /api/data-flags, "Flag this data" beside the source badge on the five sites, a Data flags queue in moderation (cc-285)
 2026-11-18 | FIX-1428 | 0b4dcfb3 | local-only | fix(data): FIX-1428 the executive seed reads every match and updates the oldest; a failed lookup writes nothing (cc-297)
+2026-11-19 | FIX-1430 | 40cc1288 | local-only | fix(congress): FIX-1430 a Senate live pair (Present, Giving Live Pair) stores as present instead of holding its roll back; the seen-unstored record goes to v3 (cc-296)
+2026-11-19 | FIX-1431 | 71ba7fa8 | local-only | fix(ci): FIX-1431 the weekly audit's report push rebases onto the dispatched branch and retries once after 20 s; a second rejection fails the step with the reason (cc-296)
