@@ -1169,6 +1169,12 @@ archives the fallback read. A clean run is `complete` with no new key. The
 year's watermark stays withheld while ids remain, so the next Monday retries
 them.
 
+### The executive seed's one row per seed id (FIX-1428, FIX-1429)
+
+The nightly's `executive seed: inserted=… updated=… duplicates=… failed=…` line should read `inserted=0 updated=2 duplicates=0 failed=0`.
+`officials_official_seed_id_key` (unique on `source_ids->>'official_seed_id'`) refuses a second President or Vice President row with 23505, and the seed counts that refused insert as `failed`. A lookup error also counts as `failed` and writes nothing.
+So `failed` > 0 means a seed id was looked up and missed, or the lookup errored. Read the `executive seed:` error lines; `duplicates` > 0 cannot recur while the index exists.
+
 ### Windows-Specific: Exit Code Fix
 
 On Windows, Node.js pipelines may crash with **exit code 3221226505** (Windows/Node libuv issue). This is fixed in the codebase by appending:
