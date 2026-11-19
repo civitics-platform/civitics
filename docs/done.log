@@ -1930,3 +1930,4 @@
 2026-11-19 | FIX-1433 | 52734318 | local-only | fix(graph): FIX-1433 the procedural-votes toggle reads the vote edge's own tier; no votes read per request, and an advance edge says so (cc-295)
 2026-11-19 | FIX-1428 | 4869c6e1 | prod-only | chore(fixes): record FIX-1428 on prod — the 11-18 21:06Z nightly's seed line reads inserted=0 updated=2 duplicates=45 failed=0; potus_current 4 and vpotus_current 43 rows, unchanged (cc-298)
 2026-11-19 | FIX-1430 | reopen | reopen | on real LIS XML the live-pair vote_cast carries attributes and reaches mapVote as [object Object]; cc-296's mapping never fires (cc-300)
+2026-11-19 | FIX-1430 | reopen | reopen | reopened by ca632bb6 [skip vercel] chore(fixes): reopen FIX-1430 — on real LIS XML the live-pair vote_cast carries attributes and reaches mapVote as [object Object] (cc-300)
