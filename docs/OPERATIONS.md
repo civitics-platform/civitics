@@ -987,7 +987,11 @@ in the nightly's fec phase) fetches Senate LIS XML one roll per GET from
     the record's `v` equals `SENATE_UNSTORED_VERSION` (`senate-unstored.ts`; 3
     since FIX-1430, when `Present, Giving Live Pair` began storing as `present`).
     `no_proposal_reference` means no `<document>` key AND no readable
-    amendment target.
+    amendment target. A member's `<vote_cast>` is read by its text
+    (`xmlText()`, `votes.ts`): a live pair's carries attributes
+    (`pair="S375"`), which `String()` read as `[object Object]` and held the
+    roll as `unknown_cast` until cc-300; the pair lands as
+    `metadata.live_pair_with` on that member's row.
   - Every other reason (guard-absent, `bill_unresolved`, `no_matchable_records`)
     is fetched again 7 days after `seen_at`.
   - `tail_closed` marks a past year's session whose end was found cleanly; its
