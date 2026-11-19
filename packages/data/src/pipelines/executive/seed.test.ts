@@ -22,6 +22,8 @@ interface Fake {
   rows: Record<string, Row[]>;
   /** Seed ids whose lookup returns an error. */
   lookupErrors?: Record<string, string>;
+  /** Seed ids whose insert returns an error. */
+  insertErrors?: Record<string, { code: string; message: string }>;
   inserts: Array<Record<string, unknown>>;
   updates: Array<{ id: string; data: Record<string, unknown> }>;
 }
@@ -78,7 +80,7 @@ function fakeDb(f: Fake) {
         }),
         insert: (data: Record<string, unknown>) => {
           f.inserts.push(data);
-          return Promise.resolve({ error: null });
+          return Promise.resolve({ error: f.insertErrors?.[seedOf(data)] ?? null });
         },
       };
       return q;
@@ -167,6 +169,27 @@ test("a lookup error → no insert and no update for that executive, failed = 1"
   assert.equal(f.inserts.length, 0);
   assert.deepEqual(f.updates.map((u) => u.id), ["p1"]);
   assert.ok(!f.updates.some((u) => seedOf(u.data) === "vpotus_current"));
+});
+
+test("an insert refused by the unique seed-id index (23505) → failed = 1, no second row", async (t) => {
+  // FIX-1429: officials_official_seed_id_key. A lookup that reads no row while
+  // one exists ends in this insert, which the index now refuses.
+  quiet(t);
+  const f: Fake = {
+    rows: { potus_current: [{ id: "p1", created_at: "2026-05-25T05:34:55Z" }] },
+    insertErrors: {
+      vpotus_current: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "officials_official_seed_id_key"',
+      },
+    },
+    inserts: [],
+    updates: [],
+  };
+  const r = await run(f);
+  assert.deepEqual(r, { inserted: 0, updated: 1, failed: 1, duplicates: 0 });
+  assert.deepEqual(f.inserts.map(seedOf), ["vpotus_current"]);
+  assert.deepEqual(f.updates.map((u) => u.id), ["p1"]);
 });
 
 test("every lookup errors → writes nothing at all", async (t) => {
