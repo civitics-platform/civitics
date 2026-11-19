@@ -983,8 +983,9 @@ in the nightly's fec phase) fetches Senate LIS XML one roll per GET from
   `congress_votes:senate_rolls:<congress>`. It holds, per session, every roll
   that was fetched, parsed, and skipped before its insert, with `reason` and
   `seen_at`, plus `tail_closed`.
-  - `no_proposal_reference` and `no_voted_at` stay skipped while the record's `v`
-    equals `SENATE_UNSTORED_VERSION` (`senate-unstored.ts`; 2 since FIX-1408).
+  - `no_proposal_reference`, `no_voted_at` and `unknown_cast` stay skipped while
+    the record's `v` equals `SENATE_UNSTORED_VERSION` (`senate-unstored.ts`; 3
+    since FIX-1430, when `Present, Giving Live Pair` began storing as `present`).
     `no_proposal_reference` means no `<document>` key AND no readable
     amendment target.
   - Every other reason (guard-absent, `bill_unresolved`, `no_matchable_records`)
@@ -1236,6 +1237,9 @@ database and stay on `schedule:`.
 - **Run one by hand:** `gh workflow run irs990.yml` (or `audit.yml`,
   `crs-summaries.yml`). The concurrency group serializes it against a
   dispatched run.
+- **The audit's push** rebases onto `main` and retries once after 20 s
+  (FIX-1431). A second rejection fails the step and leaves that day's report off
+  `main`, so a hand dispatch writes it again.
 - **Read the start:** `gh run list --workflow irs990.yml -L 3` (event
   `workflow_dispatch`, `createdAt` within minutes of the slot) and the stamp:
   `SELECT value FROM pipeline_state WHERE key = 'gha_dispatch_irs990'`.
