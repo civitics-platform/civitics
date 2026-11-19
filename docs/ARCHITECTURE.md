@@ -179,6 +179,7 @@ Added in migration `0019`. Controls graph visibility and proposal page display.
 | `regulation` | Federal regulations from Regulations.gov | Shown | Shown |
 
 **Why:** Procedural votes (cloture etc.) are noise in the connection graph. 221 procedural vs 801 substantive votes — hiding procedural makes the graph dramatically more useful for the accountability story. Pass `?include_procedural=true` to include them for researchers.
+`/api/graph/connections` reads the toggle as the vote edge's advance tier instead: `strength` below 0.5, a cloture or proceed roll on a bill with no passage vote (FIX-1433).
 
 ### entity_connections.connection_type Values
 

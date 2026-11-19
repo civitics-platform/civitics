@@ -461,7 +461,7 @@ Primary graph expansion endpoint. Returns nodes + edges for a focus set.
 | `entity_ids` | Comma-separated UUIDs (up to 5) |
 | `depth` | `1 \| 2 \| 3` |
 | `scope` | `all \| federal \| state \| senate \| house` |
-| `include_procedural` | `true` to include procedural votes (hidden by default) |
+| `include_procedural` | `true` to include the advance-tier vote edges (cloture or a motion to proceed on a bill with no passage vote; `strength` below 0.5, FIX-1409), which carry `voteTier: "advance"`. Hidden by default (FIX-1433) |
 | connection-type filters | Per type: `enabled`, `min_amount`, `date_start`, `date_end` |
 
 **Response:** `{ "nodes": GraphNode[], "edges": GraphEdge[] }`

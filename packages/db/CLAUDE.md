@@ -99,9 +99,9 @@ Common mistake: `role_type` does not exist — always use `role_title`.
 The values are set by title-pattern `UPDATE`s in `0019_proposal_vote_category.sql`
 and `20260523015000_restore_proposals_vote_category.sql` (FIX-334 restored the
 column the 2026-04-22 promotion dropped); no pipeline sets it on insert. The
-graph snapshot route hides `procedural`; the connections route's procedural
-filter keys on `votes.vote_question` instead (FIX-125). `?include_procedural=true`
-shows everything.
+graph snapshot route hides `procedural`; the connections route hides the vote
+edge's advance tier instead, read off `strength` (below 0.5, FIX-1433).
+`?include_procedural=true` shows everything.
 
 ---
 

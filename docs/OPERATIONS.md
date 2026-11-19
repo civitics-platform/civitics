@@ -1029,8 +1029,8 @@ Prod's line equals the read-only predicted merge to the row (34.8 s; the merge
 took ~4.5× that). Vote edges went from 528,410 (all 0.500) to 517,285, and the
 `EXCEPT ALL` against the rule read 0 / 0. Prod's 11,125 deleted were 10,093
 pairs left with only `other` rolls plus 1,032 orphan Senate edges (FIX-1422).
-The graph route's procedural filter still stands. Lifting it is the next app
-prompt's job.
+The graph route's procedural filter still stood then; FIX-1433 (cc-295) replaced
+it with the edge's own tier.
 
 The votes arms of the EC rebuild keep one `vote_yes` / `vote_no` / `vote_abstain`
 edge per (official, bill). Which roll decides it:
@@ -1094,7 +1094,7 @@ re-attributed to 48 others on 2026-08-01.
 | `/api/graph/snapshot` | `ORDER BY strength DESC` then `LIMIT` (default 100) |
 | `get_group_connections` | `ORDER BY amount_cents DESC NULLS LAST, strength DESC LIMIT` |
 | ForceGraph "Min strength" slider | default 0; at 0.3 and above it hides 0.250 edges |
-| `/api/graph/connections` procedural filter | drops an edge whose every roll starts with a procedural prefix. `on the cloture motion`, `on the motion to proceed` and `on the motion` (which also catches `on the motion to discharge`) hide most Senate advance edges until the filter goes |
+| `/api/graph/connections` | hidden unless `include_procedural=true` (`strength` below 0.5, FIX-1433); when shown it carries `voteTier: "advance"` and reads `Voted Yes/No to advance` |
 
 Rollback: `scripts/fix1409-revert-vote-edge-question-rule.sql` restores the two
 old bodies verbatim and drops nothing. The next `_votes_full()` under them is

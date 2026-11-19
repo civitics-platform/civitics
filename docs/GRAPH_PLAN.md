@@ -125,6 +125,9 @@ Acceptance:
 - ConnectionsTree procedural toggle reflects current state correctly on first
   render (no flicker).
 
+Since FIX-1433 the toggle is the vote edge's advance tier, read off `strength`
+(below 0.5, FIX-1409); the prefix list and its per-request `votes` read are gone.
+
 ### 1.7 `user_custom_groups` DB table — FIX-126
 
 User-defined `FocusGroup`s persist per-user. Per Craig's call: skip localStorage,
