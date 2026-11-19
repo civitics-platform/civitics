@@ -1,0 +1,47 @@
+{
+  "cc": "295",
+  "prompt": "cc-prompt-295-graph-vote-edge-tier-replaces-the-procedural-prefix-filter-no-votes-read-per-request-toggle-means-advance-tier-advance-edge-label.md",
+  "started_at": "2026-11-19T00:51:59Z",
+  "finished_at": "2026-11-19T01:57:00Z",
+  "head_before": "9b5e9234",
+  "head_after": "ee48b99f",
+  "commits": [
+    {
+      "sha": "ccf61081",
+      "subject": "[skip vercel] chore(fixes): file FIX-1433, the graph route's vote tier is on the edge (cc-295)"
+    },
+    {
+      "sha": "52734318",
+      "subject": "fix(graph): FIX-1433 the procedural-votes toggle reads the vote edge's own tier; no votes read per request, and an advance edge says so (cc-295)"
+    },
+    {
+      "sha": "f0ec6330",
+      "subject": "[skip vercel] docs(graph): include_procedural is the vote edge's advance tier, read off strength (cc-295)"
+    },
+    {
+      "sha": "ee48b99f",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-295 — FIX-1433 closes local-only (52734318) (30 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1433"
+  ],
+  "fixes_filed": [
+    "FIX-1433"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "D3's second line (Cloture or a motion to proceed. The bill had no passage vote.) was not added: the EdgeSheet opens only for money edges (FIX-828, ForceGraph handleEdgeClick), and a vote-edge click opens /proposals/<id>. No site that shows a vote edge has a second line, so Item 4's EdgeSheet half had nothing to show. Conservative branch: no click-behaviour change; the EdgeSheet's label goes through the new helper."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1433",
+      "what": "prod after the deploy: one senator's /api/graph/connections response with include_procedural=false carries no vote edge below strength 0.5 and with =true carries them with voteTier advance; the request's server timing beside the same request the day before (Craig's look at /graph, or the next prod-reads prompt)",
+      "after": "2026-11-19T06:00Z"
+    }
+  ]
+}
