@@ -17,9 +17,10 @@ name: weekly-integrity-audit
 # There is NO `schedule:` fallback: a second start hours later is what this
 # removes. pipeline_state.gha_dispatch_audit and the canary say if the dispatch
 # was refused or never called; `gh workflow run audit.yml` starts it by hand.
-# The commit step pushes without a rebase, so a landing on main inside the run's
-# few minutes fails the push; no scheduled job pushes near Tuesday 17:00 UTC
-# (the receipts commit follows the 21:00 nightly, the housekeep bot is Monday).
+# FIX-1431 (cc-296) — the commit step rebases before it pushes and retries once
+# after 20 s, the receipts step's shape (nightly.yml, FIX-1360): a landing on
+# main inside the run's few minutes of prod reads used to reject the bare push
+# and lose the week's report.
 
 on:
   workflow_dispatch: {}
@@ -71,4 +72,21 @@ jobs:
             exit 0
           fi
           git commit -m "chore(audit): weekly integrity report ${DATE}"
-          git push
+          # FIX-1431 — rebase onto the dispatched branch (main from the Vercel
+          # dispatch) and push; on a rejection wait 20 s and do both once more.
+          # The two paths are named for today, so the rebase replays two new
+          # files; only a same-day report changed on the branch inside the run
+          # can stop it. A second rejection fails the step.
+          BRANCH="${GITHUB_REF_NAME}"
+          for attempt in 1 2; do
+            if git pull --rebase origin "${BRANCH}" && git push origin "HEAD:${BRANCH}"; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            if [ "${attempt}" = 1 ]; then
+              echo "::warning::audit report push attempt 1 lost a race — rebasing on origin/${BRANCH} again in 20 s"
+              sleep 20
+            fi
+          done
+          echo "::error::audit report push failed twice — origin/${BRANCH} moved during both attempts, or the rebase stopped on docs/audits/${DATE}.md / .json (git's lines above say which); the ${DATE} report is not on ${BRANCH}"
+          exit 1
