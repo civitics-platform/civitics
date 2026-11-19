@@ -1,31 +1,41 @@
--- FIX-1429 — delete the duplicate executive-seed officials rows (cc-298).
+-- FIX-1429 — delete the duplicate executive-seed officials rows (cc-298, cc-299).
 --
 -- Before FIX-1428 the nightly executive seed (packages/data/src/pipelines/
 -- executive/seed.ts) inserted another President / Vice President whenever its
 -- .maybeSingle() lookup failed. Two rows then made the lookup fail every
--- night. Prod read 2026-11-19 02:11Z: potus_current 4 rows, vpotus_current 43.
+-- night. Prod read 2026-11-19 05:09Z: potus_current 4 rows, vpotus_current 43.
 -- The oldest row of each (created 2026-05-25T05:34:55Z) is the keeper, and
 -- the fixed seed updates it. Every other row is a victim.
 --
 -- ONE statement, a single DO block, so it is atomic: any RAISE or foreign-key
--- refusal rolls the whole block back and nothing is deleted.
+-- refusal rolls the whole block back and nothing is written.
 --   1. Victims = every row of each official_seed_id after the oldest
---      (created_at, then id).
+--      (created_at, then id); each victim's keeper is its seed id's oldest.
 --   2. RAISE unless exactly the two seed ids exist, each keeper was created
 --      on 2026-05-25 (UTC), and the victim count is 1..60.
---   3. RAISE if any victim has a row in any table cc-298's read 2 covered,
---      other than the three derived ones this block deletes from. The message
---      names each table and its row count.
---   4. DELETE the victims' entity_tags, entity_search_index and
+--   3. RAISE if any victim has a row in any table of the refusal list below.
+--      The message names each table and its row count. The list is cc-298's
+--      read-2 coverage, minus official_homepage_stats_mv (step 4), plus
+--      franklin_seed_map (cc-299 D3).
+--   4. RAISE if any victim's official_homepage_stats_mv row has a non-zero
+--      vote_count, donor_count or total_donations_cents (cc-299 D1). Zero
+--      rows are left in place: the MV is one row per official, its readers
+--      key by ids read from officials, and refresh-derived-mvs-daily (06:00Z)
+--      drops them. The block never touches the MV.
+--   5. Re-point irs990_officers / irs990_grants_out rows matched to a victim
+--      (matched_entity_type 'official') to that victim's keeper (cc-299 D2),
+--      as promote_candidate_to_elected() does with the same columns.
+--   6. DELETE the victims' entity_tags, entity_search_index and
 --      enrichment_queue rows (scoped to officials), then the victims from
 --      officials. The AFTER DELETE triggers on officials clear their own
 --      rollups. The refusal in 3 means no FK cascade has rows to remove.
---   5. Read back: one row per seed id, and it is the keeper. NOTICE the four
---      counts and the two surviving ids.
+--   7. Read back: one row per seed id, and it is the keeper. NOTICE the
+--      counts, the MV rows left, and the two surviving ids.
 --
+-- Read the set first: scripts/fix1429-read-executive-seed-references.sql.
 -- Run ONCE on prod, under the gate, from the PRIMARY's packages/data:
 --   pnpm run session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --reason "FIX-1429 delete duplicate executive seed rows" --then "node ../../scripts/db-query.mjs --prod --call --yes-i-mean-prod --timeout 60s --file ../../scripts/fix1429-delete-executive-seed-duplicates.sql"
--- Rehearse on local first with --local --call --file (cc-298 D3).
+-- Rehearse on local first with --local --call --file (cc-298 D3, cc-299 D4).
 --
 -- Not covered by 3: treemap_individuals_rollup and small_dollar_bracket_rollup
 -- (the triggers clear them), and every MV's next refresh. After this runs,
@@ -34,6 +44,7 @@
 DO $$
 DECLARE
   v_victims     uuid[];
+  v_vkeepers    uuid[];   -- v_vkeepers[i] is v_victims[i]'s keeper
   v_keepers     jsonb;
   v_per_seed    jsonb;
   v_seeds       int;
@@ -41,6 +52,11 @@ DECLARE
   v_hits        text[] := '{}';
   v_n           bigint;
   r             record;
+  n_mv          int;
+  n_mv_nonzero  int;
+  v_mv_bad      text;
+  n_officers    int;
+  n_grants      int;
   n_tags        int;
   n_search      int;
   n_queue       int;
@@ -49,18 +65,20 @@ DECLARE
 BEGIN
   WITH s AS (
     SELECT id, source_ids->>'official_seed_id' AS seed, created_at,
-           row_number() OVER (PARTITION BY source_ids->>'official_seed_id'
-                              ORDER BY created_at, id) AS rn
+           row_number() OVER w AS rn,
+           first_value(id) OVER w AS keeper
       FROM public.officials
      WHERE source_ids ? 'official_seed_id'
+    WINDOW w AS (PARTITION BY source_ids->>'official_seed_id' ORDER BY created_at, id)
   )
-  SELECT array_agg(id ORDER BY seed, created_at, id) FILTER (WHERE rn > 1),
+  SELECT array_agg(id     ORDER BY seed, created_at, id) FILTER (WHERE rn > 1),
+         array_agg(keeper ORDER BY seed, created_at, id) FILTER (WHERE rn > 1),
          jsonb_object_agg(seed, jsonb_build_object('id', id, 'created_at', created_at))
            FILTER (WHERE rn = 1),
          count(DISTINCT seed),
          count(*) FILTER (WHERE rn = 1
                             AND (created_at AT TIME ZONE 'UTC')::date <> DATE '2026-05-25')
-    INTO v_victims, v_keepers, v_seeds, v_bad_keepers
+    INTO v_victims, v_vkeepers, v_keepers, v_seeds, v_bad_keepers
     FROM s;
 
   SELECT jsonb_object_agg(seed, n) INTO v_per_seed
@@ -81,8 +99,7 @@ BEGIN
       coalesce(cardinality(v_victims), 0), v_per_seed;
   END IF;
 
-  -- Every table read 2 covered, minus entity_tags / entity_search_index /
-  -- enrichment_queue. Polymorphic tables are scoped by type where their index
+  -- The refusal list. Polymorphic tables are scoped by type where their index
   -- leads with it (an unscoped financial_relationships.from_id is a seq scan).
   FOR r IN
     SELECT * FROM (VALUES
@@ -129,10 +146,10 @@ BEGIN
       ('official_small_dollar_rollup',    'official_id = ANY($1)'),
       ('entity_connection_stats_mv',      'entity_id = ANY($1)'),
       ('synthetic_position_rollup',       'entity_id = ANY($1)'),
-      ('official_homepage_stats_mv',      'official_id = ANY($1)'),
       ('official_sector_dollars_mv',      'official_id = ANY($1)'),
       ('entity_engagement_rollup_mv',     'entity_id = ANY($1)'),
-      ('commons_active_threads',          'entity_id = ANY($1)')
+      ('commons_active_threads',          'entity_id = ANY($1)'),
+      ('franklin_seed_map',               'row_id = ANY($1)')
     ) AS t(tbl, pred)
   LOOP
     EXECUTE format('SELECT count(*) FROM public.%I WHERE %s', r.tbl, r.pred)
@@ -143,9 +160,40 @@ BEGIN
   END LOOP;
 
   IF cardinality(v_hits) > 0 THEN
-    RAISE EXCEPTION 'FIX-1429: % victim(s) still have rows outside entity_tags / entity_search_index / enrichment_queue: %; nothing deleted',
+    RAISE EXCEPTION 'FIX-1429: % victim(s) still have rows in the refusal list: %; nothing deleted',
       cardinality(v_victims), array_to_string(v_hits, '; ');
   END IF;
+
+  -- official_homepage_stats_mv: a victim's row is allowed only with zero stats.
+  SELECT count(*),
+         count(*) FILTER (WHERE coalesce(vote_count, 0) <> 0
+                             OR coalesce(donor_count, 0) <> 0
+                             OR coalesce(total_donations_cents, 0) <> 0),
+         string_agg(format('%s votes=%s donors=%s cents=%s',
+                           official_id, vote_count, donor_count, total_donations_cents), '; ')
+           FILTER (WHERE coalesce(vote_count, 0) <> 0
+                      OR coalesce(donor_count, 0) <> 0
+                      OR coalesce(total_donations_cents, 0) <> 0)
+    INTO n_mv, n_mv_nonzero, v_mv_bad
+    FROM public.official_homepage_stats_mv
+   WHERE official_id = ANY(v_victims);
+  IF n_mv_nonzero > 0 THEN
+    RAISE EXCEPTION 'FIX-1429: % victim row(s) in official_homepage_stats_mv carry non-zero stats: %; nothing deleted',
+      n_mv_nonzero, v_mv_bad;
+  END IF;
+
+  -- A 990 match on a victim moves to that victim's keeper.
+  UPDATE public.irs990_officers o
+     SET matched_entity_id = m.keeper
+    FROM unnest(v_victims, v_vkeepers) AS m(victim, keeper)
+   WHERE o.matched_entity_type = 'official' AND o.matched_entity_id = m.victim;
+  GET DIAGNOSTICS n_officers = ROW_COUNT;
+
+  UPDATE public.irs990_grants_out g
+     SET matched_entity_id = m.keeper
+    FROM unnest(v_victims, v_vkeepers) AS m(victim, keeper)
+   WHERE g.matched_entity_type = 'official' AND g.matched_entity_id = m.victim;
+  GET DIAGNOSTICS n_grants = ROW_COUNT;
 
   DELETE FROM public.entity_tags
    WHERE entity_type = 'official' AND entity_id = ANY(v_victims);
@@ -178,7 +226,7 @@ BEGIN
       v_after, v_keepers;
   END IF;
 
-  RAISE NOTICE 'FIX-1429: deleted officials=% (per seed id %) entity_tags=% entity_search_index=% enrichment_queue=%; kept potus_current % and vpotus_current %',
-    n_officials, v_per_seed, n_tags, n_search, n_queue,
+  RAISE NOTICE 'FIX-1429: deleted officials=% (per seed id %) entity_tags=% entity_search_index=% enrichment_queue=%; re-pointed irs990_officers=% irs990_grants_out=%; left % zero-stat official_homepage_stats_mv row(s) for the 06:00Z refresh; kept potus_current % and vpotus_current %',
+    n_officials, v_per_seed, n_tags, n_search, n_queue, n_officers, n_grants, n_mv,
     v_keepers->'potus_current'->>'id', v_keepers->'vpotus_current'->>'id';
 END $$;
