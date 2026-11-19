@@ -1,0 +1,53 @@
+{
+  "cc": "300",
+  "prompt": "cc-prompt-300-senate-vote-cast-read-as-element-text-live-pair-fixture-from-the-real-roll-fix1430-reopen-graph-votes-read-cuts-exactly-the-advance-tier-three-filings.md",
+  "started_at": "2026-11-19T05:05:40Z",
+  "finished_at": "2026-11-19T05:25:00Z",
+  "head_before": "1e52f36b",
+  "head_after": "76b0fbd6",
+  "commits": [
+    {
+      "sha": "ca632bb6",
+      "subject": "[skip vercel] chore(fixes): reopen FIX-1430 — on real LIS XML the live-pair vote_cast carries attributes and reaches mapVote as [object Object] (cc-300)"
+    },
+    {
+      "sha": "372f59e8",
+      "subject": "[skip vercel] chore(fixes): sync status after FIX-1430's reopen — the Reopens trailer's row lands before the close it precedes (cc-300)"
+    },
+    {
+      "sha": "84bd0df6",
+      "subject": "fix(congress): FIX-1430 the Senate writer reads a member's vote_cast by its text, so a live pair's attribute-bearing cast maps to present instead of reaching mapVote as [object Object]; the pair's partner rides as live_pair_with (cc-300)"
+    },
+    {
+      "sha": "cc04b2fc",
+      "subject": "fix(graph): the toggle-off votes read cuts exactly what voteEdgeTier() calls advance, not every vote edge below 0.5 (cc-300)"
+    },
+    {
+      "sha": "7279d4e9",
+      "subject": "[skip vercel] docs(ops): the Senate writer reads a member's vote_cast by its text; a live pair's partner rides as live_pair_with (cc-300)"
+    },
+    {
+      "sha": "6a2374aa",
+      "subject": "[skip vercel] chore(fixes): file FIX-1434 (graph default view's exact count HEAD), FIX-1435 (addEntityIds lost across the full-record preset) and FIX-1436 (two pipeline lookups read a failed maybeSingle as not found and insert) (cc-300)"
+    },
+    {
+      "sha": "76b0fbd6",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-300 — FIX-1430 closes local-only at 84bd0df6; FIX-1434, FIX-1435, FIX-1436 filed open"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1430"
+  ],
+  "fixes_filed": [
+    "FIX-1434",
+    "FIX-1435",
+    "FIX-1436"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "owed": []
+}
