@@ -1931,3 +1931,4 @@
 2026-11-19 | FIX-1428 | 4869c6e1 | prod-only | chore(fixes): record FIX-1428 on prod — the 11-18 21:06Z nightly's seed line reads inserted=0 updated=2 duplicates=45 failed=0; potus_current 4 and vpotus_current 43 rows, unchanged (cc-298)
 2026-11-19 | FIX-1430 | reopen | reopen | on real LIS XML the live-pair vote_cast carries attributes and reaches mapVote as [object Object]; cc-296's mapping never fires (cc-300)
 2026-11-19 | FIX-1430 | reopen | reopen | reopened by ca632bb6 [skip vercel] chore(fixes): reopen FIX-1430 — on real LIS XML the live-pair vote_cast carries attributes and reaches mapVote as [object Object] (cc-300)
+2026-11-19 | FIX-1430 | 84bd0df6 | local-only | fix(congress): FIX-1430 the Senate writer reads a member's vote_cast by its text, so a live pair's attribute-bearing cast maps to present instead of reaching mapVote as [object Object]; the pair's partner rides as live_pair_with (cc-300)
