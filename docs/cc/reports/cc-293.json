@@ -1,0 +1,50 @@
+{
+  "cc": "293",
+  "prompt": "cc-prompt-293-fix1302-supervised-prod-apply-class-a-adopt-prior-22-stubs-equal-cent-read-first-dry-run-is-the-measured-write-apply-once-under-own-claim-fix1417-verdict-roll-manifest.md",
+  "started_at": "2026-11-20T02:08:22Z",
+  "finished_at": "2026-11-20T04:05:00Z",
+  "head_before": "59ea5319",
+  "head_after": "bdda9e1b",
+  "commits": [
+    {
+      "sha": "715b077d",
+      "subject": "[skip vercel] docs(audit): FIX-1302 the class-A adopt-prior manifest is authorised — Craig's go 2026-11-20 02:58Z after the prod dry run (22 accepted, 4 OVERRIDE, merge 720 s, money check $0 per type; 573 equal-cent donation pairs summed as built); applied by cc-293 (cc-293)"
+    },
+    {
+      "sha": "8764f83c",
+      "subject": "chore(fixes): close FIX-1302 on prod — the 22 class-A prior-office stubs retired under their members (--adopt-prior): committed 2026-11-20 03:13:06Z, merge 773 s (dry 720 s), 42,876 FR rows moved, 971 live pairs summed ($2,946,116), 3,439 + 971 losers deleted, 39,137 stub EC edges; money check $0 per type; stubs 43,847 rows -> 0; O1 double_claim 46 -> 24 (cc-293)"
+    },
+    {
+      "sha": "7eb3377e",
+      "subject": "[skip vercel] docs(ops): FIX-1302 the --adopt-prior passage gains the prod run's instants and walls (dry 720 s / apply 773 s merge, tails 1,018 + 348 + 1,054 s); congress-ids s22 done 2026-11-20, s23 after moved to 2026-11-21T01:00Z (cc-293)"
+    },
+    {
+      "sha": "bdda9e1b",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-293 — FIX-1302 closed (local+prod, 8764f83c); FIX-1417 not applied (its manifest's marshall:KS official_id is a clone id absent on prod; the dry run aborted), stays open"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1302"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "FIX-1302 (class B), merge-same-person-official-dupes --manifest <class-A> --adopt-prior --defer-tails, from the primary's packages/data under the script's own FIX-950 claim. Dry run: claim 2026-11-20 02:15:48Z -> 02:27:56Z, the merge DML ran and rolled back. Apply, once: claim 03:00:05Z -> 03:54:15Z; merge committed 03:13:06Z (22 survivors' prior_fec_candidate_ids appended, 22 stub ids retired, 971 FR rows summed, 3,439 + 971 FR rows deleted, 42,876 FR rows moved, 21 official_donor_totals rows and 39,137 entity_connections rows deleted); then the manifest-scoped tails (donor_rollup_rebuild_recipients over 44 officials; financial_entity_donation_totals_rebuild and donor_party_rollup_rebuild_donors, 31 chunks each, over 150,649 donors). FIX-1417 (class P): the dry run only, which aborted on its own check and rolled back; no apply, no gate claim.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 6 (FIX-1417) stopped at its dry run. The script aborted on its own per-row check: vote row 99b9ba1a (marshall:KS) has official 60f87348 (Roger Marshall, elected Senator, M001198) on prod, but the manifest says 27090d3a, an id that does not exist on prod. 77 of 78 rows agree. Not applied, no gate claim, no manifest edit. FIX-1417 stays open.",
+    "Item 5, O1's double_claim 'before': I did not run O1's --dry-run against prod before the apply. The before is the 11-19 21:10Z nightly's O1 (GHA run 44615216506, same ETag): double_claim 46. The after is O1 --dry-run --allow-prod at 03:56Z.",
+    "O1's first --dry-run call was refused by the shared pipeline env guard ('REFUSING to run against a non-local DB without --allow-prod') before any query. I re-ran it with --dry-run --allow-prod. That path writes nothing: no data_sync_log stamp, no UPDATE without --apply (legislator-ids-report.ts :390, :457, :527).",
+    "Item 7: I did not run 'git rebase -f --no-keep-empty origin/main'. origin/main had not moved, and --no-keep-empty would have dropped 8764f83c, the intentionally empty FIX-1302 close commit.",
+    "The prod read cap: 12 of 12 used, counting one statement that failed to parse (read 8's first form named fe.name) and a duplicate run of read 11 (my first output filter truncated it). So no after-read of FIX-1417's vote counts or vote edges was taken; nothing was applied, so before = after."
+  ],
+  "lane": "fec",
+  "project": "congress-ids",
+  "owed": [
+    {
+      "fix": "FIX-1302",
+      "what": "after the next nightly: O1's double_claim count (24; the 22 gone, Cramer and Welch prior_incomplete until O1's prior_append), the 22 stubs still empty (nothing re-wrote them), the first ec-crawl cycle after the apply (units, its donations windows and stats windows walls, any io hold), and fr / ec vacuum-analyze's first arms after it",
+      "after": "2026-11-21T01:00Z"
+    }
+  ]
+}
