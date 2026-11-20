@@ -796,6 +796,27 @@ it then checks that each type's drop equals exactly the deleted `stale` and
 `ie_duplicate` losers. Summed `live` pairs conserve to the cent. Any
 difference rolls the run back.
 
+**The prod run (cc-293, 2026-11-20).** The class-A manifest ran on prod from the
+primary's `packages/data` as `data:merge:official-dupes:prod`. Measured walls:
+
+| | dry run | apply | clone (cc-289) |
+|---|---|---|---|
+| claim held | 02:15:48 → 02:27:56Z | 03:00:05 → 03:54:15Z | — |
+| collision build | 277 s | 323 s | — |
+| move UPDATE (42,876 rows) | 250.6 s | 242.0 s | 48.9 s (13,476) |
+| merge transaction | 720 s | 773 s, committed 03:13:06Z | — |
+| `donor_rollup_rebuild_recipients(44)` | — | 1,018.1 s | 40 s |
+| FE totals, 31 chunks | — | 348 s | ~12 s (22) |
+| donor-party, 31 chunks | — | 1,054 s | ~85 s (22) |
+| total | 12 m 10 s | 54 m 11 s | 1 m 21 s / 2 m 40 s |
+
+- **The donors:** 150,649.
+- **The box:** io ran 84–90 % from the collision build to the end of the
+  tails; load1 stayed ≤ 2.
+- **The watermark:** a moved row's `updated_at` is the transaction's start, so
+  the merge must commit inside `civitics.watermark_lag_seconds` (unset on prod,
+  so 3,600 s). Read the dry run's merge wall first: it is the measured write.
+
 ### Regenerating `database.ts` (`pnpm db:types`)
 
 *Moved from `packages/db/CLAUDE.md` by cc-246; the rule stays there.*
