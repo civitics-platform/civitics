@@ -1,9 +1,9 @@
-# FIX-1189 — class-A adopt-prior manifest (shape C, the Luján recipe). DRAFT.
-# THIS FILE IS A DRAFT, NOT YET AN AUTHORISATION. Written and committed by
-# cc-222 (2026-10-11) from a read-only audit; NOTHING HAS BEEN APPLIED. It
-# becomes an authorisation only when Craig says go, and a later supervised
-# prompt applies it under the script's own claim (rule 42: committed before any
-# dry run). Audit of record: docs/audits/2026-10-11-fix1189-other-office-double-claim-audit.md
+# FIX-1189 — class-A adopt-prior manifest (shape C, the Luján recipe). AUTHORISED.
+# AUTHORISED BY CRAIG, 2026-11-20 02:58Z (Thu 11-19 18:58 PST): "Go", at the
+# go after cc-293's prod dry run (22 accepted, 4 OVERRIDE, 0 refused; merge
+# transaction 720 s; money check $0 per type). Applied by cc-293, once, under
+# the script's own claim. Written by cc-222 (2026-10-11) from a read-only audit.
+# Audit of record: docs/audits/2026-10-11-fix1189-other-office-double-claim-audit.md
 #
 # WHAT A ROW WOULD AUTHORISE (FIX-1288 shape C, --adopt-prior, as FIX-1302
 # rebuilt it in cc-289): the survivor (a sitting member, live id = the chamber
@@ -38,6 +38,10 @@
 #   Two cells are Cowork's reading of Q4, for Craig to confirm at the go: a
 #   live donation pair equal to the cent is SUMMED, and a live IE pair within
 #   2 % is a duplicate (DUPLICATE_BAND_BP, adopt-prior-rules.ts).
+#   CONFIRMED at the go (2026-11-20 02:58Z): an equal-to-the-cent live donation
+#   pair is summed as built. On prod that is 573 pairs, $1,767,723.00, of 967
+#   live donation pairs (cc-293 read 5). The IE band decides nothing here: the
+#   21 ie_duplicate pairs are equal to the cent.
 #
 # POPULATION: docs/receipts/2026-10-12.json legislator_ids.complete (nightly
 # GHA run 38174539706, started 2026-10-11T22:43:19Z), double_claim 46,
