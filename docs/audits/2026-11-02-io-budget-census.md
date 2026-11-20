@@ -512,3 +512,107 @@ landing's tail, so the stall before the pass's first arm is in it. Quiet runs
   mirror (donor-rollup-refresh 08:39:49Z).
 - **11-16:** 414, 277 of them in the pass, under `io_samples` 2. There were
   three holds and no arm into one.
+
+## The calibration (11-11 → 11-19) (cc-294, read-only)
+
+**Verdict: no bucket is claimed.** No candidate measure is proportional to
+the dashboard's "Disk IO % consumed" across the nine days (the STOP row of
+cc-294's read 7). The closest is minutes ≥ 90 % `io_time`, and it misses two
+1 % days by 13 and 15 points.
+
+**Sources.** Every off-box ring dump on disk was used: cc-271's (11-11
+19:58Z → 11-13 01:54Z), cc-280's (11-14 20:22 → 23:20Z), cc-286's (11-15
+20:36Z → 11-17 02:34Z) and cc-294's (11-18 19:24Z → 11-20 01:22Z). An
+interval is taken only between two samples of one dump. Reads come from the
+cumulative counters, so they are exact across a gap. Writes come from the
+route's rates, so they are missing in a gap > 6 min. The counters carry no
+write ops, so **ops are reads only**. Root = every disk minus `/data`. Busy
+minutes for the UTC hours the ring does not cover come from the banked
+`busy_instants` (files 11-12 → 11-20; none truncated), at 2 min each. The
+dashboard numbers are Craig's. 11-17's final reading is 23 %, the same value
+he read at 03:19Z; 11-18 and 11-19 are 1 % each.
+
+| UTC day | dashboard | ring coverage (samples / 720; gap) | read GB `/data` / root / both | write GB both | read Mops both | GB over 11 MB/s `/data` / root / both | Mops over 500/s `/data` / both | busy min (full day) |
+|---|---:|---|---|---:|---:|---|---|---:|
+| 11-11 | 1 | 19:58 → 24:00 (121) | 17.1 / 30.7 / 47.8 | 14.5 | 2.12 | 13.3 / 1.7 / 19.8 | 0.44 / 0.55 | 0 |
+| 11-12 | 1 | **full** (718) | 212.0 / 193.7 / 405.6 | 75.9 | 18.28 | 114.1 / 14.7 / 182.0 | 4.81 / 6.66 | 8 |
+| 11-13 | 1 | 00:00 → 01:54 (58) | 1.8 / 12.9 / 14.7 | 3.9 | 0.67 | 0 / 1.2 / 2.1 | 0 / 0.07 | 2 |
+| 11-14 | 1 | 20:22 → 23:20 (90) | 102.9 / 32.1 / 135.1 | 31.1 | 6.03 | 85.7 / 1.4 / 103.9 | 2.93 / 3.50 | 16 |
+| 11-15 | 19 | 20:36 → 24:00 (102) | 219.2 / 64.4 / 283.7 | 109.4 | 17.12 | 207.7 / 13.1 / 279.0 | 9.38 / 12.02 | 10 |
+| 11-16 | 96 | **full** (588; 4.20 h in gaps) | 449.6 / 248.3 / 697.9 | 142.8 | 32.82 | 320.2 / 12.2 / 398.0 | 11.26 / 13.86 | 108 |
+| 11-17 | 23 | 00:00 → 02:34 (78) | 97.2 / 27.4 / 124.6 | 20.0 | 7.53 | 68.4 / 2.8 / 89.1 | 4.36 / 5.18 | 20 (14 by 02:34) |
+| 11-18 | 1 | 19:24 → 24:00 (138) | 28.8 / 36.2 / 65.0 | 17.5 | 2.65 | 14.9 / 2.5 / 25.0 | 0.45 / 0.60 | 18 |
+| 11-19 | 1 | **full** (720) | 170.6 / 183.7 / 354.3 | 73.6 | 13.25 | 107.6 / 9.3 / 152.2 | 2.12 / 3.39 | 2 |
+
+**The fits.** Least squares through the origin; residuals are predicted minus
+read, in points.
+
+| measure | fit on the 3 full days: rms / max | fit on all 9: rms / max | implied 100 % (all 9) | worst residuals (all 9) |
+|---|---|---|---|---|
+| GB over 11 MB/s, both | 27.7 / 31.7 | 19.2 / 37.3 | 678 GB | 11-16 −37, 11-12 +26, 11-15 +22, 11-19 +21 |
+| GB over 11 MB/s, `/data` | 23.7 / 26.8 | 17.6 / 31.9 | 499 GB | 11-16 −32, 11-15 +23, 11-12 +22 |
+| GB over 11 MB/s, root | 44.9 / 63.6 | 27.0 / 67.2 | 42 GB | 11-16 −67 |
+| Mops over 500/s, both (reads) | 25.6 / 35.0 | 19.7 / 41.7 | 25.5 M | 11-16 −42, 11-15 +28, 11-12 +25 |
+| Mops over 500/s, `/data` | 22.8 / 32.9 | 18.8 / 38.9 | 19.7 M | 11-16 −39, 11-15 +29 |
+| raw GB r+w, both | 33.1 / 34.8 | 20.2 / 37.6 | 1,440 GB | 11-16 −38, 11-12 +32 |
+| raw read Mops, both | 30.7 / 35.7 | 19.0 / 34.9 | 54 M | 11-16 −35, 11-12 +33 |
+| **minutes ≥ 90 % `io_time`** (full day) | **3.5 / 6.1** | **7.9 / 14.5** | **116 min** | **11-18 +14.5, 11-14 +12.8, 11-15 −10.4** |
+
+Sweeping the baseline (11 → 60 MB/s; 500 → 3,000 ops/s), whether summed per
+day or run as a drain/refill bucket carried across midnight, does not beat
+busy minutes. The best sweep, ops over ~2,500/s, reads the volume's own
+3,000-IOPS ceiling, so it measures the same thing as busy minutes. At the
+published baselines the bucket model is self-contradictory. 11-15's evening
+drained 11.9 M ops, or 276 GB, without a throttle. 11-16's 12:26Z throttle
+onset stood at 4.9 M ops, or 229 GB, of depletion.
+
+**What the dashboard is not.**
+
+- It is not a day's sum. Both full 1 % days carry 152–182 GB over 11 MB/s.
+  The daily backup's 11:15–12:00Z sequential read (130–150 MB/s) is 43–58 GB
+  of that on each day read, yet the days read 1 %.
+- 11-17's final equals its 03:19Z reading, although 3 busy samples (6 min)
+  came after it. This repeats 11-02's 88 → 88 (§1). The figure behaves like a
+  level reached early in the day and not added to afterwards.
+
+**Per-unit costs, in raw units** (no bucket, so no percentages). An interval
+with k unit kinds live is split 1/k. Unit spans come from `data_sync_log` and
+from `dispatch_log` (armed → reaped) for the VACUUMs.
+
+- **One post-landing ecs window**, the 11-16 pass's 16, alone: ~250 s, 2 busy
+  min, 6–10 GB over 11 MB/s (median 6.4), 0.45–0.64 M read ops over 500/s.
+- **The 11-16 pass** (02:27Z Mon → 01:39Z Tue): 114 busy min, 483.7 GB over
+  11 MB/s, 18.9 M ops over 500/s.
+
+| unit kind | busy min | GB over 11 MB/s | share | Mops over 500/s |
+|---|---:|---:|---:|---:|
+| ec-crawl ecs windows | 28 | 105.1 | 21.7 % | 7.21 |
+| ec-crawl donations windows | 23 | 96.7 | 20.0 % | 3.10 |
+| no unit running (autovacuum, checkpoints, the landing's tail) | 20 | 96.2 | 19.9 % | 1.16 |
+| rollups / MVs (incl. the 00:47Z weekly) | 22 | 55.3 | 11.4 % | 3.79 |
+| dispatched VACUUMs | 0 | 48.9 | 10.1 % | 0.23 |
+| fe-crawl | 5 | 38.4 | 7.9 % | 1.60 |
+| donor rollup | 8 | 19.2 | 4.0 % | 0.56 |
+| taggers | 5 | 12.8 | 2.7 % | 0.70 |
+| the nightly's pipelines (fallback + 21:00Z) | 3 | 11.1 | 2.3 % | 0.54 |
+
+- **Swap traffic on root:** root's own throughput over 11 MB/s in the pass
+  was 13.9 GB. Swap-in on file 11-17 was 46.6 GB, 16.7 % of root's 279.2 GB.
+  It costs through coincidence with the other units, not on its own.
+- **The vote merge's hour (11-18 02:53–02:56Z):** not covered. The ring held
+  11-18 only from 19:24Z. The banked instants show 0 busy samples at
+  02:53–02:56Z, and 4 (8 min) in 03:08–04:34Z, under ecs windows 5–8 of the
+  cycle the merge fell inside (272 → 205 s each, against ~40 s before it).
+  The day read 1 %.
+
+**Small's baselines** (1,000 IOPS, 21.75 MB/s), on 11-16:
+
+| measure | on Micro's baselines | on Small's | Small as a share of Micro |
+|---|---:|---:|---:|
+| GB over the baseline, both | 398.0 | 258.9 | 65 % |
+| Mops over the baseline, both | 13.86 | 8.07 | 58 % |
+| busy minutes | 108 | 108 | unchanged: they read `/data`'s own ceiling, not the instance baseline |
+
+If the dashboard scaled with either overage, 96 % would read ~62 % (MB) or
+~56 % (ops). Neither fits, so no consumed share is claimed. Every one of these
+numbers **assumes the bucket is the same size on Small, which is unverified.**
