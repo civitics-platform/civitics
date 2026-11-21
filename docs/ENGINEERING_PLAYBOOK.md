@@ -1750,6 +1750,9 @@ expected value samples its rows. Once the data allows it, give the natural key
 a unique index, so the next duplicate fails loudly instead of piling up.
 *FIX-1428, FIX-1429 · `pipelines/executive/seed.ts` · cc-297 reads 3 and 4*
 
+The nominee and court lookups take the same rule through `lib/lookup-outcome.ts`; a name matching two rows is counted `ambiguous_name`, not adopted (§E6).
+*FIX-1436, FIX-1440 · `pipelines/agency-leadership/index.ts`, `pipelines/courtlistener/writer.ts` · cc-304*
+
 ### E14. A manifest that carries row ids is built on the database it will be applied to. A clone-built one is a draft.
 
 cc-291 built FIX-1417's verdict-roll manifest on the local clone: 100 members
