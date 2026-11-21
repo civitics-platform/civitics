@@ -1,0 +1,47 @@
+{
+  "cc": "305",
+  "prompt": "cc-prompt-305-fix1437-tail-table-reads-job-registry-for-dispatched-owners-fix1438-db-query-timeout-bounds-a-read.md",
+  "started_at": "2026-11-21T02:47:18Z",
+  "finished_at": "2026-11-21T03:08:00Z",
+  "head_before": "9760dda6",
+  "head_after": "2cdc870f",
+  "commits": [
+    {
+      "sha": "52597566",
+      "subject": "fix(data): FIX-1437 the tail table reads job_registry for a dispatched owner; a pipeline-owned step is not printed as unscheduled (cc-305)"
+    },
+    {
+      "sha": "3e8ab97f",
+      "subject": "fix(scripts): FIX-1438 db-query --timeout bounds a plain read with SET LOCAL statement_timeout (cc-305)"
+    },
+    {
+      "sha": "95e00699",
+      "subject": "[skip vercel] docs(claude-md): db-query --timeout on a read adds SET LOCAL statement_timeout (FIX-1438, cc-305)"
+    },
+    {
+      "sha": "2cdc870f",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-305 — FIX-1437 and FIX-1438 closed local-only (31 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1437",
+    "FIX-1438"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 0's STOP row fired: cc-293's report describes the tail table (its lines 200-203) but does not carry the printed table. Took the shape from the code, as the row says. The 'before' below is main's code (9760dda6, the primary checkout, unchanged) printed against LOCAL.",
+    "The suites' clone-class STOP row fired: pass 2 is 348/351. The two failures are dispatcher-r12 and dispatcher-r14's verdict-guard cases ('the clone exercises insufficient_data', and 'the seed reads insufficient_data' with actual 'ok'). They fail identically on main's checkout with no diff applied, and neither file imports anything this run touched. They are FIX-1426, which the prompt holds out of scope. cc-308 was not running. Quoted, and the run carried on."
+  ],
+  "lane": "hygiene",
+  "owed": [
+    {
+      "fix": "FIX-1437",
+      "what": "the next prod run of the merge script that prints the tail table (any mode): the four vacuum owners read dispatched and guarded yes, no FIX-1193 warning, and the IE-totals step is not NOT SCHEDULED",
+      "after": "2026-11-24T01:00Z"
+    }
+  ]
+}
