@@ -245,7 +245,9 @@ export async function GET(request: Request) {
     const supabase = createAdminClient({ fetch: noStoreFetch });
 
     let connections: ConnectionRow[] = [];
-    let totalCount = 0;
+    // undefined only when the default view's estimate could not be read
+    // (FIX-1434); the response then omits `count`.
+    let totalCount: number | undefined = 0;
     // Set when an edge-hydration load was capped at a safety ceiling — surfaced to
     // the client so a truncated graph is honest rather than silently incomplete (FIX-428).
     let partial = false;
@@ -633,25 +635,34 @@ export async function GET(request: Request) {
 
     } else {
       // ── Default view: top 10 most connected officials ──────────────────
-      // Use a HEAD request for the total count (no rows transferred), then
-      // two small targeted queries (officials only, capped at 3 000 each)
-      // to find the top 10 by connection frequency.
-      // Previously fetched all 143 k rows client-side — ~100× egress reduction.
-      // QWEN-ADDED: Add generic type to withDbTimeout for count-only HEAD query
+      // FIX-1434 — the total is an ESTIMATE. Above max_rows, PostgREST's
+      // `estimated` count is the planner's row estimate for the unfiltered
+      // table (pg_class.reltuples, no scan). The exact HEAD it replaces counted
+      // every row of entity_connections (~6.9M) on each uncached request:
+      // 615 ms warm on the local clone, and cold it outran the 5 s timer and
+      // the route returned 500 (cc-295, cc-306). No client reads `count`. An
+      // unfiltered big-table total is the case FIX-206's estimate fits;
+      // FIX-1077's objection to `planned` is about filtered counts.
+      //
+      // The count never fails the view: an error or timeout is logged and the
+      // response omits `count`. Nor does it decide emptiness — a never-analyzed
+      // table can estimate 0 — so the top10Ids check below is the empty answer.
       const { count, error: countErr } = await withDbTimeout<{
         count: number | null;
         error: { message: string } | null;
       }>(
         supabase
           .from("entity_connections")
-          .select("*", { count: "exact", head: true })
+          .select("*", { count: "estimated", head: true }),
+        5000,
+        "connections:total-estimate",
       );
 
-      if (countErr) throw countErr;
-      totalCount = count ?? 0;
-
-      if (totalCount === 0) {
-        return withPublicCdnCache(Response.json({ nodes: [], edges: [], count: 0 }));
+      if (countErr) {
+        console.warn("[graph/connections] estimated total unavailable, omitting count:", countErr.message);
+        totalCount = undefined;
+      } else {
+        totalCount = count ?? undefined;
       }
 
       // FIX-476 — true top-10 by degree via a GROUP BY RPC. The prior approach
@@ -685,7 +696,11 @@ export async function GET(request: Request) {
       }
 
       if (top10Ids.length === 0) {
-        return withPublicCdnCache(Response.json({ nodes: [], edges: [], count: totalCount }));
+        return withPublicCdnCache(Response.json({
+          nodes: [],
+          edges: [],
+          ...(totalCount !== undefined ? { count: totalCount } : {}),
+        }));
       }
 
       // Top-10 officials are the highest-degree nodes, so this is the egress-sensitive
@@ -1210,7 +1225,7 @@ export async function GET(request: Request) {
     return withPublicCdnCache(Response.json({
       nodes,
       edges,
-      count: totalCount,
+      ...(totalCount !== undefined ? { count: totalCount } : {}),
       ...(partial ? { partial: true } : {}),
       ...(depth2Truncated ? { meta: { depth2Truncated: true } } : {}),
     }));
