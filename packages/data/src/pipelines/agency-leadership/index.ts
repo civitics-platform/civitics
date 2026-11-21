@@ -17,6 +17,7 @@
  */
 
 import { createAdminClient, rowsOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
+import { resolveByKey, resolveByName, type LookupResult } from "../../lib/lookup-outcome";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 import { sleep } from "../utils";
 
@@ -199,6 +200,122 @@ function parseNomineeDescription(description: string): { name: string; positionT
   return { name, positionTitle };
 }
 
+export interface NomineeInput {
+  name: string;
+  nominationId: string;
+  positionTitle: string;
+}
+
+export interface NominationCounts {
+  inserted: number;
+  failed: number;
+  duplicates: number;
+  ambiguous_name: number;
+}
+
+/**
+ * FIX-1436: find or create a confirmed nominee's officials row. `null` means
+ * nothing was resolved and nothing was written for this nominee: its lookup
+ * failed (counted `failed`), or its insert did, or there is no federal
+ * jurisdiction to insert under.
+ *
+ *   1. By `source_ids->>congress_nomination_id`, every match: the oldest wins,
+ *      the rest are counted `duplicates` and left for a supervised cleanup.
+ *   2. Else by `ilike full_name` (case-insensitive equality, FIX-325): one
+ *      match is adopted and gets the nomination id, as before. Two or more is
+ *      not a match: nothing is adopted, `ambiguous_name` is counted, and the
+ *      nomination-keyed row is inserted as before.
+ *   3. Else insert.
+ *
+ * A lookup error at 1 or 2 writes nothing — it used to read as "not found" and
+ * insert.
+ */
+export async function resolveNominee(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  nominee: NomineeInput,
+  federalJurisdictionId: string | null,
+  counts: NominationCounts,
+): Promise<string | null> {
+  const { name, nominationId, positionTitle } = nominee;
+
+  const byKey = resolveByKey(
+    (await db
+      .from("officials")
+      .select("id, created_at")
+      .filter("source_ids->>congress_nomination_id", "eq", nominationId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })) as LookupResult<{ id: string; created_at: string | null }>,
+  );
+  if (byKey.kind === "failed") {
+    console.error(`  nominee ${nominationId} (${name}): lookup by nomination id failed: ${byKey.error} — skipped, no insert and no update`);
+    counts.failed++;
+    return null;
+  }
+  if (byKey.kind === "found") {
+    if (byKey.duplicates.length > 0) {
+      counts.duplicates += byKey.duplicates.length;
+      console.warn(
+        `  nominee ${nominationId} (${name}): ${byKey.duplicates.length + 1} rows carry this nomination id — using the oldest ${byKey.row.id}; duplicate(s) ${byKey.duplicates.join(", ")} left for cleanup`,
+      );
+    }
+    return byKey.row.id;
+  }
+
+  const byName = resolveByName(
+    (await db
+      .from("officials")
+      .select("id, created_at, source_ids")
+      .ilike("full_name", name)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })) as LookupResult<{
+      id: string;
+      created_at: string | null;
+      source_ids: Record<string, unknown> | null;
+    }>,
+  );
+  if (byName.kind === "failed") {
+    console.error(`  nominee ${nominationId} (${name}): lookup by name failed: ${byName.error} — skipped, no insert and no update`);
+    counts.failed++;
+    return null;
+  }
+  if (byName.kind === "found") {
+    const officialId = byName.row.id;
+    const updatedSourceIds = { ...(byName.row.source_ids ?? {}), congress_nomination_id: nominationId };
+    await db
+      .from("officials")
+      .update({ source_ids: updatedSourceIds, is_active: true, updated_at: new Date().toISOString() })
+      .eq("id", officialId);
+    return officialId;
+  }
+  if (byName.ambiguous.length > 1) {
+    counts.ambiguous_name++;
+    console.warn(
+      `  nominee ${nominationId} (${name}): name matches ${byName.ambiguous.length} officials rows (${byName.ambiguous.join(", ")}) — none adopted; inserting the nomination-keyed row`,
+    );
+  }
+
+  if (!federalJurisdictionId) return null;
+  const { data: inserted, error: insErr } = await db
+    .from("officials")
+    .insert({
+      full_name: name,
+      role_title: positionTitle,
+      is_active: true,
+      jurisdiction_id: federalJurisdictionId,
+      source_ids: { congress_nomination_id: nominationId },
+      metadata: { source: "congress_nominations" },
+    })
+    .select("id")
+    .single();
+  if (insErr || !inserted?.id) {
+    counts.failed++;
+    return null;
+  }
+  counts.inserted++;
+  return inserted.id as string;
+}
+
 async function runCongressNominationsPass(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
@@ -317,63 +434,14 @@ async function runCongressNominationsPass(
   );
 
   // Upsert officials and connections, then close stale
+  const counts: NominationCounts = { inserted: 0, failed: 0, duplicates: 0, ambiguous_name: 0 };
   for (const [agencyId, nominees] of confirmedByAgency) {
     const currentOfficialIds = new Set<string>();
+    const failedBefore = counts.failed;
 
-    for (const { name, nominationId, confirmedDate, positionTitle } of nominees) {
-      let officialId: string | undefined;
-
-      // Look up by congress_nomination_id first
-      const { data: byNomId } = await db
-        .from("officials")
-        .select("id")
-        .filter("source_ids->>congress_nomination_id", "eq", nominationId)
-        .maybeSingle();
-      if (byNomId?.id) {
-        officialId = byNomId.id as string;
-      }
-
-      if (!officialId) {
-        // Fall back to name match. ilike with no wildcards = case-insensitive
-        // equality. Was .eq(), which let "ADAM SCHEINMAN" and "Adam Scheinman"
-        // land as separate officials rows (FIX-325).
-        const { data: byName } = await db
-          .from("officials")
-          .select("id, source_ids")
-          .ilike("full_name", name)
-          .maybeSingle();
-        if (byName?.id) {
-          officialId = byName.id as string;
-          // Add nomination ID to source_ids
-          const updatedSourceIds = { ...(byName.source_ids ?? {}), congress_nomination_id: nominationId };
-          await db
-            .from("officials")
-            .update({ source_ids: updatedSourceIds, is_active: true, updated_at: new Date().toISOString() })
-            .eq("id", officialId);
-        }
-      }
-
-      if (!officialId && federalJurisdictionId) {
-        const { data: inserted, error: insErr } = await db
-          .from("officials")
-          .insert({
-            full_name: name,
-            role_title: positionTitle,
-            is_active: true,
-            jurisdiction_id: federalJurisdictionId,
-            source_ids: { congress_nomination_id: nominationId },
-            metadata: { source: "congress_nominations" },
-          })
-          .select("id")
-          .single();
-        if (insErr || !inserted?.id) {
-          result.failed++;
-          continue;
-        }
-        officialId = inserted.id as string;
-        result.inserted++;
-      }
-
+    for (const nominee of nominees) {
+      const { nominationId, confirmedDate, positionTitle } = nominee;
+      const officialId = await resolveNominee(db, nominee, federalJurisdictionId, counts);
       if (!officialId) continue;
       currentOfficialIds.add(officialId);
 
@@ -402,11 +470,23 @@ async function runCongressNominationsPass(
       result.updated++;
     }
 
-    // Congress confirmations are authoritative — close stale connections
-    if (currentOfficialIds.size > 0) {
+    // Congress confirmations are authoritative — close stale connections. Not
+    // after a nominee here failed (FIX-1436): that nominee is missing from the
+    // current set, so the sweep would close their open edge on a failed read.
+    const failedHere = counts.failed - failedBefore;
+    if (failedHere > 0) {
+      console.warn(`  agency ${agencyId}: ${failedHere} nominee(s) failed — stale-connection close skipped tonight`);
+    } else if (currentOfficialIds.size > 0) {
       await closeStaleConnections(db, agencyId, currentOfficialIds, today);
     }
   }
+
+  result.inserted += counts.inserted;
+  result.failed += counts.failed;
+  result.metadata = { ...(result.metadata ?? {}), congress_nominations: { ...counts } };
+  console.info(
+    `  Congress.gov nominations: inserted=${counts.inserted} failed=${counts.failed} duplicates=${counts.duplicates} ambiguous_name=${counts.ambiguous_name}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

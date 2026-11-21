@@ -21,6 +21,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { resolveByKey, type LookupResult } from "../../lib/lookup-outcome";
 
 type Db = any;
 
@@ -48,25 +49,60 @@ const COURT_FULL_NAMES: Record<string, string> = {
 // Judicial governing bodies — find-or-create per court (volume 14)
 // ---------------------------------------------------------------------------
 
+export interface JudicialGovBodiesResult {
+  /** courtlistener court id → governing_bodies.id */
+  courtMap: Map<string, string>;
+  /** Court ids resolved to nothing tonight (a failed lookup or insert); nothing was written for them. */
+  failed: string[];
+  inserted: number;
+  duplicates: number;
+}
+
+/** Every governing_bodies row with this court's name in the federal jurisdiction, oldest first. */
+async function lookupCourt(db: Db, name: string, federalId: string) {
+  return resolveByKey(
+    (await db
+      .from("governing_bodies")
+      .select("id, created_at")
+      .eq("name", name)
+      .eq("jurisdiction_id", federalId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })) as LookupResult<{ id: string; created_at: string | null }>,
+  );
+}
+
+/**
+ * FIX-1436: the court lookup reads every match. A failed lookup writes nothing
+ * for that court (it used to read as "not found" and insert another row, and
+ * with no unique key on (name, jurisdiction_id) the next run's `.maybeSingle()`
+ * then errored on two rows and inserted again). The same name twice: the oldest
+ * row wins and the rest are counted `duplicates`.
+ */
 export async function resolveJudicialGovBodies(
   db: Db,
   federalId: string,
   courtIds: string[],
-): Promise<Map<string, string>> {
+): Promise<JudicialGovBodiesResult> {
   const courtMap = new Map<string, string>();
+  const out: JudicialGovBodiesResult = { courtMap, failed: [], inserted: 0, duplicates: 0 };
 
   for (const courtId of courtIds) {
     const name = COURT_FULL_NAMES[courtId] ?? `Federal Court (${courtId})`;
 
-    const { data: existing } = await db
-      .from("governing_bodies")
-      .select("id")
-      .eq("name", name)
-      .eq("jurisdiction_id", federalId)
-      .maybeSingle();
-
-    if (existing?.id) {
-      courtMap.set(courtId, existing.id);
+    const existing = await lookupCourt(db, name, federalId);
+    if (existing.kind === "failed") {
+      console.error(`    courtlistener writer: gov_body ${courtId} lookup failed: ${existing.error} — skipped, no insert`);
+      out.failed.push(courtId);
+      continue;
+    }
+    if (existing.kind === "found") {
+      if (existing.duplicates.length > 0) {
+        out.duplicates += existing.duplicates.length;
+        console.warn(
+          `    courtlistener writer: gov_body ${courtId} has ${existing.duplicates.length + 1} rows named "${name}" — using the oldest ${existing.row.id}; duplicate(s) ${existing.duplicates.join(", ")} left for cleanup`,
+        );
+      }
+      courtMap.set(courtId, existing.row.id);
       continue;
     }
 
@@ -86,18 +122,15 @@ export async function resolveJudicialGovBodies(
     if (error || !inserted) {
       // 23505 = concurrent-insert race; retry select
       if (error?.code === "23505") {
-        const { data: retry } = await db
-          .from("governing_bodies")
-          .select("id")
-          .eq("name", name)
-          .eq("jurisdiction_id", federalId)
-          .maybeSingle();
-        if (retry?.id) { courtMap.set(courtId, retry.id); continue; }
+        const retry = await lookupCourt(db, name, federalId);
+        if (retry.kind === "found") { courtMap.set(courtId, retry.row.id); continue; }
       }
       console.error(`    courtlistener writer: gov_body ${courtId}: ${error?.message}`);
+      out.failed.push(courtId);
       continue;
     }
 
+    out.inserted++;
     courtMap.set(courtId, inserted.id);
   }
 
@@ -129,7 +162,7 @@ export async function resolveJudicialGovBodies(
     await refreshPrimarySourceForEntities(db, "governing_body", [...courtMap.values()]);
   }
 
-  return courtMap;
+  return out;
 }
 
 // ---------------------------------------------------------------------------

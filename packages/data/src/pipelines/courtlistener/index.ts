@@ -108,14 +108,19 @@ export async function runCourtListenerPipeline(
   const db = createAdminClient();
 
   try {
-    const courtGovBodyMap = await resolveJudicialGovBodies(db, federalId, FEDERAL_COURTS);
-    console.info(`  Seeded/resolved ${courtGovBodyMap.size} judicial governing bodies`);
+    const courts = await resolveJudicialGovBodies(db, federalId, FEDERAL_COURTS);
+    const courtGovBodyMap = courts.courtMap;
+    const courtsFailed = new Set(courts.failed);
+    console.info(
+      `  Seeded/resolved ${courtGovBodyMap.size} judicial governing bodies — inserted=${courts.inserted} duplicates=${courts.duplicates} failed=${courts.failed.length}`,
+    );
 
     // ── Part 1: Judges ───────────────────────────────────────────────────────
     console.info("\n  Fetching active federal judges...");
     const judgeInputs: JudgeInput[] = [];
     const judgesSeen = new Set<number>();
     let judgesQuotaHit = false;
+    let judgesCourtUnresolved = 0;
 
     let nextUrl: string | null = null;
     let page = 1;
@@ -158,8 +163,15 @@ export async function runCourtListenerPipeline(
           ? (pos.court as Record<string, unknown>)["id"] ?? ""
           : pos.court ?? "");
         const courtSlug = courtStr.split("/").filter(Boolean).pop() ?? courtStr;
-        const governingBodyId = courtGovBodyMap.get(courtSlug)
-          ?? [...courtGovBodyMap.values()][0]!;
+        // FIX-1436: a judge whose court did not resolve tonight is skipped,
+        // not re-pointed at whichever court the map holds first.
+        const governingBodyId = courtsFailed.has(courtSlug)
+          ? undefined
+          : courtGovBodyMap.get(courtSlug) ?? [...courtGovBodyMap.values()][0];
+        if (!governingBodyId) {
+          judgesCourtUnresolved++;
+          continue;
+        }
 
         judgeInputs.push({
           courtlistenerPersonId: String(personId),
@@ -185,6 +197,9 @@ export async function runCourtListenerPipeline(
     } while (nextUrl);
 
     console.info(`  Judges: ${judgeInputs.length} fetched, batched upsert...`);
+    if (judgesCourtUnresolved > 0) {
+      console.warn(`  Judges: ${judgesCourtUnresolved} skipped — their court did not resolve tonight`);
+    }
     const judgeRes = await upsertJudgesBatch(db, judgeInputs);
     console.info(`  Judges — inserted: ${judgeRes.inserted}, updated: ${judgeRes.updated}, failed: ${judgeRes.failed}`);
 
@@ -253,11 +268,22 @@ export async function runCourtListenerPipeline(
       updated: totalUpdated,
       failed: totalFailed,
       estimatedMb,
+      metadata: {
+        courts: {
+          inserted: courts.inserted,
+          duplicates: courts.duplicates,
+          failed: courts.failed.length,
+          judges_court_unresolved: judgesCourtUnresolved,
+        },
+      },
     };
 
     console.info("\n  ──────────────────────────────────────────────────");
     console.info("  CourtListener pipeline report");
     console.info("  ──────────────────────────────────────────────────");
+    console.info(`  ${"Courts inserted:".padEnd(32)} ${courts.inserted}`);
+    console.info(`  ${"Courts duplicates:".padEnd(32)} ${courts.duplicates}`);
+    console.info(`  ${"Courts failed:".padEnd(32)} ${courts.failed.length}`);
     console.info(`  ${"Judges inserted:".padEnd(32)} ${judgeRes.inserted}`);
     console.info(`  ${"Judges updated:".padEnd(32)} ${judgeRes.updated}`);
     console.info(`  ${"Judges failed:".padEnd(32)} ${judgeRes.failed}`);
