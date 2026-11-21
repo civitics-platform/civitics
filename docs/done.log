@@ -1949,3 +1949,5 @@
 2026-11-21 | FIX-1384 | b9e021cf | prod-only | chore(fixes): record FIX-1384 on prod — contract_flow_stage a day after the one-pass run, read 2026-11-21 01:00:10Z: n_live_tup 203,314, n_dead_tup 0, last_autovacuum 2026-11-19 14:07:21Z, last_autoanalyze 2026-11-19 14:07:21Z (autovacuumed after its Thu 14:03Z load, nothing dead since) (cc-302)
 2026-11-21 | FIX-1432 | 87b9c10a | local-only | fix(data): FIX-1432 the pipelines' primary-source refresh goes by direct pg bounded at 60 s, off PostgREST's 8 s (cc-304)
 2026-11-21 | FIX-1436 | 9b15d613 | local-only | fix(data): FIX-1436 the nominee and court lookups read every match and never insert on a failed read; the oldest row wins on a duplicated key; an ambiguous name is counted, not guessed (cc-304)
+2026-11-21 | FIX-1437 | 52597566 | local-only | fix(data): FIX-1437 the tail table reads job_registry for a dispatched owner; a pipeline-owned step is not printed as unscheduled (cc-305)
+2026-11-21 | FIX-1438 | 3e8ab97f | local-only | fix(scripts): FIX-1438 db-query --timeout bounds a plain read with SET LOCAL statement_timeout (cc-305)
