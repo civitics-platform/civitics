@@ -1,0 +1,45 @@
+{
+  "cc": "306",
+  "prompt": "cc-prompt-306-fix1434-default-graph-view-total-from-an-estimate-fix1435-apply-preset-keeps-the-entity-handoff.md",
+  "started_at": "2026-11-21T02:47:19Z",
+  "finished_at": "2026-11-21T03:08:44Z",
+  "head_before": "9760dda6",
+  "head_after": "85eb1538",
+  "commits": [
+    {
+      "sha": "01febf88",
+      "subject": "fix(app): FIX-1434 the default graph view reads an estimated total, and a failed count no longer fails the view (cc-306)"
+    },
+    {
+      "sha": "ead5efe8",
+      "subject": "fix(graph): FIX-1435 applyPreset updates from the current view, so an entity handoff survives a preset handoff (cc-306)"
+    },
+    {
+      "sha": "85eb1538",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-306 — FIX-1434 and FIX-1435 closed local-only (28 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1434",
+    "FIX-1435"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1434",
+      "what": "Craig's look after the deploy: https://www.civitics.com/api/graph/connections (no params) returns 200 with a count near 6.9M and nodes/edges. /graph with no entity does not call this route; it shows the empty state",
+      "after": "2026-11-21T06:00Z"
+    },
+    {
+      "fix": "FIX-1435",
+      "what": "Craig's look after the deploy: /graph?addEntityIds=60f87348-1ffc-427f-b80c-5f416967cd41&addEntityTypes=official&preset=full-record opens focused on Roger Marshall with the Full Record preset applied",
+      "after": "2026-11-21T06:00Z"
+    }
+  ]
+}
