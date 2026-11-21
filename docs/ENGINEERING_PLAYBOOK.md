@@ -67,6 +67,9 @@ FIX-1428 / FIX-1429). New rule **E13**.
 **Extended 2026-11-21** with the verdict roll's clone-built manifest (cc-301,
 FIX-1417). New rule **E14**.
 
+**Extended 2026-11-21** with the incremental donations window's merge (cc-308,
+FIX-1441; the contracts arm's, FIX-1439, held). New rule **C15**.
+
 ---
 
 ## A. Data-shape regimes
@@ -940,6 +943,66 @@ the moment the scheduler knows a unit is dead (its reap reads `failed`), it
 closes the unit's own `running` rows. Leaving that to a 60-minute reaper lets a
 corpse hold a lane for hours.
 *FIX-1423 / FIX-1421 / FIX-1425 · `docs/cc/reports/cc-286.md`, cc-292 · receipt: Mon 11-23's pass*
+
+### C15. An arm that deletes its scope and re-inserts it pays for every row that did not change. Merge.
+
+`rebuild_ec_donations_incr_window` deleted every donation and opposition edge
+of each dirty donor and re-inserted the donor's full history. One moved FR row
+made a donor dirty, so a landing rewrote every edge its donors held: 7.3× the
+changed pairs on the clone's 08-20 landing, 17.7× on prod's 11-20 11:03Z arm
+(692,600 edges for 39,137 pairs, cc-302 read 3). Each rewritten row is a heap
+delete, a heap insert and an insert into every index (ten on
+`entity_connections`). It also clears its page's visibility-map bit, so the
+index-only read that follows pays heap fetches until a vacuum sets the bits
+again. cc-302 read 11 stats windows at 1,135.6 s after that rewrite, against
+381.8–515.4 s for an ordinary sixteen.
+
+The merge is FIX-1409's `_votes_full` shape. Build the set once in a temp
+table. DELETE the keys that left it, UPDATE only the rows whose values are
+`IS DISTINCT FROM` the set's (stamp `derived_at` there, never write a key
+column), and INSERT the new keys. Measured on the clone's 08-20 landing
+(25,681 donors, sixteen windows, each run rolled back):
+
+| | old | merge |
+|---|---:|---:|
+| as the clone stands: ins / upd / del | 191,323 / 0 / 191,272 | 51 / 620 / 0 |
+| WAL · wall | 1,348.6 MB · 120.7 s | 11.3 MB · 86.4 s |
+| rewound before the landing's inserts: ins / upd / del | 191,323 / 0 / 171,862 | 19,461 / 274 / 0 |
+| WAL · wall | 1,939.5 MB · 86.1 s | 353.7 MB · 45.2 s |
+| the same windows again | 382k tuple writes | 0 |
+
+And the contracts arm (FIX-1439), the whole 188,234-edge aggregate:
+
+| | old | merge, first run | merge, again |
+|---|---:|---:|---:|
+| ins / upd / del | 188,234 / 0 / 188,234 | 0 / 14,760 / 0 | 0 / 0 / 0 |
+| WAL · wall | 658.2 MB · 62.3 s | 1,251.7 MB · 118.9 s | 0.1 MB · 45.9 s |
+
+Two preconditions decide whether a merge saves anything:
+
+- **A total order on every aggregated array.** `ARRAY_AGG(… ORDER BY <date>)`
+  over equal dates is the sort's choice. A re-derivation then "changes" a row
+  nothing touched, and past a cap (`[1:100]`) it changes which ids are kept.
+  That happened on 791 contract edges, each with more than a hundred rows and
+  a tie straddling the hundredth. Break the tie on the row id. The first run
+  pays one rewrite per tied row: the contracts merge's first run above is
+  those 14,760 rewrites. Scattered single-row updates cost more WAL than an
+  append-only rewrite of the same table, because each touches ~11 random
+  pages. It is a one-time cost.
+- **The return value keeps its meaning.** A reader that divides by the count
+  needs the work done, not the rows written. The crawl sensor's s/krow is one
+  (D4's FIX-1338 addendum). Return the set's size, and NOTICE the split.
+
+**Apply:** before an arm's DELETE clears a scope that its INSERT repopulates,
+count the rows that did not change. Arms still shaped that way on the clone,
+largest first by rows: `rebuild_ec_donations_full_window` /
+`_donations_full` (5,696,953 donation + opposition edges); the FIX-1211 repair
+`rebuild_ec_donation_edges_for_donors` and the break-glass `_donations` (per
+donor, the same population); `_external` (573,705); `_votes` (507,394, but
+pair-scoped, one edge per dirty pair, so ~1×). Then the arms with empty scopes
+today: `_investigation` (1), `_appointments`, `_cosponsors`, `_gifts`,
+`_holds`, `_lobbying` and `_oversight` (0 each).
+*FIX-1441 · `20261122000000` · FIX-1439 (merged and held, cc-308) · FIX-1409 · cc-302 read 3, cc-308 reads 1–5*
 
 ---
 
