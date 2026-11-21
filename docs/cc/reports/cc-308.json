@@ -1,0 +1,40 @@
+{
+  "cc": "308",
+  "prompt": "cc-prompt-308-ec-donations-incr-window-merges-dirty-donor-edges-fix1439-contracts-arm-merges-clone-proof-no-prod-push.md",
+  "started_at": "2026-11-21T05:17:16Z",
+  "finished_at": "2026-11-21T06:40:16Z",
+  "head_before": "bd66ed2a",
+  "head_after": "4a0ff203",
+  "commits": [
+    {
+      "sha": "2df8a1cc",
+      "subject": "[skip vercel] chore(fixes): file FIX-1441 (the incremental donations window deletes and re-inserts every edge of every dirty donor: 7.3x on the clone's 08-20 landing, 17.7x on prod's 11-20 11:03Z arm) (cc-308)"
+    },
+    {
+      "sha": "e09f0ea2",
+      "subject": "fix(ec): FIX-1441 the incremental donations window merges a dirty donor's edges instead of rewriting them — built and proven on the clone, not pushed (cc-308)"
+    },
+    {
+      "sha": "e79a84e5",
+      "subject": "[skip vercel] test(ec): FIX-1441 the merge test's aggregation regex counts its two spaces (no-regex-spaces) (cc-308)"
+    },
+    {
+      "sha": "4a0ff203",
+      "subject": "[skip vercel] docs(playbook): C15 — an arm that deletes its scope and re-inserts it pays for every row that did not change; merge (cc-308)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1441"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 (FIX-1439, the contracts merge): D8 (f)'s STOP fired — the old body over the merge's result differs on evidence_ids as a SET for 791 of 188,234 edges (all boundary ties at the [1:100] cap; key, scalars and occurred_at multisets equal). Not landed, not applied to LOCAL; held as fa9cc4fb on origin feature/fix-1439 for Craig's ruling",
+    "Type regeneration: packages/db's db:types reads the prod project id (posture code-only), so it was not run; no signature changed"
+  ],
+  "lane": "ops",
+  "owed": []
+}
