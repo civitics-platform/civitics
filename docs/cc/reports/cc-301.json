@@ -1,0 +1,37 @@
+{
+  "cc": "301",
+  "prompt": "cc-prompt-301-fix1417-verdict-roll-manifest-rebuilt-on-prod-one-cell-diff-marshall-official-id-dry-78-gated-class-p-apply-playbook-line.md",
+  "started_at": "2026-11-21T00:42:09Z",
+  "finished_at": "2026-11-21T00:53:00Z",
+  "head_before": "d647833d",
+  "head_after": "726be722",
+  "commits": [
+    {
+      "sha": "8bf7946b",
+      "subject": "[skip vercel] docs(audit): FIX-1417 the verdict-roll manifest rebuilt on prod — marshall:KS's official_id 27090d3a → 60f87348 (the row prod promoted on 2026-09-17, FIX-1187 set 2); the other 99 lines unchanged (cc-301)"
+    },
+    {
+      "sha": "72a788b4",
+      "subject": "chore(fixes): close FIX-1417 on prod — senate-117-1-00059's 78 stored rows corrected from the roll as published: not_voting=78 → no=37 yes=41 (applied 2026-11-21T00:47:38Z, claim 4.0 s), on a manifest rebuilt against prod (cc-301)"
+    },
+    {
+      "sha": "ed61dc4f",
+      "subject": "[skip vercel] docs(playbook): E14 — a manifest that carries row ids is built on the database it will be applied to; a clone-built one is a draft (cc-301)"
+    },
+    {
+      "sha": "726be722",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-301 — FIX-1417 closed (local+prod, 72a788b4): the verdict roll's 78 rows applied on prod from a manifest rebuilt against prod (30 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1417"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "ONE gated class-P write, from the primary's packages/data in the foreground: pnpm run session:wait-for-gate:prod --expected-minutes 1 --census stop --poll-seconds 60 --max-wait-minutes 8 --reason \\\"FIX-1417 verdict roll, 78 rows\\\" --then \\\"pnpm exec tsx --env-file=../../.env.local.prod src/scripts/fix1417-verdict-roll.ts --allow-prod --apply\\\". APPLIED: 78 updated, 0 already correct; senate-117-1-00059 not_voting=78 → no=37 yes=41. Receipt facts: (1) gate wait 00:46:00.309Z → ok=true 00:47:29.689Z = 89.4 s, on poll 1, blocked_by [], census pass (1 render / 1 event in 60 min, ratio 0.51, floor 6; edge 0 of 280 = 0.00 %); (2) blocked_tokens [], so no b: or a:nightly_next_start token; (3) claim 00:47:34.685Z → 00:47:38.717Z = 4.0 s, 17 guarded pipelines held and cleared, --then exited 0; (4) data_sync_log rows started in [00:47:33Z, 00:47:40Z): 0, skipped 0; (5) dispatch_log ticks in it: 0 (00:47:00Z nothing_due before it; the 00:48:00Z tick was not yet logged at the 00:48:02Z read). Everything else was a read: 3 db-query --prod statements (of 5), the script's --build (read-only) and its dry run (rolled back), session:held, the box-health ring, one GET to senate.gov.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "owed": []
+}
