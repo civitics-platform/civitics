@@ -1,0 +1,58 @@
+{
+  "cc": "304",
+  "prompt": "cc-prompt-304-fix1436-nominee-and-court-lookups-fail-closed-oldest-wins-split-nominees-filed-fix1432-primary-source-refresh-off-postgrest-logs-api-read-first.md",
+  "started_at": "2026-11-21T01:36:31Z",
+  "finished_at": "2026-11-21T02:10:30Z",
+  "head_before": "567135d9",
+  "head_after": "b998bff5",
+  "commits": [
+    {
+      "sha": "9b15d613",
+      "subject": "fix(data): FIX-1436 the nominee and court lookups read every match and never insert on a failed read; the oldest row wins on a duplicated key; an ambiguous name is counted, not guessed (cc-304)"
+    },
+    {
+      "sha": "87b9c10a",
+      "subject": "fix(data): FIX-1432 the pipelines' primary-source refresh goes by direct pg bounded at 60 s, off PostgREST's 8 s (cc-304)"
+    },
+    {
+      "sha": "9e8da730",
+      "subject": "[skip vercel] chore(fixes): file FIX-1440 (a nominee whose name matches two or more officials rows gets a new row per nomination; Kevin Warsh and David LaCerte split on the clone) (cc-304)"
+    },
+    {
+      "sha": "e77930c3",
+      "subject": "[skip vercel] docs(playbook): E13 receipts — the nominee and court lookups (cc-304)"
+    },
+    {
+      "sha": "b998bff5",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-304 — FIX-1436 and FIX-1432 closed local-only; FIX-1440 filed open (32 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1436",
+    "FIX-1432"
+  ],
+  "fixes_filed": [
+    "FIX-1440"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2's STOP row fired: both split groups (Kevin Warsh, David LaCerte) have edges on more than one row. Handled as the row says: listed first in FIX-1440's body. Nothing merged or deleted.",
+    "Read 3's STOP row on batch size fired for littlesis (already on refreshPrimarySourceDirect): one unbatched call per entity type over hop-1 entities plus new anchors, up to FIX-586's n=90,484. It has no batching of its own, and none was added. It now inherits the 60 s bound; 90,000 ids took 5.1 s on local."
+  ],
+  "lane": "fec",
+  "owed": [
+    {
+      "fix": "FIX-1436",
+      "what": "the first weekly run after the landing (the 11-22 Sunday slot, the 11-21 ~21:05Z dispatch's enrichment-light phase; both pipelines are weekly-only): the agency-leadership and courtlistener summary lines with failed / duplicates / ambiguous_name, and no new officials row for a congress_nomination_id that already has one (a renomination whose name matches two or more rows still inserts by D4, FIX-1440)",
+      "after": "2026-11-24T01:00Z"
+    },
+    {
+      "fix": "FIX-1432",
+      "what": "the same three nightlies: no primary-source refresh warn line in the nightly's log and no 57014 naming refresh_primary_source_for_entities in the Logs API",
+      "after": "2026-11-24T01:00Z"
+    }
+  ]
+}
