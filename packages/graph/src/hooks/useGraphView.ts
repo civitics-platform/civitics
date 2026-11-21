@@ -293,8 +293,12 @@ export function useGraphView(initialView?: Partial<GraphView>) {
 
     // ── Presets ─────────────────────────────────────────────────────────────
 
+    // FIX-1435 — an updater, like every setter above. A value computed from
+    // the render's `view` overwrote anything queued before it in the same
+    // commit: GraphPage's entity handoff (addEntity) runs in the mount commit
+    // beside the preset handoff, and /graph?addEntityIds=…&preset=… lost it.
     applyPreset: (preset: GraphViewPreset) =>
-      setView(applyPresetUtil(preset, view)),
+      setView(v => applyPresetUtil(preset, v)),
 
     /**
      * FIX-817 — restore a full user-saved view (localStorage civitics_presets).
