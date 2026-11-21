@@ -64,6 +64,9 @@ New rule **B6**.
 **Extended 2026-11-18** with the executive seed's nightly duplicates (cc-297,
 FIX-1428 / FIX-1429). New rule **E13**.
 
+**Extended 2026-11-21** with the verdict roll's clone-built manifest (cc-301,
+FIX-1417). New rule **E14**.
+
 ---
 
 ## A. Data-shape regimes
@@ -1746,3 +1749,32 @@ rest and leave them for a supervised cleanup. A count check that misses its
 expected value samples its rows. Once the data allows it, give the natural key
 a unique index, so the next duplicate fails loudly instead of piling up.
 *FIX-1428, FIX-1429 · `pipelines/executive/seed.ts` · cc-297 reads 3 and 4*
+
+### E14. A manifest that carries row ids is built on the database it will be applied to. A clone-built one is a draft.
+
+cc-291 built FIX-1417's verdict-roll manifest on the local clone: 100 members
+read from the roll's XML, 78 of them matched to stored vote rows, each with its
+`vote_id` and `official_id`. The XML half does not depend on any database. The
+two id columns do. On 2026-09-17 at about 23:20Z prod promoted Roger Marshall's
+candidate row `60f87348` to elected and deleted `27090d3a` (FIX-1187 set 2). The
+vote row kept its own id, but its `official_id` moved with the promotion. The
+clone was restored before that promotion and still held `27090d3a`, with 1,889
+votes. cc-293's dry run on prod (2026-11-20 03:58Z) found all 78 vote ids, all
+still `not_voting`, but only 77 of 78 `official_id`s agreed. The script's
+per-row check threw, the transaction rolled back, and nothing was written.
+cc-301 rebuilt the manifest on prod with the script's own `--build`. `git diff`
+showed exactly that one cell, and the dry run then read 78 / 0. The clone drifts
+from prod every night a promotion, merge or dedupe runs. The same night,
+cc-293's FIX-1302 merge moved 42,876 FR rows to new owners on prod alone.
+
+**Apply:** build any manifest whose cells name row ids or foreign keys on its
+target, with the same code, and diff it against the reviewed draft. Only the
+cells you expect to move may move, and the diff is the thing to review. Where a
+rebuild on the target is not possible, census the ids on the target before the
+prompt is written: every id exists, and every foreign key still points where
+the draft says. Keep the apply-time re-check (same parent, same key, same
+foreign key, still in the expected state) inside the write's transaction, so a
+drift aborts the write instead of landing it. Until then, treat a clone-built
+manifest's ids as hypotheses (E3). *FIX-1417, FIX-1187 ·
+`scripts/fix1417-verdict-roll.ts` · `docs/audits/2026-09-17-fix1187-set2-stopped.md`
+· cc-291, cc-293 read 11, cc-301 Item 2*
