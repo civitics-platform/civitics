@@ -74,7 +74,7 @@ const RETURN_COMMENT =
   "  -- crawl sensor's throughput denominator. The rows written are in the NOTICE.\n";
 
 /** The `WITH agg AS ( … )` CTE bodies, in order. */
-const aggs = (b: string) => [...b.matchAll(/WITH agg AS \(([\s\S]*?)\n  \)/g)].map((m) => m[1] as string);
+const aggs = (b: string) => [...b.matchAll(/WITH agg AS \(([\s\S]*?)\n {2}\)/g)].map((m) => m[1] as string);
 /** The SELECT lists that turn `agg a` into edge rows, whitespace-squashed. */
 const selects = (b: string) => [...b.matchAll(/SELECT\s+(a\.from_type[\s\S]*?FROM agg a)/g)].map((m) => squash(m[1] as string));
 /** The INSERT column lists, whitespace-squashed. */
