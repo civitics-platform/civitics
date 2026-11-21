@@ -20,7 +20,7 @@ import { fecOfficePrefixFor, roleMayHoldFecOffice } from "../pipelines/fec-bulk/
 // FIX-1201 — the deferred-tail banner renders its schedule/guarded columns with
 // the SAME function the FIX-1193 tail cost table uses, so the two can never
 // disagree about what `?` or `NOT SCHEDULED` means.
-import { ownerColumns } from "./remediation-manifest";
+import { OWNER_FEC_BULK, ownerColumns } from "./remediation-manifest";
 import type { OwnerSchedule } from "../lib/cron-job-pipelines";
 
 // ---------------------------------------------------------------------------
@@ -1059,7 +1059,9 @@ export const TAIL_OWNERS = {
     // FIX-1165 — these two shipped OUTSIDE the deferral and had to be added after a
     // prod run found them. Both are platform-scoped: their cost does not move when
     // the manifest goes from 28 rows to 2,736.
-    { job: "fec-bulk pipeline", collects: "rebuild_financial_entity_ie_totals()" },
+    // FIX-1437 — the GHA_OWNERS name, so it renders gha / gate. Spelled
+    // "fec-bulk pipeline" it missed that set and printed NOT SCHEDULED.
+    { job: OWNER_FEC_BULK, collects: "rebuild_financial_entity_ie_totals()" },
     { job: "group-donor-rollup-refresh", collects: "refresh_group_donor_rollup()" },
   ],
   mvs: [

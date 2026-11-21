@@ -22,6 +22,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TAIL_OWNERS, printDeferredTail } from "./fec-orphan-classify";
+import { GHA_OWNERS } from "./remediation-manifest";
 import type { OwnerSchedule } from "../lib/cron-job-pipelines";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -99,11 +100,11 @@ function capture(fn: () => void): string {
 
 const OWNERS = new Map<string, OwnerSchedule>([
   // The exact case that caused FIX-1201: fr-vacuum-analyze is daily now.
-  ["fr-vacuum-analyze", { schedule: "0 3 * * *", guarded: false, active: true }],
-  ["officials-vacuum-analyze", { schedule: "30 1 * * 1", guarded: false, active: true }],
-  ["ec-vacuum-analyze", { schedule: "30 4 * * *", guarded: false, active: true }],
+  ["fr-vacuum-analyze", { schedule: "0 3 * * *", guarded: false, active: true, source: "cron" }],
+  ["officials-vacuum-analyze", { schedule: "30 1 * * 1", guarded: false, active: true, source: "cron" }],
+  ["ec-vacuum-analyze", { schedule: "30 4 * * *", guarded: false, active: true, source: "cron" }],
   // An INACTIVE owner: on the books, collects nothing. Must not read as live.
-  ["fe-vacuum-analyze", { schedule: "50 4 * * *", guarded: false, active: false }],
+  ["fe-vacuum-analyze", { schedule: "50 4 * * *", guarded: false, active: false, source: "cron" }],
 ]);
 
 test("the banner prints the LIVE schedule, not a literal", () => {
@@ -135,4 +136,36 @@ test("guarded renders NO for the unguarded vacuum jobs — the FIX-1193 warning"
   const out = capture(() => printDeferredTail("vacuum", OWNERS));
   assert.match(out, /guarded/);
   assert.match(out, /\bNO\b/);
+});
+
+// ── FIX-1437 ────────────────────────────────────────────────────────────────
+
+test("the heavy banner names fec-bulk by its GHA_OWNERS name: gha / gate, not NOT SCHEDULED", () => {
+  // The cc-293 apply printed rebuild_financial_entity_ie_totals() NOT SCHEDULED
+  // here: the banner spelled the owner "fec-bulk pipeline", which no set knew.
+  const row = capture(() => printDeferredTail("heavy", OWNERS))
+    .split("\n")
+    .find((l) => l.includes("rebuild_financial_entity_ie_totals()"));
+  assert.match(row ?? "", /\sgha\s+gate$/, row);
+});
+
+test("every TAIL_OWNERS job is a bare job name or a GHA owner", () => {
+  // The banner twin of remediation-manifest.test's declared-owner census: a
+  // prose owner the lookup cannot find renders NOT SCHEDULED.
+  for (const o of [...TAIL_OWNERS.vacuum, ...TAIL_OWNERS.heavy, ...TAIL_OWNERS.mvs]) {
+    assert.ok(
+      GHA_OWNERS.has(o.job) || !/\s/.test(o.job),
+      `TAIL_OWNERS job ${JSON.stringify(o.job)} is neither a job name nor in GHA_OWNERS`,
+    );
+  }
+});
+
+test("a dispatched vacuum owner gated {prod_session} renders dispatched / yes, no [INACTIVE]", () => {
+  const rule = "dead_tuples > 60% of trigger + floor 24 hours";
+  const dispatched = new Map<string, OwnerSchedule>(
+    TAIL_OWNERS.vacuum.map((o) => [o.job, { schedule: rule, guarded: true, active: true, source: "registry" }]),
+  );
+  const out = capture(() => printDeferredTail("vacuum", dispatched));
+  assert.match(out, /fr-vacuum-analyze\s+financial_relationships\s+dispatched: dead_tuples > 60% of trigger \+ floor 24 hours\s+yes/);
+  assert.doesNotMatch(out, /\[INACTIVE\]|\bNO\b/);
 });

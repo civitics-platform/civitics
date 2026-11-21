@@ -31,6 +31,7 @@ import {
   tailStep,
   type DiffInput,
 } from "./remediation-manifest";
+import { readOwnerSchedules, type OwnerSchedule } from "../lib/cron-job-pipelines";
 
 // ---------------------------------------------------------------------------
 // Tail classes
@@ -492,14 +493,14 @@ test("the real FIX-1153 manifest parses to the numbers the prompt was written ag
 // FIX-1193 — the schedule / guarded columns
 // ---------------------------------------------------------------------------
 
-const OWNERS: ReadonlyMap<string, { schedule: string; guarded: boolean; active: boolean }> =
+const OWNERS: ReadonlyMap<string, OwnerSchedule> =
   new Map([
     // A bare-VACUUM job: no procedure, so nothing consults prod_session_state().
-    ["fr-vacuum-analyze", { schedule: "0 1 * * 1", guarded: false, active: true }],
+    ["fr-vacuum-analyze", { schedule: "0 1 * * 1", guarded: false, active: true, source: "cron" }],
     // A CALL job whose procedure does consult it.
-    ["refresh-derived-mvs-daily", { schedule: "0 6 * * *", guarded: true, active: true }],
+    ["refresh-derived-mvs-daily", { schedule: "0 6 * * *", guarded: true, active: true, source: "cron" }],
     // On the books, switched off — collects nothing today.
-    ["group-donor-rollup-refresh", { schedule: "10 3 * * 3", guarded: true, active: false }],
+    ["group-donor-rollup-refresh", { schedule: "10 3 * * 3", guarded: true, active: false, source: "cron" }],
   ]);
 
 test("ownerColumns renders a VACUUM owner as scheduled but UNGUARDED", () => {
@@ -553,6 +554,118 @@ test("ownerColumns distinguishes 'not read' from 'not scheduled'", () => {
     schedule: "?",
     guarded: "?",
   });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1437 — a dispatched owner, read off job_registry
+// ---------------------------------------------------------------------------
+
+const VACUUM_RULE = "dead_tuples > 60% of trigger + floor 24 hours";
+
+test("ownerColumns renders a dispatched owner gated {prod_session} as dispatched / yes", () => {
+  const owners = new Map<string, OwnerSchedule>([
+    ["fr-vacuum-analyze", { schedule: VACUUM_RULE, guarded: true, active: true, source: "registry" }],
+  ]);
+  assert.deepEqual(ownerColumns("fr-vacuum-analyze", owners), {
+    schedule: `dispatched: ${VACUUM_RULE}`,
+    guarded: "yes",
+  });
+});
+
+test("ownerColumns renders a dispatched owner without the gate as NO, and never [INACTIVE]", () => {
+  // `active` is ignored for a registry owner: its cron twin is parked by design.
+  const owners = new Map<string, OwnerSchedule>([
+    ["fr-vacuum-analyze", { schedule: "by 0 3 * * *", guarded: false, active: false, source: "registry" }],
+  ]);
+  assert.deepEqual(ownerColumns("fr-vacuum-analyze", owners), {
+    schedule: "dispatched: by 0 3 * * *",
+    guarded: "NO",
+  });
+});
+
+/** The cc-293 shape: every pg_cron owner of the tail parked, every one dispatched. */
+const PARKED = [
+  ["fr-vacuum-analyze", "0 3 * * *"],
+  ["fe-vacuum-analyze", "50 4 * * *"],
+  ["ec-vacuum-analyze", "30 4 * * *"],
+  ["officials-vacuum-analyze", "30 1 * * 1"],
+  ["refresh-derived-mvs-daily", "0 6 * * *"],
+  ["refresh-derived-mvs-weekly", "47 0 * * 2"],
+  ["group-donor-rollup-refresh", "10 3 * * 3"],
+  ["treemap-individuals-global-refresh", "0 14 * * 2"],
+] as const;
+
+function stubOwners(gates: (job: string) => string[] | null, registry = true) {
+  const cron = PARKED.map(([jobname, schedule], i) => ({
+    jobid: i + 1, jobname, active: false, schedule, proc: null, pipeline: null, writes_dsl: false,
+    // A bare VACUUM consults nothing; the CALL owners' procedures do.
+    guarded: !jobname.endsWith("-vacuum-analyze"),
+  }));
+  const reg = PARKED.map(([job, schedule]) => ({
+    job,
+    deadline_rule: job.endsWith("-vacuum-analyze") ? VACUUM_RULE : `by ${schedule}`,
+    gates: gates(job),
+  }));
+  return readOwnerSchedules({
+    query: async (sql: string) => {
+      if (!sql.includes("job_registry")) return { rows: cron };
+      if (!registry) throw new Error("permission denied for table job_registry");
+      return { rows: reg };
+    },
+  });
+}
+
+function tailText(owners: ReadonlyMap<string, OwnerSchedule>): string {
+  const lines: string[] = [];
+  const info = console.info;
+  console.info = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+  try {
+    printTailTable(declareRemediationTail(true, { ecPartial: false }), true, owners);
+  } finally {
+    console.info = info;
+  }
+  return lines.join("\n");
+}
+
+test("FIX-1437 the four dispatched vacuum owners gated {prod_session} raise no FIX-1193 warning", async () => {
+  const out = tailText(await stubOwners(() => ["prod_session"]));
+  for (const job of ["fr-", "fe-", "ec-", "officials-"].map((p) => `${p}vacuum-analyze`)) {
+    const row = out.split("\n").find((l) => l.includes(` ${job} `));
+    assert.match(row ?? "", new RegExp(`dispatched: ${VACUUM_RULE.replace(/[%+]/g, "\\$&")}\\s+yes\\s+deferred$`), row);
+  }
+  assert.doesNotMatch(out, /\[INACTIVE\]/, "a dispatched owner's parked twin is not printed (D3)");
+  assert.doesNotMatch(out, /UNGUARDED/, out);
+  assert.doesNotMatch(out, /NOT SCHEDULED/, out);
+});
+
+test("FIX-1437 the IE-totals step renders gha / gate, never NOT SCHEDULED (D5)", async () => {
+  const out = tailText(await stubOwners(() => ["prod_session"]));
+  const row = out.split("\n").find((l) => l.includes("rebuild_financial_entity_ie_totals()"));
+  assert.match(row ?? "", /\sgha\s+gate\s+deferred$/, row);
+});
+
+test("FIX-1437 a dispatched owner WITHOUT the gate still raises the warning", async () => {
+  const out = tailText(await stubOwners((job) => (job === "ec-vacuum-analyze" ? [] : ["prod_session"])));
+  assert.match(out, /! 1 deferred step\(s\) go to an UNGUARDED owner: VACUUM ANALYZE entity_connections -> ec-vacuum-analyze/);
+});
+
+test("FIX-1437 an unguarded CRON owner (no registry row) still raises the warning", async () => {
+  // The registry unreadable, so every owner is its cron row: the four bare
+  // VACUUM twins are unguarded and parked, which is what cc-293 printed.
+  const lines: string[] = [];
+  const info = console.info;
+  console.info = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+  let owners: ReadonlyMap<string, OwnerSchedule>;
+  try {
+    owners = await stubOwners(() => ["prod_session"], false);
+  } finally {
+    console.info = info;
+  }
+  assert.deepEqual(lines, ["  ! registry not read — schedules from cron.job only (permission denied for table job_registry)"]);
+  const out = tailText(owners);
+  assert.match(out, /! 4 deferred step\(s\) go to an UNGUARDED owner/);
+  assert.match(out, /0 3 \* \* \* \[INACTIVE\]/);
+  assert.doesNotMatch(out, /NOT SCHEDULED/, "a failed registry read never reads as an orphan");
 });
 
 test("every declared owner is a jobname, a GHA owner, or the manifest owner", () => {

@@ -142,17 +142,73 @@ ORDER BY pipeline`;
 
 /** What the tail cost table needs to know about one scheduled owner. */
 export interface OwnerSchedule {
-  /** The live `cron.job.schedule` expression. */
+  /**
+   * `source: "cron"` — the live `cron.job.schedule` expression.
+   * `source: "registry"` — the owner's `job_registry.deadline_rule`.
+   */
   schedule: string;
-  /** True when the job's command reaches a procedure consulting `prod_session_state()`. */
+  /**
+   * `source: "cron"` — the job's command reaches a procedure consulting
+   * `prod_session_state()`. `source: "registry"` — the row's `gates` carry
+   * `prod_session`, so the dispatcher defers it while a supervised session holds.
+   */
   guarded: boolean;
-  /** `cron.job.active` — a scheduled owner that is switched off collects nothing. */
+  /**
+   * `cron.job.active` — a scheduled owner that is switched off collects nothing.
+   * Always true for a dispatched owner: its pg_cron twin is parked BY DESIGN and
+   * the dispatcher fires it, so the twin's `active` says nothing about it.
+   */
   active: boolean;
+  /** FIX-1437 — which table decided this owner. */
+  source: "registry" | "cron";
 }
 
 /**
- * Every `cron.job` row keyed by NAME, for a caller that has an owner name and
- * wants to know when it next runs and whether a supervised session defers it.
+ * The `job_registry` columns the owner read needs — FIX-1437.
+ *
+ * Since cc-267 the VACUUM owners (and the MV / rollup owners) are DISPATCHED
+ * rows: the dispatcher fires them under their `gates`, and their `cron.job`
+ * slots are parked. Read off `cron.job` alone they render as their parked
+ * schedule, `[INACTIVE]`, and UNGUARDED (a bare `VACUUM` consults nothing),
+ * which is how the FIX-1302 apply (cc-293) printed a false FIX-1193 warning.
+ */
+export const Q_OWNER_REGISTRY = `
+SELECT job, deadline_rule, gates
+FROM public.job_registry
+ORDER BY job`;
+
+/** One `Q_OWNER_REGISTRY` row. */
+export interface OwnerRegistryRow {
+  job: string;
+  deadline_rule: string;
+  gates: string[] | null;
+}
+
+/**
+ * A registry row the dispatcher owns: its deadline rule is not a fixed `at …`
+ * clock. The same test `prod_op_gate` (b) and PROMPT_TEMPLATE §Drain-and-wait
+ * (a) use: `deadline_rule !~ '^at '`. An `at …` row fires from its own
+ * `cron.job` slot, so the cron read decides it.
+ */
+export function isDispatched(rule: string): boolean {
+  return !/^at /.test(rule);
+}
+
+/** The one line a failed registry read prints, then the cron read stands alone. */
+export const REGISTRY_NOT_READ = "registry not read — schedules from cron.job only";
+
+/**
+ * Every owner keyed by NAME, for a caller that has an owner name and wants to
+ * know when it next runs and whether a supervised session defers it.
+ *
+ * Two small statements merged into one map — FIX-1437. `cron.job` gives every
+ * row; a `job_registry` row the dispatcher owns (`isDispatched`) then REPLACES
+ * its name's cron row, so a dispatched owner's parked twin is never what
+ * prints. A name with no registry row, or with an `at …` rule, is decided by
+ * the cron read alone. The registry wins the decision, but it is queried
+ * SECOND: a failed statement inside a caller's open transaction aborts it, and
+ * a registry failure must degrade to the cron read (one printed line), never
+ * take the cron read down with it.
  *
  * Keyed by NAME and never by jobid, because jobids differ between prod and the
  * local clone by construction — the clone's `cron` schema is local history
@@ -164,22 +220,39 @@ export interface OwnerSchedule {
  * carried its owners' schedules as hard-coded parentheticals
  * ("fr-vacuum-analyze (Mon 01:00)") until FIX-1193, and a parenthetical is a
  * second source of truth that goes stale the day the schedule moves — which is
- * exactly what FIX-1191's daily-FR change does to that one. One query, called
+ * exactly what FIX-1191's daily-FR change does to that one. One read, called
  * once per run, is cheaper than a stale string that reads as authoritative.
  */
 export async function readOwnerSchedules(client: {
-  query: (sql: string) => Promise<{ rows: CronJobPipeline[] }>;
+  query: (sql: string) => Promise<{ rows: unknown[] }>;
 }): Promise<Map<string, OwnerSchedule>> {
-  const res = await client.query(Q_CRON_JOB_PIPELINES);
-  return new Map(
-    res.rows.map((r) => [
+  const cron = (await client.query(Q_CRON_JOB_PIPELINES)).rows as CronJobPipeline[];
+  const owners = new Map<string, OwnerSchedule>(
+    cron.map((r) => [
       r.jobname,
-      { schedule: r.schedule, guarded: r.guarded, active: r.active },
+      { schedule: r.schedule, guarded: r.guarded, active: r.active, source: "cron" },
     ]),
   );
+  let registry: OwnerRegistryRow[];
+  try {
+    registry = (await client.query(Q_OWNER_REGISTRY)).rows as OwnerRegistryRow[];
+  } catch (err) {
+    console.info(`  ! ${REGISTRY_NOT_READ} (${err instanceof Error ? err.message : String(err)})`);
+    return owners;
+  }
+  for (const r of registry) {
+    if (!isDispatched(r.deadline_rule)) continue;
+    owners.set(r.job, {
+      schedule: r.deadline_rule,
+      guarded: (r.gates ?? []).includes("prod_session"),
+      active: true,
+      source: "registry",
+    });
+  }
+  return owners;
 }
 
-/** One in-flight/settled read per client, so a run asks `cron.job` exactly once. */
+/** One in-flight/settled read per client, so a run reads its owners exactly once. */
 const OWNER_SCHEDULE_CACHE = new WeakMap<object, Promise<Map<string, OwnerSchedule>>>();
 
 /**
@@ -193,7 +266,7 @@ const OWNER_SCHEDULE_CACHE = new WeakMap<object, Promise<Map<string, OwnerSchedu
  * would only ever pass it through.
  *
  * Memoising the read instead keeps the property that actually matters — ONE
- * `cron.job` query per run, whoever asks first — while leaving
+ * owner read per run, whoever asks first — while leaving
  * `printDeferredTail(kind, owners?)` a pure function of its arguments, which is
  * what makes it unit-testable with stubbed rows.
  *
@@ -204,7 +277,7 @@ const OWNER_SCHEDULE_CACHE = new WeakMap<object, Promise<Map<string, OwnerSchedu
  * rather than failing a remediation run.
  */
 export async function readOwnerSchedulesOnce(client: {
-  query: (sql: string) => Promise<{ rows: CronJobPipeline[] }>;
+  query: (sql: string) => Promise<{ rows: unknown[] }>;
 }): Promise<Map<string, OwnerSchedule>> {
   const hit = OWNER_SCHEDULE_CACHE.get(client);
   if (hit) return hit;

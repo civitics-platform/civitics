@@ -16,10 +16,13 @@ import test from "node:test";
 import {
   Q_CRON_JOB_PIPELINES,
   Q_GUARDED_PIPELINES,
+  Q_OWNER_REGISTRY,
   RE_COMMENT_ONLY_LINE,
   RE_PIPELINE_FROM_INSERT,
   RE_PIPELINE_FROM_LOCAL,
   RE_PROC_FROM_COMMAND,
+  REGISTRY_NOT_READ,
+  isDispatched,
   readOwnerSchedules,
   sqlRegexToJs,
 } from "./cron-job-pipelines";
@@ -252,29 +255,63 @@ test("every reader of the derivation selects by NAME, so a new column is additiv
   assert.ok(!/SELECT\s+\*\s+FROM\s+jp/i.test(Q_GUARDED_PIPELINES + Q_CRON_JOBS));
 });
 
+/**
+ * A stub client that answers the two owner statements by their SHARED text, so
+ * a reader that ran a hand-written copy of either gets nothing back.
+ */
+function ownerClient(
+  cron: unknown[],
+  registry: unknown[] | Error,
+): { sqls: string[]; query: (sql: string) => Promise<{ rows: unknown[] }> } {
+  const sqls: string[] = [];
+  return {
+    sqls,
+    query: async (sql: string) => {
+      sqls.push(sql);
+      if (sql === Q_CRON_JOB_PIPELINES) return { rows: cron };
+      if (sql === Q_OWNER_REGISTRY) {
+        if (registry instanceof Error) throw registry;
+        return { rows: registry };
+      }
+      throw new Error(`unexpected statement: ${sql.slice(0, 60)}`);
+    },
+  };
+}
+
+/** Run `fn`, returning what it printed through console.info. */
+async function captureInfo<T>(fn: () => Promise<T>): Promise<{ value: T; out: string[] }> {
+  const out: string[] = [];
+  const orig = console.info;
+  console.info = (...a: unknown[]) => void out.push(a.join(" "));
+  try {
+    return { value: await fn(), out };
+  } finally {
+    console.info = orig;
+  }
+}
+
 test("readOwnerSchedules keys by jobname and carries schedule, guarded, active", async () => {
   const rows = [
     { jobid: 15, jobname: "ec-vacuum-analyze", active: false, schedule: "30 4 * * *", proc: null, pipeline: null, writes_dsl: false, guarded: false },
     { jobid: 69, jobname: "refresh-derived-mvs-daily", active: true, schedule: "0 6 * * *", proc: "refresh_derived_mvs", pipeline: "refresh_derived_mvs", writes_dsl: true, guarded: true },
   ];
-  let sawSql = "";
-  const owners = await readOwnerSchedules({
-    query: async (sql: string) => {
-      sawSql = sql;
-      return { rows };
-    },
-  });
+  const client = ownerClient(rows, []);
+  const owners = await readOwnerSchedules(client);
 
-  assert.equal(sawSql, Q_CRON_JOB_PIPELINES, "must run the SHARED derivation, not a second query");
+  // The SHARED derivation for cron.job, never a second copy of it; then the
+  // registry (FIX-1437), after it so a registry failure cannot abort it.
+  assert.deepEqual(client.sqls, [Q_CRON_JOB_PIPELINES, Q_OWNER_REGISTRY]);
   assert.deepEqual(owners.get("ec-vacuum-analyze"), {
     schedule: "30 4 * * *",
     guarded: false,
     active: false,
+    source: "cron",
   });
   assert.deepEqual(owners.get("refresh-derived-mvs-daily"), {
     schedule: "0 6 * * *",
     guarded: true,
     active: true,
+    source: "cron",
   });
   assert.equal(owners.get("no-such-job"), undefined);
 });
@@ -285,14 +322,108 @@ test("readOwnerSchedules keys by NAME and never by jobid", async () => {
   // keyed on jobid read off one database and used against the other names a
   // different job, silently. The two rows below share a name across different
   // ids to make that concrete.
-  const owners = await readOwnerSchedules({
-    query: async () => ({
-      rows: [
-        { jobid: 6, jobname: "ec-vacuum-analyze", active: true, schedule: "30 4 * * *", proc: null, pipeline: null, writes_dsl: false, guarded: false },
-      ],
-    }),
-  });
+  const owners = await readOwnerSchedules(
+    ownerClient(
+      [{ jobid: 6, jobname: "ec-vacuum-analyze", active: true, schedule: "30 4 * * *", proc: null, pipeline: null, writes_dsl: false, guarded: false }],
+      [],
+    ),
+  );
   assert.ok(owners.has("ec-vacuum-analyze"));
   assert.ok(!owners.has("6"));
   assert.equal(owners.size, 1);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1437 — a dispatched owner is read off job_registry
+// ---------------------------------------------------------------------------
+
+/** The parked bare-VACUUM twin every dispatched vacuum owner keeps in cron.job. */
+const PARKED_FR = { jobid: 3, jobname: "fr-vacuum-analyze", active: false, schedule: "0 3 * * *", proc: null, pipeline: null, writes_dsl: false, guarded: false };
+
+test("Q_OWNER_REGISTRY reads the three registry columns the decision needs", () => {
+  assert.match(Q_OWNER_REGISTRY, /SELECT job, deadline_rule, gates\s+FROM public\.job_registry/);
+});
+
+test("isDispatched is prod_op_gate's test: any rule not starting `at `", () => {
+  assert.equal(isDispatched("dead_tuples > 60% of trigger + floor 24 hours"), true);
+  assert.equal(isDispatched("by 0 6 * * *"), true);
+  assert.equal(isDispatched("stale_after 25 minutes"), true);
+  assert.equal(isDispatched("at */1 * * * *"), false);
+});
+
+test("a dispatched owner gated {prod_session} replaces its parked cron twin: guarded, active", async () => {
+  const owners = await readOwnerSchedules(
+    ownerClient(
+      [PARKED_FR],
+      [{ job: "fr-vacuum-analyze", deadline_rule: "dead_tuples > 60% of trigger + floor 24 hours", gates: ["prod_session"] }],
+    ),
+  );
+  assert.deepEqual(owners.get("fr-vacuum-analyze"), {
+    schedule: "dead_tuples > 60% of trigger + floor 24 hours",
+    guarded: true,
+    active: true,
+    source: "registry",
+  });
+});
+
+test("a dispatched owner WITHOUT the prod_session gate reads unguarded", async () => {
+  const owners = await readOwnerSchedules(
+    ownerClient([PARKED_FR], [{ job: "fr-vacuum-analyze", deadline_rule: "by 0 3 * * *", gates: [] }]),
+  );
+  assert.equal(owners.get("fr-vacuum-analyze")?.source, "registry");
+  assert.equal(owners.get("fr-vacuum-analyze")?.guarded, false);
+});
+
+test("an `at …` registry row leaves the cron row to decide", async () => {
+  const cronRow = { jobid: 40, jobname: "box-health-probe", active: true, schedule: "*/1 * * * *", proc: "box_health_probe", pipeline: null, writes_dsl: false, guarded: false };
+  const owners = await readOwnerSchedules(
+    ownerClient([cronRow], [{ job: "box-health-probe", deadline_rule: "at */1 * * * *", gates: ["prod_session"] }]),
+  );
+  assert.deepEqual(owners.get("box-health-probe"), {
+    schedule: "*/1 * * * *",
+    guarded: false,
+    active: true,
+    source: "cron",
+  });
+});
+
+test("a name in neither table is absent, so the table renders it NOT SCHEDULED", async () => {
+  const owners = await readOwnerSchedules(
+    ownerClient([PARKED_FR], [{ job: "fr-vacuum-analyze", deadline_rule: "by 0 3 * * *", gates: ["prod_session"] }]),
+  );
+  assert.equal(owners.get("no-such-job"), undefined);
+});
+
+test("a dispatched owner with no cron twin at all is still an owner", async () => {
+  const owners = await readOwnerSchedules(
+    ownerClient([], [{ job: "entity-tags-vacuum-analyze", deadline_rule: "dead_tuples > 60% of trigger + floor 24 hours", gates: null }]),
+  );
+  assert.equal(owners.get("entity-tags-vacuum-analyze")?.source, "registry");
+  assert.equal(owners.get("entity-tags-vacuum-analyze")?.guarded, false, "null gates is no gate");
+});
+
+test("a failed registry read degrades to the cron values with ONE line, never to NOT SCHEDULED", async () => {
+  const { value: owners, out } = await captureInfo(() =>
+    readOwnerSchedules(ownerClient([PARKED_FR], new Error('relation "public.job_registry" does not exist'))),
+  );
+  assert.deepEqual(owners.get("fr-vacuum-analyze"), {
+    schedule: "0 3 * * *",
+    guarded: false,
+    active: false,
+    source: "cron",
+  });
+  assert.equal(out.length, 1, out.join("\n"));
+  assert.ok(out[0]!.includes(REGISTRY_NOT_READ), out[0]);
+  assert.equal(REGISTRY_NOT_READ, "registry not read — schedules from cron.job only");
+});
+
+test("a failed cron read still fails the read (the memo drops it; callers print `?`)", async () => {
+  await assert.rejects(
+    readOwnerSchedules({
+      query: async () => {
+        throw new Error("connection reset");
+      },
+    }),
+    /connection reset/,
+  );
 });
