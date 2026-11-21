@@ -28,11 +28,27 @@ export function claimantProblem(value) {
 }
 
 /**
+ * Why a --timeout value is unusable, or null when it is fine. A bad interval
+ * would otherwise be swallowed by psql at SET time. The shape also keeps the
+ * value safe to splice into the SET's quoted literal.
+ */
+export function timeoutProblem(value) {
+  if (!/^[0-9]+\s*(ms|s|min|h|d|second|seconds|minute|minutes|hour|hours)?$/i.test(String(value ?? ""))) {
+    return `--timeout must be a postgres interval like 60min / 90s / 2h, got: ${value}`;
+  }
+  return null;
+}
+
+/**
  * The prelude, as the exact text prepended to stdin.
  *
- * @param {{call: boolean, readOnly: boolean, timeout: string, claimant?: string|null}} o
+ * `timeoutGiven` is whether --timeout was PASSED. `timeout` always carries a
+ * value (the 60min default is --call's), so a read cannot tell a passed value
+ * from the default without it.
+ *
+ * @param {{call: boolean, readOnly: boolean, timeout: string, timeoutGiven?: boolean, claimant?: string|null}} o
  */
-export function buildPrelude({ call, readOnly, timeout, claimant = null }) {
+export function buildPrelude({ call, readOnly, timeout, timeoutGiven = false, claimant = null }) {
   if (claimant != null && !call) {
     throw new Error("--claimant is only meaningful with --call (a guarded procedure is CALLed, and only --call can run one)");
   }
@@ -41,6 +57,12 @@ export function buildPrelude({ call, readOnly, timeout, claimant = null }) {
     if (claimant != null) p += `SET civitics.prod_session_claimant = ${sqlLiteral(claimant)};\n`;
     return p;
   }
+  // FIX-1438 — --timeout on a read bounds it. It used to be parsed and dropped,
+  // so a prompt's "bounded at 30 s" read ran under the role and gateway caps
+  // (cc-299). LOCAL, first inside the --single-transaction wrapper, so it
+  // governs every statement after it and nothing outlives the read on a pooled
+  // session. Not given: nothing, as before.
+  let p = timeoutGiven ? `SET LOCAL statement_timeout = '${timeout}';\n` : "";
   // cc-188 (candidate 236) — an ad-hoc --prod read runs with parallelism OFF.
   // It logs in as `postgres`, whose parallel workers each map a DSM segment;
   // cc-182's census reads hit the 128 MB DSM refusal and were 8 of the 15
@@ -48,9 +70,8 @@ export function buildPrelude({ call, readOnly, timeout, claimant = null }) {
   // --single-transaction wrapper, so nothing outlives the read on a pooled
   // session. A read that wants a parallel plan sets it back itself. Not on
   // --call: a procedure sets its own planner GUCs.
-  return readOnly
-    ? "SET LOCAL max_parallel_workers_per_gather = 0;\nSET TRANSACTION READ ONLY;\n"
-    : "";
+  if (readOnly) p += "SET LOCAL max_parallel_workers_per_gather = 0;\nSET TRANSACTION READ ONLY;\n";
+  return p;
 }
 
 /**
@@ -66,7 +87,8 @@ export function targetLabel({ target, readOnly }) {
   return readOnly ? "PROD (Supabase Pro) — READ ONLY" : "PROD (Supabase Pro) — WRITE PATH";
 }
 
-/** The first line db-query.mjs prints, to stderr. */
-export function headerLine({ label, call, timeout, claimant = null }) {
-  return `[db-query] ${label}${call ? ` — CALL MODE (autocommit, statement_timeout=${timeout}${claimant !== null ? `, claimant=${claimant}` : ""})` : ""}`;
+/** The first line db-query.mjs prints, to stderr. FIX-1438: a read names a passed --timeout. */
+export function headerLine({ label, call, timeout, timeoutGiven = false, claimant = null }) {
+  if (!call) return `[db-query] ${label}${timeoutGiven ? ` — statement_timeout=${timeout}` : ""}`;
+  return `[db-query] ${label} — CALL MODE (autocommit, statement_timeout=${timeout}${claimant !== null ? `, claimant=${claimant}` : ""})`;
 }

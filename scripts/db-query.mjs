@@ -52,6 +52,11 @@
 // as its own statement after the timeout, so a guarded procedure CALLed from
 // here while THIS operator holds the supervised session runs instead of
 // deferring to it. Claim first (session:claim-prod); pass the claim's reason.
+// FIX-1438 — --timeout <interval> on a plain read (no --call) prepends
+//     SET LOCAL statement_timeout = '<interval>';
+// as the first statement inside the --single-transaction wrapper, on --local
+// and --prod alike. Not passed: no timeout line, the read is as it was.
+//
 // The prelude lives in scripts/lib/db-query-prelude.mjs (tested by
 // scripts/test-db-query.mjs).
 
@@ -59,7 +64,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildPrelude, claimantProblem, headerLine, targetLabel } from "./lib/db-query-prelude.mjs";
+import { buildPrelude, claimantProblem, headerLine, targetLabel, timeoutProblem } from "./lib/db-query-prelude.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_FILE = join(ROOT, ".env.local.prod");
@@ -80,7 +85,8 @@ function usage(msg) {
     "  --call            autocommit (no --single-transaction) so a COMMITting\n" +
     "                    PROCEDURE can run. Local by default; --prod --call also\n" +
     "                    requires --yes-i-mean-prod and is a WRITE path.\n" +
-    "  --timeout <ival>  statement_timeout for --call (default 60min).\n" +
+    "  --timeout <ival>  statement_timeout for --call (default 60min). On a read,\n" +
+    "                    SET LOCAL inside its transaction (FIX-1438); no default.\n" +
     "  --claimant <why>  with --call only: SET civitics.prod_session_claimant\n" +
     "                    first, so a guarded procedure runs under YOUR claim\n" +
     "                    instead of deferring to it (FIX-1213). Pass the claim's\n" +
@@ -108,6 +114,7 @@ let raw = false;
 let csv = false;
 let call = false;           // FIX-791: autocommit mode for COMMITting procedures
 let timeout = "60min";      // statement_timeout used by --call
+let timeoutGiven = false;   // FIX-1438: a read applies --timeout only when it was passed
 let yesIMeanProd = false;   // the --prod --call gate
 let claimant = null;        // FIX-1213: the supervised session's reason, for the guard
 const sqlParts = [];
@@ -119,7 +126,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--raw") raw = true;
   else if (a === "--csv") csv = true;
   else if (a === "--call" || a === "--no-txn") call = true;
-  else if (a === "--timeout") timeout = argv[++i];
+  else if (a === "--timeout") { timeout = argv[++i]; timeoutGiven = true; }
   else if (a === "--yes-i-mean-prod") yesIMeanProd = true;
   else if (a === "--claimant") claimant = argv[++i] ?? "";
   else if (a === "--help" || a === "-h") usage();
@@ -129,11 +136,13 @@ if (!target) usage("must pass --local or --prod");
 if (!file && sqlParts.length === 0) usage("no SQL given (positional string or --file)");
 if (file && sqlParts.length > 0) usage("pass EITHER a SQL string OR --file, not both");
 
-// FIX-791: --timeout is only meaningful under --call (the plain path's
-// single-transaction wrapper inherits the role/gateway caps as it always has).
+// FIX-791: --call always sets a statement_timeout (60min unless given).
+// FIX-1438: a plain read sets one only when --timeout was passed — it used to
+// be parsed and ignored there, so the read ran under the role/gateway caps.
 // A bad interval would otherwise be swallowed by psql at SET time.
-if (call && !/^[0-9]+\s*(ms|s|min|h|d|second|seconds|minute|minutes|hour|hours)?$/i.test(String(timeout ?? ""))) {
-  usage(`--timeout must be a postgres interval like 60min / 90s / 2h, got: ${timeout}`);
+if (call || timeoutGiven) {
+  const problem = timeoutProblem(timeout);
+  if (problem) usage(problem);
 }
 
 // FIX-1213: the env fallback is what session:wait-for-gate --then hands its
@@ -205,11 +214,11 @@ if (file) {
 // prepends instead is a statement_timeout, so a CALL that livelocks has a
 // backstop rather than running until something else notices.
 const readOnly = target === "prod" && !call;
-const prelude = buildPrelude({ call, readOnly, timeout, claimant });
+const prelude = buildPrelude({ call, readOnly, timeout, timeoutGiven, claimant });
 const stdin = prelude + sqlText + "\n";
 
 // FIX-1301: the label follows readOnly, so --prod --call reads WRITE PATH.
-console.error(headerLine({ label: targetLabel({ target, readOnly }), call, timeout, claimant }));
+console.error(headerLine({ label: targetLabel({ target, readOnly }), call, timeout, timeoutGiven, claimant }));
 
 // FIX-791: a prod CALL is a supervised action. Say what is about to happen, to
 // which host, and leave a beat to Ctrl-C out of it.

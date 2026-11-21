@@ -5,7 +5,7 @@
 // front of the caller's SQL). Dependency-free, no database, same shape as the
 // other scripts/test-*.mjs suites.
 
-import { buildPrelude, claimantProblem, sqlLiteral, targetLabel, headerLine } from "./lib/db-query-prelude.mjs";
+import { buildPrelude, claimantProblem, sqlLiteral, targetLabel, headerLine, timeoutProblem } from "./lib/db-query-prelude.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -53,6 +53,47 @@ console.log("db-query — prelude");
   try { buildPrelude({ call: false, readOnly: true, timeout: "60min", claimant: "x" }); }
   catch (e) { threw = e; }
   check("--claimant without --call is refused", threw instanceof Error && /only meaningful with --call/.test(threw.message));
+}
+
+console.log("db-query — --timeout on a read (FIX-1438)");
+{
+  const p = buildPrelude({ call: false, readOnly: true, timeout: "30s", timeoutGiven: true });
+  const lines = p.split("\n").filter(Boolean);
+  check("--prod read with --timeout: SET LOCAL statement_timeout first, then cc-188's two lines",
+    lines.length === 3 &&
+    lines[0] === "SET LOCAL statement_timeout = '30s';" &&
+    lines[1] === "SET LOCAL max_parallel_workers_per_gather = 0;" &&
+    lines[2] === "SET TRANSACTION READ ONLY;", JSON.stringify(lines));
+}
+{
+  const p = buildPrelude({ call: false, readOnly: false, timeout: "1s", timeoutGiven: true });
+  check("--local read with --timeout: the SET LOCAL alone",
+    p === "SET LOCAL statement_timeout = '1s';\n", JSON.stringify(p));
+}
+{
+  const prod = buildPrelude({ call: false, readOnly: true, timeout: "60min", timeoutGiven: false });
+  const local = buildPrelude({ call: false, readOnly: false, timeout: "60min", timeoutGiven: false });
+  check("a read WITHOUT --timeout is byte-identical to before (the 60min default is --call's)",
+    prod === "SET LOCAL max_parallel_workers_per_gather = 0;\nSET TRANSACTION READ ONLY;\n" && local === "",
+    JSON.stringify([prod, local]));
+}
+{
+  const p = buildPrelude({ call: true, readOnly: false, timeout: "40min", timeoutGiven: true });
+  check("--call with --timeout is unchanged (SET, not SET LOCAL: there is no wrapping transaction)",
+    p === "SET statement_timeout = '40min';\n", JSON.stringify(p));
+}
+check("a bad interval is refused on a read too", timeoutProblem("30 sekunden") !== null && timeoutProblem("1s'; DROP") !== null);
+check("…and an absent one (--timeout as the last arg)", timeoutProblem(undefined) !== null);
+check("a good interval passes", timeoutProblem("30s") === null && timeoutProblem("90min") === null && timeoutProblem("2h") === null);
+check("the refusal text is FIX-791's, unchanged",
+  timeoutProblem("x") === "--timeout must be a postgres interval like 60min / 90s / 2h, got: x", timeoutProblem("x"));
+{
+  const local = headerLine({ label: targetLabel({ target: "local", readOnly: false }), call: false, timeout: "1s", timeoutGiven: true });
+  check("the header names a read's timeout", local === "[db-query] LOCAL (127.0.0.1:54322) — statement_timeout=1s", JSON.stringify(local));
+  const prod = headerLine({ label: targetLabel({ target: "prod", readOnly: true }), call: false, timeout: "30s", timeoutGiven: true });
+  check("…on --prod after READ ONLY", prod === "[db-query] PROD (Supabase Pro) — READ ONLY — statement_timeout=30s", JSON.stringify(prod));
+  const bare = headerLine({ label: targetLabel({ target: "prod", readOnly: true }), call: false, timeout: "60min", timeoutGiven: false });
+  check("…and not without it", bare === "[db-query] PROD (Supabase Pro) — READ ONLY", JSON.stringify(bare));
 }
 
 console.log("db-query — claimant validation");
