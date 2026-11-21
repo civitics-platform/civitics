@@ -1,0 +1,29 @@
+{
+  "cc": "309",
+  "prompt": "cc-prompt-309-fix1416-nomination-rolls-re-pointed-from-s-numbered-bill-rows-to-their-pn-appointment-proposals-manifest-built-on-prod-clone-proof-rolled-back-not-applied.md",
+  "started_at": "2026-11-21T06:50:15Z",
+  "finished_at": "2026-11-21T07:44:00Z",
+  "head_before": "0168e9f0",
+  "head_after": "7337f334",
+  "commits": [
+    {
+      "sha": "41a56126",
+      "subject": "fix(data): FIX-1416 a script re-points the nomination rolls stored on S-numbered bill rows to their PN appointment proposals — built and proven on the clone, not applied (cc-309)"
+    },
+    {
+      "sha": "7337f334",
+      "subject": "[skip vercel] docs(audit): FIX-1416 the nomination-rolls manifest, built on prod — 143 stubs, 291 rolls, 28,522 vote rows; nothing left out, all 13 short-row rolls read PN on senate.gov (cc-309)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2's STOP row fired. Beyond bill_details, votes and entity_connections, every stub is also held by entity_search_index, external_source_refs, entity_connection_stats_mv and the proposal_trending_24h MV, 175 entity_tags rows and 1 page_views row, on the clone and on prod alike. As the row says, --retire-stubs refuses those stubs: D8 retired 0 of the 136 dashed stubs, not the expected 136. The delete path was proven on a synthetic unreferenced stub instead. Nothing was re-pointed for those tables. Whether the retire may also clear them is Craig's call (see The next prompt)."
+  ],
+  "lane": "fec",
+  "owed": []
+}
