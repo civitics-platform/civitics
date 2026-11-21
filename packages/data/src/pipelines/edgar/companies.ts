@@ -11,7 +11,8 @@
  *   5. Upsert edgar_companies with the bound financial_entity_id.
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities, afterKey } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import { edgarFetch } from "./client";
 import { padCik } from "./util";
@@ -315,7 +316,7 @@ export async function syncCompanies(
 
   // FIX-404: refresh primary_source on freshly-bound financial_entities.
   if (newlyBoundEntityIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "financial_entity", newlyBoundEntityIds);
+    await refreshPrimarySourceDirect("financial_entity", newlyBoundEntityIds);
   }
 
   console.info(`  [edgar/companies] ${records.length}/${scope.length} companies synced`);

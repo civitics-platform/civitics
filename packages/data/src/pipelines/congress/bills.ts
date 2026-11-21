@@ -15,7 +15,8 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { refreshPrimarySourceForEntities, rowsOrThrow, fetchChunkedByIds } from "@civitics/db";
+import { rowsOrThrow, fetchChunkedByIds } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { statusAdvances, type ProposalStatus } from "./status-rank";
 import type { StatusPair } from "./bill-status";
 
@@ -606,7 +607,7 @@ export async function upsertBillProposalsBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
+    await refreshPrimarySourceDirect("proposal", refreshedIds);
   }
 
   return { upserted, failed, bound, keyConflicts, status };
@@ -734,7 +735,7 @@ export async function resolveBillsBatch(
   for (const b of binding.bound) resolved.set(b.args.billKey, b.id);
   conflicts?.push(...binding.conflicts);
   if (binding.bound.length > 0) {
-    await refreshPrimarySourceForEntities(db, "proposal", binding.bound.map((b) => b.id));
+    await refreshPrimarySourceDirect("proposal", binding.bound.map((b) => b.id));
   }
 
   const novelArgs = binding.unheld;

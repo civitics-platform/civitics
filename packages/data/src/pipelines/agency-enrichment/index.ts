@@ -20,6 +20,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 import { sleep } from "../utils";
 
@@ -344,15 +345,11 @@ LIMIT 3000
     if (xsrErr) {
       console.warn(`    FIX-415 xsr seed failed: ${xsrErr.message}`);
     } else {
-      const { data: refreshed, error: rpcErr } = await db.rpc(
-        "refresh_primary_source_for_entities",
-        { p_entity_type: "agency", p_entity_ids: fedRegSeeds.map((s) => s.id) },
-      );
-      if (rpcErr) {
-        console.warn(`    FIX-415 primary_source refresh failed: ${rpcErr.message}`);
-      } else {
+      // FIX-1432: direct pg, bounded at 60 s; a failure is warned inside.
+      const refreshed = await refreshPrimarySourceDirect("agency", fedRegSeeds.map((s) => s.id));
+      if (refreshed !== null) {
         console.info(
-          `    FIX-415 federal_register attribution: ${fedRegSeeds.length} agencies seeded, ${refreshed ?? 0} primary_source rows materialized`,
+          `    FIX-415 federal_register attribution: ${fedRegSeeds.length} agencies seeded, ${refreshed} primary_source rows materialized`,
         );
       }
     }
@@ -380,15 +377,10 @@ LIMIT 3000
     if (xsrErr) {
       console.warn(`    FIX-467 regulations_gov xsr seed failed: ${xsrErr.message}`);
     } else {
-      const { data: refreshed, error: rpcErr } = await db.rpc(
-        "refresh_primary_source_for_entities",
-        { p_entity_type: "agency", p_entity_ids: regulationsGovSeeds.map((s) => s.id) },
-      );
-      if (rpcErr) {
-        console.warn(`    FIX-467 primary_source refresh failed: ${rpcErr.message}`);
-      } else {
+      const refreshed = await refreshPrimarySourceDirect("agency", regulationsGovSeeds.map((s) => s.id));
+      if (refreshed !== null) {
         console.info(
-          `    FIX-467 regulations_gov attribution: ${regulationsGovSeeds.length} agencies seeded, ${refreshed ?? 0} primary_source rows materialized`,
+          `    FIX-467 regulations_gov attribution: ${regulationsGovSeeds.length} agencies seeded, ${refreshed} primary_source rows materialized`,
         );
       }
     }

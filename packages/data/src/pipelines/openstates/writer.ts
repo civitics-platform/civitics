@@ -25,7 +25,8 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database, Json } from "@civitics/db";
-import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
+import { rowsOrThrow } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 
 type Db = ReturnType<typeof createAdminClient>;
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
@@ -149,7 +150,7 @@ export async function resolveGoverningBodies(
     if (error) {
       console.error(`    openstates writer: source_refs (governing_body): ${error.message}`);
     }
-    await refreshPrimarySourceForEntities(db, "governing_body", [...gbRefByGbId.keys()]);
+    await refreshPrimarySourceDirect("governing_body", [...gbRefByGbId.keys()]);
   }
 
   return out;
@@ -373,7 +374,7 @@ export async function upsertLegislatorsBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "official", refreshedIds);
+    await refreshPrimarySourceDirect("official", refreshedIds);
   }
 
   return out;
@@ -601,7 +602,7 @@ export async function upsertStateBillsBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
+    await refreshPrimarySourceDirect("proposal", refreshedIds);
   }
 
   return out;

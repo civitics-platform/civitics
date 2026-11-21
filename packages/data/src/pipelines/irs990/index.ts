@@ -23,7 +23,8 @@
  * it's a separate opt-in EIN-resolution helper.
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
+import { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 import { SEED_EIN_SET, SEED_NONPROFITS } from "./seed";
 import * as path from "path";
@@ -390,7 +391,7 @@ export async function runIrs990Pipeline(overrides: Partial<Irs990Deps> = {}): Pr
       // had xsr written (existing-EIN last_seen bump OR new-EIN bind). Batched
       // per year so we get one RPC instead of per-filing.
       if (refreshedEntityIds.size > 0) {
-        await refreshPrimarySourceForEntities(db, "financial_entity", [...refreshedEntityIds]);
+        await refreshPrimarySourceDirect("financial_entity", [...refreshedEntityIds]);
       }
 
       // Advance watermark on a successful year (only when ALL matched filings

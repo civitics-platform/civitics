@@ -25,7 +25,8 @@
  * Run standalone:  pnpm --filter @civitics/data data:committees
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
+import { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import type { Database } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 import { slugifyGoverningBodies } from "../../lib/slugify-governing-bodies";
@@ -292,7 +293,7 @@ export async function runCommitteesPipeline(
       if (error) console.warn(`    committees institution_extensions upsert @${i}: ${error.message}`);
     }
     if (resolvedForAttribution.length > 0) {
-      await refreshPrimarySourceForEntities(db, "governing_body", resolvedForAttribution.map((x) => x.gbId));
+      await refreshPrimarySourceDirect("governing_body", resolvedForAttribution.map((x) => x.gbId));
     }
     console.info(
       `  Attribution: ${committeeXsrRecords.length} xsr + ${committeeExtRecords.length} institution_extensions rows`,

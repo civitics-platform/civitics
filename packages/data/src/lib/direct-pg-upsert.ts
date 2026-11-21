@@ -83,30 +83,55 @@ export async function withDirectPool<T>(
 }
 
 /**
- * FIX-586 — refresh primary_source for a batch of entities over a direct
- * connection (raised timeout), instead of the admin PostgREST path whose 8s
- * role cap timed out the financial_entity refresh (n=90484) on prod
- * 2026-06-14. Advisory: callers swallow failures (the nightly
- * rebuild_all_primary_sources() safety net covers drift), so this only logs.
+ * FIX-1432 — the refresh's own bound. withDirectClient sets the session to
+ * 90min for bulk writes; an advisory refresh gets 60 s, past PostgREST's 8 s
+ * (where the pipelines' calls were cancelled, the 2026-11-16 regulations one
+ * included) and still a bound. Local, 90,000 littlesis financial_entity ids
+ * took 5.1 s (cc-304).
+ */
+export const REFRESH_PRIMARY_SOURCE_TIMEOUT = "60s";
+
+/**
+ * One refresh on an open direct client, bounded at
+ * REFRESH_PRIMARY_SOURCE_TIMEOUT. The `SET` is session-level, so the client
+ * must be one opened for this call (refreshPrimarySourceDirect's); it returns
+ * the function's count of rows written.
+ */
+export async function refreshPrimarySourceOn(
+  client: Pick<Client, "query">,
+  entityType: string,
+  entityIds: string[],
+): Promise<number> {
+  await client.query(`SET statement_timeout = '${REFRESH_PRIMARY_SOURCE_TIMEOUT}'`);
+  const res = await client.query(`SELECT public.refresh_primary_source_for_entities($1, $2::uuid[]) AS n`, [
+    entityType,
+    entityIds,
+  ]);
+  return Number((res.rows[0] as { n?: unknown } | undefined)?.n ?? 0);
+}
+
+/**
+ * FIX-586 / FIX-1432 — refresh primary_source for a batch of entities over a
+ * direct connection, instead of the admin PostgREST path and its 8 s role cap
+ * (the financial_entity refresh, n=90484, on prod 2026-06-14; FIX-1432's
+ * cancels). Every pipeline caller goes through here; a test pins it.
+ * Advisory: a failure warns and returns null, and the batch stands (the
+ * nightly rebuild_all_primary_sources() safety net covers drift).
  */
 export async function refreshPrimarySourceDirect(
   entityType: string,
   entityIds: string[],
-): Promise<void> {
-  if (entityIds.length === 0) return;
+): Promise<number | null> {
+  if (entityIds.length === 0) return 0;
   try {
-    await withDirectClient((client) =>
-      client.query(`SELECT public.refresh_primary_source_for_entities($1, $2::uuid[])`, [
-        entityType,
-        entityIds,
-      ]),
-    );
+    return await withDirectClient((client) => refreshPrimarySourceOn(client, entityType, entityIds));
   } catch (err) {
     console.warn(
       `  [primary-source] refresh failed (${entityType}, n=${entityIds.length}): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
+    return null;
   }
 }
 

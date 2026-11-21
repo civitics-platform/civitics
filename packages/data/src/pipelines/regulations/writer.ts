@@ -17,7 +17,8 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { agencyFullName, AGENCY_NAMES, refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
+import { agencyFullName, AGENCY_NAMES, rowsOrThrow } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 
 type Db = ReturnType<typeof createAdminClient>;
 type AgencyInsert = Database["public"]["Tables"]["agencies"]["Insert"];
@@ -274,7 +275,7 @@ export async function upsertRegulationProposalsBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
+    await refreshPrimarySourceDirect("proposal", refreshedIds);
   }
 
   return out;

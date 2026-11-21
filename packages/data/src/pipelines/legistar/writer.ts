@@ -24,7 +24,8 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
+import { rowsOrThrow } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import {
   bodyToGoverningBodyRow,
   personToOfficialRow,
@@ -195,7 +196,7 @@ export async function upsertBodiesBatch(
   // FIX-404: refresh primary_source on newly-bound governing_bodies. Existing
   // matches don't touch xsr (ignoreDuplicates: true) so they don't need refresh.
   if (newlyBoundIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "governing_body", newlyBoundIds);
+    await refreshPrimarySourceDirect("governing_body", newlyBoundIds);
   }
 
   return out;
@@ -319,7 +320,7 @@ export async function upsertPersonsBatch(
   // FIX-404: refresh primary_source on newly-bound officials. Existing
   // matches don't touch xsr (ignoreDuplicates: true) so they don't need refresh.
   if (newlyBoundIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "official", newlyBoundIds);
+    await refreshPrimarySourceDirect("official", newlyBoundIds);
   }
 
   return out;
@@ -525,7 +526,7 @@ export async function upsertMattersBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
+    await refreshPrimarySourceDirect("proposal", refreshedIds);
   }
 
   return out;

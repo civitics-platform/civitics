@@ -20,7 +20,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { resolveByKey, type LookupResult } from "../../lib/lookup-outcome";
 
 type Db = any;
@@ -159,7 +159,7 @@ export async function resolveJudicialGovBodies(
     if (error) {
       console.error(`    courtlistener writer: source_refs (governing_body): ${error.message}`);
     }
-    await refreshPrimarySourceForEntities(db, "governing_body", [...courtMap.values()]);
+    await refreshPrimarySourceDirect("governing_body", [...courtMap.values()]);
   }
 
   return out;
@@ -317,7 +317,7 @@ export async function upsertJudgesBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "official", refreshedIds);
+    await refreshPrimarySourceDirect("official", refreshedIds);
   }
 
   return out;
@@ -520,7 +520,7 @@ export async function upsertOpinionsBatch(
     ...toUpdate.map((u) => u.id),
   ];
   if (refreshedIds.length > 0) {
-    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
+    await refreshPrimarySourceDirect("proposal", refreshedIds);
   }
 
   return out;

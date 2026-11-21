@@ -7,7 +7,8 @@
  * Run standalone:  pnpm --filter @civitics/data data:officials
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities, selectAllKeyset, afterKey } from "@civitics/db";
+import { createAdminClient, selectAllKeyset, afterKey } from "@civitics/db";
+import { refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import type { Database } from "@civitics/db";
 import {
   fetchAllMembers,
@@ -291,8 +292,7 @@ export async function runOfficialsPipeline(
       console.info(`  [xsr] ${xsrFailed} bindings failed to upsert (non-fatal)`);
     }
 
-    await refreshPrimarySourceForEntities(
-      db,
+    await refreshPrimarySourceDirect(
       "official",
       processedMembers.map((m) => m.officialId),
     );
