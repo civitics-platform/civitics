@@ -56,7 +56,6 @@ const OLD_MD5 = "88990e414b485a8ac1148d7f9b1a1444";
 const LIVE_SET = " SET statement_timeout TO '30min'\n";
 
 const md5 = (s: string) => crypto.createHash("md5").update(s, "utf8").digest("hex");
-const squash = (s: string) => s.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
 const D5_ORDER = "ORDER BY fr.occurred_at DESC NULLS LAST, fr.id))[1:100]";
 const OLD_ORDER = "ORDER BY fr.occurred_at DESC NULLS LAST))[1:100]";
 const aggs = (b: string) => [...b.matchAll(/WITH agg AS \(([\s\S]*?)\n {2}\)/g)].map((m) => m[1] as string);
