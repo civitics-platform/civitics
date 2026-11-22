@@ -1,0 +1,37 @@
+{
+  "cc": "310",
+  "prompt": "cc-prompt-310-fix1439-contracts-merge-lands-on-the-ruling-a-tie-at-the-100-id-cap-may-differ-fix1416-retire-checks-a-typed-holder-list-not-a-sweep-clone-proof-no-prod-contact.md",
+  "started_at": "2026-11-22T03:28:03Z",
+  "finished_at": "2026-11-22T04:32:29Z",
+  "head_before": "ba9b861f",
+  "head_after": "a66e206a",
+  "commits": [
+    {
+      "sha": "a0181ef6",
+      "subject": "fix(ec): FIX-1439 the contracts arm merges its aggregate instead of rewriting every contract and grant edge — a date tie at the 100-id cap may keep different ids (ruled 2026-11-21); built and proven on the clone, not pushed (cc-310)"
+    },
+    {
+      "sha": "a2a0cd6e",
+      "subject": "[skip vercel] test(ec): FIX-1439 the merge test drops cc-308's unused squash helper (no-unused-vars) (cc-310)"
+    },
+    {
+      "sha": "cea50567",
+      "subject": "fix(data): FIX-1416 --retire-stubs checks a typed holder list and clears the stub's source refs, tags and search rows; the by-value sweep is --census, local only — proven on the clone, not applied (cc-310)"
+    },
+    {
+      "sha": "a66e206a",
+      "subject": "[skip vercel] docs: votes.chamber is stored capitalised (CLAUDE.md); playbook C15 gains the cap-tie ruling and the no-change split, and E15 — a delete's holders are the foreign keys, the typed pairs and the derived relations (cc-310)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 2 (ii)'s STOP row fired. enrichment_queue holds all 136 dashed stubs (one tag task each: 16 done, 28 failed, 92 skipped_no_source_text) through a TEXT entity_id that cc-309's uuid sweep could not see, and it is in none of D5's clear / leave / keep. Per the row it is a block, not added to clear. So --retire-stubs as landed retires 0 of 136 on the clone, and every refusal names enrichment_queue.entity_id alone. The clone proof also shows the rest of D8 with those 136 rows deleted by the TEST inside its transaction: 136 retired, 0 refused, deletes 136 / 168 / 136 / 136 / 136. Whether enrichment_queue joins clear is Craig's call."
+  ],
+  "lane": "ops",
+  "owed": []
+}
