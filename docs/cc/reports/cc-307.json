@@ -1,0 +1,35 @@
+{
+  "cc": "307",
+  "prompt": "cc-prompt-307-sat-reads-backup-window-swap-peak-fix1302-cycle-close-first-weekly-on-new-lookups-prod-censuses-split-nominees-redirect-gap-class-c-nomination-rolls-on-bills-rewrite-ratio.md",
+  "started_at": "2026-11-22T01:53:56Z",
+  "finished_at": "2026-11-22T02:12:00Z",
+  "head_before": "2a2ea5a3",
+  "head_after": "12969382",
+  "commits": [
+    {
+      "sha": "662f4395",
+      "subject": "[skip vercel] chore(fixes): file FIX-1442 (the three 2026-09-17 promotions have no official_redirects row, so their retired ids answer 404; Harris, Menendez, Marshall, read on prod) (cc-307)"
+    },
+    {
+      "sha": "3a5b976d",
+      "subject": "chore(fixes): record FIX-1302 on prod — the first ec-crawl cycle after the apply (first unit 11-20 11:03Z) closed 11-21 03:03:42Z: 33 units (16 donations windows, votes, 16 ecs windows), wall 16.01 h; its 16 ecs windows 1,264.2 s / 12,366 rows beside the ordinary 381.8-515.4 s; canary 22.06 h at the close (cc-307)"
+    },
+    {
+      "sha": "12969382",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-307 — one prod record (FIX-1302, already closed); FIX-1442 filed open (31 open)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1442"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 8 skipped, as the prompt directs: cc-309's report (a92bd1ea) is on main and carries prod's manifest. Its numbers are quoted below; nothing was re-read."
+  ],
+  "lane": "fec",
+  "owed": []
+}
