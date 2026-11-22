@@ -4,12 +4,12 @@
  * Runs via:  tsx --test src/scripts/fix1416-nomination-rolls.test.ts
  *
  * No database: D2's qualifying rule, D3's roll rule, D5's refusals, the
- * manifest's columns and TSV.
- * Clone (CIVITICS_CLONE_TESTS=1), D8 inside one BEGIN … ROLLBACK: a settling
- * merge, the manifest built on the clone, the re-point (a second pass is a
- * no-op), the merge, --retire-stubs' deletes (the real stubs refused for what
- * still points at them; a synthetic unreferenced dashed stub retired), and the
- * clone's counts back where they started after the ROLLBACK.
+ * manifest's columns and TSV; cc-310's retire: the holder kinds, a `block` hit
+ * refusing by name, the candidates (dashed only), --census LOCAL only.
+ * Clone (CIVITICS_CLONE_TESTS=1), cc-310 D8 inside one BEGIN … ROLLBACK: a
+ * settling merge, the manifest built on the clone, the re-point (a second pass
+ * is a no-op), the merge, --retire-stubs over the real stubs with each read's
+ * plan, and the clone's counts back where they started after the ROLLBACK.
  */
 
 import { test } from "node:test";
@@ -17,18 +17,27 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 import {
   MANIFEST_COLUMNS,
+  TYPED_HOLDERS,
   checkTarget,
+  clearSql,
+  holderLabel,
+  holderLines,
+  holderSql,
   manifestSummary,
   parseTsv,
   planManifest,
   readTarget,
   repoint,
+  retireCandidates,
+  retireDecision,
   retireStubs,
   rollDecision,
   standing,
   stubNumber,
   stubRefusal,
+  targetOf,
   toTsv,
+  type Holder,
   type ManifestRow,
   type RollRow,
   type StubRow,
@@ -138,6 +147,74 @@ test("D5: a roll moves only from where the manifest left it; a roll already on i
   assert.throws(() => checkTarget(m, { ...t, stub_bill_number: "S 22-18" }), /numbered S 22-18 here/);
 });
 
+test("cc-310 D5: the holder kinds — three cleared, two left to their owners, page_views kept, every typed read by (type, id)", () => {
+  const of = (k: Holder["kind"]) => TYPED_HOLDERS.filter((h) => h.kind === k).map(holderLabel).sort();
+  assert.deepEqual(of("clear"), ["entity_search_index.entity_id", "entity_tags.entity_id", "external_source_refs.entity_id"]);
+  assert.deepEqual(of("leave"), ["entity_connection_stats_mv.entity_id", "proposal_trending_24h.proposal_id"]);
+  assert.deepEqual(of("keep"), ["page_views.entity_id"]);
+  for (const l of ["entity_connections.from_id", "entity_connections.to_id", "enrichment_queue.entity_id", "ai_summary_cache.entity_id"]) {
+    assert.ok(of("block").includes(l), l);
+  }
+  assert.equal(new Set(TYPED_HOLDERS.map(holderLabel)).size, TYPED_HOLDERS.length, "one line per holder");
+  for (const h of TYPED_HOLDERS) {
+    if (h.kind === "leave") {
+      assert.equal(h.type, null, `${holderLabel(h)} is keyed by the proposal alone`);
+      continue;
+    }
+    assert.ok(h.type, `${holderLabel(h)} carries its type value`);
+    assert.ok(holderSql(h).includes(`"${h.type.col}" = '${h.type.value}' AND "${h.idCol}" = ANY($1::`), holderSql(h));
+  }
+  assert.match(holderSql(TYPED_HOLDERS.find((h) => h.rel === "enrichment_queue")!), /ANY\(\$1::text\[\]\)/, "a text id compares as text");
+  assert.match(holderSql(TYPED_HOLDERS.find((h) => h.rel === "entity_tags")!), /ANY\(\$1::uuid\[\]\)/);
+  assert.equal(clearSql(TYPED_HOLDERS.find((h) => h.rel === "entity_tags")!),
+    `DELETE FROM public."entity_tags" WHERE "entity_type" = 'proposal' AND "entity_id" = ANY($1::uuid[])`);
+  assert.throws(() => clearSql(TYPED_HOLDERS.find((h) => h.kind === "keep")!), /is keep, not clear/);
+});
+
+test("cc-310 D5: a block hit refuses the stub and names the relation; clear, leave and keep rows never refuse", () => {
+  const block = TYPED_HOLDERS.find((h) => h.rel === "enrichment_queue")!;
+  const fk: Holder = { kind: "block", rel: "votes", idCol: "bill_proposal_id", type: null, why: "FK → bill_details(proposal_id) ON DELETE CASCADE" };
+  const others = TYPED_HOLDERS.filter((h) => h.kind !== "block");
+  const cands = [{ stub_id: "a", stub_bill_number: "S 22-17" }, { stub_id: "b", stub_bill_number: "S 5-1" }, { stub_id: "c", stub_bill_number: "S 6-2" }];
+  const state = new Map([
+    ["a", { type: "bill", title: "S 22-17", bill_number: "S 22-17" }],
+    ["b", { type: "bill", title: "S 5-1", bill_number: "S 5-1" }],
+    ["c", { type: "bill", title: "Some Act", bill_number: "S 6-2" }],
+  ]);
+  const counts = [
+    { holder: block, byId: new Map([["b", 1]]) },
+    { holder: fk, byId: new Map([["b", 98]]) },
+    ...others.map((holder) => ({ holder, byId: new Map([["a", 3], ["b", 1]]) })),
+  ];
+  const r = retireDecision(cands, state, counts);
+  assert.deepEqual(r.retire, ["a"]);
+  assert.deepEqual(r.refused, [
+    { stub_id: "b", stub_bill_number: "S 5-1", why: ["enrichment_queue.entity_id 1", "votes.bill_proposal_id 98"] },
+    { stub_id: "c", stub_bill_number: "S 6-2", why: ["title is not its number"] },
+  ]);
+  assert.deepEqual(retireDecision(cands.slice(0, 1), new Map(), []).refused[0]!.why, ["no proposals row"]);
+});
+
+test("cc-310 D5: a short stub and S 858 are never retire candidates; a dashed move stub is, once", () => {
+  const line = (stub_id: string, stub_bill_number: string, action = "move"): ManifestRow =>
+    ({ ...planManifest([STUB], [NOM], new Map([["senate-119-1-00441", 98]]))[0]!, stub_id, stub_bill_number, action });
+  const m = [
+    line("s858", "S 858"), line("s19", "S 19"), line("d1", "S 22-17"), line("d1", "S 22-17"),
+    line("d2", "S 5-1", "skip: no appointment proposal numbered PN 5-1"),
+  ];
+  assert.deepEqual(retireCandidates(m), [{ stub_id: "d1", stub_bill_number: "S 22-17" }]);
+});
+
+test("cc-310 D6: --census refuses a non-local database, with or without --allow-prod", () => {
+  const prod = "postgresql://postgres.xsazcoxinpgttgquwvuf:pw@aws-0-us-east-1.pooler.supabase.com:5432/postgres";
+  const local = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+  assert.throws(() => targetOf(prod, ["--census"]), /LOCAL only/);
+  assert.throws(() => targetOf(prod, ["--census", "--allow-prod"]), /LOCAL only/);
+  assert.equal(targetOf(local, ["--census"]), "LOCAL");
+  assert.throws(() => targetOf(prod, ["--retire-stubs"]), /without --allow-prod/);
+  assert.equal(targetOf(prod, ["--retire-stubs", "--allow-prod"]), "PROD");
+});
+
 // ---------------------------------------------------------------------------
 // The clone (CIVITICS_CLONE_TESTS=1 only)
 // ---------------------------------------------------------------------------
@@ -216,34 +293,59 @@ test("clone (D8): re-point, merge and retire in one transaction, measured, then 
       assert.equal(after["edges_on_pns"], edges0["edges_on_pns"]! + edges0["edges_on_stubs"]!);
       assert.equal(m.counts["retyped"]! + m.counts["updated"]!, 0, "the merge touched nothing else");
 
-      // --retire-stubs: a synthetic dashed stub nothing points at goes; each real one is refused by name.
-      const seed = manifest.find((x) => x.action === "move")!;
-      const fake = (await c.query<{ id: string }>(
-        `INSERT INTO public.proposals (type, status, jurisdiction_id, title)
-         SELECT type, status, jurisdiction_id, 'S 99999-99' FROM public.proposals WHERE id = $1 RETURNING id`,
-        [seed.stub_id],
-      )).rows[0]!.id;
-      await c.query(
-        `INSERT INTO public.bill_details (proposal_id, bill_number, jurisdiction_id)
-         SELECT $1, 'S 99999-99', jurisdiction_id FROM public.bill_details WHERE proposal_id = $2`,
-        [fake, seed.stub_id],
-      );
-      const withFake: ManifestRow[] = [...manifest, { ...seed, stub_id: fake, stub_bill_number: "S 99999-99", roll_call_id: "senate-119-9-99999" }];
+      // --retire-stubs (cc-310 D5 / D7) over the real stubs.
+      const cands = retireCandidates(manifest);
+      const dashedIds = cands.map((x) => x.stub_id);
+      const shortIds = [...new Set(manifest.filter((x) => x.action === "move" && !/^S \d+-\d+$/.test(x.stub_bill_number)).map((x) => x.stub_id))];
+      const held = async (ids: readonly string[]) => {
+        const out: Record<string, number> = {};
+        for (const h of TYPED_HOLDERS.filter((x) => x.kind !== "block")) {
+          out[holderLabel(h)] = (await c.query<{ n: number }>(`SELECT coalesce(sum(n), 0)::int AS n FROM (${holderSql(h)}) z`, [ids])).rows[0]!.n;
+        }
+        out["bill_details.proposal_id"] = (await c.query<{ n: number }>("SELECT count(*)::int AS n FROM public.bill_details WHERE proposal_id = ANY($1::uuid[])", [ids])).rows[0]!.n;
+        out["proposals.id"] = (await c.query<{ n: number }>("SELECT count(*)::int AS n FROM public.proposals WHERE id = ANY($1::uuid[])", [ids])).rows[0]!.n;
+        return out;
+      };
+      const dashed0 = await held(dashedIds);
+      const short0 = await held(shortIds);
+      log(`the ${dashedIds.length} dashed stubs hold: ${JSON.stringify(dashed0)} · the ${shortIds.length} short: ${JSON.stringify(short0)}`);
+
+      // 1. As the script runs it. Inside a savepoint, so a stub it retires here is back for step 2.
+      await c.query("SAVEPOINT retire_as_built");
       const t1 = Date.now();
-      const ret = await retireStubs(c, withFake);
-      log(`retire: ${ret.retired.length} retired, ${ret.refused.length} refused in ${Date.now() - t1} ms`);
+      const first = await retireStubs(c, manifest);
+      log(`retire as built: ${first.retired.length} retired, ${first.refused.length} refused in ${Date.now() - t1} ms`);
+      for (const line of holderLines(first.counts, first.retired)) log(`  ${line}`);
+      for (const p of first.plans) log(`  plan ${p.label}: ${p.nodes.join(" → ")}`);
+      assert.ok(first.plans.every((p) => p.heavy.length === 0), "no retire-time read sequential-scans a relation over 1,000 pages");
       const why = new Map<string, number>();
-      for (const x of ret.refused) for (const w of x.why) why.set(w.replace(/ \d+$/, ""), (why.get(w.replace(/ \d+$/, "")) ?? 0) + 1);
+      for (const x of first.refused) for (const w of x.why) why.set(w.replace(/ \d+$/, ""), (why.get(w.replace(/ \d+$/, "")) ?? 0) + 1);
       log(`refused because: ${JSON.stringify(Object.fromEntries([...why].sort()))}`);
-      assert.ok(ret.retired.includes(fake), "the unreferenced synthetic stub is retired");
-      const dashed = new Set(manifest.filter((x) => x.action === "move" && /^S \d+-\d+$/.test(x.stub_bill_number)).map((x) => x.stub_id));
-      assert.equal(ret.retired.length + ret.refused.length, dashed.size + 1, "every dashed stub is retired or refused; no short one is considered");
-      assert.ok(ret.refused.every((x) => !x.why.some((w) => w.startsWith("votes.") || w.startsWith("entity_connections."))), "no vote row or edge is left on a stub");
-      const gone = await c.query(
-        "SELECT (SELECT count(*)::int FROM public.proposals WHERE id = ANY($1::uuid[])) AS p, (SELECT count(*)::int FROM public.bill_details WHERE proposal_id = ANY($1::uuid[])) AS bd",
-        [ret.retired],
-      );
-      assert.deepEqual(gone.rows[0], { p: 0, bd: 0 });
+      assert.equal(first.retired.length + first.refused.length, cands.length, "every dashed stub is retired or refused; no short one is considered");
+      // cc-310 read 2: enrichment_queue (a text entity_id cc-309's uuid sweep could not see) holds every
+      // dashed stub, one tag task each. It is a block, so the retire as built refuses on it and nothing else.
+      assert.ok(first.refused.every((x) => x.why.every((w) => w.startsWith("enrichment_queue.entity_id "))), JSON.stringify(first.refused.slice(0, 3)));
+      await c.query("ROLLBACK TO SAVEPOINT retire_as_built");
+
+      // 2. What it does once enrichment_queue holds none of them (Craig's call). The TEST deletes those task
+      //    rows inside this transaction; the script never does — they stay a block, not a clear.
+      const eq = await c.query("DELETE FROM public.enrichment_queue WHERE entity_type = 'proposal' AND entity_id = ANY($1::text[])", [dashedIds]);
+      log(`(test only) enrichment_queue task rows of the dashed stubs deleted: ${eq.rowCount}`);
+      const t2 = Date.now();
+      const ret = await retireStubs(c, manifest);
+      log(`retire, enrichment_queue cleared: ${ret.retired.length} retired, ${ret.refused.length} refused in ${Date.now() - t2} ms; deleted ${JSON.stringify(ret.cleared)}`);
+      assert.deepEqual(ret.refused, []);
+      assert.equal(ret.retired.length, cands.length);
+      assert.equal(ret.cleared["bill_details.proposal_id"], cands.length);
+      assert.equal(ret.cleared["proposals.id"], cands.length);
+      for (const h of TYPED_HOLDERS.filter((x) => x.kind === "clear")) {
+        assert.equal(ret.cleared[holderLabel(h)], dashed0[holderLabel(h)], `${holderLabel(h)}: the dashed stubs' rows, all of them`);
+      }
+      const dashed1 = await held(dashedIds);
+      for (const h of TYPED_HOLDERS.filter((x) => x.kind === "leave" || x.kind === "keep")) {
+        assert.equal(dashed1[holderLabel(h)], dashed0[holderLabel(h)], `${holderLabel(h)} is not written`);
+      }
+      assert.deepEqual(await held(shortIds), short0, "the seven short stubs and their rows are untouched");
     } finally {
       await c.query("ROLLBACK");
     }

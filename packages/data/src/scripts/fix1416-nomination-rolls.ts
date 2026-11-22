@@ -17,10 +17,16 @@
  *                      stub → PN. DRY by default: the UPDATE runs inside a
  *                      transaction that is rolled back. `--apply` commits.
  *   --retire-stubs     Delete each dashed stub (`S <n>-<m>`, a number no bill can
- *                      hold) whose title is its number and which nothing points
- *                      at any more: every uuid column in public is swept for it
- *                      by value. Its bill_details row goes with it. Runs AFTER
- *                      the re-point and the votes merge. DRY unless `--apply`.
+ *                      hold) whose title is its number and which no `block`
+ *                      holder holds (HOLDERS, cc-310 D5: the foreign keys read
+ *                      from pg_constraint at run time, and the typed pairs).
+ *                      Its `clear` rows (source refs, tags, search row) and
+ *                      its bill_details row go with it. Runs AFTER the
+ *                      re-point and the votes merge. DRY unless `--apply`.
+ *   --census           LOCAL only: every uuid / uuid[] column in public, and
+ *                      every text id beside a type column, read by value for
+ *                      the manifest's stubs and PNs. Finds holders; writes
+ *                      nothing. --retire-stubs never runs it.
  *
  * The rules (cc-309 D2–D7):
  *   - a stub qualifies when it is typed `bill`, numbered `S <x>`, carries a
@@ -50,6 +56,7 @@
  *   pnpm --filter @civitics/data exec tsx --env-file=../../.env.local src/scripts/fix1416-nomination-rolls.ts            # dry
  *   pnpm --filter @civitics/data exec tsx --env-file=../../.env.local src/scripts/fix1416-nomination-rolls.ts --apply
  *   pnpm --filter @civitics/data exec tsx --env-file=../../.env.local src/scripts/fix1416-nomination-rolls.ts --retire-stubs
+ *   pnpm --filter @civitics/data exec tsx --env-file=../../.env.local src/scripts/fix1416-nomination-rolls.ts --census
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -408,46 +415,220 @@ export async function repoint(client: Q, manifest: readonly ManifestRow[]): Prom
 }
 
 /**
- * Every (relation.column) holding each id, over every uuid / uuid[] column of
- * public's tables and materialized views — the stub's own proposals.id and
- * bill_details.proposal_id aside. By value, not by name (cc-309 read 2):
- * entity_search_index.entity_id and the like hold proposal ids with no FK.
+ * D5 (cc-310): what holds a stub, by kind. Every read is by the proposal's
+ * (type, id), never a bare `entity_id = ANY(…)`:
+ *   block  any row refuses the stub;
+ *   clear  deleted with the stub, counted per relation;
+ *   leave  derived, reconciled by its owner: read and printed, not written;
+ *   keep   history: read and printed, not written.
+ * The foreign keys into proposals / bill_details are `block` too, read from
+ * pg_constraint at run time (foreignKeyHolders): a CASCADE one would otherwise
+ * delete rows silently.
  */
-export async function referencesTo(client: Q, ids: readonly string[]): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>(ids.map((id) => [id, []]));
-  if (ids.length === 0) return out;
-  const cols = await client.query<{ rel: string; col: string; arr: boolean }>(
-    `SELECT c.relname AS rel, a.attname AS col, a.atttypid = 'uuid[]'::regtype AS arr
-       FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
-      WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'm')
-        AND a.attnum > 0 AND NOT a.attisdropped
-        AND a.atttypid IN ('uuid'::regtype, 'uuid[]'::regtype)
-        AND (c.relname, a.attname) NOT IN (('proposals', 'id'), ('bill_details', 'proposal_id'))
-      ORDER BY 1, 2`,
+export type HolderKind = "block" | "clear" | "leave" | "keep";
+
+export interface Holder {
+  kind: HolderKind;
+  rel: string;
+  idCol: string;
+  /** The sibling type column and the value a proposal is stored under; null for a relation keyed by the proposal alone (a leave, or an FK). */
+  type: { col: string; value: string } | null;
+  /** The id column is text, so ids are compared as text. */
+  text?: boolean;
+  why: string;
+}
+
+/**
+ * The typed pairs (cc-310 read 2 on the clone): every relation whose type
+ * column stores 'proposal', with data_flags beside them (its CHECK admits
+ * 'proposal'). enrichment_queue keys a TEXT entity_id, so cc-309's uuid sweep
+ * could not see it; it holds every dashed stub (one tag task each).
+ */
+export const TYPED_HOLDERS: readonly Holder[] = [
+  { kind: "clear", rel: "external_source_refs", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "the stub's 119-S-<n>-<m> source refs; the walk now mints 119-PN-<n>" },
+  { kind: "clear", rel: "entity_tags", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "the tagger's rows for the stub" },
+  { kind: "clear", rel: "entity_search_index", idCol: "entity_id", type: { col: "kind", value: "proposal" }, why: "the stub's search row (rebuild_entity_search_index rebuilds it daily anyway)" },
+  { kind: "leave", rel: "entity_connection_stats_mv", idCol: "entity_id", type: null, why: "rebuild_entity_connection_stats_window() deletes the row of an entity with no edge in its window" },
+  { kind: "leave", rel: "proposal_trending_24h", idCol: "proposal_id", type: null, why: "refresh_derived_mvs('daily') refreshes it in full" },
+  { kind: "keep", rel: "page_views", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "history" },
+  { kind: "block", rel: "entity_connections", idCol: "from_id", type: { col: "from_type", value: "proposal" }, why: "an edge from the stub" },
+  { kind: "block", rel: "entity_connections", idCol: "to_id", type: { col: "to_type", value: "proposal" }, why: "an edge to the stub (the votes merge retires its vote edges)" },
+  { kind: "block", rel: "enrichment_queue", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, text: true, why: "an enrichment task (text entity_id)" },
+  { kind: "block", rel: "ai_summary_cache", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "an AI summary" },
+  { kind: "block", rel: "commons_active_threads", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a comment thread (MV)" },
+  { kind: "block", rel: "data_flags", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a data flag (its CHECK admits proposal)" },
+  { kind: "block", rel: "entity_activity_state", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "activity state" },
+  { kind: "block", rel: "entity_comments", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a comment" },
+  { kind: "block", rel: "entity_positions", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a position" },
+  { kind: "block", rel: "entity_statements", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a statement" },
+  { kind: "block", rel: "investigations", idCol: "scope_id", type: { col: "scope_type", value: "proposal" }, why: "an investigation's scope" },
+  { kind: "block", rel: "position_events", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a position event" },
+  { kind: "block", rel: "synthetic_position_rollup", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a synthetic position rollup" },
+];
+
+export const holderLabel = (h: Holder): string => `${h.rel}.${h.idCol}`;
+
+const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
+const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+function holderWhere(h: Holder): string {
+  const id = `${ident(h.idCol)} = ANY($1::${h.text ? "text" : "uuid"}[])`;
+  return h.type ? `${ident(h.type.col)} = ${literal(h.type.value)} AND ${id}` : id;
+}
+
+/** The count one holder holds per id, by (type, id). */
+export const holderSql = (h: Holder): string =>
+  `SELECT ${ident(h.idCol)}::text AS id, count(*)::int AS n FROM public.${ident(h.rel)} WHERE ${holderWhere(h)} GROUP BY 1`;
+
+/** A `clear` holder's delete, by the same (type, id) as its read. */
+export function clearSql(h: Holder): string {
+  if (h.kind !== "clear") throw new Error(`${holderLabel(h)} is ${h.kind}, not clear`);
+  return `DELETE FROM public.${ident(h.rel)} WHERE ${holderWhere(h)}`;
+}
+
+/** Every foreign key into proposals / bill_details but bill_details' own, as a `block` holder, read now. */
+export async function foreignKeyHolders(client: Q): Promise<Holder[]> {
+  const res = await client.query<{ nsp: string; rel: string; col: string; target: string; target_col: string; on_delete: string; ncols: number }>(
+    `SELECT n.nspname AS nsp, c.relname AS rel, a.attname AS col, tc.relname AS target, fa.attname AS target_col,
+            CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE'
+                                 WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_delete,
+            cardinality(con.conkey) AS ncols
+       FROM pg_constraint con
+       JOIN pg_class c ON c.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_class tc ON tc.oid = con.confrelid
+       JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
+       JOIN pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = con.confkey[1]
+      WHERE con.contype = 'f' AND con.confrelid IN ('public.proposals'::regclass, 'public.bill_details'::regclass)
+      ORDER BY 2, 3`,
   );
-  for (const { rel, col, arr } of cols.rows) {
-    const q = arr
-      ? `SELECT x::text AS id, count(*)::int AS n FROM public.%R, unnest(%C) AS x WHERE %C && $1::uuid[] AND x = ANY($1::uuid[]) GROUP BY 1`
-      : `SELECT %C::text AS id, count(*)::int AS n FROM public.%R WHERE %C = ANY($1::uuid[]) GROUP BY 1`;
-    const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
-    const res = await client.query<{ id: string; n: number }>(q.replace(/%R/g, ident(rel)).replace(/%C/g, ident(col)), [ids]);
-    for (const r of res.rows) out.get(r.id)?.push(`${rel}.${col} ${r.n}`);
+  return res.rows
+    .filter((f) => !(f.nsp === "public" && f.rel === "bill_details" && f.col === "proposal_id"))
+    .map((f) => {
+      const keyed = (f.target === "proposals" && f.target_col === "id") || (f.target === "bill_details" && f.target_col === "proposal_id");
+      if (f.nsp !== "public" || f.ncols !== 1 || !keyed) {
+        throw new Error(`foreign key ${f.nsp}.${f.rel}.${f.col} → ${f.target}(${f.target_col}) (${f.ncols} columns) is not one this retire can read`);
+      }
+      return { kind: "block" as const, rel: f.rel, idCol: f.col, type: null, why: `FK → ${f.target}(${f.target_col}) ON DELETE ${f.on_delete}` };
+    });
+}
+
+/** The dashed `move` stubs: the only ones the retire considers. A short stub (`S 858` is also a real bill) never is. */
+export function retireCandidates(manifest: readonly ManifestRow[]): Array<{ stub_id: string; stub_bill_number: string }> {
+  const byStub = new Map<string, string>();
+  for (const m of manifest) if (m.action === "move" && isDashed(m.stub_bill_number)) byStub.set(m.stub_id, m.stub_bill_number);
+  return [...byStub].map(([stub_id, stub_bill_number]) => ({ stub_id, stub_bill_number }));
+}
+
+export interface HolderCount {
+  holder: Holder;
+  byId: ReadonlyMap<string, number>;
+}
+
+export interface Refusal {
+  stub_id: string;
+  stub_bill_number: string;
+  why: string[];
+}
+
+/** D5: retired only when typed bill, numbered and titled as the manifest says, and every `block` count is 0. */
+export function retireDecision(
+  candidates: ReadonlyArray<{ stub_id: string; stub_bill_number: string }>,
+  state: ReadonlyMap<string, { type: string; title: string; bill_number: string | null }>,
+  counts: readonly HolderCount[],
+): { retire: string[]; refused: Refusal[] } {
+  const retire: string[] = [];
+  const refused: Refusal[] = [];
+  for (const { stub_id, stub_bill_number } of candidates) {
+    const s = state.get(stub_id);
+    const why: string[] = [];
+    if (!s) why.push("no proposals row");
+    else {
+      if (s.type !== "bill") why.push(`typed ${s.type}`);
+      if (s.bill_number !== stub_bill_number) why.push(`numbered ${s.bill_number ?? "(no bill_details)"}`);
+      if (s.title !== stub_bill_number) why.push("title is not its number");
+    }
+    for (const c of counts) {
+      const n = c.byId.get(stub_id) ?? 0;
+      if (c.holder.kind === "block" && n > 0) why.push(`${holderLabel(c.holder)} ${n}`);
+    }
+    if (why.length === 0) retire.push(stub_id);
+    else refused.push({ stub_id, stub_bill_number, why });
+  }
+  return { retire, refused };
+}
+
+/** One printed line per holder: kind, relation, why, and what it holds of the candidates (and of the retired). */
+export function holderLines(counts: readonly HolderCount[], retired: readonly string[]): string[] {
+  const kept = new Set(retired);
+  const order: HolderKind[] = ["block", "clear", "leave", "keep"];
+  return [...counts]
+    .sort((a, b) => order.indexOf(a.holder.kind) - order.indexOf(b.holder.kind) || holderLabel(a.holder).localeCompare(holderLabel(b.holder)))
+    .map((c) => {
+      const ids = [...c.byId.keys()];
+      const rows = [...c.byId.values()].reduce((a, b) => a + b, 0);
+      const ofRetired = ids.filter((id) => kept.has(id)).reduce((a, id) => a + c.byId.get(id)!, 0);
+      const t = c.holder.type ? ` [${c.holder.type.col} = '${c.holder.type.value}'${c.holder.text ? ", text id" : ""}]` : "";
+      return `${c.holder.kind.padEnd(5)} ${holderLabel(c.holder)}${t}: stubs ${ids.length}, rows ${rows}, of the retired ${ofRetired} — ${c.holder.why}`;
+    });
+}
+
+/** Each holder read's plan, scan nodes only (EXPLAIN, no ANALYZE), and whether it sequential-scans a relation over `maxPages`. */
+export async function explainHolders(client: Q, holders: readonly Holder[], ids: readonly string[], maxPages = 1000): Promise<Array<{ label: string; nodes: string[]; heavy: string[] }>> {
+  const out: Array<{ label: string; nodes: string[]; heavy: string[] }> = [];
+  for (const h of holders) {
+    const res = await client.query<{ "QUERY PLAN": Array<{ Plan: PlanNode }> }>(`EXPLAIN (FORMAT JSON) ${holderSql(h)}`, [ids]);
+    const nodes: string[] = [];
+    const seq: string[] = [];
+    const walk = (p: PlanNode) => {
+      if (/Scan/.test(p["Node Type"])) {
+        nodes.push(`${p["Node Type"]}${p["Index Name"] ? ` using ${p["Index Name"]}` : ""}${p["Relation Name"] ? ` on ${p["Relation Name"]}` : ""}`);
+        if (p["Node Type"] === "Seq Scan" && p["Relation Name"]) seq.push(p["Relation Name"]);
+      }
+      for (const k of p.Plans ?? []) walk(k);
+    };
+    walk(res.rows[0]!["QUERY PLAN"][0]!.Plan);
+    const heavy: string[] = [];
+    for (const rel of seq) {
+      const pages = (await client.query<{ n: number }>("SELECT relpages::int AS n FROM pg_class WHERE oid = $1::regclass", [`public.${ident(rel)}`])).rows[0]?.n ?? 0;
+      if (pages > maxPages) heavy.push(`${rel} (${pages} pages)`);
+    }
+    out.push({ label: holderLabel(h), nodes, heavy });
   }
   return out;
 }
 
-/**
- * D7, inside the caller's transaction: each dashed `move` stub whose title is
- * its number and which nothing points at is deleted with its bill_details row.
- * The rest are refused with what still points at them.
- */
-export async function retireStubs(client: Q, manifest: readonly ManifestRow[]): Promise<{
+interface PlanNode {
+  "Node Type": string;
+  "Relation Name"?: string;
+  "Index Name"?: string;
+  Plans?: PlanNode[];
+}
+
+export interface RetireResult {
   retired: string[];
-  refused: Array<{ stub_id: string; stub_bill_number: string; why: string[] }>;
-}> {
-  const byStub = new Map<string, string>();
-  for (const m of manifest) if (m.action === "move" && isDashed(m.stub_bill_number)) byStub.set(m.stub_id, m.stub_bill_number);
-  const ids = [...byStub.keys()];
+  refused: Refusal[];
+  counts: HolderCount[];
+  cleared: Record<string, number>;
+  plans: Array<{ label: string; nodes: string[]; heavy: string[] }>;
+}
+
+/**
+ * D7, inside the caller's transaction: the plans (a read that would
+ * sequential-scan a relation over 1,000 pages aborts before any read), the
+ * holders' counts, the decision, then each `clear` relation's delete, then
+ * bill_details, then proposals (`type = 'bill'`). Every delete is asserted
+ * against the retired stubs; a mismatch throws and the caller rolls back.
+ */
+export async function retireStubs(client: Q, manifest: readonly ManifestRow[]): Promise<RetireResult> {
+  const candidates = retireCandidates(manifest);
+  const ids = candidates.map((c) => c.stub_id);
+  const holders = [...(await foreignKeyHolders(client)), ...TYPED_HOLDERS];
+  const plans = await explainHolders(client, holders, ids);
+  const heavy = plans.filter((p) => p.heavy.length > 0);
+  if (heavy.length > 0) {
+    throw new Error(`retire: these reads would sequential-scan a large relation; run --census on the clone instead: ${heavy.map((p) => `${p.label} → ${p.heavy.join(", ")}`).join("; ")}`);
+  }
   const rows = await client.query<{ id: string; type: string; title: string; bill_number: string | null }>(
     `SELECT p.id, p.type::text AS type, p.title, bd.bill_number
        FROM public.proposals p LEFT JOIN public.bill_details bd ON bd.proposal_id = p.id
@@ -455,30 +636,78 @@ export async function retireStubs(client: Q, manifest: readonly ManifestRow[]): 
     [ids],
   );
   const state = new Map(rows.rows.map((r) => [r.id, r]));
-  const refs = await referencesTo(client, ids);
-  const retire: string[] = [];
-  const refused: Array<{ stub_id: string; stub_bill_number: string; why: string[] }> = [];
-  for (const [id, number] of byStub) {
-    const s = state.get(id);
-    const why: string[] = [];
-    if (!s) why.push("no proposals row");
-    else {
-      if (s.type !== "bill") why.push(`typed ${s.type}`);
-      if (s.bill_number !== number) why.push(`numbered ${s.bill_number ?? "(no bill_details)"}`);
-      if (s.title !== number) why.push("title is not its number");
-    }
-    why.push(...(refs.get(id) ?? []));
-    if (why.length === 0) retire.push(id);
-    else refused.push({ stub_id: id, stub_bill_number: number, why });
+  const counts: HolderCount[] = [];
+  for (const h of holders) {
+    const res = await client.query<{ id: string; n: number }>(holderSql(h), [ids]);
+    counts.push({ holder: h, byId: new Map(res.rows.map((r) => [r.id, r.n])) });
   }
+  const { retire, refused } = retireDecision(candidates, state, counts);
+  const cleared: Record<string, number> = {};
   if (retire.length > 0) {
+    for (const c of counts.filter((x) => x.holder.kind === "clear")) {
+      const want = retire.reduce((a, id) => a + (c.byId.get(id) ?? 0), 0);
+      const del = await client.query(clearSql(c.holder), [retire]);
+      if (del.rowCount !== want) throw new Error(`retire: ${holderLabel(c.holder)} read ${want} rows for the retired stubs, deleted ${del.rowCount}`);
+      cleared[holderLabel(c.holder)] = want;
+    }
     const bd = await client.query("DELETE FROM public.bill_details WHERE proposal_id = ANY($1::uuid[])", [retire]);
     const p = await client.query("DELETE FROM public.proposals WHERE id = ANY($1::uuid[]) AND type = 'bill'", [retire]);
     if (bd.rowCount !== retire.length || p.rowCount !== retire.length) {
       throw new Error(`retire: ${retire.length} stubs, deleted ${bd.rowCount} bill_details and ${p.rowCount} proposals`);
     }
+    cleared["bill_details.proposal_id"] = bd.rowCount;
+    cleared["proposals.id"] = p.rowCount;
   }
-  return { retired: retire, refused };
+  return { retired: retire, refused, counts, cleared, plans };
+}
+
+export interface CensusRow {
+  column: string;
+  stubs: number;
+  stub_rows: number;
+  pns: number;
+  pn_rows: number;
+}
+
+/**
+ * D6: the by-value census, LOCAL only (main refuses it elsewhere). Every uuid
+ * / uuid[] column of public's tables and MVs, and every text `<x>id` column
+ * with a `<x>type` beside it (enrichment_queue.entity_id), read for the stubs
+ * and the PNs. Run it once to find holders; the retire checks HOLDERS. It is
+ * minutes on the clone (cc-309: 145 s cold), so it is never part of a retire.
+ */
+export async function census(client: Q, stubs: readonly string[], pns: readonly string[]): Promise<CensusRow[]> {
+  const cols = await client.query<{ rel: string; col: string; kind: "uuid" | "uuid[]" | "text" }>(
+    `SELECT c.relname AS rel, a.attname AS col,
+            CASE a.atttypid WHEN 'uuid'::regtype THEN 'uuid' WHEN 'uuid[]'::regtype THEN 'uuid[]' ELSE 'text' END AS kind
+       FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+      WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'm')
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND (a.atttypid IN ('uuid'::regtype, 'uuid[]'::regtype)
+             OR (a.atttypid = 'text'::regtype AND a.attname LIKE '%id'
+                 AND EXISTS (SELECT 1 FROM pg_attribute t
+                              WHERE t.attrelid = a.attrelid AND t.attnum > 0 AND NOT t.attisdropped
+                                AND t.attname = left(a.attname, length(a.attname) - 2) || 'type')))
+      ORDER BY 1, 2`,
+  );
+  const out: CensusRow[] = [];
+  for (const { rel, col, kind } of cols.rows) {
+    const x = kind === "uuid[]" ? "x" : ident(col);
+    const from = kind === "uuid[]" ? `public.${ident(rel)}, unnest(${ident(col)}) AS x` : `public.${ident(rel)}`;
+    const t = kind === "text" ? "text" : "uuid";
+    const where = kind === "uuid[]" ? `${ident(col)} && ($1::uuid[] || $2::uuid[])` : `${x} = ANY($1::${t}[] || $2::${t}[])`;
+    const res = await client.query<{ stubs: number; stub_rows: number; pns: number; pn_rows: number }>(
+      `SELECT count(DISTINCT ${x}) FILTER (WHERE ${x} = ANY($1::${t}[]))::int AS stubs,
+              count(*) FILTER (WHERE ${x} = ANY($1::${t}[]))::int AS stub_rows,
+              count(DISTINCT ${x}) FILTER (WHERE ${x} = ANY($2::${t}[]))::int AS pns,
+              count(*) FILTER (WHERE ${x} = ANY($2::${t}[]))::int AS pn_rows
+         FROM ${from} WHERE ${where}`,
+      [stubs, pns],
+    );
+    const r = res.rows[0]!;
+    if (r.stub_rows + r.pn_rows > 0) out.push({ column: `${rel}.${col}${kind === "text" ? " (text)" : ""}`, ...r });
+  }
+  return out;
 }
 
 function argValue(argv: string[], flag: string): string | null {
@@ -486,13 +715,22 @@ function argValue(argv: string[], flag: string): string | null {
   return i === -1 ? null : (argv[i + 1] ?? null);
 }
 
-async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
-  const dsn = buildDbUrl();
+/** LOCAL or PROD, or a throw: --census is LOCAL only, --allow-prod or not; anything else needs --allow-prod off LOCAL. */
+export function targetOf(dsn: string, argv: readonly string[]): "LOCAL" | "PROD" {
   const local = dsn.includes("127.0.0.1") || dsn.includes("localhost");
+  if (argv.includes("--census") && !local) {
+    throw new Error("--census reads every uuid column by value: LOCAL only, with or without --allow-prod");
+  }
   if (!local && !argv.includes("--allow-prod")) {
     throw new Error("refusing a non-local database without --allow-prod");
   }
+  return local ? "LOCAL" : "PROD";
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  const dsn = buildDbUrl();
+  const target = targetOf(dsn, argv);
   // --manifest may be absolute (a clone-built draft goes to a scratch dir, never docs/audits).
   const manifestPath = resolve(repoRoot("fix1416"), argValue(argv, "--manifest") ?? DEFAULT_MANIFEST);
   const apply = argv.includes("--apply");
@@ -500,7 +738,7 @@ async function main(): Promise<void> {
   const client = new PgClient({ connectionString: dsn });
   await client.connect();
   try {
-    console.info(`[fix1416] target ${local ? "LOCAL" : "PROD"}`);
+    console.info(`[fix1416] target ${target}`);
 
     if (argv.includes("--build")) {
       await client.query("BEGIN READ ONLY");
@@ -520,15 +758,33 @@ async function main(): Promise<void> {
     const manifest = parseTsv(readFileSync(manifestPath, "utf8"));
     console.info(`[fix1416] manifest ${manifestPath}: ${JSON.stringify(manifestSummary(manifest))}`);
 
+    if (argv.includes("--census")) {
+      const stubs = [...new Set(manifest.filter((m) => m.action === "move").map((m) => m.stub_id))];
+      const pns = [...new Set(manifest.filter((m) => m.action === "move").map((m) => m.pn_id))];
+      await client.query("BEGIN READ ONLY");
+      const t0 = Date.now();
+      const rows = await census(client, stubs, pns);
+      await client.query("ROLLBACK");
+      console.info(`[fix1416] census of ${stubs.length} stubs and ${pns.length} PNs by value, ${Date.now() - t0} ms (writes nothing):`);
+      for (const r of rows) console.info(`[fix1416]   ${r.column}: stubs ${r.stubs} / ${r.stub_rows} rows · PNs ${r.pns} / ${r.pn_rows} rows`);
+      return;
+    }
+
     if (argv.includes("--retire-stubs")) {
-      await client.query("SET statement_timeout = '5min'");
+      await client.query("SET statement_timeout = '60s'");
       await client.query("BEGIN");
       const before = await standing(client, manifest);
+      const t0 = Date.now();
       const r = await retireStubs(client, manifest);
+      const wall = Date.now() - t0;
+      console.info(`[fix1416] holders (block / clear / leave / keep), over ${retireCandidates(manifest).length} dashed stubs:`);
+      for (const line of holderLines(r.counts, r.retired)) console.info(`[fix1416]   ${line}`);
+      for (const p of r.plans) console.info(`[fix1416]   plan ${p.label}: ${p.nodes.join(" → ")}`);
       for (const x of r.refused) console.info(`[fix1416] refused ${x.stub_bill_number} ${x.stub_id}: ${x.why.join("; ")}`);
       const after = await standing(client, manifest);
       await client.query(apply ? "COMMIT" : "ROLLBACK");
-      console.info(`[fix1416] ${apply ? "APPLIED" : "DRY RUN (rolled back)"}: retired ${r.retired.length}, refused ${r.refused.length}`);
+      console.info(`[fix1416] ${apply ? "APPLIED" : "DRY RUN (rolled back)"}: retired ${r.retired.length}, refused ${r.refused.length}, ${wall} ms`);
+      console.info(`[fix1416] deleted: ${JSON.stringify(r.cleared)}`);
       console.info(`[fix1416] before: ${JSON.stringify(before)}`);
       console.info(`[fix1416] after${apply ? "" : " (would be)"}: ${JSON.stringify(after)}`);
       return;
