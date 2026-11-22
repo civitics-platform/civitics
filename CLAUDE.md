@@ -169,6 +169,10 @@ bill_proposal_id   THE proposal link (not proposal_id — that column was rename
 vote_question   FIRST-CLASS COLUMN (text), NOT metadata->>'vote_question'.
   Procedural type string (e.g. "On Passage", "On the Cloture Motion"). Reading it
   off metadata returns undefined for every row → fail-open procedural filters.
+chamber   text NOT NULL, no CHECK. Stored CAPITALISED: 'House' | 'Senate'
+  (plus the synthetic 'Franklin General Assembly', 'Watauga City Council').
+  0001_initial_schema.sql's comment says 'senate' | 'house' | 'full'; it is
+  stale. chamber = 'senate' reads zero rows silently (cc-309).
 metadata->>'legis_num'       bill number (NOTE: unpopulated today; bill_number
   lives in bill_details(proposal_id))
 ```

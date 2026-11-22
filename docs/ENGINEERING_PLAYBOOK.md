@@ -70,6 +70,10 @@ FIX-1417). New rule **E14**.
 **Extended 2026-11-21** with the incremental donations window's merge (cc-308,
 FIX-1441; the contracts arm's, FIX-1439, held). New rule **C15**.
 
+**Extended 2026-11-21** with the contracts merge landed on Craig's ruling and
+the stub retire's holder list (cc-310, FIX-1439 / FIX-1416). C15 gains the
+cap-tie equivalence and the no-change split. New rule **E15**.
+
 ---
 
 ## A. Data-shape regimes
@@ -978,6 +982,11 @@ And the contracts arm (FIX-1439), the whole 188,234-edge aggregate:
 | ins / upd / del | 188,234 / 0 / 188,234 | 0 / 14,760 / 0 | 0 / 0 / 0 |
 | WAL · wall | 658.2 MB · 62.3 s | 1,251.7 MB · 118.9 s | 0.1 MB · 45.9 s |
 
+A run that writes nothing still costs the aggregate. On a warm clone (cc-310
+read 3), the run again took 36.3 s, and `ANALYZE public.entity_connections`
+alone took 1.9 s of that. The trailing ANALYZE is not where the no-change wall
+goes.
+
 Two preconditions decide whether a merge saves anything:
 
 - **A total order on every aggregated array.** `ARRAY_AGG(… ORDER BY <date>)`
@@ -988,7 +997,12 @@ Two preconditions decide whether a merge saves anything:
   pays one rewrite per tied row: the contracts merge's first run above is
   those 14,760 rewrites. Scattered single-row updates cost more WAL than an
   append-only rewrite of the same table, because each touches ~11 random
-  pages. It is a one-time cost.
+  pages. It is a one-time cost. Under the cap, the old body's ids within a tie
+  were never the right ones, so its result cannot be the merge's oracle. The
+  test asserts Craig's ruling (2026-11-21) instead. An edge passes when its
+  `evidence_ids` are equal as a set, or when it has more than 100 rows and
+  every id on one side only carries the boundary date. On the clone: 187,443
+  set-equal, 791 at the boundary, 0 outside.
 - **The return value keeps its meaning.** A reader that divides by the count
   needs the work done, not the rows written. The crawl sensor's s/krow is one
   (D4's FIX-1338 addendum). Return the set's size, and NOTICE the split.
@@ -1002,7 +1016,7 @@ donor, the same population); `_external` (573,705); `_votes` (507,394, but
 pair-scoped, one edge per dirty pair, so ~1×). Then the arms with empty scopes
 today: `_investigation` (1), `_appointments`, `_cosponsors`, `_gifts`,
 `_holds`, `_lobbying` and `_oversight` (0 each).
-*FIX-1441 · `20261122000000` · FIX-1439 (merged and held, cc-308) · FIX-1409 · cc-302 read 3, cc-308 reads 1–5*
+*FIX-1441 · `20261122000000` · FIX-1439 · `20261122001000` (cc-308 built it, cc-310 landed it on the ruling) · FIX-1409 · cc-302 read 3, cc-308 reads 1–5, cc-310 reads 1 and 3*
 
 ---
 
@@ -1844,3 +1858,44 @@ drift aborts the write instead of landing it. Until then, treat a clone-built
 manifest's ids as hypotheses (E3). *FIX-1417, FIX-1187 ·
 `scripts/fix1417-verdict-roll.ts` · `docs/audits/2026-09-17-fix1187-set2-stopped.md`
 · cc-291, cc-293 read 11, cc-301 Item 2*
+
+### E15. A delete's holders are the foreign keys, the typed pairs and the derived relations. Census them once; the apply checks a list.
+
+FIX-1416 retires 136 minted `bill` stubs once their votes have moved to the
+PN proposals. cc-309's `--retire-stubs` swept all 279 uuid columns of `public`
+by value for each stub before deleting it: 145 s cold on the clone, three of
+its hits on unindexed columns. It refused all 136, because five relations
+beyond `votes` / `entity_connections` / `bill_details` held every stub. cc-310
+replaced the sweep with a list read from three places:
+
+- **The foreign keys**, read from `pg_constraint` at run time. Twenty-two point
+  at `proposals` / `bill_details`. Sixteen are `ON DELETE CASCADE`, among them
+  `votes.bill_proposal_id`. A CASCADE key is a holder, not a guard: deleting
+  the parent deletes its rows and says nothing. Two keys lead no index.
+- **The typed pairs**, an id with a type column beside it, matched by the
+  stored type value, never a bare `entity_id = ANY(…)`. The clone stores
+  `'proposal'` in 15 of them, `entity_connections.to_type` among them. One of
+  the 15 keys a **text** `entity_id`: `enrichment_queue`, with 145,620
+  proposal rows and one tag task for every stub. A by-value sweep over uuid
+  columns cannot see it, so cc-309's sweep missed the holder that, in the end,
+  blocked all 136.
+- **The derived relations**, owned by a refresh. `entity_connection_stats_mv`
+  is keyed by `entity_id` alone. Its stats window deletes the row of an entity
+  with no edge, so the retire leaves it. `proposal_trending_24h` is refreshed
+  in full every day, so the retire leaves it too.
+
+Each holder gets one of four kinds: block (any row refuses the stub), clear
+(deleted with the stub, counted), leave (its owner reconciles it) or keep
+(history). The retire then runs 40 reads (21 keys and 19 listed holders) in
+155 ms. Every read is an index-only scan or a seq scan on a relation of at
+most 4 pages.
+
+**Apply:** before a script deletes a parent row, run the by-value census once,
+locally: uuid / uuid[] columns, plus text ids that sit beside a type column. From
+its hits and from `pg_constraint`, write the holder list into the script, one
+kind per holder, each read keyed by `(type, id)`. The apply reads the foreign
+keys again at run time, checks the list, and prints it. A read that would
+sequential-scan a large relation aborts the apply; it never falls back to the
+sweep. A holder that appears later is a block until someone rules otherwise.
+*FIX-1416 · `packages/data/src/scripts/fix1416-nomination-rolls.ts`
+(`--retire-stubs`, `--census`) · cc-309 read 2, cc-310 read 2 and D8*
