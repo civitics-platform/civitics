@@ -1,0 +1,27 @@
+{
+  "cc": "312",
+  "prompt": "cc-prompt-312-fix1443-bounded-conn-windows-land-on-craigs-ruling-d1-as-built-third-pending-file-ring-banked-first-saturday-restart-before-a-drop-in-operations-clone-apply-no-prod-push.md",
+  "started_at": "2026-11-23T02:17:50Z",
+  "finished_at": "2026-11-23T02:47:00Z",
+  "head_before": "eebba908",
+  "head_after": "629003ea",
+  "commits": [
+    {
+      "sha": "6348ffc3",
+      "subject": "fix(ec): FIX-1443 the stats and search connection windows bound their index scans on both sides — a SQL function's body is planned without its arguments, so the optional upper bound was a filter; built and proven on the clone by cc-311, landed on Craig's ruling of 2026-11-22 (D1 as built), not pushed (cc-312)"
+    },
+    {
+      "sha": "629003ea",
+      "subject": "[skip vercel] docs: playbook C16 gains Craig's ruling (FIX-1443 landed as built) and two Apply sentences — a STOP row on a case that does the same reads compares reads, never wall; a measure-gated landing applies to the clone after the measurement; OPERATIONS' planned restart becomes standing: every Saturday evening Pacific before a drop landing, with tonight's receipt (cc-312)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "owed": []
+}
