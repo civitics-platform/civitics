@@ -74,6 +74,10 @@ FIX-1441; the contracts arm's, FIX-1439, held). New rule **C15**.
 the stub retire's holder list (cc-310, FIX-1439 / FIX-1416). C15 gains the
 cap-tie equivalence and the no-change split. New rule **E15**.
 
+**Extended 2026-11-22** with the connection windows' unbounded scans (cc-311,
+FIX-1443, the build held) and the stub retire's queue rows (FIX-1416). New
+rule **C16**. E15 gains the audit's holder list and the claimable-row block.
+
 ---
 
 ## A. Data-shape regimes
@@ -1018,6 +1022,70 @@ today: `_investigation` (1), `_appointments`, `_cosponsors`, `_gifts`,
 `_holds`, `_lobbying` and `_oversight` (0 each).
 *FIX-1441 · `20261122000000` · FIX-1439 · `20261122001000` (cc-308 built it, cc-310 landed it on the ruling) · FIX-1409 · cc-302 read 3, cc-308 reads 1–5, cc-310 reads 1 and 3*
 
+### C16. A SQL function's body is planned without its arguments. `arg IS NULL OR col < arg` is a Filter, and a windowed read scans to the end.
+
+`rebuild_entity_connection_stats_window(p_lo, p_hi)` and
+`entity_search_conn_window(p_lo, p_hi)` are `LANGUAGE sql` and never inlined:
+each carries a `SET` clause. PG 17 plans such a body with no argument values,
+so the optional upper bound in `from_id >= p_lo AND (p_hi IS NULL OR from_id
+< p_hi)` cannot fold. `EXPLAIN (GENERIC_PLAN)` of either body on the clone:
+
+```
+Index Only Scan using entity_connections_from_id_connection_type
+  Index Cond: (from_id >= $1)
+  Filter: (($2 IS NULL) OR (from_id < $2))
+```
+
+The same holds on the `to_id` index, and the stats window's delete read the
+420 MB stats table by Seq Scan in every window. So window k of sixteen read
+(17 − k)/16 of both edge indexes. The fix1115 header's `rows=425234` came from
+an EXPLAIN with literals, where the `OR` folds, so it measured a plan the
+function never ran. Prod's two cc-307 passes fit that line: least squares of
+wall on (17 − k)/16 gives r² 0.93 / 0.96 and slopes 160.6 s / 172.0 s,
+against sums of 1,264.2 s / 1,277.1 s.
+
+On the clone, each body was PREPAREd under `plan_cache_mode =
+force_generic_plan` and run with EXPLAIN (ANALYZE, BUFFERS) in one
+rolled-back transaction, warm, median of 3. Entries are index rows returned
+plus rows removed by the filter, over both edge indexes:
+
+| stats window | old wall | old entries (removed) | bounded wall | bounded entries |
+|---|---:|---:|---:|---:|
+| 1 | 2,831 ms | 13,948,754 (13,089,000) | 1,437 ms | 859,754 |
+| 9 | 2,015 ms | 6,405,900 (5,635,464) | 1,366 ms | 770,436 |
+| 16 | 1,401 ms | 824,543 (0) | 1,449 ms | 824,543 |
+| pass | 33.9 s | 113,376,669 | 22.7 s | 13,948,754 |
+
+The search window's pass went from 15.2 s to 5.9 s on the same entries. The
+bounded form writes each ranged read twice, gated on `p_hi`: `WHERE p_hi IS
+NOT NULL AND id >= p_lo AND id < p_hi` and `WHERE p_hi IS NULL AND id >=
+p_lo`, under `UNION ALL`. A qual with no column becomes a one-time filter on
+a `Result` above the scan, so the branch that does not apply never starts.
+The gate is not free, though: the `Result` passes every tuple of the branch
+that runs. Window 16 reads exactly what it read before, and EXPLAIN ANALYZE's
+per-node timing put it 3–12% slower. Plain calls, median of 9, put it level:
+stats 1,286.4 → 1,290.8 ms, search 244.1 → 231.7 ms. cc-311's STOP row ("any
+new window's wall exceeds the old one's") held the build for a ruling.
+
+**Apply:** read a SQL function body's plan with `EXPLAIN (GENERIC_PLAN)` and
+its arguments as `$n`, under the function's own proconfig, never with
+literals. A body is planned with its values only when it is inlined. That
+needs one SELECT, no `SET`, not `SECURITY DEFINER` and not `VOLATILE`, and a
+set-returning body is inlined only when it is called in FROM. Bound a range
+in the index condition on both sides, or gate the open branch. Do not
+compare a gated plan's wall to an ungated one under EXPLAIN ANALYZE's timing.
+Census by mechanism (E5): `prosrc ~* 'IS NULL OR'` over `LANGUAGE sql` in
+`public` returns fourteen on the clone. Six are request-path with an argument
+under the `OR`, and none puts a range bound there on its largest relation:
+`get_officials_by_filter` (inlinable in FROM; officials Seq Scan, 2,460
+pages), `treemap_officials_by_donations` (financial_relationships by `to_id`,
+443,662 pages; the `OR`s filter officials), `get_pac_treemap_by_sector` (on
+an aggregate's output), `get_browse_facets` (entity_search_index Bitmap Heap
+Scan with the `OR`s as its Filter, 15,197 pages), `get_topic_proposal_page`
+(entity_tags by entity, 83,246 pages) and `query_districts` (jurisdictions,
+896 pages).
+*FIX-1443 · `origin/feature/fix-1443` (held) · cc-307 read 3, cc-311 reads 1–3 and D3–D5*
+
 ---
 
 ## D. Scheduled work
@@ -1890,6 +1958,14 @@ Each holder gets one of four kinds: block (any row refuses the stub), clear
 155 ms. Every read is an index-only scan or a seq scan on a relation of at
 most 4 pages.
 
+The weekly integrity audit's referential checks
+(`packages/data/src/pipelines/integrity-audit/checks/referential.ts`) are a
+holder list already in the tree: `referential.orphan_enrichment_queue` is an
+`error` for a queue row whose entity is gone. So a queue row is cleared with
+its parent unless it is claimable or claimed (`pending` / `processing`), and
+then it blocks, because the worker that takes it writes for a parent that no
+longer exists (Craig, 2026-11-21).
+
 **Apply:** before a script deletes a parent row, run the by-value census once,
 locally: uuid / uuid[] columns, plus text ids that sit beside a type column. From
 its hits and from `pg_constraint`, write the holder list into the script, one
@@ -1898,4 +1974,4 @@ keys again at run time, checks the list, and prints it. A read that would
 sequential-scan a large relation aborts the apply; it never falls back to the
 sweep. A holder that appears later is a block until someone rules otherwise.
 *FIX-1416 · `packages/data/src/scripts/fix1416-nomination-rolls.ts`
-(`--retire-stubs`, `--census`) · cc-309 read 2, cc-310 read 2 and D8*
+(`--retire-stubs`, `--census`) · cc-309 read 2, cc-310 read 2 and D8, cc-311 read 6 and D9*
