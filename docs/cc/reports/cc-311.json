@@ -1,0 +1,35 @@
+{
+  "cc": "311",
+  "prompt": "cc-prompt-311-stats-and-search-conn-windows-bound-index-scans-on-both-sides-sql-function-body-plans-without-its-arguments-fix1416-retire-clears-enrichment-queue-clone-proof.md",
+  "started_at": "2026-11-22T23:18:51Z",
+  "finished_at": "2026-11-23T00:24:49Z",
+  "head_before": "d0e2af7b",
+  "head_after": "2d690fb7",
+  "commits": [
+    {
+      "sha": "7ea2060b",
+      "subject": "[skip vercel] chore(fixes): file FIX-1443 (the stats and search connection windows scan both edge indexes from their lower bound to the end: a SQL function's body is planned without its arguments, so the optional upper bound is a filter; window 1 removes 6.5M of 7.0M entries per branch on the clone) (cc-311)"
+    },
+    {
+      "sha": "d563b50f",
+      "subject": "fix(data): FIX-1416 --retire-stubs clears the stub's enrichment_queue rows; a pending or processing row still refuses it (ruled 2026-11-21) — proven on the clone, not applied (cc-311)"
+    },
+    {
+      "sha": "2d690fb7",
+      "subject": "[skip vercel] docs: playbook C16 — a SQL function's body is planned without its arguments, so an optional upper bound is a filter and a windowed read scans to the end (FIX-1443, the build held); E15 gains the audit's holder list and the claimable-row block (FIX-1416) (cc-311)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1443"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 1 (FIX-1443, the bounded windows): D5's STOP row fired — window 16's new wall exceeds the old one's under the prompt's EXPLAIN (ANALYZE, BUFFERS) measurement (stats 1,401 -> 1,449 ms, search 308 -> 345 ms, median of 3), though its reads are identical (824,543 entries, same buffers and heap fetches) and plain calls, median of 9, put it level (stats 1,286.4 -> 1,290.8 ms, search 244.1 -> 231.7 ms). D3 and D4 green. Not landed; the clone is back on the live bodies (revert file + migration repair --status reverted 20261122002000 --local); held as c4abe7e2 on origin/feature/fix-1443 for Craig's ruling"
+  ],
+  "lane": "ops",
+  "owed": []
+}
