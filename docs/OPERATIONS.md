@@ -1359,7 +1359,16 @@ work because the box is short of memory. Both read the on-box mirror
   uptime it read 912–926 MB on day 8 and P50 981 MB on day 13; on day 17 the
   box wedged. MemAvailable does not show the creep (median ~387 MB on day 1 and
   on the creep days alike), so watch swap: a quiet-window restart around day 10
-  of uptime resets it.
+  of uptime resets it. **Standing since 2026-11-22 (Craig): the project is
+  restarted every Saturday evening Pacific before a drop landing, from the
+  dashboard, until the compute tier changes; a clean restart keeps every
+  instrument (playbook D13).** The receipt: on uptime day 18, with no
+  Saturday restart, prod stopped answering in the pass after Sunday 11-22's
+  landing, between cc-311's last pre-push read (~00:24Z 11-23) and Craig's
+  look at 01:53Z. The dashboard's Disk IO consumed read 18 % for 11-22 and
+  100 % for 11-23 (read 01:58Z). Craig restarted the project from the
+  dashboard; `pg_postmaster_start_time()` reads
+  `2026-11-23 02:03:20.499412+00`. The cause is unread; cc-313 reads it.
 
 ### The login roles' memory GUCs (FIX-1356) and the caps rule (FIX-1357)
 

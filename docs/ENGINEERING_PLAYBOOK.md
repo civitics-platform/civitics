@@ -78,6 +78,10 @@ cap-tie equivalence and the no-change split. New rule **E15**.
 FIX-1443, the build held) and the stub retire's queue rows (FIX-1416). New
 rule **C16**. E15 gains the audit's holder list and the claimable-row block.
 
+**Extended 2026-11-22** with the connection windows landed on Craig's ruling
+(cc-312, FIX-1443). C16 gains the ruling, the reads-not-wall STOP row and the
+clone apply after the measurement.
+
 ---
 
 ## A. Data-shape regimes
@@ -1065,7 +1069,10 @@ The gate is not free, though: the `Result` passes every tuple of the branch
 that runs. Window 16 reads exactly what it read before, and EXPLAIN ANALYZE's
 per-node timing put it 3–12% slower. Plain calls, median of 9, put it level:
 stats 1,286.4 → 1,290.8 ms, search 244.1 → 231.7 ms. cc-311's STOP row ("any
-new window's wall exceeds the old one's") held the build for a ruling.
+new window's wall exceeds the old one's") held the build for a ruling. Craig
+ruled on 2026-11-22 to land it as built, and cc-312 landed it: window 16 does
+the same reads by design, so the row could not discriminate, and a no-change
+case is judged on its reads.
 
 **Apply:** read a SQL function body's plan with `EXPLAIN (GENERIC_PLAN)` and
 its arguments as `$n`, under the function's own proconfig, never with
@@ -1074,6 +1081,9 @@ needs one SELECT, no `SET`, not `SECURITY DEFINER` and not `VOLATILE`, and a
 set-returning body is inlined only when it is called in FROM. Bound a range
 in the index condition on both sides, or gate the open branch. Do not
 compare a gated plan's wall to an ungated one under EXPLAIN ANALYZE's timing.
+A STOP row on a case that does the same reads compares reads (entries,
+buffers, heap fetches), never wall. A measure-gated landing applies to the
+clone after the measurement, not before.
 Census by mechanism (E5): `prosrc ~* 'IS NULL OR'` over `LANGUAGE sql` in
 `public` returns fourteen on the clone. Six are request-path with an argument
 under the `OR`, and none puts a range bound there on its largest relation:
@@ -1084,7 +1094,7 @@ an aggregate's output), `get_browse_facets` (entity_search_index Bitmap Heap
 Scan with the `OR`s as its Filter, 15,197 pages), `get_topic_proposal_page`
 (entity_tags by entity, 83,246 pages) and `query_districts` (jurisdictions,
 896 pages).
-*FIX-1443 · `origin/feature/fix-1443` (held) · cc-307 read 3, cc-311 reads 1–3 and D3–D5*
+*FIX-1443 · `20261122002000` (cc-311 built it, cc-312 landed it on the ruling) · cc-307 read 3, cc-311 reads 1–3 and D3–D5*
 
 ---
 
