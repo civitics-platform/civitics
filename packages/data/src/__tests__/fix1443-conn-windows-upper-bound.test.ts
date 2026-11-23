@@ -358,7 +358,7 @@ test("clone D4 (search): per window, old EXCEPT ALL new and new EXCEPT ALL old a
       await c.query(fs.readFileSync(FILE_PATH, "utf8"));
       let rows = 0;
       for (const [i, [lo, hi]] of WINDOWS.entries()) {
-        const n = async (sql: string) => (await c.query<{ n: number }>(`SELECT count(*)::int AS n FROM (${sql}) z`, [lo, hi, i + 1])).rows[0]!.n;
+        const n = async (sql: string): Promise<number> => (await c.query<{ n: number }>(`SELECT count(*)::int AS n FROM (${sql}) z`, [lo, hi, i + 1])).rows[0]!.n;
         const oldSide = "SELECT entity_id, c FROM _f1443_old WHERE w = $3::int";
         const newSide = "SELECT entity_id, c FROM public.entity_search_conn_window($1::uuid, $2::uuid)";
         assert.deepEqual([await n(`${oldSide} EXCEPT ALL ${newSide}`), await n(`${newSide} EXCEPT ALL ${oldSide}`)], [0, 0], `window ${i + 1}`);
