@@ -20,8 +20,10 @@
  *                      hold) whose title is its number and which no `block`
  *                      holder holds (HOLDERS, cc-310 D5: the foreign keys read
  *                      from pg_constraint at run time, and the typed pairs).
- *                      Its `clear` rows (source refs, tags, search row) and
- *                      its bill_details row go with it. Runs AFTER the
+ *                      Its `clear` rows (source refs, tags, search row, its
+ *                      enrichment tasks unless one is pending or processing,
+ *                      which refuses it: cc-311 D8) and its bill_details row
+ *                      go with it. Runs AFTER the
  *                      re-point and the votes merge. DRY unless `--apply`.
  *   --census           LOCAL only: every uuid / uuid[] column in public, and
  *                      every text id beside a type column, read by value for
@@ -435,6 +437,8 @@ export interface Holder {
   type: { col: string; value: string } | null;
   /** The id column is text, so ids are compared as text. */
   text?: boolean;
+  /** Only the rows whose `col` is one of `values`: one relation read as two kinds, each its own line. */
+  only?: { col: string; values: readonly string[] };
   why: string;
 }
 
@@ -442,18 +446,22 @@ export interface Holder {
  * The typed pairs (cc-310 read 2 on the clone): every relation whose type
  * column stores 'proposal', with data_flags beside them (its CHECK admits
  * 'proposal'). enrichment_queue keys a TEXT entity_id, so cc-309's uuid sweep
- * could not see it; it holds every dashed stub (one tag task each).
+ * could not see it; it holds every dashed stub (one tag task each). Its rows
+ * are cleared with the stub (the integrity audit's
+ * referential.orphan_enrichment_queue is an error for a row left behind),
+ * except that a claimable or claimed one still refuses it (Craig, 2026-11-21).
  */
 export const TYPED_HOLDERS: readonly Holder[] = [
   { kind: "clear", rel: "external_source_refs", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "the stub's 119-S-<n>-<m> source refs; the walk now mints 119-PN-<n>" },
   { kind: "clear", rel: "entity_tags", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "the tagger's rows for the stub" },
   { kind: "clear", rel: "entity_search_index", idCol: "entity_id", type: { col: "kind", value: "proposal" }, why: "the stub's search row (rebuild_entity_search_index rebuilds it daily anyway)" },
+  { kind: "clear", rel: "enrichment_queue", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, text: true, why: "the stub's enrichment tasks (text entity_id); referential.orphan_enrichment_queue is an error for one left behind" },
   { kind: "leave", rel: "entity_connection_stats_mv", idCol: "entity_id", type: null, why: "rebuild_entity_connection_stats_window() deletes the row of an entity with no edge in its window" },
   { kind: "leave", rel: "proposal_trending_24h", idCol: "proposal_id", type: null, why: "refresh_derived_mvs('daily') refreshes it in full" },
   { kind: "keep", rel: "page_views", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "history" },
   { kind: "block", rel: "entity_connections", idCol: "from_id", type: { col: "from_type", value: "proposal" }, why: "an edge from the stub" },
   { kind: "block", rel: "entity_connections", idCol: "to_id", type: { col: "to_type", value: "proposal" }, why: "an edge to the stub (the votes merge retires its vote edges)" },
-  { kind: "block", rel: "enrichment_queue", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, text: true, why: "an enrichment task (text entity_id)" },
+  { kind: "block", rel: "enrichment_queue", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, text: true, only: { col: "status", values: ["pending", "processing"] }, why: "a claimable or claimed task: a tag run would write entity_tags for a deleted proposal (ruled 2026-11-21)" },
   { kind: "block", rel: "ai_summary_cache", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "an AI summary" },
   { kind: "block", rel: "commons_active_threads", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a comment thread (MV)" },
   { kind: "block", rel: "data_flags", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a data flag (its CHECK admits proposal)" },
@@ -466,14 +474,15 @@ export const TYPED_HOLDERS: readonly Holder[] = [
   { kind: "block", rel: "synthetic_position_rollup", idCol: "entity_id", type: { col: "entity_type", value: "proposal" }, why: "a synthetic position rollup" },
 ];
 
-export const holderLabel = (h: Holder): string => `${h.rel}.${h.idCol}`;
+export const holderLabel = (h: Holder): string => `${h.rel}.${h.idCol}${h.only ? ` (${h.only.col} ${h.only.values.join(" / ")})` : ""}`;
 
 const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 function holderWhere(h: Holder): string {
   const id = `${ident(h.idCol)} = ANY($1::${h.text ? "text" : "uuid"}[])`;
-  return h.type ? `${ident(h.type.col)} = ${literal(h.type.value)} AND ${id}` : id;
+  const only = h.only ? ` AND ${ident(h.only.col)} IN (${h.only.values.map(literal).join(", ")})` : "";
+  return (h.type ? `${ident(h.type.col)} = ${literal(h.type.value)} AND ${id}` : id) + only;
 }
 
 /** The count one holder holds per id, by (type, id). */
@@ -568,7 +577,8 @@ export function holderLines(counts: readonly HolderCount[], retired: readonly st
       const ids = [...c.byId.keys()];
       const rows = [...c.byId.values()].reduce((a, b) => a + b, 0);
       const ofRetired = ids.filter((id) => kept.has(id)).reduce((a, id) => a + c.byId.get(id)!, 0);
-      const t = c.holder.type ? ` [${c.holder.type.col} = '${c.holder.type.value}'${c.holder.text ? ", text id" : ""}]` : "";
+      const only = c.holder.only ? `, ${c.holder.only.col} IN (${c.holder.only.values.map((v) => `'${v}'`).join(", ")})` : "";
+      const t = c.holder.type ? ` [${c.holder.type.col} = '${c.holder.type.value}'${c.holder.text ? ", text id" : ""}${only}]` : "";
       return `${c.holder.kind.padEnd(5)} ${holderLabel(c.holder)}${t}: stubs ${ids.length}, rows ${rows}, of the retired ${ofRetired} — ${c.holder.why}`;
     });
 }
