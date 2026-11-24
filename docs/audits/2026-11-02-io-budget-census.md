@@ -616,3 +616,265 @@ from `dispatch_log` (armed → reaped) for the VACUUMs.
 If the dashboard scaled with either overage, 96 % would read ~62 % (MB) or
 ~56 % (ops). Neither fits, so no consumed share is claimed. Every one of these
 numbers **assumes the bucket is the same size on Small, which is unverified.**
+
+## The 11-23 outage, and the rung with no pause (cc-313, read-only prod)
+
+Sun 11-22's landing (run 45070093713, fec phase 21:05:48 → 23:22:25Z) was
+followed by an outage. Prod stopped answering from ~23:45Z. Craig restarted the
+project from the dashboard; Postgres shut down at 02:02:10Z and came back
+at 02:03:20Z. On Craig's test the dispatcher then ran the rest of the pass with
+no `pause`, under the rung as it stood: `io_time_pct_ceiling` 90, `io_samples` 2,
+`io_mbps_floor` 12, `io_throttle_hold_min` 60, `max_concurrent_units` 2. Prod
+ran the old bodies (FIX-1441, FIX-1439 and FIX-1443 unpushed). Uptime before the
+restart: day 18 since 11-05 01:59:17Z.
+
+Sources:
+
+- **The ring:** two off-box banks joined by `at`, with 173 overlapping samples
+  identical: `ring-20261123T0218Z.json` (cc-312) and `ring-20261124T0107Z.json`.
+- **The Logs API:** `postgres_logs` and `edge_logs`.
+- **`dispatch_log`**, `cron.job_run_details`, `data_sync_log` and
+  `status_snapshot`.
+
+The ring's disk counters reset at 02:04:22Z because the VM rebooted, so the one
+interval across the reboot is not counted.
+
+**The onset, in one line:**
+
+- 23:43:00Z: the first post-landing ec-crawl unit was armed (donations window
+  1/16, target 22:47:00Z). It ran 23:47:00 → 00:23:56Z, and the budget
+  watchdog cancelled it at 2,205 s.
+- fe-crawl (00:39:00 → 01:16:38Z, a 2,249 s slice, cancelled) and
+  donor-rollup-refresh (00:41:04 → 01:22:06Z) then ran side by side. The
+  donor rollup was killed by its 2,400 s transaction timeout at 01:21:09Z, so
+  its staging never committed.
+- A second ec-crawl unit started 01:37:00Z and was in flight at the shutdown.
+- `edge_logs` 5xx:
+  - 18 / 97 at 23:45Z;
+  - 64 / 87 at 00:00Z;
+  - 53 / 65 at 00:45Z;
+  - **214 / 216 at 01:00Z** (192 × 503, 22 × 504, 0 × 52x);
+  - 120 / 152 at 01:15Z;
+  - 2 / 295 at 01:30Z;
+  - 84 / 136 at 01:45Z;
+  - 122 / 247 at 02:00Z (114 × 52x, the restart);
+  - 0 / 212 from 02:15Z.
+- `postgres_logs`: 280 PostgREST statement timeouts (23:22 → 02:01Z), with no
+  OOM, signal, `server process` or recovery line.
+
+**B1, clean or crash: clean.**
+
+- 02:02:10Z: `terminating connection due to administrator command`, which is a
+  fast shutdown.
+- 02:03:20Z: `the database system is starting up`.
+- Every `stats_reset` is unchanged:
+  - `pg_stat_statements_info` 2026-10-25 13:25:52.563285Z;
+  - `pg_stat_bgwriter` / `pg_stat_checkpointer` / `pg_stat_io`
+    13:25:53.578037Z.
+- The cumulative counters survived, and the UNLOGGED staging is intact:
+  - `fec_emit_keys` 13,732,065 live rows, 1.82 GB;
+  - `_drb_fe` 5,387,636;
+  - `_drb_targets` 584;
+  - `fec_emit_runs` 28.
+- `_drb_chunk_fe`, `_drb_donor` and `ec_donations_incr_dirty` read 0. Each was
+  last analyzed by its own writer, at 03:16:52Z and 00:24:18Z.
+
+**A1, the ring:** 15-min buckets from 11-22 21:00Z to the read (11-24 01:06Z).
+Runs of quiet buckets (no sample ≥ 90 %, load1 < 3) are merged.
+
+| 15-min bucket (Z) | samples | swap max MB | MemAvail min MB | swap-in / swap-out p95 (pg/s) | all-disk read MB/s p95 / max | all-disk r+w MB/s p95 / max | io_time max % | load1 max | samples ≥ 90 % |
+|---|---:|---:|---:|---|---|---|---:|---:|---:|
+| 11-22 21:00 → 22:45 (8 buckets; p95 = the worst bucket's) | 60 | 567 | 298 | 623.5 / 1146.8 | 35.9 / 35.9 | 52.7 / 52.7 | 81.1 | 2.8 | 0 |
+| 11-22 23:00 | 8 | 532 | 349 | 470.6 / 881.8 | 43.6 / 43.6 | 51.1 / 51.1 | 100 | 3.8 | 1 |
+| 11-22 23:15 | 7 | 508 | 360 | 570.9 / 529 | 78.3 / 78.3 | 125.2 / 125.2 | 100 | 3.1 | 3 |
+| 11-22 23:30 | 7 | 547 | 320 | 852.5 / 1279.9 | 58.1 / 58.1 | 80.7 / 80.7 | 100 | 4.9 | 1 |
+| 11-22 23:45 | 4 | 514 | 324 | 357.9 / 401.7 | 64.9 / 64.9 | 89.8 / 89.8 | 75.5 | 13.7 | 0 |
+| 11-23 00:00 | 1 | 509 | 371 | — / — | — / — | — / — | — | 15.7 | 0 |
+| 11-23 00:15 | 4 | 488 | 311 | 191.9 / 278.8 | 8.4 / 8.4 | 9.4 / 9.4 | 54.1 | 16.4 | 0 |
+| 11-23 00:30 | 5 | 578 | 323 | 361.8 / 751.7 | 6.8 / 6.8 | 10 / 10 | 2.3 | 0.8 | 0 |
+| 11-23 00:45 | 0 | — | — | — / — | — / — | — / — | — | — | 0 |
+| 11-23 01:00 | 1 | 442 | 366 | — / — | — / — | — / — | — | 11.4 | 0 |
+| 11-23 01:15 | 4 | 502 | 389 | 196.6 / 262 | 8.7 / 8.7 | 10.4 / 10.4 | 11.2 | 10.4 | 0 |
+| 11-23 01:30 | 8 | 436 | 368 | 335.8 / 494.4 | 22.1 / 22.1 | 30.1 / 30.1 | 100 | 3.6 | 3 |
+| 11-23 01:45 | 1 | 450 | 346 | — / — | — / — | — / — | — | 19.4 | 0 |
+| 11-23 02:00 | 6 | 493 | 346 | 756.2 / 657.2 | 137.3 / 137.3 | 141.8 / 141.8 | 96.4 | 2.8 | 2 |
+| 11-23 02:15 → 06:00 (16 buckets; p95 = the worst bucket's) | 120 | 511 | 307 | 715.3 / 1098.7 | 85.6 / 85.6 | 95.8 / 95.8 | 89.7 | 1.7 | 0 |
+| 11-23 06:15 | 7 | 369 | 366 | 257.4 / 321.1 | 68.4 / 68.4 | 78.8 / 78.8 | 90.8 | 1.9 | 1 |
+| 11-23 06:30 | 8 | 468 | 319 | 358.7 / 555 | 33.1 / 33.1 | 37.2 / 37.2 | 94.8 | 1.3 | 1 |
+| 11-23 06:45 → 11:30 (20 buckets; p95 = the worst bucket's) | 150 | 697 | 221 | 874.1 / 1337.8 | 89.7 / 89.7 | 119.4 / 119.4 | 84.7 | 2.8 | 0 |
+| 11-23 11:45 | 7 | 597 | 278 | 298.3 / 429.7 | 136.8 / 136.8 | 139.8 / 139.8 | 97.6 | 1.7 | 2 |
+| 11-23 12:00 → 16:00 (17 buckets; p95 = the worst bucket's) | 128 | 654 | 274 | 700.6 / 1009 | 65.4 / 65.4 | 101 / 101 | 83.9 | 2.4 | 0 |
+| 11-23 16:15 | 7 | 385 | 289 | 225.2 / 203.3 | 43.9 / 43.9 | 45.5 / 45.5 | 98.7 | 1.4 | 1 |
+| 11-23 16:30 | 8 | 504 | 375 | 350 / 782.7 | 7 / 7 | 10.5 / 10.5 | 1.9 | 0.3 | 0 |
+| 11-23 16:45 | 7 | 481 | 314 | 330.5 / 495.6 | 44.2 / 44.2 | 45.8 / 45.8 | 95.1 | 1.6 | 1 |
+| 11-23 17:00 | 8 | 511 | 379 | 470.3 / 1215.2 | 11.9 / 11.9 | 17.3 / 17.3 | 3.3 | 0.7 | 0 |
+| 11-23 17:15 | 7 | 366 | 310 | 301.1 / 279 | 48.1 / 48.1 | 50.8 / 50.8 | 97.7 | 1.2 | 1 |
+| 11-23 17:30 | 8 | 506 | 349 | 447.4 / 1069.3 | 12.5 / 12.5 | 17.2 / 17.2 | 3.5 | 0.4 | 0 |
+| 11-23 17:45 | 7 | 420 | 326 | 341.2 / 418.2 | 47.8 / 47.8 | 49.3 / 49.3 | 100 | 1.2 | 1 |
+| 11-23 18:00 | 8 | 528 | 256 | 336.8 / 728.5 | 6.9 / 6.9 | 9.5 / 9.5 | 3.9 | 0.2 | 0 |
+| 11-23 18:15 | 7 | 385 | 302 | 124.6 / 173.8 | 43.5 / 43.5 | 44.8 / 44.8 | 100 | 1 | 1 |
+| 11-23 18:30 | 8 | 408 | 323 | 332 / 392.2 | 25.4 / 25.4 | 27.6 / 27.6 | 47.4 | 0.6 | 0 |
+| 11-23 18:45 | 7 | 437 | 349 | 273.9 / 213.2 | 43.8 / 43.8 | 45.8 / 45.8 | 63.8 | 0.9 | 0 |
+| 11-23 19:00 | 8 | 411 | 274 | 397 / 798.3 | 32 / 32 | 37.7 / 37.7 | 97.6 | 1.6 | 1 |
+| 11-23 19:15 | 7 | 419 | 374 | 137.9 / 219.8 | 9.6 / 9.6 | 15.1 / 15.1 | 6.2 | 0.3 | 0 |
+| 11-23 19:30 | 8 | 500 | 319 | 301.2 / 657.9 | 43 / 43 | 44 / 44 | 98.4 | 2 | 1 |
+| 11-23 19:45 | 7 | 364 | 362 | 166.2 / 268.3 | 5.8 / 5.8 | 7.1 / 7.1 | 0.2 | 0.2 | 0 |
+| 11-23 20:00 | 8 | 456 | 326 | 848.3 / 1071 | 53.6 / 53.6 | 58.5 / 58.5 | 100 | 1.8 | 1 |
+| 11-23 20:15 | 7 | 408 | 381 | 49.1 / 172 | 4.4 / 4.4 | 5.3 / 5.3 | 0.3 | 0.2 | 0 |
+| 11-23 20:30 | 8 | 464 | 268 | 627 / 783 | 42.9 / 42.9 | 42.8 / 42.8 | 100 | 1.3 | 1 |
+| 11-23 20:45 | 7 | 405 | 388 | 117.5 / 223.6 | 5.8 / 5.8 | 6.9 / 6.9 | 0.1 | 0.2 | 0 |
+| 11-23 21:00 | 8 | 465 | 293 | 456.4 / 575.8 | 41.3 / 41.3 | 41.9 / 41.9 | 100 | 1.5 | 1 |
+| 11-23 21:15 | 7 | 393 | 309 | 164.1 / 199.2 | 32.2 / 32.2 | 47.4 / 47.4 | 100 | 1.6 | 1 |
+| 11-23 21:30 | 8 | 463 | 362 | 406.9 / 743.7 | 41.1 / 41.1 | 42.4 / 42.4 | 97.8 | 1.5 | 1 |
+| 11-23 21:45 | 7 | 391 | 349 | 101.3 / 244.6 | 5 / 5 | 6.2 / 6.2 | 0.2 | 0.4 | 0 |
+| 11-23 22:00 | 8 | 456 | 325 | 450.4 / 492 | 41.9 / 41.9 | 42 / 42 | 97.6 | 1.4 | 1 |
+| 11-23 22:15 | 7 | 450 | 357 | 99.1 / 335.8 | 5 / 5 | 6.6 / 6.6 | 0.4 | 0.1 | 0 |
+| 11-23 22:30 | 8 | 497 | 332 | 373.9 / 525.5 | 40.3 / 40.3 | 41.8 / 41.8 | 94.6 | 1.6 | 1 |
+| 11-23 22:45 | 7 | 440 | 365 | 184.2 / 341.6 | 9.4 / 9.4 | 10.4 / 10.4 | 12.3 | 0.3 | 0 |
+| 11-23 23:00 | 8 | 507 | 323 | 542.6 / 986.5 | 40.9 / 40.9 | 41.2 / 41.2 | 64.6 | 1 | 0 |
+| 11-23 23:15 | 7 | 428 | 277 | 87.7 / 231.7 | 28.3 / 28.3 | 29.7 / 29.7 | 100 | 1.4 | 1 |
+| 11-23 23:30 → 00:30 (5 buckets; p95 = the worst bucket's) | 38 | 506 | 270 | 431.8 / 796.4 | 40.8 / 40.8 | 53.7 / 53.7 | 84.8 | 1.1 | 0 |
+| 11-24 00:45 | 7 | 509 | 284 | 226.4 / 281.9 | 27.1 / 27.1 | 29.3 / 29.3 | 90.8 | 1.2 | 3 |
+| 11-24 01:00 | 4 | 561 | 229 | 410.4 / 548.7 | 33.2 / 33.2 | 38.6 / 38.6 | 100 | 1.8 | 1 |
+
+- **Gaps over 6 min:**
+  - 23:48:22 → 23:56:22Z (8);
+  - 23:58:22 → 00:14:22Z (16);
+  - **00:38:22 → 01:12:22Z (34, the longest)**;
+  - 01:12:22 → 01:20:22Z (8);
+  - 01:44:22 → 01:58:22Z (14).
+  - Two more read exactly 6.0 min: 00:18 → 00:24Z, and 01:58 → 02:04Z
+    across the restart.
+- **The samples that bracket the gaps** read load1 13.7–19.4 with `io_time`
+  unrated (23:56Z, 00:14–00:26Z, 01:12–01:24Z and 01:58Z).
+- **The ten samples before the longest gap** read swap 405–578 MB, MemAvailable
+  311–486 MB, all-disk 1.3–10 MB/s and io 0.2–54.1 %.
+- **01:40–01:44Z** read io 97–100 % at 7.5–8.5 MB/s and 248–279 reads/s: the
+  throttle shape.
+- **After the reboot,** 02:06–02:10Z read 124–142 MB/s at 75–96 %.
+
+**B3, the dispatcher's view** (cc-286 read 3's columns), 11-22 23:00Z →
+11-24 00:30Z. Runs with no skip, no startup timeout and no busy-at-floor
+sample are merged. **Bold** = startup timeouts.
+
+| 15-min bucket (Z) | ticks | io_sat / io_thr / fork / stale skips | armed | streak max | io max | st10 max | mirror age max | startup timeouts | ring n | ring io max | busy ≥ 90 % at ≤ 12 MB/s (MB/s) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 11-22 23:00 | 7 | 0/0/0/0 |  | — | — | — | — | 0 | 8 | 100 | — |
+| 11-22 23:15 | 8 | 1/0/0/0 | fe-crawl 23:23 | 2 | 100 | 0 | 37 | 0 | 7 | 100 | — |
+| **11-22 23:30** | 7 | 1/0/5/0 | ec-crawl 23:43 | 2 | 100 | 3 | 149 | **3** | 7 | 100 | — |
+| **11-22 23:45** | 4 | 0/0/0/1 | entity-tags-vacuum-analyze 23:45, osdr-vacuum-analyze 23:49 | 0 | 63 | 3 | 38 | **15** | 4 | 75.5 | — |
+| **11-23 00:00** | 4 | 0/0/2/3 |  | 0 | 75.5 | 12 | 933 | **9** | 1 | — | — |
+| **11-23 00:15** | 5 | 0/0/4/1 |  | 0 | 10.1 | 13 | 564 | **17** | 4 | 54.1 | — |
+| 11-23 00:30 | 7 | 0/0/3/0 | fe-crawl 00:37, donor-rollup-refresh 00:39 | 0 | 2.3 | 5 | 38 | 0 | 5 | 2.3 | — |
+| **11-23 00:45** | 2 | 0/0/0/1 |  | 0 | 0.2 | 14 | 1128 | **17** | 0 | — | — |
+| **11-23 01:00** | 1 | 0/0/0/1 |  | 0 | 0.2 | 13 | 2108 | **35** | 1 | — | — |
+| **11-23 01:15** | 3 | 0/0/3/0 |  | 0 | 3.5 | 12 | 2921 | **12** | 4 | 11.2 | — |
+| 11-23 01:30 | 7 | 0/1/2/0 | ec-crawl 01:35, odt-vacuum-analyze 01:37, osdr-vacuum-analyze 01:39 | 2 | 100 | 3 | 38 | 0 | 8 | 100 | 01:40(8.45) 01:42(8.1) 01:44(7.55) |
+| **11-23 01:45** | 3 | 0/1/0/2 |  | 3 | 97.4 | 7 | 827 | **13** | 1 | — | — |
+| **11-23 02:00** | 5 | 0/2/3/0 |  | 3 | 96.4 | 8 | 133 | **6** | 6 | 96.4 | — |
+| 11-23 02:15 | 8 | 0/8/0/0 |  | 0 | 0.3 | 2 | 37 | 0 | 7 | 0.3 | — |
+| 11-23 02:30 | 7 | 0/7/0/0 |  | 0 | 3.3 | 0 | 37 | 0 | 8 | 3.3 | — |
+| 11-23 02:45 → 11:30 | 7–8 | 0 | donor-rollup-refresh, fe-crawl ×15, fe-inbound-rollup-refresh, vote-stats-refresh, fe-vacuum-analyze, refresh-derived-mvs-daily, rule-taggers-daily, fr-vacuum-analyze, ec-crawl ×8, ec-vacuum-analyze ×2 | 1 | 94.8 | 0 | 38 | 0 | 7–8 | 94.8 | — |
+| 11-23 11:45 | 8 | 1/0/0/0 | fe-crawl 11:47, ec-crawl 11:57 | 2 | 97.6 | 0 | 38 | 0 | 7 | 97.6 | — |
+| 11-23 12:00 → 00:15 | 7–8 | 0 | fe-crawl ×25, ec-crawl ×23, ec-vacuum-analyze, donor-rollup-refresh, ecs-vacuum-analyze, nightly, officials-vacuum-analyze, entity-tags-vacuum-analyze, agency-staffing-rollup-refresh | 1 | 97.6 | 0 | 39 | 0 | 7–8 | 100 | — |
+
+**The holds.** One was set, before the restart, and none after it.
+
+| hold | set | io % / MB/s at the set | sample of the streak | refreshed | throttle_until (final) | armed in the 6 min before | running at the set |
+|---|---|---|---|---|---|---|---|
+| H | 01:42:23.78Z | 100 / 8.1 | 2nd (01:40:22Z, 100 % / 8.45 MB/s, was the 1st) | 01:44:24.74Z (3rd, 97.4 / 7.55) | 02:44:24.74Z | odt-vacuum-analyze 01:37:00Z (0.6 s), osdr-vacuum-analyze 01:39:08Z (0.8 s) | ec-crawl (armed 01:35:01Z, run 01:37:00Z, donations window 1/16 of a new cycle) |
+
+- **Skips under H, by mirror age (≤ 180 s / > 180 s):** `io_throttled` 19 / 0,
+  `fork_failures` 3 / 0, `stale` 0 / 2.
+- **No arm inside H.** It held across the restart: 17 `io_throttled` ticks
+  02:11 → 02:43Z on a cold box that read 0–10 MB/s.
+- **The 02:11Z sample** read a streak of 2 at 96.4 % / 141.84 MB/s. The floor
+  clause refused it, so it did not extend the hold.
+
+| release | arms in the 10 min after | startup timeouts in the 30 min after | 11-16, beside it |
+|---|---|---:|---|
+| H, 02:44:24.74Z | donor-rollup-refresh 02:45:01Z (1,746 s; 584 targets; 41.3 GB read) | 0 | H-b's 07:18:24Z release: four arms in 8 min, 171 timeouts in the next 2 h 45 m |
+
+**From the restart to the pass's close** (00:21:25Z 11-24):
+
+- skips: `io_saturated` 1 (11:51Z, the backup), `io_throttled` 17 and
+  `fork_failures` 2;
+- 89 arms and 2 startup timeouts (02:05:00Z);
+- no H1, H2 or H3 row;
+- no arm into a standing hold;
+- two arms at streak 1 (fe-crawl 06:37Z and 22:13Z, 0.1 s each).
+
+**The pass:**
+
+- Its first ec-crawl unit was at 23:47:00Z 11-22, and it closed at 00:21:25Z
+  11-24 (24 h 34 m).
+- The 01:37Z unit's `running` row survived the restart reap (02:07:00Z,
+  `failed: server restarted`, `end_time` NULL, so it closed 0 rows). The row
+  held ec-crawl `live` until its 6 h window lapsed: armed 07:39Z.
+- After that: 16 donations windows (07:41 → 15:47Z, 198.6–234.5 s,
+  1,299,865 rows) and 16 stats windows (16:17Z → 00:21Z, 276.9 → 122.5 s,
+  Σ 3,606.4 s).
+
+**B4, which units spent the IO:** every unit ≥ 60 s from 11-22 21:05Z to the
+read, over the ring's counters. MB read is all disks. MB written is the
+route's r+w rate minus the counted reads, so it is approximate and is missing
+where the ring gapped. Overlapping units are marked, not split. Top 20 of 53
+(the full list is in cc-313's report):
+
+| # | unit | span (Z) | wall s | p50 s (14 d) | MB read (all disks) | MB written ≈ | min ≥ 90 % | swap-in MB | overlapped |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | nightly | 11-22 21:05:22 → 23:36:25 | 9,063 | 805.2 | 266,789 | 106,792 | 10 | 10,769 | yes |
+| 2 | donor-rollup-refresh | 11-23 02:47:00 → 03:16:06 | 1,746 | 0.2 | 41,299 | 9,566 | 0 | 931 |  |
+| 3 | fe-crawl | 11-22 23:25:00 → 23:35:38 | 638 | 0.1 | 32,650 | 10,222 | 4 | 1,320 | yes |
+| 4 | donor-rollup-refresh (failed: SSL connection has been closed u) | 11-23 00:41:04 → 01:22:06 | 2,462 | 0.2 | 28,589 | 0 (rates 4 %) | 0 | 1,806 | yes |
+| 5 | fe-crawl | 11-23 00:39:00 → 01:16:38 | 2,259 | 0.1 | 27,540 | 0 (rates 0 %) | 0 | 1,642 | yes |
+| 6 | refresh-derived-mvs-weekly | 11-24 00:49:00 → 01:04:04 | 904 | 1,068.4 | 23,099 | 2,580 | 8 | 676 |  |
+| 7 | nightly | 11-23 21:05:22 → 21:21:51 | 989 | 805.2 | 22,357 | 5,051 | 4 | 497 | yes |
+| 8 | refresh-derived-mvs-daily | 11-23 06:03:00 → 06:19:01 | 962 | 321.8 | 20,463 | 5,798 | 2 | 488 |  |
+| 9 | ec-crawl (failed: ERROR:  canceling statement due ) | 11-22 23:47:00 → 00:23:56 | 2,217 | 48.5 | 19,876 | 0 (rates 35 %) | 0 | 1,650 | yes |
+| 10 | fr-vacuum-analyze | 11-23 07:29:00 → 07:31:59 | 180 | 9.8 | 13,636 | 6,035 | 0 | 423 |  |
+| 11 | ec-crawl | 11-23 16:49:00 → 16:53:45 | 285 | 48.5 | 10,267 | 699 | 2 | 288 |  |
+| 12 | ec-crawl | 11-23 16:17:00 → 16:21:59 | 300 | 48.5 | 10,004 | 594 | 2 | 162 |  |
+| 13 | ec-crawl | 11-23 19:29:00 → 19:33:26 | 267 | 48.5 | 9,845 | 777 | 2 | 261 |  |
+| 14 | ec-crawl | 11-23 18:57:00 → 19:01:41 | 281 | 48.5 | 9,450 | 626 | 2 | 252 |  |
+| 15 | ec-crawl | 11-23 20:01:00 → 20:05:24 | 265 | 48.5 | 9,213 | 774 | 2 | 367 |  |
+| 16 | ec-crawl | 11-23 17:53:00 → 17:57:34 | 275 | 48.5 | 9,189 | 474 | 2 | 210 |  |
+| 17 | ec-crawl | 11-23 17:21:00 → 17:25:32 | 273 | 48.5 | 9,172 | 500 | 2 | 182 |  |
+| 18 | ec-crawl (failed: server restarted) | 11-23 01:37:00 → 02:02:10 | 1,510 | 48.5 | 9,088 | 0 (rates 29 %) | 6 | 633 |  |
+| 19 | ec-crawl | 11-23 18:25:00 → 18:29:28 | 268 | 48.5 | 8,500 | 478 | 2 | 91 |  |
+| 20 | ec-crawl | 11-23 21:05:00 → 21:09:14 | 255 | 48.5 | 8,296 | 528 | 2 | 171 | yes |
+
+**By kind:**
+
+| unit kind | units | wall s | GB read | min ≥ 90 % | swap-in GB |
+|---|---:|---:|---:|---:|---:|
+| nightly | 2 | 10,052 | 289.1 | 14 | 11.27 |
+| ec-crawl stats windows | 16 | 3,972 | 133.0 | 28 | 3.05 |
+| fe-crawl | 6 | 3,755 | 86.8 | 4 | 3.30 |
+| ec-crawl donations windows | 16 | 3,468 | 86.5 | 0 | 2.13 |
+| donor-rollup-refresh | 2 | 4,209 | 69.9 | 0 | 2.74 |
+| MVs / taggers | 3 | 2,082 | 49.7 | 12 | 1.41 |
+| dispatched VACUUMs | 6 | 738 | 45.2 | 0 | 1.32 |
+| ec-crawl (cut: cancelled / restarted) | 2 | 3,727 | 29.0 | 6 | 2.28 |
+
+**Per UTC day, all disks:**
+
+| UTC day | dashboard (Craig) | ring samples / 720 | read GB | write GB ≈ | min ≥ 90 % | swap-in GB | startup timeouts |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 11-22 | 18 % | 716 | 678 | 204 | 12 | 45.5 | 18 |
+| 11-23 | 100 % (at 01:58Z) | 682 | 755 | 132 | 48 | 35.5 | 109 |
+
+- 11-23's no-unit reads were 283 GB, including the backup window
+  (11:15–12:00Z, 60.8 GB) and the post-reboot warm-up.
+
+**Beside the three Mondays:**
+
+- **11-02:** dashboard 17 % / 88 %; 270 startup timeouts (03:45 → 08:15Z).
+- **11-09:** 306 (05:00 → 11:15Z) under `io_samples` 3; two holds, one arm into
+  a hold.
+- **11-16:** 19 % / 96 %; 414 (277 in the pass) under `io_samples` 2; three
+  holds, none armed into. H-b's release admitted four arms in 8 min, and 171
+  followed in 2 h 45 m. The pass ran 23 h 12 min.
+- **11-23:** 18 % / 100 %; 127 from the landing (122 between the first
+  ec-crawl arm and the restart, 2 after it); one hold, set 60 min into the
+  stall, released into one arm. The pass ran 24 h 34 min, cut by a restart.
