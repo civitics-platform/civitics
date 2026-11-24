@@ -1,0 +1,87 @@
+{
+  "cc": "313",
+  "prompt": "cc-prompt-313-mon-records-after-the-outage-ring-banked-first-onset-clean-or-crash-restart-unlogged-staging-the-io-rung-with-no-pause-holds-and-release-surges-per-unit-io.md",
+  "started_at": "2026-11-24T01:05:58Z",
+  "finished_at": "2026-11-24T01:40:04Z",
+  "head_before": "c68d742c",
+  "head_after": "4ce67f79",
+  "commits": [
+    {
+      "sha": "47ea2952",
+      "subject": "[skip vercel] chore(fixes): file FIX-1444 — prod stopped answering in the pass after the 11-22 landing (5xx 99.1 % at 01:00Z 11-23, 122 startup timeouts before Craig's clean restart at 02:02Z); the io rung held once, 60 min into the stall, after the budget was spent (cc-313)"
+    },
+    {
+      "sha": "f0d1073b",
+      "subject": "chore(fixes): record FIX-1418 on prod — the 11-23 schedule: fallback (run 45093567453, 01:15:49Z) stood down inside the outage: 3 data_sync_log reads failed (\\\"Could not query the database for the schema cache\\\"), GitHub named dispatched run 45070093713 (completed / success, 21:05:23Z) for nominal day 2026-11-23, every phase stood down; Run FEC phase and the three enrichment phases skipped (cc-313)"
+    },
+    {
+      "sha": "42503491",
+      "subject": "chore(fixes): record FIX-1423 on prod — five quiet-day ec-crawl cycles closed at stale_after 25 minutes since 11-19: 17 units in 8.44 h (11-19 05:21Z), 9.15 h (11-19 19:51Z) and 8.01 h (11-21 09:07Z) against ~7.9 h; 33 units in 16.01 h (11-20 11:03Z); 35 in 17.60 h (11-21 23:11Z) against ~17.7 h; canary at each close 14.5 / 15.2 / 22.1 / 14.1 / 23.7 h against the 36 h report (cc-313)"
+    },
+    {
+      "sha": "464a5366",
+      "subject": "[skip vercel] docs(audits): the 11-23 outage, and the rung with no pause — 15-min ring and dispatcher buckets 11-22 21:00Z → 11-24 01:06Z, a clean restart (02:02:10Z fast shutdown, stats_reset unchanged, UNLOGGED staging intact), one hold (01:42:23Z, 2nd sample, 100 % / 8.1 MB/s) released into one arm, 2 startup timeouts after the restart against 122 before it, and the units ranked by MB read (cc-313)"
+    },
+    {
+      "sha": "4ce67f79",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-313 — FIX-1418 and FIX-1423 recorded on prod; FIX-1444 filed; FIX-1421, FIX-1360 and FIX-1293 not recorded; FIX-1399 and FIX-1392 stay open (33 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1418",
+    "FIX-1423"
+  ],
+  "fixes_filed": [
+    "FIX-1444"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-1421 NOT recorded (the conservative branch). The 00:27:13Z reap of ec-crawl met three of the four clauses: '; closed 1 running row(s)', completed_at 00:23:56.615Z = the run's end_time, reaped_by dispatch_one_unit. The fourth is unclear. The job re-armed on its own rule (stale_after 25 minutes) at 01:35:01Z, 38 min after its 00:57Z cooldown ended, because the box refused the ticks in between (stale ×2, fork_failures ×5). In the same night the 02:07:00Z reap ('failed: server restarted') closed 0 rows: pg_cron leaves end_time NULL on a restarted run, so 'started_at <= run_end' never matches. That orphan held ec-crawl live 03:07 → 07:39Z (4.5 h). Recording is Craig's call. Re-owed.",
+    "FIX-1293 NOT recorded (missed). 33 of the 52 status ticks from the landing to the close read section_times.ec_crawl_health ≥ 1 s (54 to the read: 35; p50 2,217 ms). One tile was null, at 21:31Z 11-23 (8,709 ms). The census holds a 57014 render naming get_ec_crawl_health at 21:31:15Z. It stays OPEN and is re-owed.",
+    "FIX-1360 NOT recorded: unexercised. The dispatched run pushed once, after a clean pull --rebase over 7ea2060 (7ea2060..4e991bf, 23:36:22Z), with no lost-race warning. The fallback's receipts job failed before its push (ECHECKOUTTIMEOUT on the pooler).",
+    "FIX-1399 and FIX-1392 stay OPEN (Item 2). FIX-1392 H1 not exercised: no io_throttled skip came from a mirror older than 180 s. The two skips under the hold on a stale mirror (01:53:59Z 573 s, 01:58:12Z 827 s) were refused by stale first.",
+    "FIX-1423: recorded on the quiet-day cycles. Its Monday half is restated in owed, not recorded (Item 1). The cut pass closed at canary 31.57 h.",
+    "FIX-1444's title drops the prompt's last clause ('and releases in a surge'). The one release (02:44:24Z) admitted one arm and was followed by 0 startup timeouts in 30 min, so the data contradicts the clause (§ What contradicted this prompt, 1)."
+  ],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1399",
+      "what": "Sun 11-29's post-landing pass under io_samples 2 and the ec-crawl rest Tuesday's push sets: holds (instant, MB/s, sample of the streak), no arm into a standing hold, AND fewer than 100 job startup timeouts in the pass; or Craig / the tier memo rules on the held clauses (11-16 277; 11-23 cut by an outage, 124 in the pass, 2 after the restart)",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1399",
+      "what": "the same pass's first arm and close, units and the p50 reap-to-arm gap, startup timeouts in the pass against 277 / 100, the fallback nightly's preflight lines, and Craig's Disk IO consumed for 11-29 / 11-30 beside 18 % / 100 % (11-22 / 11-23)",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1392",
+      "what": "H1's receipt: the first box: io_throttled skip stamped on a STALE mirror (memory.age_seconds > 180, throttle_until in the future); on 11-16 and 11-23 stale / fork_failures refused every such row first",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1421",
+      "what": "the first reap of a failed unit that left a running row: '; closed N running row(s)', completed_at = the run's end, reaped_by dispatch_one_unit, the re-arm on its own rule after its cooldown; and how a restarted run (end_time NULL, 11-23 02:07Z closed 0) is meant to close its row",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1293",
+      "what": "the status ticks through Sun 11-29's landing and pass: ec_crawl_health under 1 s on every tick, no null tile / 57014 (11-23: 33 of 52 ≥ 1 s, one null at 21:31Z); pgss mean <= 150 ms as a delta from a baseline",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1360",
+      "what": "the next drop-night fallback that collides on the receipts file — green with its regenerated receipt on main after the dispatched run's; unexercised nights are not misses",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1423",
+      "what": "the Monday half: the canary's entity_connections_rebuild freshness hours at the next uncut post-landing pass's close against its 36 h report (projected ≤ ~32.5 h; 11-23's outage-cut pass closed at 31.57 h)",
+      "after": "2026-11-30T12:00Z"
+    }
+  ]
+}
