@@ -1,0 +1,45 @@
+{
+  "cc": "316",
+  "prompt": "cc-prompt-316-fix1416-supervised-prod-apply-nomination-rolls-re-pointed-to-their-pn-proposals-dry-run-is-the-measured-write-votes-full-merge-once-retire-136-stubs-fix1442-look.md",
+  "started_at": "2026-11-25T01:54:24Z",
+  "finished_at": "2026-11-25T03:15:00Z",
+  "head_before": "f70dd24e",
+  "head_after": "8079f93d",
+  "commits": [
+    {
+      "sha": "b992e686",
+      "subject": "[skip vercel] chore(scripts): fix1416-prod-merge.sql — the one votes_full merge after the 291 nomination rolls are re-pointed to their PN proposals, in fix1409-prod-merge.sql's shape (cc-316)"
+    },
+    {
+      "sha": "2e3d4dc2",
+      "subject": "chore(fixes): close FIX-1416 on prod — 291 nomination rolls (28,522 vote rows) re-pointed from 143 S-numbered bill rows to their PN proposals 2026-11-25 02:55:10Z; votes_full merge deleted 13767 / retyped 2 / updated 344 / inserted 13421 / untouched 505501, 81.3 s; 136 dashed stubs retired (cc-316)"
+    },
+    {
+      "sha": "bd1e826a",
+      "subject": "[skip vercel] docs: FIX-1416 on prod — the re-point, the votes_full merge (13767 / 2 / 344 / 13421 / 505501, no drift) and the retire (retired 136, refused 0) in OPERATIONS; playbook E15's receipt gains prod's retire (cc-316)"
+    },
+    {
+      "sha": "8079f93d",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-316 — FIX-1416 closed local+prod (291 nomination rolls re-pointed to their PN proposals 02:55:10Z; votes_full merge 13767 / 2 / 344 / 13421 / 505501; 136 dashed stubs retired 02:59:20Z) (32 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1416"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "three writes, each one transaction under its own prod-gate claim, gate ok=true on the first poll, blocked_tokens [], 17 guarded holds set and cleared, 0 data_sync_log skipped rows inside each claim. (1) the re-point, fix1416-nomination-rolls.ts --allow-prod --apply: gate ok db 02:54:47.188Z; claim 02:54:52.624Z to 02:55:10.418Z (17.8 s); 1 dispatch_log tick inside it (02:55:01Z nothing_due); 'APPLIED: 28522 rows on 291 rolls moved, 0 rolls already on their PN, 15583 ms'. (2) the merge, scripts/fix1416-prod-merge.sql via db-query --prod --call --timeout 7min, once: gate ok db 02:56:21.017Z; claim 02:56:25.818Z to 02:57:47.089Z (81.3 s, the 5 s countdown inside it); 1 tick inside it (02:57:03Z nothing_due); '[votes_full] merge: deleted 13767 / retyped 2 / updated 344 / inserted 13421 / untouched 505501'. (3) the retire, --retire-stubs --apply: gate ok db 02:59:10.401Z; claim 02:59:15.244Z to 02:59:20.606Z (5.4 s); 0 ticks inside it; 'APPLIED: retired 136, refused 0, 3396 ms', deleted external_source_refs 136, entity_tags 168, entity_search_index 136, enrichment_queue 136, bill_details 136, proposals 136. Plus three script dry runs (DML rolled back) at 02:53:29Z, 02:57:59Z and 02:58:49Z.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 7 (FIX-1442's look) not run: its condition was false, because cc-315 closed FIX-1442 local+prod at 4ba4b7c3 before this run's reads"
+  ],
+  "lane": "fec",
+  "owed": [
+    {
+      "fix": "FIX-1416",
+      "what": "ec-vacuum-analyze's first arm after the merge (arm, reap, wall, n_dead_tup after; 22,657 dead at 02:57:56Z, 4.1 % of the 546,035 trigger, so its 24 h floor from the 11-24 14:27Z arm fires it) and votes' n_dead_tup against its trigger; the weekly audit of Tue 12-01 17:00Z reading 0 on orphan_enrichment_queue, orphan_entity_tags and orphan_ai_summary_cache; no row for a retired stub left in entity_connection_stats_mv or proposal_trending_24h after their owners' next refresh",
+      "after": "2026-12-01T18:00Z"
+    }
+  ]
+}
