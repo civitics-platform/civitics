@@ -1,0 +1,68 @@
+{
+  "cc": "314",
+  "prompt": "cc-prompt-314-tue-class-p-push-three-files-fix1441-fix1439-fix1443-no-rest-move-prod-reads-and-tuple-baselines-first-fix1421-recorded-two-filings-restarted-run-reap-front-door-503.md",
+  "started_at": "2026-11-25T01:15:15Z",
+  "finished_at": "2026-11-25T01:34:30Z",
+  "head_before": "ae986cc6",
+  "head_after": "b5a8aa5f",
+  "commits": [
+    {
+      "sha": "4b8fb9b8",
+      "subject": "[skip vercel] chore(fixes): file FIX-1445 and FIX-1446 — a restarted run's reap closes no running row (11-23 02:07Z closed 0; ec-crawl read live 4.5 h), and the front-door watchdog read ok through a two-hour 503 outage (99.1 % 5xx at 01:00Z 11-23, 0 x 52x) (cc-314)"
+    },
+    {
+      "sha": "259f0d54",
+      "subject": "[skip vercel] docs: the ring read by span after the 11-23 outage (Cowork's table, re-derived within 0.7 %), the 11-24 dashboard row, and playbook C16's prod receipt — FIX-1441, FIX-1439 and FIX-1443 pushed 2026-11-25 01:26:15Z, prod's four md5s and its generic plans after the push (cc-314)"
+    },
+    {
+      "sha": "9b171ab3",
+      "subject": "chore(fixes): record FIX-1421 on prod — the 00:27:13Z 11-23 reap of ec-crawl closed 1 running row; its completed_at 00:23:56.615Z equals the run's end_time; reaped_by dispatch_one_unit; the job re-armed on its own rule (stale_after 25 minutes) at 01:35:01Z, 38 min after its cooldown ended, the ticks between refused by the box (stale x2, fork_failures x5) (cc-314)"
+    },
+    {
+      "sha": "b5a8aa5f",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-314 — FIX-1421 recorded on prod; FIX-1445 and FIX-1446 filed; FIX-1441, FIX-1439 and FIX-1443 pushed to prod and stay open on their receipts (35 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1421"
+  ],
+  "fixes_filed": [
+    "FIX-1445",
+    "FIX-1446"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261122000000_fix1441_ec_donations_incr_window_merge.sql",
+    "supabase/migrations/20261122001000_fix1439_ec_contracts_arm_merge.sql",
+    "supabase/migrations/20261122002000_fix1443_conn_windows_upper_bound_index_condition.sql"
+  ],
+  "prod_writes": "one class-P push of three files (four CREATE OR REPLACE FUNCTIONs, no row written), 2026-11-25 01:26:15Z — gate wait from 01:26:08.68Z, ok=true on the first poll (db 01:26:09.76Z); blocked_tokens [] (no b: or a:nightly_next_start token); claim 01:26:14.611Z to 01:26:15.775Z (1.2 s, 17 guarded holds set and cleared); 0 data_sync_log skipped rows and 0 dispatch_log ticks inside the claim",
+  "ci": "green",
+  "stopped_items": [
+    "A3 covered 24 h, not 7 days: the Logs reader refuses a range over 1,440 min (MAX_LOGS_RANGE_MINUTES), and the prompt allows one call. The window was 11-24 01:20:07Z to 11-25 01:20:07Z and held 0 password-authentication failures. The four FATAL 28P01 lines of 11-23 00:40:07-08Z are outside it and stay unexplained.",
+    "Read 5's tie count not run: the statement is neither in the tree nor printed in a report (cc-310 read 3 is the no-change wall split; the tie count was cc-308 read 3, given in prose only). The fallback upper bound was read instead: 96,773 of prod's 219,185 contract_award edges have evidence_count >= 2."
+  ],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1443",
+      "what": "the first FULL stats pass on the new body (all sixteen windows after the push; a pass that straddles the push is quoted as mixed, not as the receipt): the sixteen walls and their sum beside 421.5-677.3 s (quiet) and 3,606.4 s (11-23), flat windows, deleted / upserted keeping their meaning; rebuild_entity_search_index's unit_seconds on the days before and after",
+      "after": "2026-11-26T16:00Z"
+    },
+    {
+      "fix": "FIX-1441",
+      "what": "the first donations pass after the push: entity_connections n_tup_del / n_tup_ins / n_tup_upd deltas over its windows beside the FR rows that moved (a merge writes about the changed pairs; 11-22 wrote 5.25x), and the windows' rates against the ring's median (no backoff trip)",
+      "after": "2026-11-26T16:00Z"
+    },
+    {
+      "fix": "FIX-1441",
+      "what": "Sun 11-29's landing: the donations windows' rows returned beside the n_tup deltas and the changed FR rows, and the stats pass that follows beside 3,606.4 s",
+      "after": "2026-11-30T12:00Z"
+    },
+    {
+      "fix": "FIX-1439",
+      "what": "the first contracts arm on the new body: wall, edges_upserted, the n_tup_upd delta (the one-time tie normalisation; the clone's 14,760), no budget cancel, ec-vacuum-analyze's arm after it; and the run after that writing about the rows that changed",
+      "after": "2026-12-02T16:00Z"
+    }
+  ]
+}
