@@ -1,0 +1,33 @@
+{
+  "cc": "315",
+  "prompt": "cc-prompt-315-fix1442-three-official-redirects-rows-for-the-2026-09-17-promotions-guarded-insert-from-a-committed-file-gated-class-p-anon-read-back-craigs-look.md",
+  "started_at": "2026-11-25T01:53:24Z",
+  "finished_at": "2026-11-25T02:46:00Z",
+  "head_before": "f70dd24e",
+  "head_after": "fc4a7d0a",
+  "commits": [
+    {
+      "sha": "cd059488",
+      "subject": "[skip vercel] chore(fixes): the FIX-1442 statement — three official_redirects rows for the 2026-09-17 promotions (Harris, Menendez, Marshall), one guarded INSERT; the clone, where the old ids are live officials, inserts 0 (cc-315)"
+    },
+    {
+      "sha": "4ba4b7c3",
+      "subject": "chore(fixes): close FIX-1442 on prod — three official_redirects rows for the 2026-09-17 promotions (Harris, Menendez, Marshall) inserted 2026-11-25 02:41:29Z; anon reads 14; /officials/27090d3a… lands on Roger Marshall (Craig's look, 02:43Z) (cc-315)"
+    },
+    {
+      "sha": "fc4a7d0a",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-315 — FIX-1442 closed local+prod (three official_redirects rows on prod at 02:41:29Z; Craig's look landed on Roger Marshall) (33 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1442"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "one class-P INSERT of 3 rows into public.official_redirects (reason promotion:fix1187-set2-2026-09-17), 2026-11-25 02:41:29Z — gate wait from 02:41:19.535Z, ok=true on the first poll (db 02:41:18.595Z); blocked_tokens [] (no b: or a:nightly_next_start token); claim 02:41:23.425Z to 02:41:29.247Z (5.8 s, 17 guarded holds set and cleared); 0 data_sync_log skipped rows and 0 dispatch_log ticks inside the claim (the ticks before it: 02:39:00Z and 02:41:00Z, nothing_due); INSERT 0 3",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "fec",
+  "owed": []
+}
