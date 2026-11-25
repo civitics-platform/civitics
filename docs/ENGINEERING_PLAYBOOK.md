@@ -2001,4 +2001,8 @@ keys again at run time, checks the list, and prints it. A read that would
 sequential-scan a large relation aborts the apply; it never falls back to the
 sweep. A holder that appears later is a block until someone rules otherwise.
 *FIX-1416 · `packages/data/src/scripts/fix1416-nomination-rolls.ts`
-(`--retire-stubs`, `--census`) · cc-309 read 2, cc-310 read 2 and D8, cc-311 read 6 and D9*
+(`--retire-stubs`, `--census`) · cc-309 read 2, cc-310 read 2 and D8, cc-311 read 6 and D9 ·
+prod, cc-316 (2026-11-25 02:59:20Z): 41 reads (21 keys, 20 listed), none
+thrown; `retired 136, refused 0`, 3,396 ms, equal to its dry run; deleted
+`{external_source_refs 136, entity_tags 168, entity_search_index 136,
+enrichment_queue 136, bill_details 136, proposals 136}`*

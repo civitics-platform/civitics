@@ -1111,6 +1111,28 @@ retired. That covers a vote re-attributed to another official, or re-pointed to
 another bill. The clone held 1,076 such edges: 48 Senate officials' votes were
 re-attributed to 48 others on 2026-08-01.
 
+**The FIX-1416 re-point on prod (cc-316, 2026-11-25).** Three writes, each one
+transaction under its own claim. The re-point committed at 02:55:10Z: `28522
+rows on 291 rolls moved, 0 rolls already on their PN, 15583 ms` (claim 17.8 s),
+from 143 S-numbered `bill` stubs to their PN proposals. The merge,
+`scripts/fix1416-prod-merge.sql` once (claim 02:56:25.818Z → 02:57:47.089Z,
+81.3 s), printed exactly the re-point's part, with no drift since 11-18:
+
+```
+prod  [votes_full] merge: deleted 13767 / retyped 2 / updated 344 / inserted 13421 / untouched 505501
+```
+
+After it the stubs read 0 vote rows and 0 vote edges, and the PNs 28,918 rows
+and 13,795 edges (374 + 13,421). Vote edges total 519,268. The retire committed
+at 02:59:20Z: `retired 136, refused 0`, deleting 136 `proposals`, 136
+`bill_details`, 136 `external_source_refs`, 168 `entity_tags`, 136
+`entity_search_index` and 136 `enrichment_queue` rows. The seven short stubs
+(`S 17`, `19`, `20`, `28`, `373`, `711`, `858`) stay, each with no votes left.
+A dry run's rolled-back UPDATE leaves its dead tuples too: `votes` took 57,044
+(the dry run's 28,522 and the apply's), 115 % of its 51,087 trigger
+(`autovacuum_vacuum_scale_factor=0.05`), and autovacuum vacuumed it at
+02:55:46Z.
+
 **Readers a 0.250 edge meets** (cc-283 read 7; none filters on strength in SQL):
 
 | reader | effect on an advance edge |
