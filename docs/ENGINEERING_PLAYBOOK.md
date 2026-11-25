@@ -82,6 +82,10 @@ rule **C16**. E15 gains the audit's holder list and the claimable-row block.
 (cc-312, FIX-1443). C16 gains the ruling, the reads-not-wall STOP row and the
 clone apply after the measurement.
 
+**Extended 2026-11-25** with the three files' push to prod (cc-314, FIX-1441 /
+FIX-1439 / FIX-1443). C16 gains the push's instant, prod's four md5s and prod's
+generic plans after it.
+
 ---
 
 ## A. Data-shape regimes
@@ -1094,7 +1098,20 @@ an aggregate's output), `get_browse_facets` (entity_search_index Bitmap Heap
 Scan with the `OR`s as its Filter, 15,197 pages), `get_topic_proposal_page`
 (entity_tags by entity, 83,246 pages) and `query_districts` (jurisdictions,
 896 pages).
-*FIX-1443 · `20261122002000` (cc-311 built it, cc-312 landed it on the ruling) · cc-307 read 3, cc-311 reads 1–3 and D3–D5*
+
+**On prod** since 2026-11-25 01:26:15Z (cc-314, one class-P push of
+`20261122000000`, `20261122001000` and `20261122002000`; claim 01:26:14.611Z →
+01:26:15.775Z). Prod's `md5(prosrc)`: `rebuild_ec_donations_incr_window`
+`419d941075843c7e0b8f3eab72b95e49`, `rebuild_entity_connections_contracts`
+`cfbbd4d1b38be4529947a5646111d55a`, `rebuild_entity_connection_stats_window`
+`0c60c85fd0cc2b83086f8b77b112b9b1`, `entity_search_conn_window`
+`4f1a3118d34dd424b6cbeda33fb875c4`, each proconfig unchanged. Before the
+push, prod's generic plan was a Bitmap Heap Scan on each edge branch with
+`Filter: (($2 IS NULL) OR (from_id < $2))` (cc-313 B6). After it, both bodies
+plan Index Only Scans carrying `(from_id >= $1) AND (from_id < $2)` under
+`($2 IS NOT NULL)`, and the stats delete reads its pkey with both bounds. The
+scan type is not the receipt: the first full stats pass on the new body is.
+*FIX-1443 · `20261122002000` (cc-311 built it, cc-312 landed it on the ruling, cc-314 pushed it) · cc-307 read 3, cc-311 reads 1–3 and D3–D5, cc-314 Item 2*
 
 ---
 

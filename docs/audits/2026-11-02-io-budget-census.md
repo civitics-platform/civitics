@@ -862,7 +862,12 @@ where the ring gapped. Overlapping units are marked, not split. Top 20 of 53
 | UTC day | dashboard (Craig) | ring samples / 720 | read GB | write GB ≈ | min ≥ 90 % | swap-in GB | startup timeouts |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 11-22 | 18 % | 716 | 678 | 204 | 12 | 45.5 | 18 |
-| 11-23 | 100 % (at 01:58Z) | 682 | 755 | 132 | 48 | 35.5 | 109 |
+| 11-23 | 100 % (at 01:58Z; final 100 %) | 682 | 755 | 132 | 48 | 35.5 | 109 |
+| 11-24 | 8 % (at 02:38Z) | 720 | 473 | — | 16 | 32.3 | — |
+
+- 11-24's row (cc-314) is the whole UTC day from `ring-20261125T0118Z.json`;
+  Craig read the 8 % at 02:38Z, so it is not the day's final value. Write GB
+  and startup timeouts were not read for it.
 
 - 11-23's no-unit reads were 283 GB, including the backup window
   (11:15–12:00Z, 60.8 GB) and the post-reboot warm-up.
@@ -878,3 +883,44 @@ where the ring gapped. Overlapping units are marked, not split. Top 20 of 53
 - **11-23:** 18 % / 100 %; 127 from the landing (122 between the first
   ec-crawl arm and the restart, 2 after it); one hold, set 60 min into the
   stall, released into one arm. The pass ran 24 h 34 min, cut by a restart.
+
+**The ring read by span (Cowork, 2026-11-23).** The banked rings
+`ring-20261123T0218Z.json` and `ring-20261124T0107Z.json`, joined by `at`.
+Each row is the `counters.disk_all_read_bytes` and `counters.disk_all_reads`
+deltas between the two named samples; the one interval across 02:04:22Z is
+skipped. cc-314 re-derived every cell from the banks, and each is within 0.7 %
+of Cowork's.
+
+| span (sample → sample, Z) | what ran | min | read GB, all disks | MB/s | read ops/s |
+|---|---|---:|---:|---:|---:|
+| 11-22 21:04:22 → 23:36:22 | the landing | 152 | 267.6 | 29.3 | 1,773 |
+| 23:48:22 → 00:24:22 | ec-crawl donations 1/16 (cancelled at 2,205 s) | 36 | 14.7 | 6.8 | 360 |
+| 00:24:22 → 00:38:22 | nothing | 14 | 3.6 | 4.3 | 193 |
+| 00:38:22 → 01:20:22 | fe-crawl + the donor rollup | 42 | 30.0 | 11.9 | 350 |
+| 01:20:22 → 01:36:22 | nothing | 16 | 5.1 | 5.3 | 224 |
+| 01:36:22 → 01:58:22 | ec-crawl | 22 | 9.9 | 7.5 | 360 |
+| 02:04:22 → 02:12:22 | the first 8 min after the reboot | 8 | 49.6 | 103.2 | 691 |
+| 02:04:22 → 23:58:22 | the rest of the pass, 25-minute rests, old bodies | 1,314 | 697.2 | 8.8 | 385 |
+
+- The throttle-shaped supply began between the 23:48:22Z and 23:56:22Z
+  samples on 11-22 (the sample before read 64.9 MB/s and 882 ops/s): inside
+  the pass's first unit, 12–20 min after the nightly closed and 5–13 min after
+  the unit was armed. The hold at 01:42:23Z came about 1 h 50 min after it;
+  FIX-1444's "60 min into the stall" counts from the 00:38Z gap.
+- Between units the box was idle and answering within about 4 minutes (load1
+  0.3–0.8 at 00:30–00:38Z and 01:30–01:36Z; the 00:30Z and 01:30Z edge
+  buckets 97–99 % 2xx).
+- `/data`'s `io_time` read 75.5 / 54.1 / 50.7 % at 23:58 / 00:18 / 00:24Z: of
+  ~300 read ops/s achieved, root took ~200. The rung's shape (≥ 90 % at
+  ≤ 12 MB/s) holds on 3 of the stall's 26 samples; load1 ≥ 5 holds on 11 of
+  the 26 and on none of the other 3,004 samples in the four banks joined
+  (11-19 18:44Z → 11-24 01:06Z; max outside 4.87 at 23:34:22Z). One drop
+  landing in that window.
+- After the reboot the supply was back at once, and the remaining 22 h
+  (16.79 M read ops over 500/s, 392.5 GB over 11 MB/s) ran with no sample at
+  ≥ 60 % and ≤ 12 MB/s and max load1 2.83. Pre-restart, 15 idle minutes
+  (01:22 → 01:37Z) bought about two minutes of burst. The mechanism is unread;
+  no bucket is claimed (the landing drained 11.74 M read ops over 500/s, and
+  11-15's evening drained 11.9 M with no throttle).
+- Craig's dashboard: 11-23 final 100 %; 11-24 8 % at 02:38Z (the per-day table
+  above).
