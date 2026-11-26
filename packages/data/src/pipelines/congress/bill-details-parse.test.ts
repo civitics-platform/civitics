@@ -16,6 +16,7 @@ import {
   decideIntroduced,
   decideTitle,
   httpStatusOf,
+  isNumberTitle,
   isTransient,
   needsCosponsors,
   needsTitles,
@@ -238,6 +239,27 @@ test("actionSourceKey: stable across a re-spaced text, different for a different
   assert.equal(p.undated, 1);
 });
 
+test("actionSourceKey: a referral to two committees is two actions (119-HR-4646 lists it once per committee)", () => {
+  const referral = {
+    actionCode: "H11100", actionDate: "2025-07-23", type: "IntroReferral",
+    sourceSystem: { code: 2, name: "House floor actions" },
+    text: "Referred to the Committee on Financial Services, and in addition to the Committee on Oversight and Government Reform, …",
+  };
+  const p = parseActionPages([{
+    actions: [
+      { ...referral, committees: [{ name: "Oversight and Government Reform Committee", systemCode: "hsgo00" }] },
+      { ...referral, committees: [{ name: "Financial Services Committee", systemCode: "hsba00" }] },
+    ],
+    pagination: { count: 2 },
+  }]);
+  assert.equal(p.rows.length, 2);
+  assert.equal(p.duplicateKey, 0);
+  assert.deepEqual(p.rows.map((r) => r.metadata["committees"]), [["Oversight and Government Reform Committee"], ["Financial Services Committee"]]);
+  // committee order does not move the key
+  const two = [{ systemCode: "hsba00" }, { systemCode: "hsgo00" }];
+  assert.equal(actionSourceKey({ ...referral, committees: two }), actionSourceKey({ ...referral, committees: [...two].reverse() }));
+});
+
 // ── titles and the introduced date (D6) ─────────────────────────────────────
 
 test("pickShortTitle: HR 1's whole-measure short title, not a portion's; none on SJRES 18", () => {
@@ -256,9 +278,28 @@ test("decideTitle: fill an empty or number-only title; never overwrite a real on
   assert.equal(decideTitle("x".repeat(500), "HR 21", "x".repeat(600)), "same", "the column holds 500 characters");
 });
 
-test("decideIntroduced: set only when NULL", () => {
+test("decideIntroduced: set when NULL; a real stored date is kept", () => {
   assert.equal(decideIntroduced(null, "2025-05-20"), "filled");
   assert.equal(decideIntroduced("2025-05-20", "2025-05-20"), "same");
   assert.equal(decideIntroduced("2025-05-22", "2025-05-20"), "kept_differs");
   assert.equal(decideIntroduced(null, null), "no_source");
+});
+
+test("decideIntroduced: the vote path's placeholder (the first roll's date, on a number-titled measure) is replaced", () => {
+  // 119-S-2403 on the clone: titled "S 2403", introduced_at 2026-09-16 = its first vote; the source says 2025-07-23.
+  assert.equal(decideIntroduced("2026-09-16", "2025-07-23", "2026-09-16"), "replaced_placeholder");
+  // the same stored date with no placeholder evidence is kept
+  assert.equal(decideIntroduced("2026-09-16", "2025-07-23", null), "kept_differs");
+  // a stored date that is not the first vote's is kept even on a number-titled measure
+  assert.equal(decideIntroduced("2026-09-10", "2025-07-23", "2026-09-16"), "kept_differs");
+  assert.equal(decideIntroduced("2025-07-23", "2025-07-23", "2026-09-16"), "same");
+});
+
+test("isNumberTitle: the stored title is exactly the bill number", () => {
+  assert.equal(isNumberTitle("S 2403", "S 2403"), true);
+  assert.equal(isNumberTitle(" S 2403 ", "S 2403"), true);
+  assert.equal(isNumberTitle("A bill to …", "S 2403"), false);
+  assert.equal(isNumberTitle(null, "S 2403"), false);
+  assert.equal(isNumberTitle("", ""), false);
+  assert.equal(isNumberTitle("S 2403", null), false);
 });

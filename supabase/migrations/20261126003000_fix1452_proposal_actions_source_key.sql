@@ -12,9 +12,11 @@
 -- one code and one date.
 --
 -- THE KEY. source_key is the walker's hash of the action's own fields (source
--- system, action code, date, time, whitespace-collapsed text —
--- packages/data/src/pipelines/congress/bill-details-parse.ts actionSourceKey):
--- zero collisions on the same four lists. Unique per (proposal_id, source,
+-- system, action code, date, time, whitespace-collapsed text, committee codes
+-- — packages/data/src/pipelines/congress/bill-details-parse.ts actionSourceKey):
+-- zero collisions on the same four lists; the committee codes keep apart a
+-- referral to two committees, which congress.gov lists once per committee with
+-- one code, date and text (119-HR-4646). Unique per (proposal_id, source,
 -- source_key), so a second source keys its own rows. NOT NULL: the table is
 -- empty (the guard below) and the walker is its only writer, so a NULL key
 -- would only ever be a row that escapes the uniqueness.
@@ -40,7 +42,7 @@ ALTER TABLE public.proposal_actions
   ADD COLUMN source_key text NOT NULL;
 
 COMMENT ON COLUMN public.proposal_actions.source_key IS
-  'FIX-1452: the source''s own identity for the action — for congress_gov, md5 of (source system, action code, date, time, text). Unique per (proposal_id, source, source_key).';
+  'FIX-1452: the source''s own identity for the action — for congress_gov, md5 of (source system, action code, date, time, text, committee codes). Unique per (proposal_id, source, source_key).';
 
 ALTER TABLE public.proposal_actions
   DROP CONSTRAINT proposal_actions_proposal_id_action_type_action_at_key;

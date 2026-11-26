@@ -32,7 +32,9 @@
  * read (HR 1: 35 rows in 6 groups; 118-HR-21: 5 in 2). The same day's Senate
  * floor actions differ ONLY by text — no code, no time — so the key has to
  * carry the text. `actionSourceKey` hashes (source system, action code, date,
- * time, whitespace-collapsed text): zero collisions on the same four lists.
+ * time, whitespace-collapsed text, committee codes): zero collisions on the
+ * same four lists, and the committees keep a two-committee referral's two
+ * listings apart (found by the first live local run).
  * The type is left out (it is the `action_type` column) so a re-categorised
  * action keeps its key; two actions that differ ONLY by type collide and the
  * walker counts the second as a duplicate rather than storing it.
@@ -382,8 +384,17 @@ function canonicalText(s: string | null | undefined): string {
   return (s ?? "").replace(/\s+/g, " ").trim();
 }
 
-/** The action's own fields, hashed. Stable across re-fetches of an unchanged action. */
+/**
+ * The action's own fields, hashed. Stable across re-fetches of an unchanged
+ * action. The committees are part of it: a referral to two committees is
+ * listed once per committee with the same code, date and text (119-HR-4646,
+ * 119-HRES-1490 — the first live local run's two `dup_key`s).
+ */
 export function actionSourceKey(a: NonNullable<ActionsPage["actions"]>[number]): string {
+  const committees = (a.committees ?? [])
+    .map((c) => trimmed(c.systemCode) ?? trimmed(c.name) ?? "")
+    .filter((c) => c !== "")
+    .sort();
   const canonical = JSON.stringify([
     a.sourceSystem?.code ?? null,
     trimmed(a.sourceSystem?.name),
@@ -391,6 +402,7 @@ export function actionSourceKey(a: NonNullable<ActionsPage["actions"]>[number]):
     trimmed(a.actionDate),
     trimmed(a.actionTime),
     canonicalText(a.text),
+    committees,
   ]);
   return createHash("md5").update(canonical).digest("hex");
 }
@@ -451,7 +463,7 @@ export function pickShortTitle(pages: readonly TitlesPage[]): string | null {
   return trimmed(shorts[0]?.title);
 }
 
-export type FillOutcome = "filled" | "same" | "kept_differs" | "no_source";
+export type FillOutcome = "filled" | "replaced_placeholder" | "same" | "kept_differs" | "no_source";
 
 /** The `proposals.title` column is trimmed to 500 by the bills sync; the same here. */
 export function titleForColumn(source: string): string {
@@ -471,9 +483,27 @@ export function decideTitle(stored: string | null, billNumber: string | null, so
   return "kept_differs";
 }
 
-/** `proposals.introduced_at` (a date) is set only when NULL. */
-export function decideIntroduced(stored: string | null, source: string | null): FillOutcome {
+/**
+ * `proposals.introduced_at` (a date) is set when NULL — and, the one deviation
+ * from D6 (cc-327, with evidence), when it is the vote path's PLACEHOLDER: a
+ * measure minted by a roll call carries the bill number as its title and the
+ * roll's date as its introduced date (bills.ts, "the vote path's args are
+ * placeholders"). On the clone 1,383 of the 1,390 number-titled measures have
+ * introduced_at equal to their first vote's date, and all three the first live
+ * run filled a title on had a source date that differed. `placeholderDate` is
+ * that first vote's date, passed only while the title is still the number; a
+ * stored date that matches it is replaced. Any other stored date is kept.
+ */
+export function decideIntroduced(stored: string | null, source: string | null, placeholderDate: string | null = null): FillOutcome {
   if (!source) return "no_source";
   if (stored === null) return "filled";
-  return stored.slice(0, 10) === source ? "same" : "kept_differs";
+  const s = stored.slice(0, 10);
+  if (s === source) return "same";
+  if (placeholderDate !== null && s === placeholderDate.slice(0, 10)) return "replaced_placeholder";
+  return "kept_differs";
+}
+
+/** The stored title is the bill number itself — the vote path's placeholder. */
+export function isNumberTitle(stored: string | null, billNumber: string | null): boolean {
+  return billNumber !== null && (stored ?? "").trim() === billNumber.trim() && billNumber.trim() !== "";
 }
