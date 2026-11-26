@@ -908,6 +908,7 @@ Pipelines run as Node.js scripts in `packages/data/`. They are NOT part of the N
 | `data:congress` | Congress.gov → officials + votes | Free |
 | `data:fec-bulk` | FEC bulk files → financial_relationships | Free |
 | `data:usaspending-bulk` | USASpending.gov bulk archives → financial_relationships (contract/grant), both categories; `-assistance` for grants only; `:prod` for a supervised prod run (claims the session; see `packages/data/CLAUDE.md` → USASpending) | Free |
+| `data:bill-details` | Congress.gov → sponsor, cosponsors, actions, titles, introduced dates of federal measures (FIX-1452; see "The bill-details walker" below) | Free |
 | `data:regulations` | Regulations.gov → proposals | Free |
 | `data:openstates` | OpenStates → state legislators | Free |
 | `data:courtlistener` | CourtListener → judges | Free |
@@ -945,6 +946,55 @@ Source pipelines run first, then the `ec-crawl` registry unit derives edges (`do
 7. data:ai-summaries       (costs money — run after other pipelines complete)
 8. data:tag-ai             (costs money — run last)
 ```
+
+### The bill-details walker (FIX-1452)
+
+`data:bill-details` (`packages/data/src/pipelines/congress/bill-details.ts`,
+cc-327) fills a federal measure's sponsor (`bill_details.primary_sponsor_id`),
+cosponsors (`proposal_cosponsors`), actions (`proposal_actions`), a real title
+and an introduced date from congress.gov. A bounded, resumable unit: it takes
+only measures whose `congress_gov` ref has no `metadata.detail.fetched_at`,
+voted measures first, 3–4 requests a measure at ~800 ms each, and writes each
+measure in one transaction. Nominations (`119-PN-…`) are never selected.
+
+> **Before a prod fill:** `proposal_cosponsors` is the source of the
+> `ec-crawl` unit's cosponsor arm (`rebuild_entity_connections_cosponsors`,
+> fingerprinted on that table's count). The first cosponsor rows on prod make
+> the next EC cycle derive `co_sponsorship` edges, and every cycle after a
+> fill re-derives the whole arm (cc-327 read 4). That is a decision to make
+> first; cc-327 stopped its fill on it.
+
+Run it:
+
+```powershell
+# local — the .env.local in force must point at Docker
+pnpm --filter @civitics/data data:bill-details -- --dry-run --limit 5
+pnpm --filter @civitics/data data:bill-details -- --apply --only voted --limit 10
+# prod, started by hand (there is no schedule — FIX-1453)
+gh workflow run bill-details.yml -f only=voted -f max_minutes=120
+```
+
+Read its row:
+
+```powershell
+node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, metadata->>'stop' AS stop, metadata->>'measures_stamped' AS stamped, metadata->>'remaining' AS remaining, metadata->>'heartbeat_at' AS heartbeat FROM public.data_sync_log WHERE pipeline = 'congress_bill_details' ORDER BY started_at DESC LIMIT 3"
+gh run list --workflow bill-details.yml -L 3
+```
+
+`partial` with stop `limit`, `max_minutes`, `held` or `api_errors` is a stop on
+purpose, and the next run continues where it left off. `skipped` means the run met
+a held session before its first measure. `failed` is a database error (stop
+`db_error`). The run prints one summary line (measures, requests, rows per
+table, unresolved, fills kept because the stored value differs, `db_ms/measure`).
+A measure's own facts are in `external_source_refs.metadata->'detail'`: the
+source's sponsor and cosponsor counts, the unresolved cosponsors, and each fill's
+outcome.
+
+Stop it: between measures it stops by itself on `--max-minutes`, on three
+consecutive 429/5xx answers, and when a supervised session holds the box
+(`prod_session_state()`'s `defer`), so claiming the session is the clean stop.
+`gh run cancel <id>` is also safe: the open measure's transaction rolls back,
+and the workflow's mark-killed step closes the row.
 
 ### Recency Guards
 
