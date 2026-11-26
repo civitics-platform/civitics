@@ -51,6 +51,10 @@ export const PIN_LINEAGE: Readonly<Record<string, string>> = {
   // cc-303: dispatch_one_unit's own hold (FIX-1444) and the restarted-run reap
   // (FIX-1445), 20261126002000. FIX-1421's 142869d4… is now its revert's target.
   "142869d4f55f8eae73c7dd49ceae4b7a": "1f001294265b03c09db34aa47311954c",
+  // cc-318: dispatch_one_unit's 3b ends a one-row GHA workflow on its own row and
+  // reaps a stranded run at its budget (FIX-1454, 20261126004000). FIX-1444's
+  // 1f001294… is now its revert's target.
+  "1f001294265b03c09db34aa47311954c": "d0f5bf5b59120716ab15e73c805435d2",
 };
 
 /** A pin's live md5: its lineage followed to the end (a pin can move more than once). */
@@ -78,6 +82,11 @@ export const MOVED_LINEAGE: Readonly<Record<string, { fix: string; at: string; r
   "officials-vacuum-analyze": {
     fix: "FIX-1396", at: "at 30 1 * * 1", rule: "dead_tuples > 60% of trigger + floor 7 days",
     revert: "fix1396-revert-move-officials-mv-vacuums.sql",
+  },
+  // cc-318: a github_actions row with no pg_cron job; `active` is never read for it.
+  "crs-summaries": {
+    fix: "FIX-1455", at: "at 0 10 * * 6", rule: "stale_after 2 hours",
+    revert: "fix1455-revert-crs-summaries-row.sql",
   },
 };
 

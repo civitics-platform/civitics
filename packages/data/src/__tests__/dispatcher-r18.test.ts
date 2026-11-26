@@ -25,7 +25,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { PIN_LINEAGE, read, stripComments } from "./lib/migration-text";
+import { PIN_LINEAGE, atCurrentPins, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -786,7 +786,7 @@ test("clone 11-22/23: the nightly live 138 min holds fe-crawl; three fork_failur
 test("clone: the revert restores FIX-1421's body, which ignores the key; the file re-applies, idempotent", async (t) => {
   await inTx(t, async (c) => {
     const pin = async () => (await c.query("SELECT md5(prosrc) AS m FROM pg_proc WHERE proname = 'dispatch_one_unit' AND pronamespace = 'public'::regnamespace")).rows[0].m;
-    assert.equal(await pin(), NOW, "the clone carries this file");
+    assert.equal(await pin(), atCurrentPins(NOW), "the clone carries this file (cc-318 moved the pin on: PIN_LINEAGE)");
     await stage(c);
     await c.query(MODEL());
     await c.query(REVERT());

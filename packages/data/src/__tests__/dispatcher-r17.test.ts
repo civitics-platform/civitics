@@ -26,7 +26,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { PIN_LINEAGE, atCurrentPins, read, stripComments } from "./lib/migration-text";
+import { MOVED_LINEAGE, PIN_LINEAGE, atCurrentPins, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -483,6 +483,9 @@ test("clone B / C: each revert restores the old rows and the file re-applies, in
   try {
     await begin(c);
     try {
+      // cc-318 (FIX-1455) MOVEd crs-summaries off `at 0 10 * * 6`: put it back on
+      // C's row first, inside this rolled-back transaction (MOVED_LINEAGE).
+      await c.query(read(path.join(ROOT, "scripts", MOVED_LINEAGE["crs-summaries"]!.revert)));
       assert.deepEqual(await rows(), now, "the clone carries B and C");
       await c.query(REVERT_B());
       await c.query(REVERT_C());

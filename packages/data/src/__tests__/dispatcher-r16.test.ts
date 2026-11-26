@@ -624,7 +624,9 @@ test("clone B/D/E/F: each revert restores its md5s and the file re-applies, insi
       await c.query(one("_fix1421_reap_closes_a_failed_units_running_rows.sql"));
       // cc-303: FIX-1444's file moved the pin again; it re-applies on FIX-1421's body.
       await c.query(one("_fix1444_fix1445_dispatcher_hold_and_restarted_run_reap.sql"));
-      assert.deepEqual(await md5s(), live, "cc-292's and cc-303's files re-apply on top");
+      // cc-318: FIX-1454's file moved the pin again; it re-applies on FIX-1444's body.
+      await c.query(one("_fix1454_fix1455_gha_one_row_reap_and_crs_walker_row.sql"));
+      assert.deepEqual(await md5s(), live, "cc-292's, cc-303's and cc-318's files re-apply on top");
     } finally {
       await c.query("ROLLBACK");
     }
