@@ -924,3 +924,43 @@ of Cowork's.
   11-15's evening drained 11.9 M with no throttle).
 - Craig's dashboard: 11-23 final 100 %; 11-24 8 % at 02:38Z (the per-day table
   above).
+
+**A textbook bucket replayed, and the day's share of baseline (Cowork,
+2026-11-24).** The banked rings `ring-20261121T0043Z.json` →
+`ring-20261125T0118Z.json`, joined by `at` (11-19 18:44Z → 11-25 01:18Z,
+3,756 samples). Decimal MB throughout. A token bucket of (2,085 − 87) Mbps ×
+1,800 s = 449,550 MB refills at 10.875 MB/s minus use. A second one, of
+(11,800 − 500) × 1,800 = 20.34 M ops, refills at 500/s minus READ ops. The
+bank held no write ops. Both are full at the first sample. An interval's
+bytes are `all_mbps` × its seconds when it is ≤ 200 s, else the
+`disk_all_read_bytes` delta (10 intervals, all in the 11-22/23 stall).
+Its ops are the `disk_all_reads` delta. cc-303 re-derived every cell. Each
+credit is within 0.1 point at the nearest sample (23:00:22 / 23:36:22 /
+23:48:22Z), and each rate within 1.2 %. The landing reads 40.48 MB/s against
+40.00.
+
+| instant (Z) | byte credit left | op credit left (reads only) |
+|---|---:|---:|
+| 11-22 21:04 | 100 % | 100 % |
+| 11-22 23:00 | 60.3 % | 61.3 % |
+| 11-22 23:36 | 40.1 % | 42.7 % |
+| 11-22 23:48 | 39.0 % | 43.7 % |
+
+| span (Z) | r+w MB/s | of 10.875 | read ops/s |
+|---|---:|---:|---:|
+| 11-20, whole day | 9.36 | 86 % | 323 |
+| 11-21, whole day | 7.05 | 65 % | 233 |
+| 11-22 00:00 → 21:04 | 6.52 | 60 % | 191 |
+| 11-22 21:04 → 23:37, the landing | 40.00 | 368 % | 1,773 |
+| 11-23 02:14 → 24:00, the pass | 10.37 | 95 % | 383 |
+| 11-24 02:00 → 24:00 | 6.70 | 62 % | 217 |
+| 11-24 01:10 → 05:40, between cycles | 3.44 | 32 % | 97 |
+
+- The landing's bytes left 40 % of such a bucket and its read ops 43 %, so
+  neither empties it by the 23:48Z onset.
+- The op bucket empties by the close only if the landing wrote ≥ 8.69 M ops.
+  That is ≥ ~960/s, a mean write of ≤ ~12.3 KB against cc-313's 106,792 MB.
+  The bank could not show write ops. From cc-303 it banks `disk_writes` and
+  `disk_all_written_bytes` (FIX-1444 D12), so Sunday 11-29's landing can.
+- The day after a landing ran at 95 % of baseline, so nothing refills on it
+  as scheduled. No bucket is claimed.

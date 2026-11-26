@@ -214,12 +214,17 @@ restating it. Each line is a rule that has cost a real session.
 - For a `/cc` run, "explicit confirmation" of destructive SQL against Pro means
   the prompt names it.
 - **The dispatcher's bodies** — what a dispatcher prompt's read 2/3 pins, from
-  cc-292 on (2026-11-18 04:13:03Z, FIX-1421 `20261119000000`; the other three from cc-267,
+  cc-303 on (2026-11-26 03:47:24Z, FIX-1444 / FIX-1445 `20261126002000`; the other three from cc-267,
   2026-11-11 01:10:43Z, FIX-1398 `20261111001000` + FIX-1392
   `20261111003000`): `md5(prosrc)` of `dispatch_one_unit`
-  **`142869d4f55f8eae73c7dd49ceae4b7a`** (the reap closes a failed unit's
-  `running` rows; `d6a9073bcc4d9084b9d7994324a89b18`, cc-254's, is now only
-  FIX-1421's revert target, `scripts/fix1421-revert-reap-close.sql`) /
+  **`1f001294265b03c09db34aa47311954c`** (the dispatcher's own hold, step 4b,
+  and the restarted-run reap; `142869d4f55f8eae73c7dd49ceae4b7a`, cc-292's, is
+  now only the live revert's target, `scripts/fix1444-revert-dispatcher-hold.sql`;
+  `d6a9073bcc4d9084b9d7994324a89b18`, cc-254's, only FIX-1421's,
+  `scripts/fix1421-revert-reap-close.sql`). **A held tick reads `skipped` /
+  `hold: <kind> until <instant> (<set_by>)`, not `box: …`**: a reader that
+  takes every `skipped` row for a box skip miscounts from cc-303 on
+  (OPERATIONS §The dispatcher's own hold) /
   `get_dispatcher_status` **`d6bb02aab3eb8c9625275227f564c5c9`**
   (`4c30523742e280a4b48ea2ec390654d6` fix1354 → the io block) /
   `box_is_saturated` **`b05961ca6d1cf7e56874071bfe334da1`**
@@ -234,7 +239,8 @@ restating it. Each line is a rule that has cost a real session.
   (`packages/data/src/__tests__/lib/migration-text.ts`); a cron MOVE that older
   read-backs assert against adds a line to `MOVED_LINEAGE` beside it (cc-267,
   officials). `dispatch_one_unit`'s `d6a9073b…` held from cc-254 (2026-10-29
-  00:18:16Z, FIX-1361 `20261029000000`, cc-253) to cc-292.
+  00:18:16Z, FIX-1361 `20261029000000`, cc-253) to cc-292, and `142869d4…`
+  from cc-292 (2026-11-18 04:13:03Z) to cc-303.
   Lineage: `64c8271e7601095d275c68eff5187931` (FIX-1354
   `20261027000000`, cc-251) is now only FIX-1361's revert target
   (`scripts/fix1361-revert-dispatcher-anchor-rung.sql`); the N2 pair

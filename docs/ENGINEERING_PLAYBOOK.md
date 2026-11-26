@@ -1113,6 +1113,43 @@ plan Index Only Scans carrying `(from_id >= $1) AND (from_id < $2)` under
 scan type is not the receipt: the first full stats pass on the new body is.
 *FIX-1443 · `20261122002000` (cc-311 built it, cc-312 landed it on the ruling, cc-314 pushed it) · cc-307 read 3, cc-311 reads 1–3 and D3–D5, cc-314 Item 2*
 
+### C17. A sensor that reads load cannot see an idle, spent box. Replay a proposed hold against the ARMS, give a unit's stall to the box, and size the quiet after a spend from the spend.
+
+On 11-22/23 nine arms went in between 23:23Z and the 02:03:20Z restart. Each
+one went in on a box that read clean: io 0.2–86.9 %, streak 0,
+`startup_timeouts_10m` 0. The io: rung measures a LOADED disk, and between
+units a spent box is idle, so it reads idle. With no unit running the site
+answered. With one running it did not: edge 5xx was 74 % at 00:00Z and 99.1 %
+at 01:00Z. The dispatcher's own rows already said so:
+
+| instant (Z) | the dispatcher's row | what it did next |
+|---|---|---|
+| 23:30 bucket | five `box: fork_failures` skips | armed ec-crawl at 23:43 |
+| 23:57:07 | osdr-vacuum reaped `failed: job startup timeout` | cost osdr a cooldown; nothing else |
+| 00:27:13 | ec-crawl reaped `failed: … canceling statement due to user request` | armed fe-crawl 00:37 and the donor rollup 00:39, together, through the outage |
+
+A unit's failure cost its own job a cooldown and every other job nothing. The
+landing itself (21:05:48 → 23:35:29Z, wall 8,982 s) closed 13 min before the
+23:48Z onset. A textbook bucket replayed on the bank still held ~40 % of its
+bytes then (the census, "A textbook bucket replayed"). So the spend is not a
+number this box reports. The quiet has to be inferred from the spend's own
+length.
+
+**Apply:**
+- Replay a proposed hold against the ARMS that hurt, not the samples. A
+  sample-shaped rule is judged on samples, and the harm entered at the arms.
+- A unit's stall-class failure (a startup timeout, a cancel, a timeout, a
+  dropped connection) belongs to the box, not to its job. It holds every
+  arm, and holds longer the more often it repeats. The same goes for the
+  dispatcher's own repeated `stale` / `fork_failures` skips.
+- The quiet after a heavy spend is a multiple of the spend's wall (3× here),
+  from its end, then one unit at a time for an hour.
+- Read 2 over 35 days found two heavy nightlies a week (Saturday ~100 min,
+  Sunday ~2–2.5 h), not one. Measure the population before naming "the"
+  landing.
+
+*FIX-1444 / FIX-1445 · `20261126002000` (cc-303) · receipt: 11-22/23 (cc-313 B2/B3); the record: Sun 11-29's landing*
+
 ---
 
 ## D. Scheduled work

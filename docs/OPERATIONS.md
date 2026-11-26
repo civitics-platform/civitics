@@ -1628,6 +1628,88 @@ at any mirror age since FIX-1392 H1), and the template's (d′) STOP row: a `job
 startup timeout` or a ring sample with load1 > 8 in the last 3 h
 (`docs/cc/PROMPT_TEMPLATE.md`, FIX-1377). → `docs/audits/2026-11-02-io-budget-census.md`.
 
+### The dispatcher's own hold (FIX-1444) and the restarted-run reap (FIX-1445)
+
+*cc-303, `20261126002000`, on prod since 2026-11-26 03:47:24Z
+(`dispatch_one_unit` `1f001294…`). The rung reads a LOADED disk; an idle, spent box
+reads idle, so the 11-22/23 arms went in between units on a clean box (cc-313).
+The hold reads the dispatcher's own rows instead.*
+
+**What holds.** Step 4b of `dispatch_one_unit`, after the box (a box skip is
+logged as before) and before the census. While a hold is in force each tick
+writes `skipped` with `hold: <kind> until <instant> (<set_by>)` and the box
+readings, and arms nothing. The reaps (steps 3 and 3b) still run under it.
+`pause` is different: step 2 exits before the reap. There are three kinds,
+in one `pipeline_state` key, `dispatcher_hold`. The hold in force is the
+latest `*_until` still in the future:
+
+| kind | set by | until |
+|---|---|---|
+| `landing` | the `nightly` request live past `landing_after_minutes`, in 3b | first its start + `budget_seconds` (`provisional: …`), then at its reap now + `landing_quiet_factor` × its wall, ≤ 12 h |
+| `stall` | a strike: a one-shot reaped `failed` on a stall class (`job startup timeout`, a user-request cancel, a transaction / statement timeout, `SSL connection has been closed unexpectedly`; never `server restarted`), or a `box: stale` / `fork_failures` skip with two more in the last 10 min | now + `stall_hold_minutes` × 2^(strikes − 1), ≤ 480 min; a strike > 24 h after the last is strike 1 |
+| `manual` | a person, with `scripts/fix1444-manual-hold-six-minutes.sql` as the model | its own `manual_until` |
+
+The landing fires on **Saturdays as well as Sundays**. Over the 35 days to 11-25,
+weekday nightlies ran 617–1,387 s, Saturdays 5,572–6,440 s and Sundays
+7,037–8,982 s (cc-303 read 2). So Saturday's quiet runs to ~03:50Z Sunday,
+and the Saturday-evening restart usually falls inside it. Craig ratified that
+("go as designed", 11-25 PST, cc-303).
+
+**The ramp.** After any hold expires, the pick admits one unit at a time
+until that hold's `until` + `ramp_minutes`. A clear tick within 5 min of a
+`box: io_throttled` skip does the same, from now. A held-off row reads
+`units: 1 live of 1 (ramp)`. An arm's reason ends `; ramp until <instant>`.
+
+**The four dials** (`platform_dials`; **0 turns that part off**, one row UPDATE):
+`landing_after_minutes` 30 · `landing_quiet_factor` 3 (either at 0 = no
+landing) · `stall_hold_minutes` 120 (0 = no strike) · `ramp_minutes` 60
+(0 = no ramp). A dial at 0 ignores what the key already holds for its part.
+
+**Reading it.** `SELECT ticked_at, decision, reason FROM dispatch_log WHERE
+reason LIKE 'hold: %' ORDER BY id DESC LIMIT 5;` and `SELECT value FROM
+pipeline_state WHERE key = 'dispatcher_hold';`. The key is
+`{landing_until, landing_set_by, stall_until, stall_set_by, strikes, strike_at,
+manual_until, manual_set_by, ramp_until}`. Each setter merges only its own
+fields, so no hold shortens another. `get_dispatcher_status()` shows a held tick
+as `last_decision skipped` and `decisions_24h.skipped`; its `dials` object does
+not list the four, because that body is pinned.
+
+**A manual hold.** Run the model file through the gate (its header has the
+line). To clear one, run the same upsert with `manual_until = now()`. It then
+ramps like any other expiry. The prod receipt (cc-303, 11-26): written
+03:54:50Z for six minutes. The 03:55 / 03:57 / 03:59Z ticks read
+`hold: manual until 2026-11-26 04:00:50+00 (…)`, and the 03:55Z tick reaped
+osar-vacuum before its hold row. The 04:01:00Z tick armed osdr-vacuum-analyze
+with `; ramp until 2026-11-26 05:00:50+00`.
+
+**The restarted run (FIX-1445).** A run the restart killed is `failed` /
+`server restarted` with no `end_time`. The reap now ends it at
+`pg_postmaster_start_time()` when it started before it, else now. It closes
+the unit's `running` rows started inside it at that instant, so its row reads
+`; closed N running row(s)`. It is not a strike.
+
+**The revert.** Run `scripts/fix1444-revert-dispatcher-hold.sql` through the
+gate. It restores FIX-1421's `142869d4…`, which never reads the key, and it
+supersedes `scripts/fix1421-revert-reap-close.sql` as the live revert. The
+columns and the key stay, inert.
+
+**The by-hand fallbacks**, for a Sunday the body is not on prod (D13, proven
+on the clone by `dispatcher-r18.test.ts`):
+- **(A) `pause`.** Set `pause = true` once the nightly's reap row is in
+  `dispatch_log`, with `max_concurrent_units = 1` for the morning after.
+  Turn both off by Monday 14:15Z. This is the one to use.
+- **(B) the rung's own hold.** Write
+  `UPDATE pipeline_state SET value = value || jsonb_build_object('io_throttle_until', now() + interval '8 hours') WHERE key = 'box_health_mem'`.
+  It survives a normal sample, and `box_is_saturated` reads `io_throttled`
+  from it at any mirror age. But a throttle-shaped streak (io ≥ the ceiling
+  for `io_samples` samples at ≤ 12 MB/s) **replaces** it with that sample's
+  `at` + 60 min. So (B) holds only until the box really throttles, and from
+  then on only 60 min past the last such sample. It is a second net, not a
+  substitute for (A).
+
+**Sunday's two looks.** Craig reads the remaining-balance chart at its
+shortest window twice: when the nightly closes, and before bed.
+
 ### A registry row that shares its pipeline (FIX-1361) and the weekly's nets (FIX-1363)
 
 A `by` / `stale_after` row's clock is its pipeline's newest complete|partial
