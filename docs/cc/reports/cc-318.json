@@ -1,0 +1,80 @@
+{
+  "cc": "318",
+  "prompt": "cc-prompt-318-walkers-as-dispatcher-units-gha-reap-ends-a-one-row-workflow-pin-move-bill-details-and-crs-summaries-stale-after-2-hours-crs-boxed-asked-at-stamp-class-p-push-first-run-on-prod.md",
+  "started_at": "2026-11-26T05:36:46Z",
+  "finished_at": "2026-11-26T08:45:00Z",
+  "head_before": "30a3570b",
+  "head_after": "7721be1e",
+  "commits": [
+    {
+      "sha": "6d583077",
+      "subject": "[skip vercel] chore(fixes): file FIX-1454 (a github_actions row other than the nightly cannot be a dispatcher unit) and FIX-1455 (crs-summaries cannot run in a box) — cc-318 Item 0"
+    },
+    {
+      "sha": "6090058b",
+      "subject": "feat(crs-summaries): FIX-1455 the CRS walker in a box — a cursor on its ref (metadata.crs.asked_at), --max-minutes, the held-session stop, one data_sync_log row per run, next_due_at on an empty selection; bill-details reports next_due_at too (cc-318 Item 1)"
+    },
+    {
+      "sha": "d3cc96ee",
+      "subject": "feat(dispatcher): FIX-1454 a one-row GHA workflow ends on its own row and a stranded run reaps at its budget; crs-summaries becomes that unit — 20261126004000, a pin move 1f001294 → d0f5bf5b (cc-318 Item 2)"
+    },
+    {
+      "sha": "674f6203",
+      "subject": "feat(gha-dispatch): crs-summaries starts through its request target — /api/cron/gha-dispatch/crs-summaries-request every 5 min with max_minutes 15; the Saturday slot goes (cc-318 Item 3)"
+    },
+    {
+      "sha": "c64c8908",
+      "subject": "test(dispatcher): fix1357-caps' clone case reads crs-summaries at its MOVEd cap_mb 16 once its note carries cc-318's MOVE (cc-318)"
+    },
+    {
+      "sha": "082e6339",
+      "subject": "[skip vercel] docs: the CRS walker as a dispatcher unit in OPERATIONS, the cc-318 pin in the template, playbook D14 (a time box needs a cursor) and D15 (read what anchors a due), the dispatcher's s34 split and record-pages' s3b (cc-318 Item 6)"
+    },
+    {
+      "sha": "7721be1e",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-318 — FIX-1454 closed local (d3cc96ee), FIX-1455 closed local (6090058b); 20261126004000 pushed to prod 2026-11-26 08:09:53Z (dispatch_one_unit d0f5bf5b); FIX-1453 stays OPEN on the co_sponsorship-edge decision; delta 0 (34 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1454",
+    "FIX-1455"
+  ],
+  "fixes_filed": [
+    "FIX-1454",
+    "FIX-1455"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261126004000_fix1454_fix1455_gha_one_row_reap_and_crs_walker_row.sql"
+  ],
+  "prod_writes": "one class-P push of one file, 20261126004000 (CREATE OR REPLACE dispatch_one_unit, 1f001294 → d0f5bf5b; one UPDATE of job_registry crs-summaries), applied 2026-11-26 08:09:53Z. (1) gate wait from 08:09:48.020Z, ok=true on the first poll (db 08:09:45.203Z — the db clock reads ~2.8 s behind this machine), census pass (4 renders / 4 events in 60 min, ratio 2.02, floor 6; edge 0 of 164 = 0.00 %). (2) blocked_tokens []. (3) claim 08:09:52.175Z to 08:09:53.273Z (1.1 s; 17 guarded holds set and cleared). (4) data_sync_log rows started inside the claim: 0 (also 0 in 08:09:45–08:09:56Z by the db clock). (5) dispatch_log ticks inside the claim: 0 (08:09:00Z nothing_due before it, 08:11:00Z after). Read-back 08:10:01Z: dispatch_one_unit d0f5bf5b59120716ab15e73c805435d2, proconfig search_path=public, pg_catalog, cron; get_dispatcher_status d6bb02aa / box_is_saturated b05961ca / prod_op_gate 70a799ab unchanged; crs-summaries as written; head 20261126004000 (575); 36 eligible rows. The dispatcher's own arms after it (crs-summaries 08:11:00Z) are not this session's writes.",
+  "ci": "green",
+  "stopped_items": [
+    "D3 / D8's bill-details row and bill-details-request target, and Item 5's 'Fixes: FIX-1453' record: not built, on Craig's ruling at 05:4xZ (AskUserQuestion, 'CRS + hunk only'). cc-327 did not fill prod — it stopped at its read 4, the co_sponsorship-edge decision — and a dispatched bill-details walker would run that fill unattended. The STOP row nearest it ('cc-327 stopped its fill … no bill-details row and no bill-details-request target in this run; the hunk and CRS go on') is the branch taken. FIX-1453 stays open.",
+    "No permission prompt in the run."
+  ],
+  "lane": "ops",
+  "project": "dispatcher",
+  "owed": [
+    {
+      "fix": "FIX-1454",
+      "what": "three days of dispatched crs-summaries runs on prod: runs per day, arm-to-reap minutes (the slot cost beside 20.0), every reap reason (no failed reap for a run that succeeded, no stranded occupant), missed rows, 429 stops, the first run that rested on next_due_at",
+      "after": "2026-11-30T16:00Z"
+    },
+    {
+      "fix": "FIX-1455",
+      "what": "seven days of the CRS walker in its box: every bill and resolution with no summary carries an asked_at (none starved), summaries written per day, no measure re-asked inside 7 days, requests per day beside the weekly run's ~5,400, the first run that rested on next_due_at",
+      "after": "2026-12-04T16:00Z"
+    },
+    {
+      "fix": "FIX-1444",
+      "what": "the walker under the hold: no armed row for crs-summaries between the first hold: landing row and its end on Sat 11-28 and on Sun 11-29; the first crs-summaries arm after each ends '; ramp until'; no crs-summaries run live at either nightly's arm (the 2,400 s yield)",
+      "after": "2026-11-30T16:00Z"
+    },
+    {
+      "fix": "FIX-1453",
+      "what": "after the co_sponsorship-edge decision: the bill-details row (cc-318 D3) and its bill-details-request target land, and the first dispatched bill-details run reaps succeeded: GHA on prod",
+      "after": "2026-11-27T06:00Z"
+    }
+  ]
+}
