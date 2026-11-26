@@ -292,6 +292,15 @@ test("FIX-1397: rootDay — a read count that went backwards nulls the count and
   assert.deepEqual([old.root_reads, old.mean_read_kib, old.reads_hours], [null, null, null], "a day before cc-267's sampler");
 });
 
+test("FIX-1444 (cc-303 D12): a sample carrying the two write counters banks them; one without banks as before", () => {
+  const WRITES = { disk_writes: 61_000_000, disk_all_written_bytes: 2_900_000_000_000 };
+  const [without, withW] = rowsOf([s(2, { ...COUNTERS, ...READS, ...WRITES }), s(0, { ...COUNTERS, ...READS })], 3);
+  assert.deepEqual(withW!.counters, { ...COUNTERS, ...READS, ...WRITES });
+  assert.deepEqual(without!.counters, { ...COUNTERS, ...READS }, "no write keys, as today");
+  assert.deepEqual(rowsOf([s(0, { ...COUNTERS, disk_all_written_bytes: 7 })], 1)[0]!.counters, { ...COUNTERS, disk_all_written_bytes: 7 }, "each is optional on its own");
+  assert.equal(rowsOf([s(0, WRITES)], 1)[0]!.counters, null, "the write keys alone are not a root sample");
+});
+
 test("FIX-1386: rootDay — a counter reset nulls that number and says why, even when the ends look monotonic", () => {
   const rows = rowsOf([s(4, later()), s(2, later({ pswpin: 10 })), s(0, COUNTERS)], 5);
   const r = rootDay(rows);
