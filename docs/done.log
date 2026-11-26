@@ -1966,3 +1966,4 @@
 2026-11-26 | FIX-1449 | 5c371c5e | local-only | feat(officials): FIX-1449 the page drops the spending list that was never the official's; the breakdown says it counts the last 500 votes and splits them by roll class; a vote row shows its question and chamber (cc-325 D1–D4)
 2026-11-26 | FIX-1450 | c66c77e7 | prod-only | [skip vercel] chore(fixes): record FIX-1450 on prod — Craig's look 2026-11-26 after the 02:10:04Z deploy: SCHAPS, RICHARD's page shows the occupation, employer and city under the name with "As reported on an FEC filing", and no ZIP (cc-325)
 2026-11-26 | FIX-1450 | a3fb2cad | local-only | feat(donors): FIX-1450 an individual donor's page shows the occupation, employer and city the FEC filing reports, never the ZIP (cc-325 D6)
+2026-11-26 | FIX-1445 | ce5327d3 | local-only | feat(dispatcher): FIX-1444 the dispatcher's own hold and FIX-1445 the restarted run's reap — 20261126002000, a pin move 142869d4 → 1f001294 (cc-303)
