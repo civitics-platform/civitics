@@ -199,7 +199,15 @@ export interface RunSummary {
   db_ms_total: number;
   db_ms_max: number;
   elapsed_ms: number;
+  /**
+   * FIX-1330 / cc-318 D7: set only when the selection was empty — now + 12 h,
+   * because new measures arrive with the nightly. A scheduled row rests on it.
+   */
+  next_due_at: string | null;
 }
+
+/** cc-318 D7: how long a run that found nothing to take rests its row. */
+const EMPTY_REST_MS = 12 * 60 * 60_000;
 
 function emptySummary(): RunSummary {
   return {
@@ -211,7 +219,7 @@ function emptySummary(): RunSummary {
     cosponsors_source: 0, cosponsors_inserted: 0, cosponsors_updated: 0, cosponsors_unresolved: 0,
     actions_source: 0, actions_inserted: 0, actions_undated: 0, actions_duplicate_key: 0,
     titles_filled: 0, titles_kept_differs: 0, introduced_filled: 0, introduced_replaced_placeholder: 0, introduced_kept_differs: 0,
-    db_ms_total: 0, db_ms_max: 0, elapsed_ms: 0,
+    db_ms_total: 0, db_ms_max: 0, elapsed_ms: 0, next_due_at: null,
   };
 }
 
@@ -641,6 +649,7 @@ export async function runBillDetails(o: RunOptions): Promise<RunSummary> {
   s.selected = targets.length;
   const resolve = buildBioguideResolver(o.officials ?? (await loadOfficials(o.client)));
   log(`  selected ${targets.length} unstamped measure(s) (only=${o.only}); ${targets.filter((t) => t.voted).length} with votes`);
+  if (targets.length === 0) s.next_due_at = new Date(Date.now() + EMPTY_REST_MS).toISOString();
 
   let streak = 0;
   let lastBeat = Date.now();
@@ -740,9 +749,10 @@ export function summaryLine(s: RunSummary, apply: boolean): string {
 }
 
 function runMetadata(s: RunSummary, args: CliArgs): Record<string, unknown> {
-  const { failures, ...counts } = s;
+  const { failures, next_due_at, ...counts } = s;
   return {
     ...counts,
+    ...(next_due_at ? { next_due_at } : {}),
     failures,
     only: args.only,
     limit: args.limit,

@@ -74,6 +74,7 @@ test("summaryLine names the stop and the per-measure database time", () => {
     cosponsors_unresolved: 20, actions_source: 400, actions_inserted: 400, actions_undated: 0,
     actions_duplicate_key: 0, titles_filled: 2, titles_kept_differs: 0, introduced_filled: 1,
     introduced_replaced_placeholder: 0, introduced_kept_differs: 0, db_ms_total: 400, db_ms_max: 80, elapsed_ms: 33_000,
+    next_due_at: null,
   } satisfies RunSummary;
   const line = summaryLine(s, true);
   assert.match(line, /^bill-details APPLY: measures=10 /);
@@ -263,6 +264,10 @@ test("clone: a measure writes sponsor, cosponsors, actions, fills and stamp toge
     assert.equal(again.measures_done, 0);
     assert.equal(again.stop, "done");
     assert.equal(calls.length, before, "no request");
+    // cc-318 D7: an empty selection rests its row 12 h (new measures arrive with the nightly)
+    assert.equal(s.next_due_at, null, "a run that took measures reports no next_due_at");
+    const restH = (Date.parse(again.next_due_at!) - Date.now()) / 3_600_000;
+    assert.ok(restH > 11.9 && restH <= 12, `next_due_at ${again.next_due_at} is now + 12 h`);
   } finally {
     await c.query("ROLLBACK").catch(() => undefined);
     await c.end();

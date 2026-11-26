@@ -1,17 +1,13 @@
 name: crs-summaries
 
-# FIX-447 — weekly backfill of proposals.summary_plain from Congress.gov CRS
-# summaries.
+# FIX-447 — backfill of proposals.summary_plain from Congress.gov CRS summaries.
 #
 # What it does: the CRS-authored plain-language summary is real prose, so
 # writing it to summary_plain flips congress bills from `title_only` to
 # `full_summary` with ZERO AI calls (packages/data/src/scripts/backfill-crs-summaries.ts,
-# FIX-435 Phase 2). The script is idempotent and resumable — it selects only
-# proposals where `summary_plain IS NULL` and re-asserts that filter in the
-# UPDATE — so a scheduled re-run is exactly the ongoing-capture mechanism for
-# newly-ingested congress bills: they land `title_only`, and the next Saturday
-# run fills whatever's missing. Left to humans it only ran when someone
-# remembered; this closes that gap.
+# FIX-435 Phase 2). It selects only bills and resolutions whose `summary_plain
+# IS NULL` and re-asserts that filter in the UPDATE, so a re-run never clobbers
+# a fill and is the ongoing-capture mechanism for newly-ingested bills.
 #
 # Why its OWN workflow, not a step in nightly.yml: FIX-740's whole direction was
 # pulling API-heavy work (USASpending) OUT of the nightly enrichment phase's
@@ -20,42 +16,44 @@ name: crs-summaries
 # Congress.gov calls back into the nightly would reverse that, so this stays
 # standalone with its own budget.
 #
-# Cadence: Saturday 10:00 UTC (`0 10 * * 6`). Collision check (2026-07-20):
-#   - GHA: clear of nightly (`0 2 * * *`), sync-canary (`0 5 * * *`),
-#     audit (Mon `0 4 * * 1`), and usaspending-bulk (Thu `0 10 * * 4`).
-#     platform-snapshot (`*/10 * * * *`) is a tiny read — irrelevant.
-#   - Prod pg_cron DB jobs: NONE run on Saturday (the weekly rollups are
-#     Mon/Tue/Wed/Thu). The only Saturday DB job is the daily donor-rollup
-#     (`0 9 * * *`), a full hour earlier; CRS's DB load is light anyway
-#     (paginated selects + one throttled single-row UPDATE per bill).
-#   - Sunday weekly-enrichment block (nightly's `getDay()===0` path) is a day
-#     later. Saturday 10:00 UTC is clean.
-# FIX-1424 (cc-292): started ON TIME by a Vercel cron on
-# /api/cron/gha-dispatch/crs-summaries (`0 10 * * 6`, apps/civitics/vercel.json),
-# not GitHub's schedule:, which started it 3.7–6.2 h late (10-24 13:44Z …
-# 11-14 16:14Z) and pushed a 350-min run toward the 21:00 UTC nightly. On time,
-# a run that uses the whole budget ends by 15:50 UTC. No schedule: fallback;
-# `gh workflow run crs-summaries.yml` starts it by hand.
+# Cadence (FIX-1455 / FIX-1454, cc-318): a DISPATCHER UNIT. job_registry
+# crs-summaries is `stale_after 2 hours` (gha-dispatch:crs-summaries, group
+# proposals, gates {prod_session}, yield_to {nightly}): the tick arms a request
+# stamp and /api/cron/gha-dispatch/crs-summaries-request (Vercel, every 5 min)
+# fires this workflow with max_minutes "15". The run stops between measures at
+# 15 minutes and closes its data_sync_log row (congress_crs_summaries); the row
+# is due again 2 hours after that close. A measure asked is stamped
+# metadata.crs.asked_at on its ref and is not asked again for 7 days, so
+# successive boxed runs walk the whole list. A run with nothing to take reports
+# metadata.next_due_at and the row rests until then. The Saturday 10:00Z
+# Vercel cron (FIX-1424) is gone; there is no schedule: fallback.
+#
+# By hand: `gh workflow run crs-summaries.yml` (max_minutes empty: no box, it
+# walks everything due) or `-f max_minutes=15`. A hand run shares the
+# concurrency group and the API key with a dispatched one; a dispatched request
+# queued behind it reaps failed at its budget and the ladder backs off.
 #
 # Rate control lives IN the script: fetchCongressApi already sleeps 200ms and
-# the loop adds the rest to ~800ms/iter (~4,500 req/hr, under the ~5,000/hr
-# Congress.gov per-key ceiling). No workflow-level throttling — it would only
-# double-count. `data:backfill-crs-summaries:ci` bakes `--apply --allow-prod`
-# (no `--env-file`); the prod URL + secret key + Congress key come from the
-# secrets below (a pruned copy of usaspending-bulk.yml's block — this script
-# only reads these three; it uses PostgREST via createAdminClient, not a direct
-# pg connection, so no SUPABASE_DB_PASSWORD).
+# the loop adds the rest to ~800ms/iter (~4,500 req/hr). No workflow-level
+# throttling — it would only double-count. `data:backfill-crs-summaries:ci`
+# bakes `--apply --allow-prod` (no `--env-file`); the secrets below carry the
+# prod URL, the secret key, the DB password (the walker reads, stamps and
+# writes over one direct connection, one transaction per measure — buildDbUrl()
+# composes it from the URL and the password) and the Congress key.
 #
 # timeout-minutes: 350 (the usaspending-bulk precedent, headroom under GHA's 6h
-# cap). The FIRST scheduled run may face a large backlog — prod is ~98%
-# title_only on the congress dataset — and at ~800ms/iter a few thousand bills
-# is well over an hour. Because the script is resumable, a SIGTERM at the
-# timeout is SAFE: it simply stops mid-list and next Saturday continues from the
-# still-NULL rows. A long first run (or one that hits the cutoff) is NOT a
-# failure — it's the backlog draining across weeks by design.
+# cap). A boxed run ends far below it; an unboxed hand run on a large backlog may
+# not, and a SIGTERM at the cap is safe (the open measure rolls back, the
+# mark-killed step closes the row).
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      max_minutes:
+        description: "soft stop between measures, in minutes; empty = no box (walk everything due)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -72,9 +70,15 @@ jobs:
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
       CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
 
     steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step binds its
+      # no-op guard to THIS run.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -91,4 +95,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Backfill CRS summaries (prod, resumable)
-        run: pnpm --filter @civitics/data data:backfill-crs-summaries:ci
+        env:
+          MAX_MINUTES: ${{ inputs.max_minutes }}
+        run: |
+          if [ -n "$MAX_MINUTES" ]; then
+            pnpm --filter @civitics/data data:backfill-crs-summaries:ci -- --max-minutes "$MAX_MINUTES"
+          else
+            pnpm --filter @civitics/data data:backfill-crs-summaries:ci
+          fi
+
+      # A SIGTERM at timeout-minutes strands the row at 'running'; this closes
+      # it. --window-hours 6 is sized on the 350-min cap (FIX-962). Never gates
+      # the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=congress_crs_summaries --window-hours 6
