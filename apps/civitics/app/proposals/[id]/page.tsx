@@ -22,10 +22,33 @@ import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 import { PrintLetterhead, PrintProvenance } from "../../components/print/PrintRecord";
+import { EntityTags, type EntityTag } from "../../components/tags/EntityTags";
 import { Icon } from "@civitics/graph";
+import { proposalTypeLabel } from "@/lib/proposal-detail/labels";
+import {
+  ON_RECORD_NOTE,
+  groupMembers,
+  groupRolls,
+  headlineRoll,
+  partySplit,
+  rollHeading,
+  rollLines,
+  type MemberVote,
+  type VoteRoll,
+} from "@/lib/proposal-detail/vote-rolls";
+import { stagePath } from "@/lib/proposal-detail/stage-path";
+import {
+  chamberLabel,
+  identityLine,
+  latestAction,
+  metadataTitle,
+  ordinal,
+  sourceLink,
+} from "@/lib/proposal-detail/identity";
 
 // Public proposal detail; no auth dependency, RLS allows anon SELECT on
-// proposals + votes + ai_summary_cache + civic_initiative_proposal_links.
+// proposals + votes + bill_details + entity_tags + ai_summary_cache +
+// civic_initiative_proposal_links; proposal_vote_rolls() is anon-executable.
 // True ISR — built on first request, cached for 5 min, then revalidated in
 // the background. Faster than the SSR-with-CDN-cache hit because the page
 // is served from the function output cache (or static disk).
@@ -44,12 +67,14 @@ export async function generateMetadata(
   const description = data.summary_plain
     ? data.summary_plain.slice(0, 160)
     : `${data.type} · ${data.status}`;
+  // FIX-1447 (D5): "HR 1 — <title>" when a number exists and the title is not it.
+  const title = metadataTitle(data.title, data.bill_details);
 
   return {
-    title: data.title,
+    title,
     description,
     openGraph: {
-      title: `${data.title} | Civitics`,
+      title: `${title} | Civitics`,
       description,
     },
     // FIX-1306: from the loaded row's id, not params.id.
@@ -71,19 +96,6 @@ type Proposal = {
   introduced_at: string | null;
   metadata: Record<string, string>;
   is_synthetic: boolean;
-};
-
-type Vote = {
-  id: string;
-  vote: string;
-  voted_at: string | null;
-  official: {
-    id: string;
-    full_name: string;
-    party: string | null;
-    district_name: string | null;
-    role_title: string;
-  } | null;
 };
 
 type RelatedProposal = {
@@ -112,15 +124,10 @@ const STATUS_BADGE: Record<string, { label: string; color: string }> = {
   failed:               { label: "Failed",           color: "bg-accent/10 text-accent border-accent/25" },
   withdrawn:            { label: "Withdrawn",        color: "bg-ink/5 text-ink-soft border-rule" },
   comment_closed:       { label: "Comment Closed",   color: "bg-ink/5 text-ink-soft border-rule" },
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  regulation:      "Federal Regulation",
-  bill:            "Congressional Bill",
-  executive_order: "Executive Order",
-  treaty:          "Treaty",
-  referendum:      "Referendum",
-  resolution:      "Resolution",
+  vetoed:               { label: "Vetoed",           color: "bg-accent/10 text-accent border-accent/25" },
+  veto_overridden:      { label: "Veto Overridden",  color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  tabled:               { label: "Tabled",           color: "bg-ink/5 text-ink-soft border-rule" },
+  final_rule:           { label: "Final Rule",       color: "bg-ink/5 text-ink-soft border-rule" },
 };
 
 const VOTE_STYLES: Record<string, { label: string; color: string }> = {
@@ -140,12 +147,15 @@ const PARTY_DOT: Record<string, string> = {
   independent: "bg-ink",
 };
 
+// In UTC: introduced_at / last_action_at are dates stored at midnight UTC, and
+// Vercel renders in UTC — a local dev server would otherwise print the day before.
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -179,13 +189,15 @@ export default async function ProposalDetailPage({
   }
 
   const rawMeta = (proposalRow.metadata as Record<string, string> | null) ?? {};
+  const bd = proposalRow.bill_details;
   const p: Proposal = {
     id:                 proposalRow.id,
     title:              proposalRow.title,
     type:               proposalRow.type,
     status:             proposalRow.status,
     regulations_gov_id: rawMeta.regulations_gov_id ?? null,
-    congress_gov_url:   rawMeta.congress_gov_url   ?? null,
+    // FIX-1447 (D7): the stored URL lives on bill_details, not in metadata.
+    congress_gov_url:   bd?.congress_gov_url ?? null,
     comment_period_end: rawMeta.comment_period_end ?? null,
     summary_plain:      proposalRow.summary_plain,
     introduced_at:      proposalRow.introduced_at,
@@ -194,27 +206,57 @@ export default async function ProposalDetailPage({
   };
   const open = isOpenForComment(p);
   const statusBadge = STATUS_BADGE[p.status] ?? { label: p.status, color: "bg-ink/5 text-ink-soft border-rule" };
-  const typeLabel = TYPE_LABEL[p.type] ?? p.type;
+  const typeLabel = proposalTypeLabel(p.type, { billNumber: bd?.bill_number, metadata: rawMeta });
   const agencyAcronym = p.metadata?.agency_id ?? null;
   const docType = p.metadata?.document_type ?? null;
   const docketId = p.metadata?.docket_id ?? null;
 
   const agencyFullName = agencyAcronym ? (AGENCY_FULL_NAMES[agencyAcronym] ?? null) : null;
 
-  // Votes (for congressional bills). Post-promotion, votes.proposal_id was
-  // renamed to votes.bill_proposal_id.
-  const votesPromise = p.type === "bill"
+  // FIX-1447 (D5–D7): identity, status and source, from stored rows only.
+  const identity = identityLine(bd, rawMeta);
+  const latest = latestAction(rawMeta, proposalRow.last_action_at);
+  const stage = stagePath({
+    type: p.type,
+    status: p.status,
+    congressNumber: bd?.congress_number,
+    billNumber: bd?.bill_number,
+  });
+  const regulationsGovHref = p.regulations_gov_id
+    ? `https://www.regulations.gov/document/${p.regulations_gov_id}`
+    : null;
+  const sourceUrl = sourceLink({ congressGovUrl: bd?.congress_gov_url, externalUrl: proposalRow.external_url });
+  // The meta row prints the regulations.gov link already; never the same link twice.
+  const source = sourceLink({
+    congressGovUrl: bd?.congress_gov_url,
+    externalUrl: proposalRow.external_url,
+    alreadyLinked: [regulationsGovHref],
+  });
+  const number = bd?.bill_number ?? rawMeta.file_number ?? null;
+  const chamber = chamberLabel(bd?.chamber);
+
+  // FIX-1447 (D1, D3): one row per roll, for every type but a regulation. The
+  // counts are what Civitics stores, never the roll's official count.
+  const rollsPromise = p.type !== "regulation"
     ? withDbTimeout(
-        supabase
-          .from("votes")
-          .select("id,vote,voted_at,official:officials(id,full_name,party,district_name,role_title)")
-          .eq("bill_proposal_id", p.id)
-          .order("voted_at", { ascending: false })
-          .limit(100),
+        supabase.rpc("proposal_vote_rolls", { p_proposal_id: p.id }),
         3000,
-        "proposals:detail-votes",
+        "proposals:detail-vote-rolls",
       )
     : Promise.resolve({ data: [] });
+
+  // FIX-1447 (D10): topic tags shown publicly; never internal.
+  const tagsPromise = withDbTimeout(
+    supabase
+      .from("entity_tags")
+      .select("tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model,metadata")
+      .eq("entity_type", "proposal")
+      .eq("entity_id", p.id)
+      .eq("tag_category", "topic")
+      .in("visibility", ["primary", "secondary"]),
+    3000,
+    "proposals:detail-tags",
+  );
 
   // Related proposals (same agency or type, excluding current). comment_period_end
   // now lives in metadata — pulled client-side after fetch.
@@ -272,13 +314,31 @@ export default async function ProposalDetailPage({
     "proposals:detail-breadcrumb",
   );
 
-  const [votesRes, relatedRes, aiSummaryRes, relatedInitiativesRes, breadcrumbRes] = await Promise.all([
-    votesPromise,
+  const [rollsRes, relatedRes, aiSummaryRes, relatedInitiativesRes, breadcrumbRes, tagsRes] = await Promise.all([
+    rollsPromise,
     withDbTimeout(relatedQuery, 3000, "proposals:detail-related"),
     aiSummaryPromise,
     relatedInitiativesQuery,
     breadcrumbPromise,
+    tagsPromise,
   ]);
+
+  // FIX-1447 (D4): members are listed for ONE roll — the newest final roll,
+  // else the newest roll. Started here so it runs beside the breadcrumb reads.
+  const rolls = (rollsRes.data ?? []) as unknown as VoteRoll[];
+  const headline = headlineRoll(rolls);
+  const membersPromise = headline
+    ? withDbTimeout(
+        supabase
+          .from("votes")
+          .select("id,vote,official:officials(id,full_name,party,district_name,role_title)")
+          .eq("roll_call_id", headline.roll_call_id)
+          .eq("bill_proposal_id", p.id)
+          .limit(600),
+        3000,
+        "proposals:detail-roll-members",
+      )
+    : Promise.resolve({ data: [] });
 
   // Resolve breadcrumb entity names (jurisdiction + governing body).
   const bcMeta = (breadcrumbRes.data ?? null) as {
@@ -308,7 +368,10 @@ export default async function ProposalDetailPage({
     bcInstitution = (gRes.data as { id: string; name: string } | null) ?? null;
   }
 
-  const votes = (votesRes.data ?? []) as Vote[];
+  const members = ((await membersPromise).data ?? []) as unknown as MemberVote[];
+  const memberGroups = groupMembers(members);
+  const rollGroups = groupRolls(rolls);
+  const tags = (tagsRes.data ?? []) as EntityTag[];
   const related = (relatedRes.data ?? []) as RelatedProposal[];
   const cachedAiSummary: string | null =
     (aiSummaryRes as { data?: { summary_text?: string | null } | null } | null)?.data?.summary_text ?? null;
@@ -332,12 +395,6 @@ export default async function ProposalDetailPage({
     })
     .filter(Boolean) as InitiativeLink[];
 
-  // Vote tally
-  const tally = votes.reduce<Record<string, number>>((acc, v) => {
-    acc[v.vote] = (acc[v.vote] ?? 0) + 1;
-    return acc;
-  }, {});
-
   // ── JSON-LD structured data (schema.org/Legislation) ─────────────────────
   const proposalJsonLd = {
     "@context": "https://schema.org",
@@ -360,7 +417,9 @@ export default async function ProposalDetailPage({
           },
         }
       : {}),
-    ...(p.congress_gov_url ? { sameAs: p.congress_gov_url } : {}),
+    // FIX-1447 (D7): the same URL the page links, and the number it carries.
+    ...(sourceUrl ? { sameAs: sourceUrl.href } : {}),
+    ...(number ? { legislationIdentifier: number } : {}),
   };
 
   // FIX-1227: every labelled read above has settled — never cache a render in
@@ -460,11 +519,25 @@ export default async function ProposalDetailPage({
             />
           </div>
 
+          {/* Identity — FIX-1447 (D5): number · Congress · chamber, from bill_details */}
+          {identity && (
+            <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-ink-soft">
+              {identity}
+            </p>
+          )}
+
           {/* Title */}
           <h1 className="font-serif text-2xl font-bold tracking-tight text-ink sm:text-3xl leading-snug max-w-4xl">
             {p.title}
             {p.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
           </h1>
+
+          {/* Topic tags — FIX-1447 (D10), as ProposalCard shows them */}
+          {tags.length > 0 && (
+            <div className="max-w-4xl">
+              <EntityTags entityType="proposal" entityId={p.id} tags={tags} variant="full" />
+            </div>
+          )}
 
           {/* Meta row */}
           <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-ink-soft">
@@ -474,9 +547,9 @@ export default async function ProposalDetailPage({
             {p.comment_period_end && (
               <span className="font-mono tabular-nums">Comment period ends {formatDate(p.comment_period_end)}</span>
             )}
-            {p.regulations_gov_id && (
+            {regulationsGovHref && (
               <a
-                href={`https://www.regulations.gov/document/${p.regulations_gov_id}`}
+                href={regulationsGovHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent hover:underline transition-colors"
@@ -484,18 +557,65 @@ export default async function ProposalDetailPage({
                 View on regulations.gov ↗
               </a>
             )}
-            {p.congress_gov_url && (
+            {source && (
               <a
-                href={p.congress_gov_url}
+                href={source.href}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent hover:underline transition-colors"
               >
-                View on congress.gov ↗
+                {source.label}
               </a>
             )}
             <ProposalShareButton title={p.title} id={p.id} />
           </div>
+
+          {/* Latest action — FIX-1447 (D6): the stored text and its date */}
+          {latest && (
+            <p className="mt-3 max-w-4xl text-sm text-ink-soft">
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft/70">
+                Latest action{latest.date ? ` · ${latest.date}` : ""}
+              </span>{" "}
+              <span className="text-ink">{latest.text}</span>
+            </p>
+          )}
+
+          {/* Stage path — FIX-1447 (D6): federal bills and resolutions only, no dates */}
+          {stage && (
+            <ol
+              aria-label="Stage"
+              className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[10.5px] uppercase tracking-[0.06em]"
+            >
+              {stage.steps.map((s, i) => (
+                <li
+                  key={s.label}
+                  aria-current={s.current ? "step" : undefined}
+                  className="flex items-center gap-1.5"
+                >
+                  {i > 0 && <span className="text-ink-soft/40" aria-hidden>→</span>}
+                  <span
+                    className={
+                      s.current
+                        ? "border border-civic-blue/40 bg-civic-blue/10 px-1.5 py-0.5 font-bold text-civic-blue"
+                        : s.reached
+                          ? "text-ink"
+                          : "text-ink-soft/50"
+                    }
+                  >
+                    {s.label}
+                  </span>
+                </li>
+              ))}
+              {stage.end && (
+                <li className="flex items-center gap-1.5">
+                  <span className="text-ink-soft/40" aria-hidden>·</span>
+                  <span className="border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-bold text-accent">
+                    {stage.end}
+                  </span>
+                </li>
+              )}
+            </ol>
+          )}
         </div>
       </div>
 
@@ -525,74 +645,124 @@ export default async function ProposalDetailPage({
               </section>
             ) : open ? (
               <AiSummarySection proposalId={p.id} />
-            ) : p.summary_plain ? (
+            ) : null}
+
+            {/* Summary — FIX-1447 (D11): source text keeps its author, beside the AI text */}
+            {p.summary_plain && (
               <section>
                 <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
-                  What This Means
+                  Summary
                 </h2>
                 <div className="border border-rule bg-card p-5">
                   <p className="text-sm text-ink leading-relaxed whitespace-pre-line">
                     {p.summary_plain}
                   </p>
+                  {/* backfill-crs-summaries.ts is the one writer of summary_plain on
+                      congress_gov rows (cc-317 read 0 / read 5). */}
+                  {proposalRow.primary_source === "congress_gov" && (
+                    <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">
+                      Congressional Research Service
+                    </p>
+                  )}
                 </div>
               </section>
-            ) : null}
+            )}
 
-            {/* Vote Record — congressional bills only */}
-            {p.type === "bill" && votes.length > 0 && (
+            {/* Vote Record — FIX-1447 (D2–D4): every roll of every type, grouped by
+                class. The counts are what Civitics stores; never a result. */}
+            {rolls.length > 0 && (
               <section>
-                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
+                <h2 className="mb-2 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   Vote Record
                 </h2>
+                <p className="mb-4 max-w-2xl text-xs leading-relaxed text-ink-soft">{ON_RECORD_NOTE}</p>
 
-                {/* Tally */}
-                <div className="mb-4 flex flex-wrap gap-3">
-                  {Object.entries(tally).map(([val, count]) => {
-                    const style = VOTE_STYLES[val] ?? { label: val, color: "bg-ink/5 text-ink-soft border-rule" };
-                    return (
-                      <span key={val} className={`border px-3 py-1 font-mono text-sm font-semibold tabular-nums ${style.color}`}>
-                        {style.label}: {count}
-                      </span>
-                    );
-                  })}
+                <div className="space-y-6">
+                  {rollGroups.map((g) => (
+                    <div key={g.cls}>
+                      <h3 className="mb-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink">
+                        {g.title}
+                      </h3>
+                      <ul className="border border-rule bg-card divide-y divide-rule/60">
+                        {g.shown.map((r) => (
+                          <RollItem key={`${r.chamber}:${r.roll_call_id}`} roll={r} isHeadline={r === headline} />
+                        ))}
+                      </ul>
+                      {g.more.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent hover:underline">
+                            {g.more.length} more {g.more.length === 1 ? "roll" : "rolls"}
+                          </summary>
+                          <ul className="mt-2 border border-rule bg-card divide-y divide-rule/60">
+                            {g.more.map((r) => (
+                              <RollItem key={`${r.chamber}:${r.roll_call_id}`} roll={r} isHeadline={r === headline} />
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                {/* Individual votes */}
-                <div className="border border-rule bg-card divide-y divide-rule/60">
-                  {votes.map((v) => {
-                    const voteStyle = VOTE_STYLES[v.vote] ?? { label: v.vote, color: "bg-ink/5 text-ink-soft border-rule" };
-                    const partyKey = v.official?.party?.toLowerCase() ?? "";
-                    const dot = PARTY_DOT[partyKey] ?? "bg-rule";
-                    return (
-                      <div key={v.id} className="flex items-center justify-between px-4 py-2.5 gap-4">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot}`} />
-                          {v.official?.id ? (
-                            <a
-                              href={`/officials/${v.official.id}`}
-                              className="text-sm text-ink truncate hover:text-accent hover:underline transition-colors"
-                            >
-                              {v.official.full_name}
-                            </a>
-                          ) : (
-                            <span className="text-sm text-ink truncate">
-                              {v.official?.full_name ?? "Unknown"}
-                            </span>
-                          )}
-                          {v.official?.district_name && (
-                            <span className="text-xs text-ink-soft/70">{v.official.district_name}</span>
-                          )}
-                          {v.official?.role_title && (
-                            <span className="text-xs text-ink-soft/70">{v.official.role_title}</span>
-                          )}
-                        </div>
-                        <span className={`flex-shrink-0 border px-2 py-0.5 font-mono text-xs font-medium ${voteStyle.color}`}>
-                          {voteStyle.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {/* Members — the headline roll only (D4) */}
+                {headline && memberGroups.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="mb-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink">
+                      How members voted
+                    </h3>
+                    <p className="mb-3 text-xs text-ink-soft">{rollHeading(headline)}</p>
+                    <div className="space-y-2">
+                      {memberGroups.map((mg) => {
+                        const style = VOTE_STYLES[mg.vote] ?? { label: mg.label, color: "bg-ink/5 text-ink-soft border-rule" };
+                        const split = partySplit(headline.by_party, mg.vote);
+                        return (
+                          <details key={mg.vote} className="border border-rule bg-card">
+                            <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-4 py-2.5">
+                              <span className={`border px-2 py-0.5 font-mono text-xs font-semibold ${style.color}`}>
+                                {style.label}
+                              </span>
+                              <span className="font-mono text-xs tabular-nums text-ink">
+                                {mg.members.length} recorded
+                              </span>
+                              {split && (
+                                <span className="font-mono text-xs tabular-nums text-ink-soft">({split})</span>
+                              )}
+                            </summary>
+                            <div className="divide-y divide-rule/60 border-t border-rule">
+                              {mg.members.map((v) => {
+                                const partyKey = v.official?.party?.toLowerCase() ?? "";
+                                const dot = PARTY_DOT[partyKey] ?? "bg-rule";
+                                return (
+                                  <div key={v.id} className="flex items-center gap-2 px-4 py-2 min-w-0">
+                                    <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot}`} />
+                                    {v.official?.id ? (
+                                      <a
+                                        href={`/officials/${v.official.id}`}
+                                        className="text-sm text-ink truncate hover:text-accent hover:underline transition-colors"
+                                      >
+                                        {v.official.full_name}
+                                      </a>
+                                    ) : (
+                                      <span className="text-sm text-ink truncate">
+                                        {v.official?.full_name ?? "Unknown"}
+                                      </span>
+                                    )}
+                                    {v.official?.district_name && (
+                                      <span className="text-xs text-ink-soft/70">{v.official.district_name}</span>
+                                    )}
+                                    {v.official?.role_title && (
+                                      <span className="text-xs text-ink-soft/70">{v.official.role_title}</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -685,28 +855,31 @@ export default async function ProposalDetailPage({
           {/* ─── Sidebar ──────────────────────────────────────────────────── */}
           <div className="space-y-6">
 
-            {/* Submit Comment — interactive composer, hidden on the printed record. */}
-            <section className="print:hidden">
-              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
-                {open ? "Submit Your Comment" : "Comment Period"}
-              </h2>
-              {open ? (
-                <div className="border border-amber/60 bg-card p-5">
-                  <CommentDraftSection
-                    regulationsGovId={p.regulations_gov_id}
-                    congressGovUrl={p.congress_gov_url}
-                    title={p.title}
-                    proposalId={p.id}
-                  />
-                </div>
-              ) : (
-                <div className="border border-rule bg-paper-2 p-4 text-sm text-ink-soft">
-                  {p.status === "comment_closed"
-                    ? "The public comment period for this proposal has closed."
-                    : "This proposal is not currently open for public comment."}
-                </div>
-              )}
-            </section>
+            {/* Submit Comment — interactive composer, hidden on the printed record.
+                FIX-1447 (D9): only a regulation or a row with a comment period has one. */}
+            {(p.type === "regulation" || p.comment_period_end) && (
+              <section className="print:hidden">
+                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
+                  {open ? "Submit Your Comment" : "Comment Period"}
+                </h2>
+                {open ? (
+                  <div className="border border-amber/60 bg-card p-5">
+                    <CommentDraftSection
+                      regulationsGovId={p.regulations_gov_id}
+                      congressGovUrl={p.congress_gov_url}
+                      title={p.title}
+                      proposalId={p.id}
+                    />
+                  </div>
+                ) : (
+                  <div className="border border-rule bg-paper-2 p-4 text-sm text-ink-soft">
+                    {p.status === "comment_closed"
+                      ? "The public comment period for this proposal has closed."
+                      : "This proposal is not currently open for public comment."}
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Proposal details */}
             <section>
@@ -715,6 +888,15 @@ export default async function ProposalDetailPage({
               </h2>
               <div className="border border-rule bg-card p-4 space-y-3">
                 <DetailRow label="Type" value={typeLabel} />
+                {number && <DetailRow label="Number" value={number} mono />}
+                {bd?.congress_number != null && (
+                  <DetailRow label="Congress" value={`${ordinal(bd.congress_number)} Congress`} />
+                )}
+                {chamber && <DetailRow label="Chamber" value={chamber} />}
+                <DetailRow label="Status" value={statusBadge.label} />
+                {proposalRow.last_action_at && (
+                  <DetailRow label="Last action" value={formatDate(proposalRow.last_action_at)} />
+                )}
                 {agencyAcronym && (
                   <DetailRow
                     label="Agency"
@@ -749,6 +931,33 @@ export default async function ProposalDetailPage({
         <PrintProvenance />
       </div>
     </div>
+  );
+}
+
+// FIX-1447 (D2): one roll — its question, chamber and date, the source's result
+// when one is stored, what Civitics recorded, and the official roll. Never a
+// verdict derived from the counts; the wording lives in vote-rolls.ts.
+function RollItem({ roll, isHeadline }: { roll: VoteRoll; isHeadline: boolean }) {
+  const l = rollLines(roll);
+  return (
+    <li className="px-4 py-3 space-y-1">
+      <p className="text-sm text-ink">{l.heading}</p>
+      {l.result && <p className="text-sm font-semibold text-ink">{l.result}</p>}
+      <p className="font-mono text-xs tabular-nums text-ink-soft">{l.recorded}</p>
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        {roll.source_url && (
+          <a
+            href={roll.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent hover:underline transition-colors"
+          >
+            Official roll ↗
+          </a>
+        )}
+        {isHeadline && <span className="text-ink-soft/70">Members listed below</span>}
+      </div>
+    </li>
   );
 }
 
