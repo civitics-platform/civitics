@@ -58,6 +58,10 @@ const SIG_RCLASS = "CREATE OR REPLACE FUNCTION public.vote_roll_class(p_vote_que
 
 /** md5(prosrc) of the bodies this file installs: what the push's read-back prints. */
 const INCR_MD5 = "efb7d5f628a1439c23f7be23b20bf9a4";
+/** FIX-1422 (20261126006000) re-states the incremental arm: this body plus its stale-pair hunks, its edge rule
+ *  untouched (fix1422-vote-edge-stale-pairs.test.ts holds both). The clone and prod run that body. */
+const FIX1422_FILE = "20261126006000_fix1422_vote_edge_stale_pairs.sql";
+const FIX1422_INCR_MD5 = "76bce60cc492db5465f6c1e1c970de91";
 const FULL_MD5 = "0c9c5fa64e8331fe38c733ecca5b03a4";
 /** md5(prosrc) of the live bodies (clone and prod, cc-283 read 3). */
 const LIVE_INCR_MD5 = "4e34295bee6f343f78800e82a58404de";
@@ -237,7 +241,10 @@ test("the migration lands after 20261116000000 and is the newest to define the v
   assert.ok(at > 0);
   assert.ok(all[at - 1]! >= "20261116000000", all[at - 1]);
   const definers = all.filter((f) => read(path.join(MIGRATIONS, f)).includes(SIG_INCR));
-  assert.equal(definers[definers.length - 1], FILE_NAME);
+  assert.equal(definers[definers.length - 2], FILE_NAME);
+  assert.equal(definers[definers.length - 1], FIX1422_FILE, "FIX-1422 is the one later definer of the incremental arm");
+  const full = all.filter((f) => read(path.join(MIGRATIONS, f)).includes(SIG_FULL));
+  assert.equal(full[full.length - 1], FILE_NAME, "_votes_full() is still this file's");
 });
 
 // ---------------------------------------------------------------------------
@@ -335,7 +342,7 @@ test("clone: the live bodies are this file's; proconfig NULL on all four", async
     );
     assert.equal(rows.length, 4);
     const by = Object.fromEntries(rows.map((r) => [r.proname, r]));
-    assert.equal(by.rebuild_entity_connections_votes.m, INCR_MD5);
+    assert.equal(by.rebuild_entity_connections_votes.m, FIX1422_INCR_MD5, "the FIX-1422 body (this rule, plus the stale-pair queue)");
     assert.equal(by.rebuild_entity_connections_votes_full.m, FULL_MD5);
     for (const r of rows) assert.equal(r.cfg, null, r.proname);
     assert.equal(by.vote_question_class.vol, "i");

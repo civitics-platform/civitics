@@ -6387,6 +6387,24 @@ export type Database = {
         }
         Relationships: []
       }
+      vote_edge_stale_pairs: {
+        Row: {
+          bill_proposal_id: string
+          captured_at: string
+          official_id: string
+        }
+        Insert: {
+          bill_proposal_id: string
+          captured_at?: string
+          official_id: string
+        }
+        Update: {
+          bill_proposal_id?: string
+          captured_at?: string
+          official_id?: string
+        }
+        Relationships: []
+      }
       votes: {
         Row: {
           agenda_item_id: string | null
