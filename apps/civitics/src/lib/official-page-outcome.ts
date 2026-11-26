@@ -45,6 +45,11 @@ export interface PageEnvelope {
  * a failure would put the degraded banner on pages that are simply quiet. Only
  * an explicit `error` is a failure, which is the one signal that cannot be
  * produced by real-but-empty data.
+ *
+ * Nor is it keyed on which sections the payload carries. FIX-1449
+ * (20261126001000) removed `spending` and added `vote_question` / `chamber` /
+ * `roll_class` to the vote rows; the page reads either body, and the old body
+ * (a revert) must classify `ok` exactly as the new one does.
  */
 export function classifyOfficialPage(
   contentBearing: boolean,
