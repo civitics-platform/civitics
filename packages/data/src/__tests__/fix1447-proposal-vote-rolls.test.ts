@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { Client } from "pg";
+import { Client, type QueryResult } from "pg";
 import { body, header, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -176,6 +176,17 @@ const FN_PARTY = `
          (e.value->>'present')::int AS present, (e.value->>'not_voting')::int AS not_voting
     FROM public.proposal_vote_rolls($1) r, jsonb_each(r.by_party) e`;
 
+type FnRow = {
+  roll_call_id: string;
+  voted_at: Date;
+  roll_class: string;
+  vote_question: string | null;
+  want_class: string;
+  num: string | null;
+  rows_on_record: number;
+  parts: number;
+};
+
 async function exceptBoth(c: Client, a: string, b: string, id: string): Promise<[number, number]> {
   const one = await c.query(`SELECT count(*)::int AS n FROM ((${a}) EXCEPT ALL (${b})) x`, [id]);
   const two = await c.query(`SELECT count(*)::int AS n FROM ((${b}) EXCEPT ALL (${a})) x`, [id]);
@@ -204,7 +215,7 @@ test("clone: three proposals (House-only, two chambers, the heaviest) equal a di
   const c = await clone(t);
   if (!c) return;
   try {
-    const { rows: picks } = await c.query(`
+    const { rows: picks } = await c.query<{ kind: string; id: string }>(`
       WITH per AS (
         SELECT bill_proposal_id AS id, count(*) AS n, count(DISTINCT roll_call_id) AS rolls,
                count(DISTINCT chamber) AS chambers, bool_and(chamber = 'House') AS house_only
@@ -217,7 +228,7 @@ test("clone: three proposals (House-only, two chambers, the heaviest) equal a di
       (SELECT 'heaviest', id::text FROM per ORDER BY n DESC, id LIMIT 1)`);
     assert.equal(picks.length, 3, JSON.stringify(picks));
     for (const { kind, id } of picks) {
-      const fn = await c.query(
+      const fn: QueryResult<FnRow> = await c.query<FnRow>(
         `SELECT roll_call_id, voted_at, roll_class, vote_question,
                 public.vote_roll_class(vote_question, roll_call_id) AS want_class,
                 substring(roll_call_id FROM '([0-9]+)$')::numeric AS num,
@@ -226,7 +237,7 @@ test("clone: three proposals (House-only, two chambers, the heaviest) equal a di
         [id],
       );
       assert.ok(fn.rows.length > 0, `${kind} ${id}: rows`);
-      const direct = await c.query(
+      const direct: QueryResult<{ rolls: number }> = await c.query<{ rolls: number }>(
         `SELECT count(DISTINCT (roll_call_id, chamber))::int AS rolls FROM public.votes WHERE bill_proposal_id = $1`,
         [id],
       );
