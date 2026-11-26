@@ -1,0 +1,375 @@
+{
+  "actions": [
+    {
+      "actionCode": "E40000",
+      "actionDate": "2025-05-09",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Became Public Law No: 119-10.",
+      "type": "President"
+    },
+    {
+      "actionCode": "36000",
+      "actionDate": "2025-05-09",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Became Public Law No: 119-10.",
+      "type": "BecameLaw"
+    },
+    {
+      "actionCode": "E30000",
+      "actionDate": "2025-05-09",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Signed by President.",
+      "type": "President"
+    },
+    {
+      "actionCode": "36000",
+      "actionDate": "2025-05-09",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Signed by President.",
+      "type": "BecameLaw"
+    },
+    {
+      "actionCode": "E20000",
+      "actionDate": "2025-05-05",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Presented to President.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "28000",
+      "actionDate": "2025-05-05",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Presented to President.",
+      "type": "President"
+    },
+    {
+      "actionCode": "H38310",
+      "actionDate": "2025-04-09",
+      "actionTime": "16:26:11",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Motion to reconsider laid on the table Agreed to without objection.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H37100",
+      "actionDate": "2025-04-09",
+      "actionTime": "16:26:08",
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-04-09T20:26:08Z",
+          "rollNumber": 96,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll096.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "On passage Passed by the Yeas and Nays: 217 - 211 (Roll no. 96). (text: CR H1519)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "8000",
+      "actionDate": "2025-04-09",
+      "actionTime": "16:26:08",
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-04-09T20:26:08Z",
+          "rollNumber": 96,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll096.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Passed/agreed to in House: On passage Passed by the Yeas and Nays: 217 - 211 (Roll no. 96). (text: CR H1519: 1)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H30000",
+      "actionDate": "2025-04-09",
+      "actionTime": "16:20:18",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Considered as unfinished business. (consideration: CR H1533)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-04-09",
+      "actionTime": "14:11:35",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "POSTPONED PROCEEDINGS - At the conclusion of debate on S.J. Res. 18, the Chair put the question on passage of the joint resolution and by voice vote, announced that the ayes had prevailed. Mr. Hill (AR) demanded the yeas and nays and the Chair postponed further proceedings until a time to be announced.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H35000",
+      "actionDate": "2025-04-09",
+      "actionTime": "14:10:55",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "The previous question was ordered pursuant to the rule.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-04-09",
+      "actionTime": "13:08:38",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "DEBATE - The House proceeded with one hour of debate on S.J. Res. 18.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-04-09",
+      "actionTime": "13:08:04",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Rule provides for consideration of S.J. Res. 18, S.J. Res. 28, H.R. 1526 and H.R. 22. The resolution provides for consideration of H.R. 22, H.R. 1526, S.J. Res. 18, and S.J. Res. 28 under a closed rule. The resolution provides for one hour of debate on each measure and one motion to recommit on H.R. 22 and H.R. 1526, and one motion to commit on S.J. Res. 18 and S.J. Res. 28.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H30000",
+      "actionDate": "2025-04-09",
+      "actionTime": "13:07:59",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Considered under the provisions of rule H. Res. 294. (consideration: CR H1519-1525)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H1L210",
+      "actionDate": "2025-04-07",
+      "actionTime": "19:20:40",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Rules Committee Resolution H. Res. 294 Reported to House. Rule provides for consideration of S.J. Res. 18, S.J. Res. 28, H.R. 1526 and H.R. 22. The resolution provides for consideration of H.R. 22, H.R. 1526, S.J. Res. 18, and S.J. Res. 28 under a closed rule. The resolution provides for one hour of debate on each measure and one motion to recommit on H.R. 22 and H.R. 1526, and one motion to commit on S.J. Res. 18 and S.J. Res. 28.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H1L210",
+      "actionDate": "2025-04-01",
+      "actionTime": "10:03:16",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Rules Committee Resolution H. Res. 282 Reported to House. Rule provides for consideration of H.R. 22, H.R. 1526, S.J. Res. 18 and S.J. Res. 28. The resolution provides for consideration of H.R. 22, H.R. 1526, S.J. Res. 18, and S.J. Res. 28 under a closed rule. The resolution provides for one hour of debate on each measure and one motion to recommit on H.R. 22 and H.R. 1526, and one motion to commit on S.J. Res. 18 and S.J. Res. 28. The resolution also provides that H. Res. 23 and H. Res. 164 are laid on the table.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H15000",
+      "actionDate": "2025-03-31",
+      "actionTime": "14:24:18",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Held at the desk.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H14000",
+      "actionDate": "2025-03-31",
+      "actionTime": "14:15:20",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Received in the House.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-03-31",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Message on Senate action sent to the House.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-03-27",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-03-27T16:22:12Z",
+          "rollNumber": 153,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00153.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Passed Senate without amendment by Yea-Nay Vote. 52 - 48. Record Vote Number: 153. (text: CR S1884)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "17000",
+      "actionDate": "2025-03-27",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-03-27T16:22:12Z",
+          "rollNumber": 153,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00153.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Passed/agreed to in Senate: Passed Senate without amendment by Yea-Nay Vote. 52 - 48. Record Vote Number: 153.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-03-27",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Considered by Senate. (consideration: CR S1879, S1884)",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-03-26",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Measure laid before Senate by motion. (consideration: CR S1864)",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-03-26",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-03-27T01:09:46Z",
+          "rollNumber": 152,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00152.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion to proceed to consideration of measure agreed to in Senate by Yea-Nay Vote. 52 - 47. Record Vote Number: 152.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-03-26",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 34.",
+      "type": "Calendars"
+    },
+    {
+      "actionDate": "2025-03-26",
+      "committees": [
+        {
+          "name": "Banking, Housing, and Urban Affairs Committee",
+          "systemCode": "ssbk00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssbk00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Senate Committee on Banking, Housing, and Urban Affairs discharged, by petition, pursuant to 5 U.S.C. 802(c).",
+      "type": "Discharge"
+    },
+    {
+      "actionCode": "14500",
+      "actionDate": "2025-03-26",
+      "committees": [
+        {
+          "name": "Banking, Housing, and Urban Affairs Committee",
+          "systemCode": "ssbk00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssbk00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Senate Committee on Banking, Housing, and Urban Affairs discharged, by petition, pursuant to 5 U.S.C. 802(c).",
+      "type": "Committee"
+    },
+    {
+      "actionDate": "2025-02-13",
+      "committees": [
+        {
+          "name": "Banking, Housing, and Urban Affairs Committee",
+          "systemCode": "ssbk00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssbk00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Read twice and referred to the Committee on Banking, Housing, and Urban Affairs.",
+      "type": "IntroReferral"
+    },
+    {
+      "actionCode": "10000",
+      "actionDate": "2025-02-13",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Introduced in Senate",
+      "type": "IntroReferral"
+    }
+  ],
+  "pagination": {
+    "count": 30
+  }
+}

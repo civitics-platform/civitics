@@ -1,0 +1,172 @@
+{
+  "cosponsors": [
+    {
+      "bioguideId": "R000605",
+      "firstName": "Mike",
+      "fullName": "Sen. Rounds, Mike [R-SD]",
+      "isOriginalCosponsor": true,
+      "lastName": "Rounds",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "SD"
+    },
+    {
+      "bioguideId": "H000601",
+      "firstName": "Bill",
+      "fullName": "Sen. Hagerty, Bill [R-TN]",
+      "isOriginalCosponsor": true,
+      "lastName": "Hagerty",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "TN"
+    },
+    {
+      "bioguideId": "C000880",
+      "firstName": "Mike",
+      "fullName": "Sen. Crapo, Mike [R-ID]",
+      "isOriginalCosponsor": true,
+      "lastName": "Crapo",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "ID"
+    },
+    {
+      "bioguideId": "T000476",
+      "firstName": "Thomas",
+      "fullName": "Sen. Tillis, Thomas [R-NC]",
+      "isOriginalCosponsor": true,
+      "lastName": "Tillis",
+      "middleName": "Roland",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "NC"
+    },
+    {
+      "bioguideId": "C001096",
+      "firstName": "Kevin",
+      "fullName": "Sen. Cramer, Kevin [R-ND]",
+      "isOriginalCosponsor": true,
+      "lastName": "Cramer",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "ND"
+    },
+    {
+      "bioguideId": "B001319",
+      "firstName": "Katie",
+      "fullName": "Sen. Britt, Katie Boyd [R-AL]",
+      "isOriginalCosponsor": true,
+      "lastName": "Britt",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "AL"
+    },
+    {
+      "bioguideId": "M000934",
+      "firstName": "Jerry",
+      "fullName": "Sen. Moran, Jerry [R-KS]",
+      "isOriginalCosponsor": true,
+      "lastName": "Moran",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "KS"
+    },
+    {
+      "bioguideId": "R000584",
+      "firstName": "James",
+      "fullName": "Sen. Risch, James E. [R-ID]",
+      "isOriginalCosponsor": true,
+      "lastName": "Risch",
+      "middleName": "E.",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "ID"
+    },
+    {
+      "bioguideId": "B001236",
+      "firstName": "John",
+      "fullName": "Sen. Boozman, John [R-AR]",
+      "isOriginalCosponsor": true,
+      "lastName": "Boozman",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "AR"
+    },
+    {
+      "bioguideId": "W000437",
+      "firstName": "Roger",
+      "fullName": "Sen. Wicker, Roger F. [R-MS]",
+      "isOriginalCosponsor": true,
+      "lastName": "Wicker",
+      "middleName": "F.",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "MS"
+    },
+    {
+      "bioguideId": "L000571",
+      "firstName": "Cynthia",
+      "fullName": "Sen. Lummis, Cynthia M. [R-WY]",
+      "isOriginalCosponsor": true,
+      "lastName": "Lummis",
+      "middleName": "M.",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "WY"
+    },
+    {
+      "bioguideId": "R000618",
+      "firstName": "Pete",
+      "fullName": "Sen. Ricketts, Pete [R-NE]",
+      "isOriginalCosponsor": true,
+      "lastName": "Ricketts",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "NE"
+    },
+    {
+      "bioguideId": "M001242",
+      "firstName": "Bernie",
+      "fullName": "Sen. Moreno, Bernie [R-OH]",
+      "isOriginalCosponsor": true,
+      "lastName": "Moreno",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "OH"
+    },
+    {
+      "bioguideId": "L000577",
+      "firstName": "Mike",
+      "fullName": "Sen. Lee, Mike [R-UT]",
+      "isOriginalCosponsor": false,
+      "lastName": "Lee",
+      "party": "R",
+      "sponsorshipDate": "2025-02-19",
+      "state": "UT"
+    },
+    {
+      "bioguideId": "D000618",
+      "firstName": "Steve",
+      "fullName": "Sen. Daines, Steve [R-MT]",
+      "isOriginalCosponsor": false,
+      "lastName": "Daines",
+      "party": "R",
+      "sponsorshipDate": "2025-03-04",
+      "state": "MT"
+    },
+    {
+      "bioguideId": "T000250",
+      "firstName": "John",
+      "fullName": "Sen. Thune, John [R-SD]",
+      "isOriginalCosponsor": false,
+      "lastName": "Thune",
+      "party": "R",
+      "sponsorshipDate": "2025-03-12",
+      "state": "SD"
+    }
+  ],
+  "pagination": {
+    "count": 16,
+    "countIncludingWithdrawnCosponsors": 16
+  }
+}

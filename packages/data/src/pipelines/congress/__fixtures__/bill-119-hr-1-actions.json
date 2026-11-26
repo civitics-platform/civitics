@@ -1,0 +1,996 @@
+{
+  "actions": [
+    {
+      "actionCode": "E40000",
+      "actionDate": "2025-07-04",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Became Public Law No: 119-21.",
+      "type": "President"
+    },
+    {
+      "actionCode": "36000",
+      "actionDate": "2025-07-04",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Became Public Law No: 119-21.",
+      "type": "BecameLaw"
+    },
+    {
+      "actionCode": "E30000",
+      "actionDate": "2025-07-04",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Signed by President.",
+      "type": "President"
+    },
+    {
+      "actionCode": "36000",
+      "actionDate": "2025-07-04",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Signed by President.",
+      "type": "BecameLaw"
+    },
+    {
+      "actionCode": "E20000",
+      "actionDate": "2025-07-03",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Presented to President.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "28000",
+      "actionDate": "2025-07-03",
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Presented to President.",
+      "type": "President"
+    },
+    {
+      "actionCode": "H41931",
+      "actionDate": "2025-07-03",
+      "actionTime": "14:31:40",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Motion to reconsider laid on the table Agreed to without objection.",
+      "type": "ResolvingDifferences"
+    },
+    {
+      "actionCode": "H41610",
+      "actionDate": "2025-07-03",
+      "actionTime": "14:31:38",
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-07-03T18:31:38Z",
+          "rollNumber": 190,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll190.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "On motion that the House agree to the Senate amendment Agreed to by recorded vote: 218 - 214 (Roll no. 190). (text: CR H3059-3143)",
+      "type": "ResolvingDifferences"
+    },
+    {
+      "actionCode": "19500",
+      "actionDate": "2025-07-03",
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-07-03T18:31:38Z",
+          "rollNumber": 190,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll190.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Resolving differences -- House actions: On motion that the House agree to the Senate amendment Agreed to by recorded vote: 218 - 214 (Roll no. 190).",
+      "type": "NotUsed"
+    },
+    {
+      "actionCode": "H41400",
+      "actionDate": "2025-07-03",
+      "actionTime": "14:06:56",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "The previous question was ordered pursuant to the rule.",
+      "type": "ResolvingDifferences"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-07-03",
+      "actionTime": "03:30:49",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "DEBATE - Pursuant to the provisions of H. Res. 566, the House proceeded with one hour of debate on the motion to agree to the Senate amendment to H.R. 1.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-07-03",
+      "actionTime": "03:30:06",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Mr. Arrington moved that the House agree to the Senate amendment to H.R. 1. (CR H3143)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H40150",
+      "actionDate": "2025-07-03",
+      "actionTime": "03:29:30",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Mr. Arrington moved that the House agree to the Senate amendment. (consideration: CR H3059-3187)",
+      "type": "ResolvingDifferences"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-07-03",
+      "actionTime": "03:29:29",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Pursuant to the provisions of H. Res. 566, Mr. Arrington called up the Senate amendment to H.R. 1.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-07-01",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Message on Senate action sent to the House.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-07-01",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T16:03:40Z",
+          "rollNumber": 372,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00372.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Passed Senate with an amendment by Yea-Nay Vote. 51 - 50. Record Vote Number: 372.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "17000",
+      "actionDate": "2025-07-01",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T16:03:40Z",
+          "rollNumber": 372,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00372.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Passed/agreed to in Senate: Passed Senate with an amendment by Yea-Nay Vote. 51 - 50. Record Vote Number: 372.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-07-01",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T06:49:12Z",
+          "rollNumber": 359,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00359.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Warnock to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 48 - 51. Record Vote Number: 359.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-07-01",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T06:06:11Z",
+          "rollNumber": 357,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00357.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Wyden to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 357.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-07-01",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T04:10:23Z",
+          "rollNumber": 354,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00354.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Bennet to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 354.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T03:45:56Z",
+          "rollNumber": 353,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00353.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Padilla to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 353.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator King to commit to Senate Committee on Finance with instructions rejected in Senate by Voice Vote.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Murphy to commit to Senate Committee on Finance with instructions rejected in Senate by Voice Vote.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Kelly to commit to Senate Committee on Finance with instructions rejected in Senate by Voice Vote.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Alsobrooks to commit to Senate Committee on Finance with instructions rejected in Senate by Voice Vote.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Agriculture, Nutrition, and Forestry Committee",
+          "systemCode": "ssaf00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssaf00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T02:12:41Z",
+          "rollNumber": 351,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00351.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Schiff to commit to Senate Committee on Agriculture, Nutrition, and Forestry with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 351.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Agriculture, Nutrition, and Forestry Committee",
+          "systemCode": "ssaf00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssaf00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T01:53:34Z",
+          "rollNumber": 350,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00350.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Duckworth to commit to Senate Committee on Agriculture, Nutrition, and Forestry with instructions rejected in Senate by Yea-Nay Vote. 49 - 51. Record Vote Number: 350.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T01:34:25Z",
+          "rollNumber": 349,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00349.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Hassan to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 48 - 52. Record Vote Number: 349.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-07-01T00:13:12Z",
+          "rollNumber": 348,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00348.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Gallego to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 348.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Armed Services Committee",
+          "systemCode": "ssas00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssas00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T23:43:10Z",
+          "rollNumber": 347,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00347.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Blumenthal to commit to Senate Committee on Armed Services with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 347.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Homeland Security and Governmental Affairs Committee",
+          "systemCode": "ssga00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssga00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T23:10:59Z",
+          "rollNumber": 346,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00346.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Kaine to commit to Senate Committee on Homeland Security and Governmental Affairs with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 346.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T18:52:05Z",
+          "rollNumber": 340,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00340.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Blunt Rochester to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 48 - 52. Record Vote Number: 340.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T17:50:18Z",
+          "rollNumber": 338,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00338.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Reed to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 48 - 52. Record Vote Number: 338.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T17:37:40Z",
+          "rollNumber": 337,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00337.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Lujan to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 49 - 51. Record Vote Number: 337.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T16:50:08Z",
+          "rollNumber": 336,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00336.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Coons to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 48 - 52. Record Vote Number: 336.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T16:21:27Z",
+          "rollNumber": 335,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00335.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Wyden to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 335.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T15:50:40Z",
+          "rollNumber": 334,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00334.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion to waive section 425(a)(2) of the Congressional Budget Act with respect to the measure agreed to in Senate by Yea-Nay Vote. 51 - 48. Record Vote Number: 334.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Point of order that the measure violates section 425(a)(2) of the Congressional Budget Act raised in Senate.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T15:32:14Z",
+          "rollNumber": 333,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00333.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Markey to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 49 - 51. Record Vote Number: 333.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "committees": [
+        {
+          "name": "Finance Committee",
+          "systemCode": "ssfi00",
+          "url": "https://api.congress.gov/v3/committee/senate/ssfi00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-30T15:03:02Z",
+          "rollNumber": 332,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00332.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion by Senator Schumer to commit to Senate Committee on Finance with instructions rejected in Senate by Yea-Nay Vote. 47 - 53. Record Vote Number: 332.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-30",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Considered by Senate.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-28",
+      "recordedVotes": [
+        {
+          "chamber": "Senate",
+          "congress": 119,
+          "date": "2025-06-28T23:47:33Z",
+          "rollNumber": 329,
+          "sessionNumber": 1,
+          "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00329.xml"
+        }
+      ],
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Motion to proceed to consideration of measure agreed to in Senate by Yea-Nay Vote. 51 - 49. Record Vote Number: 329.",
+      "type": "Floor"
+    },
+    {
+      "actionDate": "2025-06-28",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Read the second time. Placed on Senate Legislative Calendar under General Orders. Calendar No. 107.",
+      "type": "Calendars"
+    },
+    {
+      "actionDate": "2025-06-27",
+      "sourceSystem": {
+        "name": "Senate"
+      },
+      "text": "Received in the Senate. Read the first time. Placed on Senate Legislative Calendar under Read the First Time.",
+      "type": "Calendars"
+    },
+    {
+      "actionCode": "H38310",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:56:39",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Motion to reconsider laid on the table Agreed to without objection.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H37100",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:56:37",
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-05-22T10:56:37Z",
+          "rollNumber": 145,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll145.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "On passage Passed by the Yeas and Nays: 215 - 214, 1 Present (Roll no. 145). (text: CR H2235-2334)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "8000",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:56:37",
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-05-22T10:56:37Z",
+          "rollNumber": 145,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll145.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "Passed/agreed to in House: On passage Passed by the Yeas and Nays: 215 - 214, 1 Present (Roll no. 145). (text: CR H2235-2334)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H36210",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:48:46",
+      "committees": [
+        {
+          "name": "Budget Committee",
+          "systemCode": "hsbu00",
+          "url": "https://api.congress.gov/v3/committee/house/hsbu00?format=json"
+        }
+      ],
+      "recordedVotes": [
+        {
+          "chamber": "House",
+          "congress": 119,
+          "date": "2025-05-22T10:48:46Z",
+          "rollNumber": 144,
+          "sessionNumber": 1,
+          "url": "https://clerk.house.gov/evs/2025/roll144.xml"
+        }
+      ],
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "On motion to recommit Failed by the Yeas and Nays: 212 - 216 (Roll no. 144).",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8A000",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:22:27",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "The previous question on the motion to recommit was ordered pursuant to clause 2(b) of rule XIX.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H36200",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:22:11",
+      "committees": [
+        {
+          "name": "Budget Committee",
+          "systemCode": "hsbu00",
+          "url": "https://api.congress.gov/v3/committee/house/hsbu00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Mrs. Trahan moved to recommit to the Committee on the Budget. (CR H2356)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H35000",
+      "actionDate": "2025-05-22",
+      "actionTime": "06:21:24",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "The previous question was ordered pursuant to the rule.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-05-22",
+      "actionTime": "02:54:26",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "DEBATE - The House proceeded with two hours of debate on H.R. 1.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H8D000",
+      "actionDate": "2025-05-22",
+      "actionTime": "02:53:18",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Rule provides for consideration of H.R. 1. The resolution provides for consideration of H.R. 1 under a closed rule with two hours of general debate and one motion to recommit.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H30000",
+      "actionDate": "2025-05-22",
+      "actionTime": "02:53:13",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Considered under the provisions of rule H. Res. 436. (consideration: CR H2235-2357)",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H1L220",
+      "actionDate": "2025-05-22",
+      "actionTime": "02:39:47",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Rule H. Res. 436 passed House.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H1L210",
+      "actionDate": "2025-05-21",
+      "actionTime": "23:52:56",
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Rules Committee Resolution H. Res. 436 Reported to House. Rule provides for consideration of H.R. 1. The resolution provides for consideration of H.R. 1 under a closed rule with two hours of general debate and one motion to recommit.",
+      "type": "Floor"
+    },
+    {
+      "actionCode": "H12410",
+      "actionDate": "2025-05-20",
+      "calendarNumber": {
+        "calendar": "U00078"
+      },
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "Placed on the Union Calendar, Calendar No. 78.",
+      "type": "Calendars"
+    },
+    {
+      "actionCode": "H12100",
+      "actionDate": "2025-05-20",
+      "committees": [
+        {
+          "name": "Budget Committee",
+          "systemCode": "hsbu00",
+          "url": "https://api.congress.gov/v3/committee/house/hsbu00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "code": 2,
+        "name": "House floor actions"
+      },
+      "text": "The House Committee on the Budget reported an original measure, H. Rept. 119-106, by Mr. Arrington.",
+      "type": "Committee"
+    },
+    {
+      "actionCode": "1010",
+      "actionDate": "2025-05-20",
+      "committees": [
+        {
+          "name": "Budget Committee",
+          "systemCode": "hsbu00",
+          "url": "https://api.congress.gov/v3/committee/house/hsbu00?format=json"
+        }
+      ],
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "text": "The House Committee on the Budget reported an original measure, H. Rept. 119-106, by Mr. Arrington.",
+      "type": "Committee"
+    }
+  ],
+  "pagination": {
+    "count": 59
+  }
+}

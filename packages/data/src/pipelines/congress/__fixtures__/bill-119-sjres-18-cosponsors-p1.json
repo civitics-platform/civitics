@@ -1,0 +1,112 @@
+{
+  "cosponsors": [
+    {
+      "bioguideId": "R000605",
+      "firstName": "Mike",
+      "fullName": "Sen. Rounds, Mike [R-SD]",
+      "isOriginalCosponsor": true,
+      "lastName": "Rounds",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "SD"
+    },
+    {
+      "bioguideId": "H000601",
+      "firstName": "Bill",
+      "fullName": "Sen. Hagerty, Bill [R-TN]",
+      "isOriginalCosponsor": true,
+      "lastName": "Hagerty",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "TN"
+    },
+    {
+      "bioguideId": "C000880",
+      "firstName": "Mike",
+      "fullName": "Sen. Crapo, Mike [R-ID]",
+      "isOriginalCosponsor": true,
+      "lastName": "Crapo",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "ID"
+    },
+    {
+      "bioguideId": "T000476",
+      "firstName": "Thomas",
+      "fullName": "Sen. Tillis, Thomas [R-NC]",
+      "isOriginalCosponsor": true,
+      "lastName": "Tillis",
+      "middleName": "Roland",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "NC"
+    },
+    {
+      "bioguideId": "C001096",
+      "firstName": "Kevin",
+      "fullName": "Sen. Cramer, Kevin [R-ND]",
+      "isOriginalCosponsor": true,
+      "lastName": "Cramer",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "ND"
+    },
+    {
+      "bioguideId": "B001319",
+      "firstName": "Katie",
+      "fullName": "Sen. Britt, Katie Boyd [R-AL]",
+      "isOriginalCosponsor": true,
+      "lastName": "Britt",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "AL"
+    },
+    {
+      "bioguideId": "M000934",
+      "firstName": "Jerry",
+      "fullName": "Sen. Moran, Jerry [R-KS]",
+      "isOriginalCosponsor": true,
+      "lastName": "Moran",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "KS"
+    },
+    {
+      "bioguideId": "R000584",
+      "firstName": "James",
+      "fullName": "Sen. Risch, James E. [R-ID]",
+      "isOriginalCosponsor": true,
+      "lastName": "Risch",
+      "middleName": "E.",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "ID"
+    },
+    {
+      "bioguideId": "B001236",
+      "firstName": "John",
+      "fullName": "Sen. Boozman, John [R-AR]",
+      "isOriginalCosponsor": true,
+      "lastName": "Boozman",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "AR"
+    },
+    {
+      "bioguideId": "W000437",
+      "firstName": "Roger",
+      "fullName": "Sen. Wicker, Roger F. [R-MS]",
+      "isOriginalCosponsor": true,
+      "lastName": "Wicker",
+      "middleName": "F.",
+      "party": "R",
+      "sponsorshipDate": "2025-02-13",
+      "state": "MS"
+    }
+  ],
+  "pagination": {
+    "count": 16,
+    "countIncludingWithdrawnCosponsors": 16,
+    "next": "https://api.congress.gov/v3/bill/119/sjres/18/cosponsors?offset=10&limit=10&format=json"
+  }
+}

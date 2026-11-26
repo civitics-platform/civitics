@@ -1,0 +1,107 @@
+{
+  "pagination": {
+    "count": 12
+  },
+  "titles": [
+    {
+      "billTextVersionCode": "EH",
+      "billTextVersionName": "Engrossed in House",
+      "chamberCode": "H",
+      "chamberName": "House",
+      "title": "To provide for reconciliation pursuant to title II of H. Con. Res. 14.",
+      "titleType": "Official Title from EH (Engrossed in House) bill text",
+      "titleTypeCode": 259,
+      "updateDate": "2026-07-10T19:13:19Z"
+    },
+    {
+      "title": "An act to provide for reconciliation pursuant to title II of H. Con. Res. 14.",
+      "titleType": "Display Title",
+      "titleTypeCode": 45,
+      "updateDate": "2025-12-04T15:37:19Z"
+    },
+    {
+      "title": "An act to provide for reconciliation pursuant to title II of H. Con. Res. 14.",
+      "titleType": "Override Display Title",
+      "titleTypeCode": 81,
+      "updateDate": "2025-12-04T15:37:13Z"
+    },
+    {
+      "title": "FEHB Protection Act of 2025",
+      "titleType": "Short Titles as Enacted for portions of this bill",
+      "titleTypeCode": 27,
+      "updateDate": "2025-07-22T20:43:24Z"
+    },
+    {
+      "chamberCode": "H",
+      "chamberName": "House",
+      "title": "An act to provide for reconciliation pursuant to title II of H. Con. Res. 14.",
+      "titleType": "Official Title as Enacted",
+      "titleTypeCode": 10,
+      "updateDate": "2025-07-22T20:43:07Z"
+    },
+    {
+      "billTextVersionCode": "ENR",
+      "billTextVersionName": "Enrolled Bill",
+      "chamberCode": "J",
+      "chamberName": "Joint",
+      "title": "FEHB Protection Act of 2025",
+      "titleType": "Short Titles for portions of this bill from ENR (Enrolled) bill text",
+      "titleTypeCode": 146,
+      "updateDate": "2025-07-22T16:53:20Z"
+    },
+    {
+      "sourceSystem": {
+        "code": 9,
+        "name": "Library of Congress"
+      },
+      "title": "One Big Beautiful Bill Act",
+      "titleType": "Popular Titles",
+      "titleTypeCode": 30,
+      "updateDate": "2025-07-09T20:08:42Z"
+    },
+    {
+      "billTextVersionCode": "EAS",
+      "billTextVersionName": "Engrossed Amendment Senate",
+      "title": "FEHB Protection Act of 2025",
+      "titleType": "Short Title(s) from Engrossed Amendment Senate for portions of this bill",
+      "titleTypeCode": 254,
+      "updateDate": "2025-07-02T04:08:18Z"
+    },
+    {
+      "billTextVersionCode": "PCS",
+      "billTextVersionName": "Placed on Calendar Senate",
+      "chamberCode": "S",
+      "chamberName": "Senate",
+      "title": "One Big Beautiful Bill Act",
+      "titleType": "Short Title(s) from PCS (Placed on Senate Calendar) bill text",
+      "titleTypeCode": 152,
+      "updateDate": "2025-07-02T01:08:18Z"
+    },
+    {
+      "billTextVersionCode": "EH",
+      "billTextVersionName": "Engrossed in House",
+      "chamberCode": "H",
+      "chamberName": "House",
+      "title": "One Big Beautiful Bill Act",
+      "titleType": "Short Title(s) as Passed House",
+      "titleTypeCode": 104,
+      "updateDate": "2025-06-14T04:38:16Z"
+    },
+    {
+      "billTextVersionCode": "RH",
+      "billTextVersionName": "Reported in House",
+      "chamberCode": "H",
+      "chamberName": "House",
+      "title": "One Big Beautiful Bill Act",
+      "titleType": "Short Title(s) as Reported to House",
+      "titleTypeCode": 102,
+      "updateDate": "2025-05-21T10:53:18Z"
+    },
+    {
+      "title": "To provide for reconciliation pursuant to title II of H. Con. Res. 14.",
+      "titleType": "Official Title as Introduced",
+      "titleTypeCode": 6,
+      "updateDate": "2025-05-21T08:06:44Z"
+    }
+  ]
+}

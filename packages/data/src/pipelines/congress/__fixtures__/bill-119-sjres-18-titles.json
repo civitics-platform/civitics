@@ -1,0 +1,21 @@
+{
+  "pagination": {
+    "count": 2
+  },
+  "titles": [
+    {
+      "title": "A joint resolution disapproving the rule submitted by the Bureau of Consumer Financial Protection relating to \"Overdraft Lending: Very Large Financial Institutions\".",
+      "titleType": "Display Title",
+      "titleTypeCode": 45,
+      "updateDate": "2025-04-03T13:59:16Z"
+    },
+    {
+      "billTextVersionCode": "IS",
+      "billTextVersionName": "Introduced in Senate",
+      "title": "A joint resolution disapproving the rule submitted by the Bureau of Consumer Financial Protection relating to \"Overdraft Lending: Very Large Financial Institutions\".",
+      "titleType": "Official Title as Introduced",
+      "titleTypeCode": 6,
+      "updateDate": "2025-02-15T05:18:30Z"
+    }
+  ]
+}

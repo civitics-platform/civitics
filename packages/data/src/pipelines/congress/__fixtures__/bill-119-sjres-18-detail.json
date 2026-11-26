@@ -1,0 +1,42 @@
+{
+  "bill": {
+    "congress": 119,
+    "type": "SJRES",
+    "number": "18",
+    "title": "A joint resolution disapproving the rule submitted by the Bureau of Consumer Financial Protection relating to \"Overdraft Lending: Very Large Financial Institutions\".",
+    "introducedDate": "2025-02-13",
+    "updateDate": "2026-07-27T16:40:29Z",
+    "originChamber": "Senate",
+    "policyArea": {
+      "name": "Finance and Financial Sector"
+    },
+    "sponsors": [
+      {
+        "bioguideId": "S001184",
+        "firstName": "Tim",
+        "fullName": "Sen. Scott, Tim [R-SC]",
+        "isByRequest": "N",
+        "lastName": "Scott",
+        "party": "R",
+        "state": "SC"
+      }
+    ],
+    "cosponsors": {
+      "count": 16,
+      "countIncludingWithdrawnCosponsors": 16,
+      "url": "https://api.congress.gov/v3/bill/119/sjres/18/cosponsors?format=json"
+    },
+    "actions": {
+      "count": 30,
+      "url": "https://api.congress.gov/v3/bill/119/sjres/18/actions?format=json"
+    },
+    "titles": {
+      "count": 2,
+      "url": "https://api.congress.gov/v3/bill/119/sjres/18/titles?format=json"
+    },
+    "latestAction": {
+      "actionDate": "2025-05-09",
+      "text": "Became Public Law No: 119-10."
+    }
+  }
+}
