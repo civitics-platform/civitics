@@ -1652,6 +1652,51 @@ contract-flow's second 64MB run read 1.57× the 256MB era, 12 h after the restar
 on a cold half pool, so it is no verdict either way (FIX-1384, the 11-12 slot).
 *FIX-1379 · FIX-950 · FIX-1177 · cc-250 §4 · cc-255 (premise 384) · cc-263*
 
+### D14. A time box needs a cursor. A walker that re-selects one order every run starves its tail the day it is boxed.
+
+`backfill-crs-summaries.ts` walked every measure with `summary_plain` NULL in
+`external_id` order and kept no record of a measure it asked that had no CRS
+summary yet. Unboxed, that cost nothing: a Saturday run reached the end of the
+list. On 11-21 it took 1 h 52 min, for 5,785 actionable measures, 79 written,
+4,836 with no summary, 495 404s and 375 unparseable. Each of the 4,836 came
+round again the next week, first and in the same order. Boxed at 15 minutes
+(~730 asks at the runner's ~1.2 s an ask), every run would ask the same head
+and never reach the ~4,000 behind it. Nothing would report that: each run
+closes clean and its row advances. FIX-1455 stamps each ask on the measure's
+ref (`metadata.crs = {asked_at, result}`, a server-side merge of that one key).
+A run takes never-asked measures first, then the oldest asked, and skips one
+asked inside 7 days. A run with nothing to take reports `metadata.next_due_at`,
+and the registry row rests on it.
+
+**Apply:** before a walker gets a box (`--max-minutes`, a `stale_after` row),
+read its selection. If an item that yields nothing stays selectable and the
+order is fixed, the box starves the tail. Stamp the ask on the item, order by
+the stamp, and let a run that finds nothing say when the next item is due.
+*FIX-1455 · cc-318 (A2, read 5)*
+
+### D15. Read what ANCHORS a row's due before saying it never advances. A pipeline row rests on its own completed rows; the reap's reason is a report.
+
+The handoff behind dispatcher.md s34 (cc-292 D7) read step 3b's `failed: GHA
+(no phase) complete` and concluded that a one-row walker would never advance
+its row and would be due on every tick. Read at `c417a706`, the anchor of a
+`stale_after` row with a pipeline is that pipeline's newest complete | partial
+`data_sync_log` row (FIX-1330's read), not a `reaped succeeded`. The cooldown's
+GHA branch counts only reaps armed after that row. So a walker whose run
+completed already advanced and never cooled down. What was wrong was the reap
+itself:
+- a false failure in the receipts and the status counts every run;
+- ten slot-minutes after every run (`c_gha_quiet`);
+- a `running` row with no bound, whose only closer was the nightly's
+  `reap_stale_sync_log(60)`, once a day (cc-318 A4).
+
+FIX-1454 is two branches in 3b. The anchor is untouched.
+
+**Apply:** before changing how a row advances, quote the anchor read for its
+kind: a pipeline's complete | partial rows, or a bare row's `reaped succeeded`.
+Separate what a reap's reason reports (receipts, status, the cooldown's count)
+from what decides the due. Then fix the layer the evidence names.
+*FIX-1454 · cc-318 (Why, A0, A4)*
+
 ---
 
 ## E. Verification and process

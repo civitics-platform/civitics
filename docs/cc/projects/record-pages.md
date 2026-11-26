@@ -8,6 +8,7 @@ steps:
   - {id: s1, kind: cc, ref: "cc-317", title: "wave 0 — the proposal page reads votes for every voted type, grouped by roll; recorded counts, never a result", done: 2026-11-26}
   - {id: s2, kind: cc, ref: "cc-325", title: "the officials page — the vote breakdown says what it counts; procedural from the roll question", done: 2026-11-26}
   - {id: s3, kind: cc, ref: "cc-327", title: "wave 1, the bill half — the congress.gov bill-details walker (FIX-1452) and the proposal_actions source key"}
+  - {id: s3b, kind: design, ref: "FIX-1453", title: "the bill-details walker's schedule: a dispatcher unit beside crs-summaries (cc-318's D3 row — stale_after 2 hours, group proposals, yield_to nightly, 15-minute runs through a bill-details-request target). Waits on the co_sponsorship-edge decision (cc-327 read 4): a dispatched walker would run the fill. cc-318 moved only crs-summaries; the dispatcher's one-row end it needs (FIX-1454) is on prod"}
   - {id: s4, kind: cc, ref: "", title: "per-roll official totals and results (FIX-1448)"}
   - {id: s5, kind: cc, ref: "", title: "bill and officials pages show sponsor, cosponsors, actions"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
@@ -34,4 +35,9 @@ COLLECT blocks) and `handoff-2026-11-25e-app-lane-…` (the sizing).
   cc-327 report). FIX-1452 stays open until the voted measures are filled.
 
 The three later steps have no prompt yet, so they carry no `ref`. How the
-walker is scheduled is FIX-1453's.
+walker is scheduled is FIX-1453's (s3b). cc-318 made the CRS walker a dispatcher
+unit and kept bill-details out on Craig's call: the dispatcher would start the
+fill that waits on the edge decision. When that is decided, the row is one
+INSERT and the request target one allowlist line and one Vercel cron (cc-318's
+D3 / D8; OPERATIONS §The CRS walker as a dispatcher unit is the model). The
+walker already reports `metadata.next_due_at` on an empty selection (cc-318 D7).

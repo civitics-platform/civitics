@@ -1320,7 +1320,7 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 | `/api/cron/cron-watchdog` | `*/2 * * * *` | Fires **both** budget watchdogs (FIX-1194) | yes |
 | `/api/cron/gha-dispatch/irs990` | `0 15 * * 2` | STARTS `irs990.yml` (FIX-1424); no `schedule:` fallback | yes |
 | `/api/cron/gha-dispatch/audit` | `0 17 * * 2` | STARTS `audit.yml`, the weekly integrity audit (FIX-1424); no fallback | yes |
-| `/api/cron/gha-dispatch/crs-summaries` | `0 10 * * 6` | STARTS `crs-summaries.yml` (FIX-1424); no fallback | yes |
+| `/api/cron/gha-dispatch/crs-summaries-request` | `*/5 * * * *` | STARTS `crs-summaries.yml` (`max_minutes` "15") only on the dispatcher's request stamp, and consumes it (FIX-1455, cc-318); the Saturday `0 10 * * 6` slot is gone | yes |
 
 **Who starts the GitHub workflows (FIX-1218, FIX-1424).** GitHub runs a
 `schedule:` workflow when it gets to it, hours late. So every workflow that
@@ -1328,14 +1328,16 @@ touches prod is started by a Vercel cron on `/api/cron/gha-dispatch/<stem>`,
 which POSTs `workflow_dispatch` and stamps `pipeline_state.gha_dispatch_<stem>`
 on every call (`dispatched` / `refused` / `error`). `nightly-request`,
 `sync-canary-check` and `platform-snapshot` keep a `schedule:` fallback. irs990
-(Tue 15:00Z, after Sunday's fec_bulk and the post-landing pass), the audit
-(Tue 17:00Z) and crs-summaries (Sat 10:00Z) have none since cc-292. A second
-start hours later is what moving them fixed. The canary reports
-`gha_dispatch_refused` and `gha_dispatch_stale` (169 h for these three; an
-absent stamp is not stale before each stem's first slot). The registry rows
-read `gha-dispatch:<stem>` on their `at` slot; the dispatcher never loops an
-`at` row. `fixes-housekeep.yml` and `refresh-disposable-emails.yml` touch no
-database and stay on `schedule:`.
+(Tue 15:00Z, after Sunday's fec_bulk and the post-landing pass) and the audit
+(Tue 17:00Z) have none since cc-292. A second start hours later is what moving
+them fixed. The canary reports `gha_dispatch_refused` and `gha_dispatch_stale`
+(169 h for irs990, the audit and crs-summaries; an absent stamp is not stale
+before each stem's first slot). Those two registry rows read
+`gha-dispatch:<stem>` on their `at` slot; the dispatcher never loops an `at`
+row. crs-summaries is a dispatcher unit since cc-318: the tick arms it and
+`crs-summaries-request` fires it (§The CRS walker as a dispatcher unit).
+`fixes-housekeep.yml` and `refresh-disposable-emails.yml` touch no database and
+stay on `schedule:`.
 
 - **Run one by hand:** `gh workflow run irs990.yml` (or `audit.yml`,
   `crs-summaries.yml`). The concurrency group serializes it against a
@@ -1759,6 +1761,72 @@ on the clone by `dispatcher-r18.test.ts`):
 
 **Sunday's two looks.** Craig reads the remaining-balance chart at its
 shortest window twice: when the nightly closes, and before bed.
+
+### The CRS walker as a dispatcher unit (FIX-1455, FIX-1454)
+
+*cc-318, `20261126004000`, on prod since 2026-11-26 08:09:53Z (`dispatch_one_unit`
+`d0f5bf5b…`). The tick starts `crs-summaries.yml` itself, around the clock. Step
+3b ends a one-row run on its own row and reaps a run its runner abandoned at its
+budget (FIX-1454).*
+
+**The row** (`job_registry` `crs-summaries`) and what each field buys:
+
+| field | value | buys |
+|---|---|---|
+| `deadline_rule` | `stale_after 2 hours` | due 2 h after its last complete / partial `congress_crs_summaries` row, or at the `metadata.next_due_at` a run with nothing to take reports (FIX-1330) |
+| `unit_call` | `gha-dispatch:crs-summaries` | the arm writes `gha_dispatch_request_crs-summaries`; `/api/cron/gha-dispatch/crs-summaries-request` (every 5 min) fires the workflow with `max_minutes` "15" and consumes the request |
+| `pipeline` | `congress_crs_summaries` | the anchor; 3b's end (one row, no phase: reaped at once); the census's live read |
+| `exclusion_group` | `proposals` | one congress.gov walker at a time. The key is shared: ~4,500 requests/h a walker, against a 20,000/h ceiling (cc-327) |
+| `priority` | 5 | the lowest: any other due row goes first |
+| `gates` | `{prod_session}` | a held session keeps it unarmed; the walker also stops between measures on one |
+| `yield_to` / `yield_lead_seconds` | `{nightly}` / 2400 | no arm in the 40 min before the nightly's slot, or while it is live |
+| `budget_seconds` | 2700 | the run + the poll + the runner's start. Past it, a running row is reaped `failed: GHA running past its budget` and closed; with no row at all, `failed: GHA no … row within 2700 s` |
+| `cap_mb` | 16 | single-row writes |
+| `idempotent_refire` | true | a missed fire is simply re-armed |
+
+**The pace is two dials.** The rule sets how long the row rests; the request
+target's `max_minutes` sets how long a run asks. Move the rule with one `UPDATE`
+of `deadline_rule` (a migration, so the registry check reads it). Move the box in
+`GHA_DISPATCH_WORKFLOWS` (`apps/civitics/src/lib/gha-dispatch.ts`); that is a
+deploy. At 15 min / 2 h a run asks ~730 measures (~1.2 s an ask on a runner),
+about ten runs a day. Prod's 4,988 bills and resolutions with no summary
+(11-26) take ~7 runs to ask once. After that, each measure is asked again 7 days
+after its last ask (`metadata.crs.asked_at` on its ref).
+
+**Stop it.**
+- **The row:** `scripts/fix1455-revert-crs-summaries-row.sql` through the gate.
+  It takes the row out of the pick, and nothing starts the walker again until a
+  commit restores a cron.
+- **Everything:** `pause`.
+- **A run in flight:** claim the session (it stops between measures), or
+  `gh run cancel` (the open measure rolls back; the mark-killed step closes the row).
+- **A hold** (landing, stall or manual) keeps it unarmed like any row, and the
+  ramp after the hold admits one unit at a time.
+
+**By hand.** `gh workflow run crs-summaries.yml` still works: an empty
+`max_minutes` walks everything due, and `-f max_minutes=15` gives it a box. A
+hand run shares the concurrency group and the key with a dispatched run:
+- **A request queued behind it** waits in GitHub's queue and reaps `failed`
+  at its budget. The ladder backs off (30 min, doubling) and nothing is lost:
+  the hand run's own row advances the anchor.
+- **Started while a request is pending,** the hand run is read as that
+  request's run (its row is the first after the request). Past 2,700 s it is
+  reaped as stranded and its row closed `reaped`. Its own completion then
+  rewrites that row. So start a hand run with `-f max_minutes=15`, or under a
+  manual hold.
+
+**bill-details is not a unit.** FIX-1453 stays open on the co_sponsorship-edge
+decision (cc-327 read 4; Craig kept it out of cc-318). Its hand runs share the
+key but not the group, since it has no registry row. A bill-details run beside a
+dispatched CRS run is two walkers on the key, ~9,000 requests/h against 20,000.
+
+Read it:
+
+```powershell
+node scripts/db-query.mjs --prod --timeout 15s "SELECT ticked_at, decision, reason, unit_ms FROM public.dispatch_log WHERE job = 'crs-summaries' ORDER BY id DESC LIMIT 6"
+node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, metadata->>'stop' AS stop, metadata->>'asked' AS asked, metadata->>'written' AS written, metadata->>'next_due_at' AS next_due FROM public.data_sync_log WHERE pipeline = 'congress_crs_summaries' ORDER BY started_at DESC LIMIT 6"
+gh run list --workflow crs-summaries.yml -L 6
+```
 
 ### A registry row that shares its pipeline (FIX-1361) and the weekly's nets (FIX-1363)
 
