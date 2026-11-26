@@ -1,0 +1,97 @@
+name: bill-details
+
+# FIX-1452 (cc-327) — the congress.gov bill-details walker against prod:
+# sponsor, cosponsors, actions, real titles and introduced dates
+# (packages/data/src/pipelines/congress/bill-details.ts).
+#
+# STARTED BY HAND, and only by hand: `gh workflow run bill-details.yml -f
+# only=voted -f max_minutes=120`. There is no schedule: block, no Vercel
+# gha-dispatch route and no job_registry row — how the walker is scheduled is
+# FIX-1453's decision, not this file's. check:job-registry reads only scheduled
+# workflows and dispatch crons, so an unscheduled one needs no row.
+#
+# The walker is a bounded, resumable unit of the CRS walker's class (a paced
+# trickle that claims nothing and yields): it takes only measures whose
+# congress_gov ref has no metadata.detail.fetched_at, writes each measure in one
+# transaction, and stops between measures on --max-minutes, on three
+# consecutive 429/5xx answers, and when prod_session_state() says a supervised
+# session holds the box. A stop is not a failure: the next run continues.
+# Rate control lives in the script (~800 ms a request, the CRS walker's pace;
+# the Congress.gov key is shared with the nightly's congress phase).
+#
+# Secrets: crs-summaries.yml's three, plus SUPABASE_DB_PASSWORD — unlike the CRS
+# walker, this one writes over a direct connection (one transaction per
+# measure across four tables), which buildDbUrl() composes from the URL and the
+# password.
+#
+# timeout-minutes: 350 (the crs-summaries / usaspending-bulk precedent). A run
+# is normally bounded far below it by max_minutes; a SIGTERM at the cap is safe
+# (the open measure rolls back) and the mark-killed step closes the row.
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "voted (measures with votes) or all"
+        required: true
+        default: voted
+        type: choice
+        options:
+          - voted
+          - all
+      max_minutes:
+        description: "soft stop between measures, in minutes"
+        required: true
+        default: "120"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bill-details
+  cancel-in-progress: false
+
+jobs:
+  bill-details:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
+
+    steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step binds its
+      # no-op guard to THIS run.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bill details (prod, resumable)
+        env:
+          ONLY:        ${{ inputs.only }}
+          MAX_MINUTES: ${{ inputs.max_minutes }}
+        run: pnpm --filter @civitics/data data:bill-details:ci -- --only "$ONLY" --max-minutes "$MAX_MINUTES"
+
+      # A SIGTERM at timeout-minutes strands the row at 'running'; this closes
+      # it. --window-hours 6 is sized on the 350-min cap (FIX-962). Never gates
+      # the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=congress_bill_details --window-hours 6
