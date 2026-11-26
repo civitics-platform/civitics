@@ -1,0 +1,58 @@
+{
+  "cc": "327",
+  "prompt": "cc-prompt-327-record-pages-wave-1-bill-details-walker-sponsor-cosponsors-actions-titles-introduced-dates-from-congress-gov-bounded-resumable-unit-voted-measures-first-fill.md",
+  "started_at": "2026-11-26T04:26:56Z",
+  "finished_at": "2026-11-26T05:27:00Z",
+  "head_before": "c417a706",
+  "head_after": "01ce2035",
+  "commits": [
+    {
+      "sha": "e5ff101e",
+      "subject": "[skip vercel] chore(fixes): file FIX-1452 (federal measures carry no sponsor, cosponsors or actions) and FIX-1453 (the bill-details walker has no schedule) — cc-327 Item 0"
+    },
+    {
+      "sha": "507f8570",
+      "subject": "feat(bill-details): the congress.gov bill-details parsers and the exactly-one bioguide resolver (cc-327 Item 1)"
+    },
+    {
+      "sha": "a102b581",
+      "subject": "[skip vercel] feat(db): proposal_actions keyed by (proposal_id, source, source_key); the (proposal_id, action_type, action_at) key goes — 20261126003000 (cc-327 Item 2)"
+    },
+    {
+      "sha": "00a9f822",
+      "subject": "feat(bill-details): the action key carries the committee codes; the vote path's introduced_at placeholder is replaced (cc-327, from the first live local run)"
+    },
+    {
+      "sha": "b73018cd",
+      "subject": "feat(bill-details): the congress.gov bill-details walker, its scripts and the hand-started workflow (cc-327 Item 3)"
+    },
+    {
+      "sha": "01ce2035",
+      "subject": "[skip vercel] docs: the bill-details walker in OPERATIONS (run it, read its row, stop it) and the record-pages plan file (cc-327 Item 7)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1452",
+    "FIX-1453"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261126003000_fix1452_proposal_actions_source_key.sql"
+  ],
+  "prod_writes": "one class-P push of one file and no fill. The push (20261126003000, on an empty table: ADD COLUMN proposal_actions.source_key text NOT NULL, DROP CONSTRAINT proposal_actions_proposal_id_action_type_action_at_key, ADD CONSTRAINT UNIQUE (proposal_id, source, source_key)), applied 2026-11-26 05:17:45Z. (1) gate wait from 05:17:40.838Z, ok=true on the first poll (db 05:17:37.928Z), census pass (4 renders / 4 events in 60 min, ratio 2.02, floor 6; edge 2 of 332 = 0.60 %). (2) blocked_tokens []. (3) claim 05:17:44.681Z to 05:17:45.780Z (1.1 s; 17 guarded holds set and cleared). (4) data_sync_log rows started inside the claim: 0. (5) dispatch_log ticks inside the claim: 0 (05:17:00Z nothing_due before it; read 05:18:00Z). Read-back 05:18:00Z: head 20261126003000 (574 migrations), the new key present, the old one gone, source_key text NOT NULL, proposal_actions 0 rows. Write 2 (the fill) did not run (read 4 STOP): 0 refs stamped, 0 cosponsor or action rows, no bill_details or proposals row touched.",
+  "ci": "green",
+  "stopped_items": [
+    "Write 2 (a) and (b), the prod fill: read 4's STOP row fired. proposal_cosponsors is the source of the ec-crawl unit's cosponsor arm (rebuild_entity_connections_cosponsors), live on prod, so the first cosponsor rows would make the next EC cycle derive co_sponsorship edges. D7 and Out of scope both exclude edges, and the arm re-derives whole. Items 0–4 and Write 1 landed as the row says.",
+    "Item 6, the receipt statement and the 'record FIX-1452 on prod' commit: not reached, because no fill ran. FIX-1452 stays open and the owed entry stands.",
+    "The one AskUserQuestion before Write 2 (b): not reached, because Write 2 (a) did not run."
+  ],
+  "lane": "app",
+  "owed": [
+    {
+      "fix": "FIX-1452",
+      "what": "the voted measures' fill on prod: every measure of read 5 stamped or named as failed; sponsors set vs unresolved; cosponsor rows vs the source's counts; action rows; HR 1's three figures — blocked on the co_sponsorship-edge decision (read 4)",
+      "after": "2026-11-27T06:00Z"
+    }
+  ]
+}
