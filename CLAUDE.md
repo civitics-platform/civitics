@@ -182,6 +182,7 @@ Do NOT use vote_cast, vote_date, or proposal_id — those columns do not exist.
 - **A roll's stored rows are not its official count** (FIX-1448): a row exists only for a member with an officials row — prod's median House roll stores 323, the Senate 84.
 - **Never print a tally from stored rows as a result.** Print the source's `metadata->>'vote_result'` when stored, else no result; 170 House rolls read Passed with stored yes ≤ no.
 - **`public.proposal_vote_rolls(uuid)` is the per-roll read** (FIX-1447): one row per roll — question, `roll_class`, date, source, result, recorded counts, `by_party`.
+- **Moving a vote's `official_id` or `bill_proposal_id`, or deleting the row, queues its old pair** in `vote_edge_stale_pairs` (two triggers on `votes`), and the vote arm retires that edge on its next cycle (FIX-1422). Nothing is run by hand.
 
 When asserting or filtering on an enum value, treat the schema CHECK
 constraint as ground truth. Not CLAUDE.md, not a prior pipeline's

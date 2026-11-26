@@ -493,6 +493,19 @@ minutes stamps `metadata.heartbeat_at`, and `reap_stale_sync_log()` reads the
 heartbeat before `started_at`. *FIX-1291 · `20261010050000_fix1291_…sql` ·
 `packages/data/src/scripts/mark-killed.ts`*
 
+**Addendum (cc-319): a migration guard must parse on the database it protects.**
+`20261126006000`'s guard checked an existing queue's shape behind
+`IF to_regclass('public.vote_edge_stale_pairs') IS NOT NULL AND …`, but the
+check inside named the table as a `'public.vote_edge_stale_pairs'::regclass`
+literal. Postgres resolves that literal when it parses the statement, so on
+prod, where the table did not exist yet, the guard raised 42P01 and the file
+rolled back whole (2026-11-26 19:47:11Z). The file before it in the same push
+had already applied. The clone passed every time because it already had the
+table: the shape check had been written after the first local apply. Name an
+object that may be absent through `to_regclass()` / `to_regprocedure()`, and
+rehearse the final file against the state the target is actually in, absent
+objects dropped first. *FIX-1422 · `96642cc0`*
+
 ### C4. Runtime measurements are floors. Design to survive the miss.
 
 `refresh_homepage_stats_mv()` takes 0.7 s on local and ran **22 minutes** against
@@ -1804,6 +1817,8 @@ FIX-933/934/954).
 **Apply:** an unbound official renders $0 plus a sync note; a mis-bound one renders
 another person's donors under their name. When identity is uncertain, skip and log
 — and make sure a later correction can actually retire the earlier write.
+§E16 is the same gap in a derived table: an incremental arm that keys on a row's
+current key never retires the key it used to have.
 *FIX-929, FIX-933*
 
 ### E7. Timestamps humans read must be true, or must not exist.
@@ -2088,3 +2103,46 @@ prod, cc-316 (2026-11-25 02:59:20Z): 41 reads (21 keys, 20 listed), none
 thrown; `retired 136, refused 0`, 3,396 ms, equal to its dry run; deleted
 `{external_source_refs 136, entity_tags 168, entity_search_index 136,
 enrichment_queue 136, bill_details 136, proposals 136}`*
+
+### E16. A dirty set built from a row's CURRENT key cannot retire its OLD key, or a deleted row. Capture the old key at the write.
+
+`rebuild_entity_connections_votes()` keys its dirty set on the CURRENT
+`(official_id, bill_proposal_id)` of the votes past its watermark. A vote moved
+to another official, re-pointed to another bill or deleted left its old pair's
+edge until a full `_votes_full()` merge: 1,076 edges on the clone (cc-283), 1,032
+on prod, all Senate (cc-288). A delete is invisible twice over: the fingerprint
+(`count(*)`, `max(updated_at)`) sees it and calls the arm, and the arm finds
+nothing dirty.
+
+The bullet's fix was to read the edges whose `evidence_ids` name a dirty vote.
+`entity_connections` has no index on `evidence_ids`. On the clone (cc-319 A2),
+the edges naming one House roll's 431 votes cost a Bitmap Heap Scan of all
+518,748 vote-type rows: 34,345 buffers read, 7.4 s, 413 rows kept. That runs on
+every cycle with a dirty vote, which is every voting day. Narrowing by dirty
+official does not help, because on a voting day every member is dirty.
+Narrowing by dirty bill misses a re-attributed vote. Neither finds a delete.
+
+The old key is known exactly once, cheaply: at the write. Two row triggers on
+`votes` (`AFTER UPDATE OF official_id, bill_proposal_id … WHEN` the pair is
+distinct, and `AFTER DELETE`) queue the OLD pair in `vote_edge_stale_pairs`
+(PK the pair, `ON CONFLICT DO NOTHING`). The arm consumes the queue with
+`DELETE … RETURNING` into its dirty set beside the watermark's rows. Its
+pair-scoped DELETE retires the old edge, and its SELECT re-derives an edge from
+any vote still on the pair. A capture-only cycle (a delete, no newer
+`updated_at`) never moves the watermark.
+
+**A row trigger on a bulk-written table carries no `EXCEPTION` block.** A
+handler is a subtransaction per fired row, and a promotion or a re-point moves
+thousands of votes in one statement (cc-316: 28,522). The clone's backend
+counter (`pg_stat_get_backend_subxact`) reads 5 after five handled inserts and
+0 after the capture's 5,000-row move. The capture still costs: 5,000 rows over
+2,761 pairs ran 559 ms with the triggers and 425 ms without (median of three,
++31.5 %, about 27 µs a fired row). A `WHEN` clause keeps the function from
+firing at all on a row whose key did not move, such as an upsert that re-sets
+both columns to their own values.
+
+**Apply:** when an incremental arm's dirty set is read from the rows as they
+stand, ask what retires the key a row used to have, and what a delete leaves.
+If only a full pass does, capture the old key in the write's own transaction,
+with no handler. A table's triggers cover every writer, and a list of writers
+misses the next one. *FIX-1422 · `20261126006000` · cc-319 A1–A2 and Item 3*

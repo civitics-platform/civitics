@@ -1155,11 +1155,46 @@ scheduled calls
 `'incremental'`, so it runs only by hand or through the incremental arm's
 NULL-watermark fall-through.
 
-**What only the merge removes.** The incremental arm keys its dirty set on a
-vote row's CURRENT (official, bill), so an edge whose pair moved is never
-retired. That covers a vote re-attributed to another official, or re-pointed to
-another bill. The clone held 1,076 such edges: 48 Senate officials' votes were
-re-attributed to 48 others on 2026-08-01.
+**What the incremental arm retires (FIX-1422, cc-319).** The arm keys its
+dirty set on a vote row's CURRENT (official, bill). Before FIX-1422 an edge
+whose pair moved (a vote re-attributed to another official, or re-pointed to
+another bill) or whose vote was deleted was never retired: only the merge
+removed it. The clone held 1,076 such edges after 48 Senate officials' votes
+were re-attributed to 48 others on 2026-08-01.
+
+From `20261126006000` (on prod since 2026-11-26 20:07:11Z, cc-319; the first attempt at 19:47:11Z rolled back whole at its guard), two row triggers on `public.votes`
+queue the OLD pair in `public.vote_edge_stale_pairs`:
+`votes_capture_stale_pair_update` (`AFTER UPDATE OF official_id,
+bill_proposal_id`, when the pair is distinct) and
+`votes_capture_stale_pair_delete` (`AFTER DELETE`). Both call
+`capture_vote_edge_stale_pair()`, one `INSERT … ON CONFLICT DO NOTHING` with no
+handler. The arm's next cycle consumes the queue into its dirty set
+(`DELETE … RETURNING`), deletes the pair's edge, and re-derives one from any
+vote still on the pair. A cycle with only queued pairs leaves the watermark
+where it was. The arm NOTICEs `[votes] FIX-1422: N captured pair(s) consumed
+into the dirty set` when N > 0. Nothing is run by hand, and a `_votes_full()`
+merge leaves the queue to the next incremental cycle.
+
+Reading it. Rows between cycles are normal. A row older than the last vote
+arm's cycle is not:
+
+```bash
+node scripts/db-query.mjs --prod "SELECT count(*), min(captured_at), max(captured_at) FROM public.vote_edge_stale_pairs"
+node scripts/db-query.mjs --prod "SELECT n_tup_ins AS captured, n_tup_del AS consumed, n_live_tup FROM pg_stat_user_tables WHERE relname = 'vote_edge_stale_pairs'"
+```
+
+The second line's counters are cumulative since the last stats reset: captured
+is rows queued, and consumed is rows the arm took.
+
+The cost (cc-319, the clone): 5,000 votes moved in one statement over 2,761
+pairs ran 559 ms with the triggers and 425 ms without (+31.5 %, about 27 µs a
+fired row). The function opens no subtransaction.
+
+Rollback: `scripts/fix1422-revert-vote-edge-stale-pairs.sql` drops the two
+triggers by name (ACCESS EXCLUSIVE on `votes` for an instant, `lock_timeout`
+5 s) and restores the `20261117000000` arm verbatim (`efb7d5f6…`). The table
+and the function stay, inert. On prod, run it through the gate:
+`--then "node ../../scripts/db-query.mjs --prod --call --yes-i-mean-prod --timeout 30s --file ../../scripts/fix1422-revert-vote-edge-stale-pairs.sql"`.
 
 **The FIX-1416 re-point on prod (cc-316, 2026-11-25).** Three writes, each one
 transaction under its own claim. The re-point committed at 02:55:10Z: `28522
