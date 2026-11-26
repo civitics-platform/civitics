@@ -1,0 +1,57 @@
+{
+  "cc": "325",
+  "prompt": "cc-prompt-325-officials-page-government-spending-removed-vote-breakdown-says-what-it-counts-procedural-from-the-roll-question-shown-donor-individuals-fec-reported-line-class-p-push.md",
+  "started_at": "2026-11-26T01:33:25Z",
+  "finished_at": "2026-11-26T02:30:19Z",
+  "head_before": "d562b065",
+  "head_after": "86aa0160",
+  "commits": [
+    {
+      "sha": "e335c04a",
+      "subject": "[skip vercel] chore(fixes): file FIX-1449 (the officials page's global spending list, 500 unordered votes, title-read procedural and question-less vote rows) and FIX-1450 (an individual donor's FEC-reported occupation, employer and city) — cc-325"
+    },
+    {
+      "sha": "5dcbe4c3",
+      "subject": "[skip vercel] feat(db): get_official_page drops the global spending list; its vote lists carry question, chamber and roll class, newest first, each proposal hydrated once (FIX-1449, cc-325 Item 1 — shape b)"
+    },
+    {
+      "sha": "5c371c5e",
+      "subject": "feat(officials): FIX-1449 the page drops the spending list that was never the official's; the breakdown says it counts the last 500 votes and splits them by roll class; a vote row shows its question and chamber (cc-325 D1–D4)"
+    },
+    {
+      "sha": "a3fb2cad",
+      "subject": "feat(donors): FIX-1450 an individual donor's page shows the occupation, employer and city the FEC filing reports, never the ZIP (cc-325 D6)"
+    },
+    {
+      "sha": "a307aaa0",
+      "subject": "[skip vercel] chore(fixes): record FIX-1449 on prod — Craig's look 2026-11-26 after the 02:10:04Z deploy: Raphael Warnock's page has no Government Spending section; each vote row carries its question and chamber; the breakdown reads \"Last 500 votes\" with its on passage / to advance / procedural split (cc-325)"
+    },
+    {
+      "sha": "c66c77e7",
+      "subject": "[skip vercel] chore(fixes): record FIX-1450 on prod — Craig's look 2026-11-26 after the 02:10:04Z deploy: SCHAPS, RICHARD's page shows the occupation, employer and city under the name with \"As reported on an FEC filing\", and no ZIP (cc-325)"
+    },
+    {
+      "sha": "86aa0160",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-325 — FIX-1449 closed local (5c371c5e) and recorded on prod by Craig's look (a307aaa0); FIX-1450 closed local (a3fb2cad) and recorded on prod (c66c77e7); delta 0"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1449",
+    "FIX-1450"
+  ],
+  "fixes_filed": [
+    "FIX-1449",
+    "FIX-1450"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261126001000_fix1449_official_page_votes_say_what_they_count.sql"
+  ],
+  "prod_writes": "one class-P push of one file (CREATE OR REPLACE FUNCTION public.get_official_page(uuid) plus a restated GRANT EXECUTE; no table, no row), applied 2026-11-26 02:04:46Z. (1) gate wait from 02:04:40.957Z, ok=true on the first poll (db 02:04:37.942Z), census pass (3 renders / 3 events in 60 min, ratio 1.52, floor 6; edge 0 of 112 = 0.00 %). (2) blocked_tokens []. (3) claim 02:04:45.352Z to 02:04:46.440Z (1.1 s; 17 guarded holds set and cleared). (4) data_sync_log rows with started_at inside the claim: 0. (5) dispatch_log ticks inside the claim: 0 (02:03:00Z nothing_due before it; read at 02:05:00.789Z). Read-back: get_official_page md5 cae21650a7053828a739de47d33f0976 (was cefb35bb5ad3e8406df6b7ec1086e6ab), proconfig {search_path=public, extensions}, STABLE, invoker, anon EXECUTE true, head 20261126001000 / 572. The conditional revert was not applied (Craig ruled the step-4 row: proceed).",
+  "ci": "green",
+  "stopped_items": [
+    "Item 4: the Votes tab's breakdown line and rows were not seen in a browser — Claude in Chrome was not connected. They are quoted from the officials page's RSC props, the strings the client tab prints verbatim; the overview's five rows were read from the server HTML."
+  ],
+  "lane": "app",
+  "owed": []
+}
