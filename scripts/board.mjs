@@ -62,6 +62,7 @@ import {
   dateishMs,
   hasTime,
   parseWhen,
+  whenStatus,
   headingTitle,
   splitFrontMatter,
   checkPromptFrontMatter,
@@ -463,13 +464,29 @@ function localSuffix(local, ms) {
  *   …T16:30Z            runs Thu 10-01 16:30 UTC · 09:30 PDT
  *   after …T16:30Z      runs after Tue 09-29 16:30 UTC · 09:30 PDT
  *   a..b                window Thu 10-01 23:15–03:30 UTC · 16:15–20:30 PDT
+ * An `after` that names prompts (FIX-1451 D6) reads its whenStatus():
+ *   a dep unreported    waits on cc-317 · not before Thu 11-26 04:00 UTC
+ *                       (the unmet deps only; the suffix only for a future instant)
+ *   all reported        ready since Thu 11-26 01:12 UTC · 17:12 PST
+ *   …instant ahead      runs after Thu 11-26 04:00 UTC
  * The local suffix appears only when board.local.json names a `tz`.
  */
-export function windowPill(w, local) {
+export function windowPill(w, local, { status, nowMs = Date.now() } = {}) {
   if (!w || w.kind === "none" || w.kind === "invalid") return "";
   if (w.kind === "any") return "any time";
   const at = (ms, timed) => `${dowDate(ms)}${timed ? ` ${hhmm(ms)} UTC${localSuffix(local, ms)}` : ""}`;
   if (w.kind === "at") return `runs ${at(w.startMs, w.timed)}`;
+  if (w.kind === "after" && w.deps?.length) {
+    const st = status ?? whenStatus(w, { nowMs });
+    const hasStart = typeof w.startMs === "number";
+    if (st.waiting_on.length) {
+      const notBefore = hasStart && nowMs < w.startMs ? ` · not before ${at(w.startMs, w.timed)}` : "";
+      return `waits on ${st.waiting_on.join(", ")}${notBefore}`;
+    }
+    if (!st.ready) return `runs after ${at(w.startMs, w.timed)}`;
+    if (st.opens_ms === null) return "ready";
+    return `ready since ${at(st.opens_ms, st.opens_ms === w.startMs ? w.timed : true)}`;
+  }
   if (w.kind === "after") return `runs after ${at(w.startMs, w.timed)}`;
   // window
   if (!w.timed) return `window ${dowDate(w.startMs)} – ${dowDate(w.endMs - DAY_MS)}`;
@@ -488,9 +505,20 @@ export function windowPill(w, local) {
   return `window ${dowDate(w.startMs)} ${hhmm(w.startMs)}–${end} UTC${loc}`;
 }
 
-/** The UTC dates a `when:` touches — what the prod-day collision check compares. */
-export function whenDays(w) {
+/**
+ * The UTC dates a `when:` touches — what the prod-day collision check compares.
+ * An `after` that names prompts touches no day while one is unreported, the
+ * day it opened once all have (whenStatus's opens_ms, else now), or its
+ * instant's day while that is still ahead.
+ */
+export function whenDays(w, { status, nowMs = Date.now() } = {}) {
   if (!w) return [];
+  if (w.kind === "after" && w.deps?.length) {
+    const st = status ?? whenStatus(w, { nowMs });
+    if (st.waiting_on.length) return [];
+    if (!st.ready) return [isoDate(w.startMs)];
+    return [isoDate(st.opens_ms ?? nowMs)];
+  }
   if (w.kind === "at" || w.kind === "after") return [isoDate(w.startMs)];
   if (w.kind !== "window") return [];
   const out = [];
@@ -892,6 +920,14 @@ export function buildBoard(
   const reportByN = new Map();
   for (const r of inputs.reports) reportByN.set(r.n, r);
   const maxReportN = inputs.reports.reduce((a, r) => Math.max(a, r.n), 0);
+  // whenStatus's lookup (FIX-1451 D3): a loaded report is the signal; its
+  // finished_at, when readable, dates the opening.
+  const finishedMs = (n) => {
+    const r = reportByN.get(n);
+    if (!r) return undefined;
+    const ms = Date.parse(str(r.loaded?.fm?.finished_at));
+    return Number.isNaN(ms) ? null : ms;
+  };
   const inWindow = [];
   for (const r of [...inputs.reports].sort((a, b) => a.n - b.n)) {
     const fm = r.loaded?.fm;
@@ -1042,13 +1078,21 @@ export function buildBoard(
     // D5 — the run window, for a prompt that has not run yet.
     const w = parseWhen(pfm.when);
     card.when_kind = w.kind;
-    card.window_pill = windowPill(w, inputs.local);
+    // FIX-1451 — the shared status; a dep is met when its report is loaded.
+    const status = w.kind === "none" ? null : whenStatus(w, { nowMs, reportFinishedMs: finishedMs });
+    // board.json carries no null (output invariant): an unknown opening is an absent opens_ms.
+    if (status) card.when_status = status.opens_ms === null ? { ready: status.ready, waiting_on: status.waiting_on, reason: status.reason } : status;
+    const deps = w.kind === "after" ? w.deps : [];
+    for (const d of deps) {
+      if (!reportByN.has(d) && !promptsByN.has(d)) problems.push(`when: cc-${d} has no prompt and no report`);
+    }
+    card.window_pill = windowPill(w, inputs.local, { status, nowMs });
     if (card.posture === "prod-writes") {
-      const from = Math.max(nowMs, w.startMs ?? nowMs);
+      const from = Math.max(nowMs, deps.length ? (status.opens_ms ?? nowMs) : (w.startMs ?? nowMs));
       const next = nextSupervised(inputs.local, from);
       card.needs_slot = `needs a supervised slot${next ? ` · ${next.text}` : ""}`;
     }
-    card.prod_days = card.posture === "prod-writes" ? whenDays(w) : [];
+    card.prod_days = card.posture === "prod-writes" ? whenDays(w, { status, nowMs }) : [];
     card.collisions = [];
     return card;
   };
@@ -1320,18 +1364,26 @@ export function buildBoard(
       place({ ...atOf(c.when), kind: "run", lane: c.lane, label: `cc-${c.cc} · ${trim(c.title, 70)}` }, { overdueToToday: true });
     } else if (c.group === "in_flight" && (c.when_kind === "after" || c.when_kind === "window")) {
       // D5 — an `after` sits at its instant; a window is a span label on its
-      // start day. One already open (or past) is drawn on today.
+      // start day. One already open (or past) is drawn on today. FIX-1451: an
+      // `after` that names prompts waits on today while one is unreported, and
+      // once all have, sits at the instant it opened (its whenStatus opens_ms).
       const w = parseWhen(c.when);
       const label = `cc-${c.cc} · ${trim(c.title, 70)}`;
-      const timed = w.timed;
+      const st = c.when_status;
+      const depsForm = w.kind === "after" && w.deps.length > 0 && st;
+      const startMs = depsForm && st.ready ? (st.opens_ms ?? null) : w.startMs;
+      const timed = startMs === w.startMs ? w.timed : true;
       const span = w.kind === "window" && timed ? `${hhmm(w.startMs)}–${hhmm(w.endMs)}` : "";
-      if (w.kind === "window" && w.endMs <= nowMs) {
+      if (depsForm && (st.waiting_on.length || startMs === null)) {
+        const shown = st.waiting_on.length ? `waits on ${st.waiting_on.join(", ")}` : "ready";
+        place({ date: days[0].date, time: "", display_time: shown, kind: "run", lane: c.lane, label });
+      } else if (w.kind === "window" && w.endMs <= nowMs) {
         place({ date: days[0].date, time: "", display_time: `missed · ${isoDate(w.startMs).slice(5)}`, kind: "run", lane: c.lane, label });
-      } else if (w.startMs < todayMs) {
-        const since = `${isoDate(w.startMs).slice(5)}${timed ? ` ${hhmm(w.startMs)}` : ""}`;
+      } else if (startMs < todayMs) {
+        const since = `${isoDate(startMs).slice(5)}${timed ? ` ${hhmm(startMs)}` : ""}`;
         place({ date: days[0].date, time: "", display_time: w.kind === "after" ? `open since ${since}` : `window open since ${since}`, kind: "run", lane: c.lane, label });
       } else {
-        const at = atOf(w.start);
+        const at = { date: isoDate(startMs), time: timed ? hhmm(startMs) : "" };
         place({ ...at, display_time: w.kind === "after" ? `after ${at.time || "00:00"}` : span || "window", kind: "run", lane: c.lane, label });
       }
     }

@@ -499,6 +499,57 @@ assertTrue(
   );
 }
 
+// -- 6d''. FIX-1451 D6 — a prompt that waits on a prompt ----------------------
+// Four cards beside 904–908, added in memory so the fixture tree (and every
+// assertion above that counts it) is unchanged. cc-904 has a prompt and no
+// report; cc-900 (finished 09-27 10:00Z) and cc-880 (09-01) have reports;
+// cc-777 has neither.
+console.log("\nwhen: after cc-<n>:");
+{
+  const fx = (n, when, posture) => ({
+    n,
+    name: `cc-prompt-${n}-waits.md`,
+    path: resolve(F, "prompts", `cc-prompt-${n}-waits.md`),
+    text: `---\ncc: ${n}\nlane: ops\nwhen: ${when}\nattended: supervised\nposture: ${posture}\n---\n\n# cc-${n} — waits\n`,
+  });
+  const extra = [
+    fx(909, "after cc-904, 2026-09-30T15:00Z", "prod-writes"), // unmet, with a future instant
+    fx(910, "after cc-900, cc-880", "prod-writes"), //            met
+    fx(911, "after cc-900, 2026-09-30T15:00Z", "prod-writes"), // met, the instant still ahead
+    fx(912, "after cc-777", "prod-reads"), //                     a dep with no prompt and no report
+  ];
+  const db = buildBoard({ ...inputs, prompts: [...inputs.prompts, ...extra] }, opts);
+  const dc = (n) => [...db.lanes.flatMap((l) => l.cards), ...db.unlaned.cards].find((c) => c.cc === n);
+  const runEv = (n) =>
+    db.week.days.flatMap((d) => d.events.filter((e) => e.kind === "run" && new RegExp(`^cc-${n} `).test(e.label)).map((e) => [d.date, e.time, e.display_time ?? ""]));
+  const NEXT_MON = "needs a supervised slot · next supervised Mon 09-28 23:15 UTC (16:15 PDT)";
+
+  assertEq("unmet: the pill names the unmet dep, and the instant it must also pass", dc(909)?.window_pill, "waits on cc-904 · not before Wed 09-30 15:00 UTC · 08:00 PDT");
+  assertEq("unmet: no prod day, a slot counted from now, on today's column", [dc(909)?.prod_days, dc(909)?.needs_slot, runEv(909)], [[], NEXT_MON, [["2026-09-28", "", "waits on cc-904"]]]);
+  assertEq("unmet: the card carries the status", dc(909)?.when_status, { ready: false, waiting_on: ["cc-904"], reason: "waits on cc-904 · not before 2026-09-30T15:00Z" });
+
+  assertEq("met: ready since the later report's finished_at", dc(910)?.window_pill, "ready since Sun 09-27 10:00 UTC · 03:00 PDT");
+  assertEq("met: that day is its prod day, the slot counts from now, drawn as open since", [dc(910)?.prod_days, dc(910)?.needs_slot, runEv(910)], [["2026-09-27"], NEXT_MON, [["2026-09-28", "", "open since 09-27 10:00"]]]);
+
+  assertEq("met, instant ahead: today's runs after pill", dc(911)?.window_pill, "runs after Wed 09-30 15:00 UTC · 08:00 PDT");
+  assertEq(
+    "met, instant ahead: the instant's day, a slot after it, drawn at it",
+    [dc(911)?.prod_days, dc(911)?.needs_slot, runEv(911)],
+    [["2026-09-30"], "needs a supervised slot · next supervised Mon 10-05 23:15 UTC (16:15 PDT)", [["2026-09-30", "15:00", "after 15:00"]]],
+  );
+
+  assertEq("unknown dep: waits on it, and a problem line says it has neither", [dc(912)?.window_pill, dc(912)?.problems], ["waits on cc-777", ["when: cc-777 has no prompt and no report"]]);
+  assertEq("a known dep is no problem", [dc(909)?.problems, dc(910)?.problems], [[], []]);
+  assertTrue("the problem line renders on the card", renderHtml(db).includes("when: cc-777 has no prompt and no report"));
+  assertTrue("the pills render", renderHtml(db).includes('<span class="pill win">waits on cc-904 · not before Wed 09-30 15:00 UTC · 08:00 PDT</span>'));
+  assertEq("neither touches 907/908's Thursday, so no collision", [dc(909)?.collisions, dc(910)?.collisions, dc(911)?.collisions], [[], [], []]);
+  const mixed = parseWhen("after cc-900, cc-904, cc-905");
+  const mixedSt = whenStatus(mixed, { nowMs: NOW_MS, reportFinishedMs: (n) => (n === 900 ? Date.parse("2026-09-27T10:00:00Z") : undefined) });
+  assertEq("windowPill: only the unmet deps are named", windowPill(mixed, null, { status: mixedSt, nowMs: NOW_MS }), "waits on cc-904, cc-905");
+  assertTrue("the waiting board has no undefined / null / NaN", !/\bundefined\b|\bnull\b|\bNaN\b|\[object Object\]/.test(renderBoardJson(db) + renderHtml(db)));
+  assertEq("same inputs, same --now → the same bytes", renderBoardJson(buildBoard({ ...inputs, prompts: [...inputs.prompts, ...extra] }, opts)), renderBoardJson(db));
+}
+
 // -- 6d'. FIX-1251 — a monthly job with no firing says when it fires next ---
 console.log("\nmonthly cron events:");
 {
