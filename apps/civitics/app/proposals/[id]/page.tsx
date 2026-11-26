@@ -654,9 +654,7 @@ export default async function ProposalDetailPage({
                   Summary
                 </h2>
                 <div className="border border-rule bg-card p-5">
-                  <p className="text-sm text-ink leading-relaxed whitespace-pre-line">
-                    {p.summary_plain}
-                  </p>
+                  <CollapsibleText text={p.summary_plain} />
                   {/* backfill-crs-summaries.ts is the one writer of summary_plain on
                       congress_gov rows (cc-317 read 0 / read 5). */}
                   {proposalRow.primary_source === "congress_gov" && (
@@ -931,6 +929,35 @@ export default async function ProposalDetailPage({
         <PrintProvenance />
       </div>
     </div>
+  );
+}
+
+// Longer than this, a summary opens collapsed to eight lines (Craig's note on
+// cc-317's look: HR 1's CRS summary ran very long). Native <details>, no client
+// JS: closed, the summary line shows the clamped preview; open, the full text.
+// Printing shows the whole text either way.
+const SUMMARY_COLLAPSE_CHARS = 700;
+
+function CollapsibleText({ text }: { text: string }) {
+  if (text.length <= SUMMARY_COLLAPSE_CHARS) {
+    return <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{text}</p>;
+  }
+  return (
+    <details className="group">
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <p
+          aria-hidden
+          className="line-clamp-[8] text-sm text-ink leading-relaxed whitespace-pre-line group-open:hidden print:line-clamp-none"
+        >
+          {text}
+        </p>
+        <span className="mt-2 inline-block font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent hover:underline print:hidden">
+          <span className="group-open:hidden">Show the full summary</span>
+          <span className="hidden group-open:inline">Show less</span>
+        </span>
+      </summary>
+      <p className="mt-2 text-sm text-ink leading-relaxed whitespace-pre-line">{text}</p>
+    </details>
   );
 }
 
