@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { read, stripComments } from "./lib/migration-text";
+import { MOVED_LINEAGE, movedState, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -178,10 +178,14 @@ test("clone: the registry reads the post-file caps", async (t) => {
       t.skip("FIX-1357 not applied on the clone");
       return;
     }
+    // cc-318 (FIX-1455): a later MOVE re-capped its row; once its note carries
+    // the MOVE (MOVED_LINEAGE), the clone reads the cap it moved to.
+    const MOVED_CAP: Record<string, number> = { "crs-summaries": 16 };
     for (const [j, want] of AFTER) {
       const r = rows.find((x) => x.job === j);
       assert.ok(r, `${j} missing on the clone`);
-      assert.equal(r.cap_mb, want, j);
+      const moved = j in MOVED_CAP && movedState(j, r.note).rule === MOVED_LINEAGE[j]!.rule;
+      assert.equal(r.cap_mb, moved ? MOVED_CAP[j] : want, j);
     }
   } finally {
     await c.end();
