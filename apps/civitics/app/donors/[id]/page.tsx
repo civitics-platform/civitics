@@ -10,6 +10,7 @@ import {
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { canonicalForEntity, entityPath, SITE_ORIGIN } from "@/lib/canonical";
+import { donorReportedLine, REPORTED_CAPTION } from "@/lib/donor-reported-line";
 import {
   foldInboundRollup,
   inboundStats,
@@ -551,6 +552,9 @@ export default async function DonorProfilePage({
   const typeBadgeCls = ENTITY_TYPE_BADGE[entity.entity_type] ?? "bg-paper-2 text-ink-soft";
 
   const isIndividual = entity.entity_type === "individual";
+  // FIX-1450: occupation · employer · city, ST from the FEC filing, individuals
+  // only, never the ZIP. Page-only: kept out of generateMetadata and the JSON-LD.
+  const reportedLine = donorReportedLine(entity);
   const donorJsonLd = {
     "@context": "https://schema.org",
     "@type": isIndividual ? "Person" : "Organization",
@@ -621,6 +625,14 @@ export default async function DonorProfilePage({
                   {entity.display_name}
                   {entity.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
                 </h1>
+                {reportedLine && (
+                  <p className="mt-0.5 text-sm text-ink-soft">
+                    {reportedLine}
+                    <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">
+                      {REPORTED_CAPTION}
+                    </span>
+                  </p>
+                )}
                 {parentName && (
                   <p className="mt-0.5 text-sm text-ink-soft/70">
                     Subsidiary of{" "}
