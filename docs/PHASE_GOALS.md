@@ -92,6 +92,7 @@
 - [x] Proposals list page (`/proposals`) — status/type/agency/search filters, open-now featured section, clickable cards, full agency names, pagination with filter preservation
 - [x] Proposal detail page (`/proposals/[id]`) — "What This Means" AI summary section, comment period banner, 3-step comment draft tool, vote record, related proposals, generateStaticParams for top 50
   - `vote_category` fully populated — 0 NULL across all 2,215 prod proposals that carry votes (verified 2026-08-22)
+  - Vote record per roll for every voted type (bills, resolutions, nominations), recorded counts never printed as a result; number · Congress · chamber, latest action, stage path, source link — FIX-1447 (cc-317, wave 0)
 - [x] Public accountability dashboard (`/dashboard`) — platform stats, pipeline health, data counts
 - [x] Search — universal search across officials, proposals, agencies
   - `GET /api/search?q=&type=` — parallel queries, special cases (state abbr, party, role), trigram+ILIKE
