@@ -5282,10 +5282,14 @@ export type Database = {
           io_samples: number
           io_throttle_hold_min: number
           io_time_pct_ceiling: number
+          landing_after_minutes: number
+          landing_quiet_factor: number
           max_concurrent_units: number
           max_live_caps_mb: number
           pause: boolean
+          ramp_minutes: number
           rearm_cooldown_seconds: number
+          stall_hold_minutes: number
           swap_ceiling_mb: number
           tick_seconds: number
           unit_target_seconds: number
@@ -5298,10 +5302,14 @@ export type Database = {
           io_samples?: number
           io_throttle_hold_min?: number
           io_time_pct_ceiling?: number
+          landing_after_minutes?: number
+          landing_quiet_factor?: number
           max_concurrent_units?: number
           max_live_caps_mb?: number
           pause?: boolean
+          ramp_minutes?: number
           rearm_cooldown_seconds?: number
+          stall_hold_minutes?: number
           swap_ceiling_mb?: number
           tick_seconds?: number
           unit_target_seconds?: number
@@ -5314,10 +5322,14 @@ export type Database = {
           io_samples?: number
           io_throttle_hold_min?: number
           io_time_pct_ceiling?: number
+          landing_after_minutes?: number
+          landing_quiet_factor?: number
           max_concurrent_units?: number
           max_live_caps_mb?: number
           pause?: boolean
+          ramp_minutes?: number
           rearm_cooldown_seconds?: number
+          stall_hold_minutes?: number
           swap_ceiling_mb?: number
           tick_seconds?: number
           unit_target_seconds?: number

@@ -48,6 +48,9 @@ export const PIN_LINEAGE: Readonly<Record<string, string>> = {
   // cc-292: dispatch_one_unit's reap closes a failed unit's running rows
   // (FIX-1421, 20261119000000). FIX-1361's d6a9073b… is now its revert's target.
   d6a9073bcc4d9084b9d7994324a89b18: "142869d4f55f8eae73c7dd49ceae4b7a",
+  // cc-303: dispatch_one_unit's own hold (FIX-1444) and the restarted-run reap
+  // (FIX-1445), 20261126002000. FIX-1421's 142869d4… is now its revert's target.
+  "142869d4f55f8eae73c7dd49ceae4b7a": "1f001294265b03c09db34aa47311954c",
 };
 
 /** A pin's live md5: its lineage followed to the end (a pin can move more than once). */

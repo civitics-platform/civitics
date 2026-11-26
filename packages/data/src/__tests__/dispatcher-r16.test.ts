@@ -62,7 +62,7 @@ const MD5 = {
   drb: { was: "1de3c10f261899852e11c5867b45bdc5", now: "b7df526046f4911f9cac3c5ace222b60" },
   ech: { was: "e6741c018c5b771343f2fb11e015a341", now: "0365316a209dd5b5db80f81e9364b2b0" },
 };
-/** dispatch_one_unit at cc-267 (FIX-1361, history). cc-292 moved it (FIX-1421): atCurrentPins(DISPATCH) is the live body. */
+/** dispatch_one_unit at cc-267 (FIX-1361, history). cc-292 (FIX-1421) and cc-303 (FIX-1444) moved it: atCurrentPins(DISPATCH) is the live body. */
 const DISPATCH = "d6a9073bcc4d9084b9d7994324a89b18";
 
 const MOVES = [
@@ -622,7 +622,9 @@ test("clone B/D/E/F: each revert restores its md5s and the file re-applies, insi
       for (const f of [B(), C(), D(), E(), F()]) await c.query(f);
       assert.deepEqual(await md5s(), now, "each file re-applies on its prior body");
       await c.query(one("_fix1421_reap_closes_a_failed_units_running_rows.sql"));
-      assert.deepEqual(await md5s(), live, "cc-292's file re-applies on top");
+      // cc-303: FIX-1444's file moved the pin again; it re-applies on FIX-1421's body.
+      await c.query(one("_fix1444_fix1445_dispatcher_hold_and_restarted_run_reap.sql"));
+      assert.deepEqual(await md5s(), live, "cc-292's and cc-303's files re-apply on top");
     } finally {
       await c.query("ROLLBACK");
     }
