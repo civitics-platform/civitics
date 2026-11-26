@@ -1,0 +1,66 @@
+{
+  "cc": "319",
+  "prompt": "cc-prompt-319-fix1426-verdict-guard-tests-seed-their-own-case-fix1427-promotion-moves-data-flags-fix1422-vote-edge-stale-pairs-captured-at-write-time-class-p-push-two-files.md",
+  "started_at": "2026-11-26T18:33:22Z",
+  "finished_at": "2026-11-26T21:45:00Z",
+  "head_before": "a3fdb03d",
+  "head_after": "5e7f5926",
+  "commits": [
+    {
+      "sha": "f48282c1",
+      "subject": "[skip vercel] test(dispatcher): FIX-1426 r12's and r14's verdict-guard clone cases seed the verdict they assert — each deletes the pipeline's rated rows and seeds absent / insufficient_data / ok / sustained_regression inside its rolled-back transaction, so the clone's standing count never decides one (cc-319 Item 1)"
+    },
+    {
+      "sha": "ceca5d83",
+      "subject": "feat(promote): FIX-1427 promote_candidate_to_elected() moves data_flags elected → candidate (the candidate's row wins a one-per-reason collision, its DELETE behind an EXISTS because service_role holds no DELETE on data_flags) — 20261126005000, md5 a236f1f9 → 6d68d0cf; the weekly audit gains referential.data_flags_orphan_officials (cc-319 Item 2)"
+    },
+    {
+      "sha": "6d997feb",
+      "subject": "feat(ec-votes): FIX-1422 a vote whose (official, bill) pair moves or is deleted retires its old edge — the shape is a write-time capture, not the bullet's evidence_ids scan: two row triggers on votes queue the OLD pair in vote_edge_stale_pairs and the vote arm consumes it into its dirty set — 20261126006000, arm efb7d5f6 → 76bce60c (cc-319 Item 3)"
+    },
+    {
+      "sha": "96642cc0",
+      "subject": "[skip vercel] fix(ec-votes): 20261126006000's guard names vote_edge_stale_pairs through to_regclass() only — its two ::regclass literals were resolved at parse time and raised 42P01 on prod, where the table does not exist yet; the file rolled back whole at 19:47:11Z (cc-319 Item 4)"
+    },
+    {
+      "sha": "db11c518",
+      "subject": "[skip vercel] docs: the vote-edge stale-pair queue in OPERATIONS (how to read it, the revert), CLAUDE.md's votes section names it, playbook E16 (a dirty set keyed on the CURRENT key cannot retire the OLD one — capture it at the write, no handler on a bulk-written table's row trigger) and C3's addendum (a guard must parse on the database it protects) (cc-319 Item 5)"
+    },
+    {
+      "sha": "5e7f5926",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-319 — FIX-1426 closed local (f48282c1), FIX-1427 closed local (ceca5d83), FIX-1422 closed local (6d997feb); 20261126005000 pushed to prod 2026-11-26 19:47:11Z (promote 6d68d0cf) and 20261126006000 at 20:07:11Z (arm 76bce60c, two votes triggers, vote_edge_stale_pairs) after its first attempt rolled back at the guard (96642cc0); delta −3 (31 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1426",
+    "FIX-1427",
+    "FIX-1422"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261126005000_fix1427_promote_moves_data_flags.sql",
+    "supabase/migrations/20261126006000_fix1422_vote_edge_stale_pairs.sql"
+  ],
+  "prod_writes": "two class-P pushes through the gate. PUSH 1, 2026-11-26 19:47:11Z: 20261126005000 applied (guard ok a236f1f9 before; read-back ok, promote_candidate_to_elected 6d68d0cf66ddc14bdb647a811c0f5b1f, prosecdef f, proconfig NULL, owner postgres, grants f / f / t, data_flags orphan officials 0); 20261126006000 raised 42P01 at its guard (statement 2) and rolled back whole. (1) gate wait 19:47:06.852Z to 19:47:07.083Z (0.2 s), ok=true on the first poll, census pass (2 renders / 2 events in 60 min, ratio 1.01, floor 6; edge 1 of 288 = 0.35 % within 1 %, P99 floor 3 at p0 0.23 %). (2) blocked_tokens []. (3) claim 19:47:10.633Z to 19:47:11.815Z (1.2 s; 17 guarded holds set and cleared). (4) data_sync_log rows started inside the claim: 0. (5) dispatch_log ticks inside the claim: 0 (19:47:00Z nothing_due before it). Read at 19:47:33Z: head 20261126005000 (576), arm efb7d5f6, votes triggers votes_updated_at only, no queue table, no capture function. PUSH 2 on Craig's ruling (AskUserQuestion, retry through the gate), 20:07:11Z: 20261126006000 with the guard fix 96642cc0 (guard ok efb7d5f6 before, queue absent; read-back ok, arm 76bce60cc492db5465f6c1e1c970de91, triggers votes_capture_stale_pair_delete:O, votes_capture_stale_pair_update:O, queue RLS on, service_role only, 0 rows). (1) gate wait 20:07:07.434Z to 20:07:07.661Z (0.2 s), first poll, census pass (1 render / 1 event, ratio 0.51, floor 6; edge 0 of 377 = 0.00 %, P99 floor 4). (2) blocked_tokens []. (3) claim 20:07:11.333Z to 20:07:12.425Z (1.1 s; 17 holds set and cleared). (4) data_sync_log rows inside the claim: 0. (5) dispatch_log ticks inside the claim: 0 (20:07:00Z nothing_due before it). Read-back 20:07:26Z: head 20261126006000 (577); capture_vote_edge_stale_pair 04b08f56, promote 6d68d0cf, arm 76bce60c, _votes_full 0c9c5fa6 unchanged, no proconfig; three triggers on votes, all O; queue 0 rows, RLS t; data_flags orphan officials 0. No other prod write.",
+  "ci": "green",
+  "stopped_items": [
+    "Write 1 half-applied: 20261126006000's guard named the queue as a 'public.vote_edge_stale_pairs'::regclass literal inside its shape check, which Postgres resolves at parse time, so on prod (no table yet) it raised 42P01 and the file rolled back; 20261126005000 had already applied. STOP row 'a guard or read-back raises' taken: state read and reported, no retry without Craig. Fixed in 96642cc0 (to_regclass() only, a text case holds it, the fresh-apply path rehearsed on the clone from prod's state), then re-pushed on Craig's ruling at 20:07:11Z.",
+    "Item 4's 'first entity_connections_rebuild row after the push' read is only half done: the first row (21:07:00 to 21:07:12Z, complete) gated the vote arm ('(gated) 2.6 s / 0', its source unchanged), so the new body has not run on prod yet. On Craig's ruling (report now, cycle owed) it is an owed line below; the STOP row's revert is a by-hand call through the gate if that cycle reads failed or reaped.",
+    "The prompt's 12-statement prod read budget is spent (12, one of them read 2's first attempt, which failed to parse on a missing ::text cast); no further prod read was made.",
+    "No permission prompt in the run."
+  ],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1422",
+      "what": "the first entity_connections_rebuild cycle after the push that RUNS the vote arm (not gated): status complete, the arm's wall and edges beside read 4's seven days, the queue 0 after it, no FIX-1422 consume NOTICE expected on an ordinary night",
+      "after": "2026-11-27T06:00Z"
+    },
+    {
+      "fix": "FIX-1422",
+      "what": "the weekend's vote writes under the triggers: Sat 11-28's and Sun 11-29's nightly votes phase with no error on the capture, rows captured and consumed per cycle (pg_stat_user_tables n_tup_ins / n_tup_del on vote_edge_stale_pairs; 0 expected on an ordinary night), the vote arm's wall per cycle beside read 4's seven days",
+      "after": "2026-11-30T16:00Z"
+    }
+  ]
+}
