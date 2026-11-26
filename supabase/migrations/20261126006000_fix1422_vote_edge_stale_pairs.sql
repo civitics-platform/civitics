@@ -84,14 +84,18 @@ BEGIN
   END IF;
   -- An existing queue (a re-apply, or a re-apply after the revert, which keeps
   -- it) must be this file's shape: the three columns and the pair as its key.
+  -- The queue is named through to_regclass() only, never a ::regclass literal:
+  -- a literal is resolved when the statement is parsed, so on a database
+  -- without the table it raises 42P01 whatever the IF says (cc-319's first
+  -- push, 2026-11-26 19:47:11Z).
   IF to_regclass('public.vote_edge_stale_pairs') IS NOT NULL
      AND (SELECT string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod), ', ' ORDER BY a.attnum)
             FROM pg_attribute a
-           WHERE a.attrelid = 'public.vote_edge_stale_pairs'::regclass AND a.attnum > 0 AND NOT a.attisdropped)
+           WHERE a.attrelid = to_regclass('public.vote_edge_stale_pairs') AND a.attnum > 0 AND NOT a.attisdropped)
          IS DISTINCT FROM 'official_id uuid, bill_proposal_id uuid, captured_at timestamp with time zone'
      OR to_regclass('public.vote_edge_stale_pairs') IS NOT NULL
      AND NOT EXISTS (SELECT 1 FROM pg_constraint
-                      WHERE conrelid = 'public.vote_edge_stale_pairs'::regclass AND contype = 'p'
+                      WHERE conrelid = to_regclass('public.vote_edge_stale_pairs') AND contype = 'p'
                         AND pg_get_constraintdef(oid) = 'PRIMARY KEY (official_id, bill_proposal_id)') THEN
     RAISE EXCEPTION '[fix1422] public.vote_edge_stale_pairs exists in another shape — made outside the tree';
   END IF;

@@ -157,6 +157,17 @@ test("the two triggers: UPDATE OF the pair WHEN it moved, DELETE WHEN it was who
   assert.ok(code.lastIndexOf(SIG_INCR) < code.indexOf("CREATE OR REPLACE TRIGGER"), "the triggers come after the arm");
 });
 
+test("before its CREATE TABLE the file names the queue through to_regclass() only, never a ::regclass literal", () => {
+  // A literal is resolved at parse time: on a database without the table it raises 42P01 whatever the IF
+  // around it says. cc-319's first push stopped there (2026-11-26 19:47:11Z) and the file rolled back whole.
+  const code = stripComments(FILE());
+  const create = code.indexOf("CREATE TABLE IF NOT EXISTS public.vote_edge_stale_pairs");
+  assert.ok(create > 0);
+  const guard = code.slice(0, create);
+  assert.doesNotMatch(guard, /'(public\.)?vote_edge_stale_pairs'::regclass/);
+  assert.ok(guard.split("to_regclass('public.vote_edge_stale_pairs')").length - 1 >= 4, "the shape check reads it through to_regclass");
+});
+
 test("the queue is service-only: RLS on, ALL revoked from all four, SELECT/INSERT/DELETE to service_role; grants restated", () => {
   const code = stripComments(FILE());
   assert.ok(code.includes("ALTER TABLE public.vote_edge_stale_pairs ENABLE ROW LEVEL SECURITY;"));
