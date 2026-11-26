@@ -7,6 +7,7 @@ import { Icon } from "@civitics/graph";
 import { fetchAllRows } from "@/lib/paginate";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { canonicalForEntity, entityPath, SITE_ORIGIN } from "@/lib/canonical";
+import { issueCaption, officialVoteBreakdown, passageVotes, voteRowLine } from "@/lib/official-votes";
 // FIX-205: defer the D3 graph chunk off the initial /officials/[id] bundle.
 // Most visitors land on the profile and never expand the graph; even when
 // they do, the chunk loads on demand.
@@ -19,7 +20,6 @@ import { ProfileTabs } from "../components/ProfileTabs";
 import { ShareButton } from "../components/ShareButton";
 import { CareerHistory } from "../components/CareerHistory";
 import { PromisesSection } from "../components/PromisesSection";
-import { SpendingSection } from "../components/SpendingSection";
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
 import { ClaimProfileSection } from "../components/ClaimProfileSection";
@@ -117,6 +117,11 @@ type VoteRow = {
   voted_at: string | null;
   roll_call_id: string | null;
   bill_proposal_id?: string | null;
+  // FIX-1449: the roll's own question, chamber and class (vote_roll_class).
+  // Absent from the body before it, so optional: a missing key reads as absent.
+  vote_question?: string | null;
+  chamber?: string | null;
+  roll_class?: string | null;
   // `proposals` is attached at runtime by the two-step hydration (votes has no
   // direct FK to proposals), so it's optional on the statically-typed select.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -170,28 +175,6 @@ function initials(name: string) {
     .map((w) => w[0])
     .join("")
     .toUpperCase();
-}
-
-// ─── Procedural vote filter ───────────────────────────────────────────────────
-
-const PROCEDURAL_PATTERNS = [
-  "on passage",
-  "on the motion",
-  "on cloture",
-  "on the cloture",
-  "on the nomination",
-  "on the resolution",
-  "on ordering",
-  "on the amendment",
-  "on the conference",
-  "on the joint",
-  "on adjourn",
-  "on the motion to table",
-];
-
-function isProcedural(title: string): boolean {
-  const lower = title.toLowerCase();
-  return PROCEDURAL_PATTERNS.some((p) => lower.startsWith(p));
 }
 
 // ─── Issue keyword taxonomy ───────────────────────────────────────────────────
@@ -319,7 +302,9 @@ const DONOR_FALLBACK_LIMIT = 200;
 // FIX-646: shape returned by get_official_page(uuid). Sections arrive pre-shaped
 // to match what the render code already consumes (votes carry `proposals`
 // inline, so the old two-step hydration is gone). Loosely typed — downstream
-// code re-casts each section to its concrete row type.
+// code re-casts each section to its concrete row type. FIX-1449 removed
+// `spending` (the ten largest awards in the database, not the official's) and
+// put each vote's question, chamber and roll class on both vote lists.
 type GetOfficialPage = {
   vote_count: number;
   recent_votes: unknown[];
@@ -329,7 +314,6 @@ type GetOfficialPage = {
   promises: unknown[];
   civic_responses: unknown[];
   passive_answer_count: number;
-  spending: unknown[];
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -359,7 +343,7 @@ export default async function OfficialProfilePage({
   // page sections (get_official_page, FIX-646) + the donor rollup in parallel.
   // get_official_page collapses ~13 render-path reads (vote count, recent/all
   // votes with proposal hydration done in SQL, AI summary, career, promises,
-  // civic responses, synthetic answer-count, spending) into one RPC. The donor
+  // civic responses, synthetic answer-count) into one RPC. The donor
   // rollup MV read + FIX-635 fallback stay separate to avoid a ~10k-row payload.
   const [officialData, pageRes, donorRollupRes, engagementRollup] =
     await Promise.all([
@@ -723,27 +707,17 @@ export default async function OfficialProfilePage({
   }
 
   // ── Issue tagging + vote breakdown ──────────────────────────────────────────
+  // FIX-1449: all_votes is the last 500, newest first, each with its roll's
+  // class. The breakdown says it counts the last 500; procedural is the roll's
+  // class (vote_roll_class), never a pattern on the bill's title; the issue
+  // bars count only votes on passage among those rows.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allVotesRaw = (allVotesRes.data ?? []) as any[];
 
-  const substantiveVotesRaw = allVotesRaw.filter((v) => {
-    const title = v.proposals?.title ?? "";
-    return !isProcedural(title);
-  });
-  const proceduralCount = allVotesRaw.length - substantiveVotesRaw.length;
+  const voteBreakdown = officialVoteBreakdown(allVotesRaw);
+  const issueStatsCaption = issueCaption(allVotesRaw);
 
-  const voteBreakdown = {
-    yes: allVotesRaw.filter((v) => v.vote === "yes" || v.vote === "paired_yes").length,
-    no: allVotesRaw.filter((v) => v.vote === "no" || v.vote === "paired_no").length,
-    abstain: allVotesRaw.filter(
-      (v) => v.vote === "abstain" || v.vote === "not_voting" || v.vote === "present"
-    ).length,
-    total: allVotesRaw.length,
-    procedural: proceduralCount,
-    substantive: substantiveVotesRaw.length,
-  };
-
-  const taggedVotes = substantiveVotesRaw.map((v) => {
+  const taggedVotes = passageVotes(allVotesRaw).map((v) => {
     const bd = Array.isArray(v.proposals?.bill_details) ? v.proposals.bill_details[0] : v.proposals?.bill_details;
     return {
       vote: v.vote as string,
@@ -773,7 +747,7 @@ export default async function OfficialProfilePage({
         total,
         yesRate: total > 0 ? Math.round((yes / total) * 100) : 0,
         recentBills: issueVotes
-          .filter((v) => v.title && !isProcedural(v.title))
+          .filter((v) => v.title)
           .slice(0, 3)
           .map((v) => v.title),
       };
@@ -790,6 +764,9 @@ export default async function OfficialProfilePage({
     title: v.proposals?.title ?? "",
     proposalId: v.proposals?.id as string | undefined,
     date: v.voted_at ?? undefined,
+    voteQuestion: (v.vote_question ?? null) as string | null,
+    chamber: (v.chamber ?? null) as string | null,
+    rollClass: (v.roll_class ?? null) as string | null,
   }));
 
   const voteCount = voteCountRes.count ?? 0;
@@ -819,20 +796,6 @@ export default async function OfficialProfilePage({
     resolved_at: string | null;
     source_url: string | null;
     source_quote: string | null;
-  }>;
-
-  // FIX-646: spending records (top-10 contracts/grants, gated on jurisdiction_id
-  // inside the RPC, agency/recipient names pre-resolved) now come from
-  // get_official_page — was a 3-query fan-out (financial_relationships + agencies
-  // + financial_entities) per render.
-  const spendingRecords = (page.spending ?? []) as Array<{
-    id: string;
-    recipient_name: string;
-    award_type: string | null;
-    amount_cents: number;
-    award_date: string | null;
-    description: string | null;
-    awarding_agency: string;
   }>;
 
   // ── Responsiveness score ──────────────────────────────────────────────────────
@@ -1253,6 +1216,7 @@ export default async function OfficialProfilePage({
           voteCount={voteCount}
           donorCount={donorCount}
           issueStats={issueStats}
+          issueStatsCaption={issueStatsCaption}
           voteBreakdown={voteBreakdown}
           allVotes={allVotesForTab}
           overview={
@@ -1281,22 +1245,37 @@ export default async function OfficialProfilePage({
                     {recentVotes.slice(0, 5).map((v) => {
                       const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-ink/5 text-ink-soft" };
                       const proposal = v.proposals;
-                      const label = proposal?.short_title ?? proposal?.title ?? "Unknown bill";
+                      // FIX-1449 (D4): the roll's question and chamber under the title.
+                      const line = voteRowLine({
+                        title: proposal?.short_title ?? proposal?.title ?? null,
+                        vote_question: v.vote_question,
+                        chamber: v.chamber,
+                        roll_class: v.roll_class,
+                      });
                       return (
                         <div key={v.id} className="flex items-center gap-3 px-4 py-3">
                           <span className={`shrink-0 px-1.5 py-0.5 font-mono text-[10px] font-bold ${vs.cls}`}>
                             {vs.label}
                           </span>
-                          {proposal?.id ? (
-                            <a
-                              href={`/proposals/${proposal.id}`}
-                              className="flex-1 truncate text-xs text-ink hover:text-accent hover:underline transition-colors"
-                            >
-                              {label}
-                            </a>
-                          ) : (
-                            <p className="flex-1 truncate text-xs text-ink">{label}</p>
-                          )}
+                          <div className="flex-1 min-w-0">
+                            {proposal?.id ? (
+                              <a
+                                href={`/proposals/${proposal.id}`}
+                                className="block truncate text-xs text-ink hover:text-accent hover:underline transition-colors"
+                              >
+                                {line.title}
+                              </a>
+                            ) : (
+                              <p className="truncate text-xs text-ink">{line.title}</p>
+                            )}
+                            {(line.detail || line.classWord) && (
+                              <p className="truncate text-[10px] text-ink-soft/70">
+                                {line.detail}
+                                {line.detail && line.classWord ? " · " : ""}
+                                {line.classWord && <span className="italic">{line.classWord}</span>}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -1495,9 +1474,6 @@ export default async function OfficialProfilePage({
             </div>
           }
         />
-
-        {/* QWEN-ADDED: Government Spending Section */}
-        <SpendingSection items={spendingRecords} />
 
         {/* C1 Wave D (FIX-538): citizen↔official Q&A lane. Questions live only
             here, not in the discussion list (decision 8), so 'question' is

@@ -58,6 +58,22 @@ test("a real official with genuinely null sections is ok, NOT failed", () => {
   assert.equal(classifyOfficialPage(true, { data: null, error: undefined }), "ok");
 });
 
+test("FIX-1449: the payload without 'spending' is ok, and so is the old body's with it", () => {
+  // The new body: no spending key, vote rows carry their roll's class.
+  const now = {
+    data: {
+      vote_count: 2828,
+      recent_votes: [{ vote: "yes", vote_question: "On Passage", chamber: "Senate", roll_class: "final" }],
+      all_votes: [],
+    },
+  };
+  assert.ok(!("spending" in now.data));
+  assert.equal(classifyOfficialPage(true, now), "ok");
+  // The old body (a revert): spending present, no class on a row.
+  const was = { data: { vote_count: 2828, recent_votes: [{ vote: "yes" }], all_votes: [], spending: [] } };
+  assert.equal(classifyOfficialPage(true, was), "ok");
+});
+
 test("undefined envelope is ok, not failed — absence is not an error", () => {
   assert.equal(classifyOfficialPage(true, undefined), "ok");
 });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Icon } from "@civitics/graph";
+import { voteRowLine, type VoteBreakdown } from "@/lib/official-votes";
 
 export interface IssueStats {
   issue: string;
@@ -15,15 +16,6 @@ export interface IssueStats {
   recentBills: string[];
 }
 
-export interface VoteBreakdown {
-  yes: number;
-  no: number;
-  abstain: number;
-  total: number;
-  procedural: number;
-  substantive: number;
-}
-
 interface UserPriority {
   id: string;
   importance: number;
@@ -31,10 +23,12 @@ interface UserPriority {
 
 export function VotesTab({
   issueStats,
+  issueStatsCaption,
   voteBreakdown,
   recentVotes,
 }: {
   issueStats: IssueStats[];
+  issueStatsCaption: string | null;
   voteBreakdown: VoteBreakdown;
   recentVotes: Array<{
     id: string;
@@ -43,6 +37,8 @@ export function VotesTab({
     proposalId?: string;
     date?: string;
     voteQuestion?: string | null;
+    chamber?: string | null;
+    rollClass?: string | null;
   }>;
 }) {
   const [userPriorities, setUserPriorities] = useState<UserPriority[]>([]);
@@ -153,11 +149,13 @@ export function VotesTab({
           </div>
         )}
 
-        <p className="font-mono text-[10px] tabular-nums text-ink-soft/70 mt-1.5">
-          {voteBreakdown.total.toLocaleString()} total &middot;{" "}
-          {voteBreakdown.procedural.toLocaleString()} procedural (filtered)
-          &middot; {voteBreakdown.substantive.toLocaleString()} substantive
-        </p>
+        {/* FIX-1449: what the counts are over, and their roll classes. */}
+        {voteBreakdown.caption && (
+          <p className="font-mono text-[10px] tabular-nums text-ink-soft/70 mt-1.5">
+            {voteBreakdown.caption}
+            {voteBreakdown.classes && <> &middot; {voteBreakdown.classes}</>}
+          </p>
+        )}
       </div>
 
       {/* By Issue section */}
@@ -173,6 +171,11 @@ export function VotesTab({
               </span>
             )}
           </div>
+          {issueStatsCaption && (
+            <p className="font-mono text-[10px] tabular-nums text-ink-soft/70 -mt-2 mb-3">
+              {issueStatsCaption}
+            </p>
+          )}
 
           <div className="space-y-3">
             {issueStats.map((stat) => {
@@ -250,7 +253,7 @@ export function VotesTab({
         </div>
       )}
 
-      {/* Recent substantive votes */}
+      {/* Recent votes, newest first */}
       <div>
         <h3 className="text-sm font-semibold text-ink mb-3">
           Recent Votes
@@ -260,7 +263,15 @@ export function VotesTab({
             const isYes = v.vote === "yes" || v.vote === "paired_yes";
             const isNo = v.vote === "no" || v.vote === "paired_no";
             const isExpanded = expandedId === v.id;
-            const hasDetail = !!(v.voteQuestion || v.proposalId);
+            // FIX-1449 (D4): the question and chamber sit on the row, so the
+            // expander holds only the proposal link.
+            const hasDetail = !!v.proposalId;
+            const line = voteRowLine({
+              title: v.title,
+              vote_question: v.voteQuestion,
+              chamber: v.chamber,
+              roll_class: v.rollClass,
+            });
             return (
               <div key={i}>
                 <button
@@ -279,8 +290,15 @@ export function VotesTab({
                   >
                     {isYes ? "YEA" : isNo ? "NAY" : "ABS"}
                   </span>
-                  <span className="flex-1 text-xs text-ink truncate">
-                    {v.title || "Procedural vote"}
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-xs text-ink truncate">{line.title}</span>
+                    {(line.detail || line.classWord) && (
+                      <span className="block text-[10px] text-ink-soft/70 truncate">
+                        {line.detail}
+                        {line.detail && line.classWord ? " · " : ""}
+                        {line.classWord && <span className="italic">{line.classWord}</span>}
+                      </span>
+                    )}
                   </span>
                   {v.date && (
                     <span className="shrink-0 font-mono text-[10px] tabular-nums text-ink-soft/70">
@@ -299,12 +317,6 @@ export function VotesTab({
                 </button>
                 {isExpanded && (
                   <div className="px-4 pb-3 pt-1 bg-paper-2 border-t border-rule/60 space-y-1.5">
-                    {v.voteQuestion && (
-                      <p className="text-[11px] text-ink-soft">
-                        <span className="font-medium text-ink">Question: </span>
-                        {v.voteQuestion}
-                      </p>
-                    )}
                     {v.proposalId && (
                       <a
                         href={`/proposals/${v.proposalId}`}

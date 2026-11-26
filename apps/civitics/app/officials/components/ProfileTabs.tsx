@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { VotesTab, IssueStats, VoteBreakdown } from "./VotesTab";
+import { VotesTab, IssueStats } from "./VotesTab";
+import type { VoteBreakdown } from "@/lib/official-votes";
 
 type Tab = "overview" | "votes" | "donations" | "connections";
 
@@ -12,6 +13,8 @@ interface ProfileTabsProps {
   voteCount: number;
   donorCount: number;
   issueStats: IssueStats[];
+  /** FIX-1449: what the issue bars count ("On passage votes among the last 500"). */
+  issueStatsCaption: string | null;
   voteBreakdown: VoteBreakdown;
   allVotes: Array<{
     id: string;
@@ -20,6 +23,8 @@ interface ProfileTabsProps {
     date?: string;
     proposalId?: string;
     voteQuestion?: string | null;
+    chamber?: string | null;
+    rollClass?: string | null;
   }>;
   /** Tier='candidate' rows have no votes by design — hide the Votes tab. FIX-246 */
   isCandidate?: boolean;
@@ -32,6 +37,7 @@ export function ProfileTabs({
   voteCount,
   donorCount,
   issueStats,
+  issueStatsCaption,
   voteBreakdown,
   allVotes,
   isCandidate = false,
@@ -83,6 +89,7 @@ export function ProfileTabs({
         {active === "votes" && (
           <VotesTab
             issueStats={issueStats}
+            issueStatsCaption={issueStatsCaption}
             voteBreakdown={voteBreakdown}
             recentVotes={allVotes}
           />
