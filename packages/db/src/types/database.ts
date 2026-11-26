@@ -5691,6 +5691,7 @@ export type Database = {
           performed_by_id: string | null
           proposal_id: string
           source: string | null
+          source_key: string
         }
         Insert: {
           action_at: string
@@ -5702,6 +5703,7 @@ export type Database = {
           performed_by_id?: string | null
           proposal_id: string
           source?: string | null
+          source_key: string
         }
         Update: {
           action_at?: string
@@ -5713,6 +5715,7 @@ export type Database = {
           performed_by_id?: string | null
           proposal_id?: string
           source?: string | null
+          source_key?: string
         }
         Relationships: [
           {
