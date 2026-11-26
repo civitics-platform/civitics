@@ -60,6 +60,7 @@
     "is_synthetic_entity",
     "jurisdiction_boundary_svg",
     "official_is_content_bearing",
+    "proposal_vote_rolls",
     "query_districts"
   ],
 
@@ -110,6 +111,8 @@
     "source_priority",
     "statement_votes_refresh_summary",
     "treemap_individuals_rollup_cleanup",
-    "update_updated_at_column"
+    "update_updated_at_column",
+    "vote_question_class",
+    "vote_roll_class"
   ]
 }

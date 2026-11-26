@@ -7717,6 +7717,25 @@ export type Database = {
         Args: { p_status: Database["public"]["Enums"]["proposal_status"] }
         Returns: number
       }
+      proposal_vote_rolls: {
+        Args: { p_proposal_id: string }
+        Returns: {
+          by_party: Json
+          chamber: string
+          no: number
+          not_voting: number
+          other: number
+          present: number
+          roll_call_id: string
+          roll_class: string
+          rows_on_record: number
+          source_url: string
+          vote_question: string
+          vote_result: string
+          voted_at: string
+          yes: number
+        }[]
+      }
       proposals_advance_status: {
         Args: {
           p_ids: string[]
