@@ -53,7 +53,7 @@ import {
 } from "./board.mjs";
 import { verifyReport } from "./cc-verify.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
-import { DEFAULT_LANES, parseWhen, checkPromptFrontMatter } from "./lib/cc-front-matter.mjs";
+import { DEFAULT_LANES, parseWhen, whenStatus, checkPromptFrontMatter } from "./lib/cc-front-matter.mjs";
 
 const failures = [];
 function assertEq(label, actual, expected) {
@@ -430,6 +430,74 @@ assertEq("whenDays: ending exactly at midnight does not touch the next", whenDay
 assertEq("checkPromptFrontMatter accepts `after …`", checkPromptFrontMatter({ cc: "1", lane: "ops", when: "after 2026-09-29T16:30Z" }, { n: 1 }).problems, []);
 assertEq("…and a window", checkPromptFrontMatter({ cc: "1", lane: "ops", when: "2026-10-01T23:15Z..2026-10-02T03:30Z" }, { n: 1 }).problems, []);
 assertTrue("…and refuses a zoneless one", /when:/.test(checkPromptFrontMatter({ cc: "1", lane: "ops", when: "after 2026-09-29T16:30" }, { n: 1 }).problems.join(" ")));
+
+// FIX-1451 D1 — `after` names the prompt it waits on.
+assertEq("parseWhen: today's after carries deps: []", parseWhen("after 2026-09-29T16:30Z"), { kind: "after", deps: [], start: "2026-09-29T16:30Z", startMs: Date.parse("2026-09-29T16:30Z"), timed: true });
+assertEq("parseWhen: after cc-317 (no instant, so no start)", parseWhen("after cc-317"), { kind: "after", deps: [317] });
+assertEq("parseWhen: after cc-317, cc-303 → deps ascending", parseWhen("after cc-317, cc-303").deps, [303, 317]);
+assertEq("parseWhen: a repeated dep is listed once", parseWhen("after cc-317, cc-317").deps, [317]);
+assertEq(
+  "parseWhen: after cc-317, 2026-11-26T04:00Z → a dep and an instant",
+  parseWhen("after cc-317, 2026-11-26T04:00Z"),
+  { kind: "after", deps: [317], start: "2026-11-26T04:00Z", startMs: Date.parse("2026-11-26T04:00Z"), timed: true },
+);
+{
+  const bad = (s) => parseWhen(s);
+  assertEq("parseWhen: two instants are invalid", [bad("after 2026-11-26T04:00Z, 2026-11-27").kind, /two instants/.test(bad("after 2026-11-26T04:00Z, 2026-11-27").reason ?? "")], ["invalid", true]);
+  assertEq("parseWhen: after cc-x is invalid, naming the item", [bad("after cc-x").kind, /`cc-x`/.test(bad("after cc-x").reason ?? "")], ["invalid", true]);
+  assertEq("parseWhen: after cc-317, (an empty item) is invalid", [bad("after cc-317,").kind, /empty item/.test(bad("after cc-317,").reason ?? "")], ["invalid", true]);
+  assertEq("parseWhen: a zoneless instant beside a dep is invalid, naming it", [bad("after cc-317, 2026-11-26T04:00").kind, /`2026-11-26T04:00`/.test(bad("after cc-317, 2026-11-26T04:00").reason ?? "")], ["invalid", true]);
+}
+assertEq("checkPromptFrontMatter accepts `after cc-317, cc-303`", checkPromptFrontMatter({ cc: "326", lane: "ops", when: "after cc-317, cc-303" }, { n: 326 }).problems, []);
+assertTrue(
+  "…and names a prompt that waits on itself",
+  /names this prompt \(cc-326\)/.test(checkPromptFrontMatter({ cc: "326", lane: "ops", when: "after cc-317, cc-326" }, { n: 326 }).problems.join(" ")),
+);
+
+// FIX-1451 D2 — one status, pure.
+{
+  const T = (s) => Date.parse(s);
+  const fin = { 317: T("2026-11-26T01:12:13Z"), 303: T("2026-11-26T03:00:00Z"), 299: null };
+  const st = (when, now) => whenStatus(parseWhen(when), { nowMs: T(now), reportFinishedMs: (n) => fin[n] });
+  assertEq("whenStatus: none / any / at are ready", [st(undefined, NOW).ready, st("any", NOW).ready, st("2026-12-01", NOW).ready], [true, true, true]);
+  assertEq("whenStatus: invalid has no status", st("after cc-x", NOW), null);
+  assertEq(
+    "whenStatus: an unmet dep → waiting_on, no opens_ms",
+    st("after cc-317, cc-400", "2026-11-26T02:00:00Z"),
+    { ready: false, waiting_on: ["cc-400"], opens_ms: null, reason: "waits on cc-400" },
+  );
+  assertEq(
+    "whenStatus: met → opens_ms is the later of two reports",
+    st("after cc-317, cc-303", "2026-11-26T04:00:00Z"),
+    { ready: true, waiting_on: [], opens_ms: T("2026-11-26T03:00:00Z"), reason: "cc-303, cc-317 reported · ready since 2026-11-26T03:00:00Z" },
+  );
+  assertEq(
+    "whenStatus: met with a future instant → not ready, opens at the instant",
+    st("after cc-317, 2026-11-26T04:00Z", "2026-11-26T02:00:00Z"),
+    { ready: false, waiting_on: [], opens_ms: T("2026-11-26T04:00Z"), reason: "not before 2026-11-26T04:00Z" },
+  );
+  assertEq(
+    "whenStatus: unmet with a future instant says both",
+    st("after cc-400, 2026-11-26T04:00Z", "2026-11-26T02:00:00Z").reason,
+    "waits on cc-400 · not before 2026-11-26T04:00Z",
+  );
+  assertEq(
+    "whenStatus: a report with no finished_at is met, and adds nothing to opens_ms",
+    [st("after cc-299", NOW), st("after cc-299, cc-317", "2026-11-26T02:00:00Z").opens_ms],
+    [{ ready: true, waiting_on: [], opens_ms: null, reason: "cc-299 reported" }, T("2026-11-26T01:12:13Z")],
+  );
+  assertEq(
+    "whenStatus: today's pure-instant after → opens at the instant",
+    [st("after 2026-11-26T01:12Z", "2026-11-26T02:00:00Z"), st("after 2026-11-26T01:12Z", "2026-11-26T01:00:00Z").ready],
+    [{ ready: true, waiting_on: [], opens_ms: T("2026-11-26T01:12Z"), reason: "open since 2026-11-26T01:12Z" }, false],
+  );
+  const win = "2026-11-26T23:15Z..2026-11-27T03:30Z";
+  assertEq(
+    "whenStatus: a window — before, inside, after",
+    [st(win, "2026-11-26T20:00:00Z"), st(win, "2026-11-27T00:00:00Z").ready, st(win, "2026-11-27T04:00:00Z").reason],
+    [{ ready: false, waiting_on: [], opens_ms: T("2026-11-26T23:15Z"), reason: "not open until 2026-11-26T23:15Z" }, true, "closed at 2026-11-27T03:30Z"],
+  );
+}
 
 // -- 6d'. FIX-1251 — a monthly job with no firing says when it fires next ---
 console.log("\nmonthly cron events:");
