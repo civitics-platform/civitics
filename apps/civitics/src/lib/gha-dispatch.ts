@@ -9,8 +9,9 @@
  * slot. The `schedule:` triggers stay as the fallback — except for irs990,
  * audit and crs-summaries (FIX-1424, cc-292), which carry none: GitHub started
  * each 4–9 h late, and a second start hours after the dispatched one is exactly
- * what moving them fixes. crs-summaries is a dispatcher unit since cc-318, and
- * bill-details (which never had a schedule) since cc-328.
+ * what moving them fixes. crs-summaries is a dispatcher unit since cc-318;
+ * bill-details (which never had a schedule) has its request target since
+ * cc-328 and waits on its registry row (FIX-1459).
  *
  * The route (app/api/cron/gha-dispatch) owns auth and the stamp; this module
  * owns everything that can be tested without a network: the allowlist, the
@@ -97,7 +98,10 @@ export interface DispatchTarget {
  * unconsumed gha_dispatch_request_bill-details and sends only "all" (which
  * already takes the voted measures first) and max_minutes "15", two inputs
  * bill-details.yml declares. It stamps gha_dispatch_bill-details. There was
- * never a plain bill-details target.
+ * never a plain bill-details target. The registry row that arms it
+ * (20261126008000) was held back by cc-328's prod chunk (FIX-1459: 21.9 s of
+ * database time a measure), so until it lands this poll reads no request and
+ * fires nothing.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
