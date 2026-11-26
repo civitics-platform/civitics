@@ -60,6 +60,13 @@ export type RootCounters = {
   /** FIX-1397 — the read counts, on samples from cc-267's sampler on (absent before). */
   disk_reads?: number;
   disk_all_reads?: number;
+  /**
+   * FIX-1444 (cc-303 D12) — the write half: /data's writes completed and every whole
+   * disk's bytes written. The sample has carried both since FIX-1375; the bank did not,
+   * so a landing's write ops could not be placed against the op bucket (the census).
+   */
+  disk_writes?: number;
+  disk_all_written_bytes?: number;
 };
 
 export type SeriesRow = {
@@ -101,7 +108,7 @@ function rate(prev: number | undefined, cur: number | undefined, seconds: number
 }
 
 function rootCounters(s: BoxHealthSample): RootCounters | null {
-  const { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes, disk_reads, disk_all_reads } = s;
+  const { pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes, disk_reads, disk_all_reads, disk_writes, disk_all_written_bytes } = s;
   if (
     pswpin === undefined ||
     pgmajfault === undefined ||
@@ -114,6 +121,8 @@ function rootCounters(s: BoxHealthSample): RootCounters | null {
   return {
     pswpin, pgmajfault, disk_device, disk_read_bytes, disk_all_read_bytes,
     ...(disk_reads !== undefined && disk_all_reads !== undefined ? { disk_reads, disk_all_reads } : {}),
+    ...(disk_writes !== undefined ? { disk_writes } : {}),
+    ...(disk_all_written_bytes !== undefined ? { disk_all_written_bytes } : {}),
   };
 }
 
