@@ -15,7 +15,7 @@
 
 import { parseFrontMatter, verifyReport, loadReportFrontMatter, PASS, FAIL, UNCHECKED } from "./cc-verify.mjs";
 import { renderSidecar } from "./cc-report-json.mjs";
-import { readPrompt, markerBody, teardownLine } from "./cc-prompt.mjs";
+import { readPrompt, markerBody, teardownLine, startDecision } from "./cc-prompt.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
 
 const failures = [];
@@ -430,6 +430,39 @@ assertEq(
   JSON.parse(markerBody({ n: "171", startedAt: "2026-09-28T03:43:00Z", worktree: "/w", prompt: "p.md" })),
   { cc: 171, started_at: "2026-09-28T03:43:00Z", worktree: "/w", prompt: "p.md" },
 );
+
+// FIX-1451 D4 — `--start` refuses a prompt whose when does not hold.
+console.log("\nwhen_status and startDecision (cc:prompt --start, FIX-1451):");
+{
+  const NOWW = Date.parse("2026-11-26T02:00:00Z");
+  const reports = { 317: Date.parse("2026-11-26T01:12:13Z") };
+  const lookup = (n) => reports[n];
+  const withWhen = (when) => readPrompt(PROMPT_FM.replace("when: any", `when: ${when}`), { ...pOpts, nowMs: NOWW, reportFinishedMs: lookup });
+  const mk = { n: "171", startedAt: "2026-11-26T02:00:00Z", worktree: "/w", prompt: "p.md" };
+  const noWhen = readPrompt(PROMPT_FM.replace("when: any\n", ""), { ...pOpts, nowMs: NOWW, reportFinishedMs: lookup });
+  assertTrue("no when → no when_status key", !("when_status" in noWhen));
+  assertEq("an invalid when → no when_status, a problem line", [("when_status" in withWhen("after cc-x")), withWhen("after cc-x").problems.length], [false, 1]);
+
+  const ready = withWhen("after cc-317");
+  assertEq("a met dep → ready", [ready.when_status?.ready, ready.when_status?.reason], [true, "cc-317 reported · ready since 2026-11-26T01:12:13Z"]);
+  const dReady = startDecision({ status: ready.when_status, ...mk });
+  assertEq("ready → the marker, nothing to say", [dReady.ok, dReady.line, JSON.parse(dReady.marker ?? "null")?.cc], [true, null, 171]);
+
+  const onDep = withWhen("after cc-317, cc-303");
+  assertEq("an unmet dep → not ready, waiting on it", [onDep.when_status?.ready, onDep.when_status?.waiting_on], [false, ["cc-303"]]);
+  const dDep = startDecision({ status: onDep.when_status, ...mk });
+  assertEq("…--start refuses, and no marker body is produced", [dDep.ok, dDep.line, dDep.marker], [false, "cc:prompt — NOT READY: waits on cc-303", null]);
+
+  const onInstant = withWhen("after cc-317, 2026-11-26T04:00Z");
+  const dInstant = startDecision({ status: onInstant.when_status, ...mk });
+  assertEq("an instant still ahead → refuses, no marker", [dInstant.ok, dInstant.line, dInstant.marker], [false, "cc:prompt — NOT READY: not before 2026-11-26T04:00Z", null]);
+  const pastWindow = startDecision({ status: withWhen("2026-11-25T23:15Z..2026-11-26T01:30Z").when_status, ...mk });
+  assertEq("a window already closed → refuses", [pastWindow.ok, pastWindow.line], [false, "cc:prompt — NOT READY: closed at 2026-11-26T01:30Z"]);
+
+  const dAnyway = startDecision({ status: onDep.when_status, anyway: true, ...mk });
+  assertEq("--anyway → the marker, and says why it was early", [dAnyway.ok, dAnyway.line, JSON.parse(dAnyway.marker ?? "null")?.cc], [true, "cc:prompt — started early (--anyway): waits on cc-303", 171]);
+  assertEq("`any` and an `at` never refuse", [startDecision({ status: withWhen("any").when_status, ...mk }).ok, startDecision({ status: withWhen("2026-12-01").when_status, ...mk }).ok], [true, true]);
+}
 
 console.log("\nteardownLine (cc:prompt --done, cc-190):");
 const MAIN = "C:/Users/Craig/Documents/Civitics/App";
