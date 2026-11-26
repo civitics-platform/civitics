@@ -5,6 +5,7 @@ import { SubmitCommentButton } from "./SubmitCommentButton";
 import { EntityTags, type EntityTag } from "../../components/tags/EntityTags";
 import { ProposalShareButton } from "./ProposalShareButton";
 import { SyntheticMark } from "../../components/integrity/Synthetic";
+import { proposalTypeLabel } from "@/lib/proposal-detail/labels";
 
 export type ProposalCardData = {
   id: string;
@@ -43,15 +44,6 @@ const STATUS_BADGE: Record<string, { label: string; color: string }> = {
   comment_closed:       { label: "Comment Closed",   color: "bg-ink/5 text-ink-soft border-rule" },
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  regulation:      "Federal Regulation",
-  bill:            "Congressional Bill",
-  executive_order: "Executive Order",
-  treaty:          "Treaty",
-  referendum:      "Referendum",
-  resolution:      "Resolution",
-};
-
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {
@@ -74,7 +66,9 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
     label: proposal.status,
     color: "bg-ink/5 text-ink-soft border-rule",
   };
-  const typeLabel = TYPE_LABEL[proposal.type] ?? proposal.type;
+  // FIX-1447 (D8): the shared label; the card has no bill number, so a federal
+  // nomination reads "Appointment" here.
+  const typeLabel = proposalTypeLabel(proposal.type, { metadata: proposal.metadata });
   const agencyAcronym = proposal.metadata?.agency_id ?? null;
   const docType = proposal.metadata?.document_type ?? null;
   const open = isOpenForComment(proposal);

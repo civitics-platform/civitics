@@ -9,6 +9,7 @@ import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { canonicalFor } from "@/lib/canonical";
+import { INDEX_FILTER_TYPES, proposalTypeLabel } from "@/lib/proposal-detail/labels";
 import { ProposalCard, type ProposalCardData } from "./components/ProposalCard";
 import { FeaturedSection } from "./components/FeaturedSection";
 import { AGENCY_FULL_NAMES } from "./components/agencyNames";
@@ -18,15 +19,6 @@ import { PageHeader } from "@civitics/ui";
 import { Icon } from "@civitics/graph";
 
 const PAGE_SIZE = 20;
-
-const PROPOSAL_TYPE_LABELS: Record<string, string> = {
-  regulation:      "Federal Regulation",
-  bill:            "Congressional Bill",
-  executive_order: "Executive Order",
-  treaty:          "Treaty",
-  referendum:      "Referendum",
-  resolution:      "Resolution",
-};
 
 // Top agencies by proposal volume — used for the filter dropdown.
 const AGENCIES = [
@@ -610,9 +602,9 @@ export default async function ProposalsPage({
                 className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="">All Types</option>
-                {Object.entries(PROPOSAL_TYPE_LABELS).map(([val, label]) => (
+                {INDEX_FILTER_TYPES.map((val) => (
                   <option key={val} value={val}>
-                    {label}
+                    {proposalTypeLabel(val)}
                   </option>
                 ))}
               </select>
