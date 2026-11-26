@@ -1,0 +1,48 @@
+{
+  "cc": "326",
+  "prompt": "cc-prompt-326-when-after-cc-n-a-prompt-names-the-prompt-it-waits-on-cc-prompt-prints-when-status-start-refuses-not-ready-board-pill-waits-on-then-ready-since.md",
+  "started_at": "2026-11-26T01:50:57Z",
+  "finished_at": "2026-11-26T02:06:43Z",
+  "head_before": "e335c04a",
+  "head_after": "92d21e28",
+  "commits": [
+    {
+      "sha": "5490b971",
+      "subject": "[skip vercel] chore(fixes): file FIX-1451 (a prompt's when cannot name the prompt it waits on, so a dependent prompt carries an estimated instant) — cc-326"
+    },
+    {
+      "sha": "3dea5a46",
+      "subject": "[skip vercel] feat(cc): a prompt's when can name the prompt it waits on — parseWhen reads `after cc-317[, cc-303][, <ISO>]` (deps ascending, at most one instant), and whenStatus says whether a when holds now, the one status every reader shares (cc-326)"
+    },
+    {
+      "sha": "0fda1a13",
+      "subject": "[skip vercel] feat(cc): cc:prompt prints when_status, and --start refuses a prompt that is not ready — no marker, exit 1, `NOT READY: <reason>`; `--start --anyway` writes it and says why it was early (cc-326)"
+    },
+    {
+      "sha": "6749310f",
+      "subject": "[skip vercel] feat(board): FIX-1451 — a card whose when names a prompt reads its status: `waits on cc-317` (the unmet deps, plus `not before …` for a future instant) on today's column, then `ready since <the later report's finished_at>`, or today's `runs after …` while the instant is ahead (cc-326)"
+    },
+    {
+      "sha": "041cdc0b",
+      "subject": "[skip vercel] docs(cc): a when is a condition, never an estimate — PROMPT_TEMPLATE §0 gains the `after cc-<n>` row and says so, a class-P prompt waits on the prompt whose push it follows, /cc stops before the worktree on a prompt that is not ready unless Craig says `/cc <n> anyway`; cc-loop s13 (cc-326)"
+    },
+    {
+      "sha": "92d21e28",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-326 — FIX-1451 filed (5490b971) and closed local (6749310f), delta 0 (35 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1451"
+  ],
+  "fixes_filed": [
+    "FIX-1451"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "hygiene",
+  "project": "cc-loop",
+  "owed": []
+}
