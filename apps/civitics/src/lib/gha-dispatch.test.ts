@@ -7,6 +7,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   GHA_DISPATCH_WORKFLOWS,
   buildDispatchRequest,
@@ -33,9 +35,10 @@ function fakeFetch(status: number, body: string, calls: Call[] = []): typeof fet
 const nightly = resolveDispatchTarget("nightly-request") as DispatchTarget;
 
 describe("resolveDispatchTarget — the allowlist", () => {
-  it("knows exactly the six dispatched workflows (the nightly and crs-summaries through request targets), keyed by path segment", () => {
+  it("knows exactly the seven dispatched workflows (the nightly and the two congress.gov walkers through request targets), keyed by path segment", () => {
     assert.deepEqual([...GHA_DISPATCH_WORKFLOWS.keys()].sort(), [
       "audit",
+      "bill-details-request",
       "crs-summaries-request",
       "irs990",
       "nightly-request",
@@ -96,6 +99,37 @@ describe("resolveDispatchTarget — the allowlist", () => {
     const { url, init } = buildDispatchRequest(resolveDispatchTarget("crs-summaries-request") as DispatchTarget, "tok");
     assert.equal(url, "https://api.github.com/repos/civitics-platform/civitics/actions/workflows/crs-summaries.yml/dispatches");
     assert.equal(init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }), "exactly the input crs-summaries.yml declares");
+  });
+
+  it("FIX-1453 (cc-328): bill-details-request is the bill-details walker's request target — only all, max_minutes 15, both declared by bill-details.yml; no plain target", () => {
+    const t = resolveDispatchTarget("bill-details-request") as DispatchTarget;
+    assert.deepEqual(t, {
+      workflow: "bill-details.yml", stem: "bill-details", inputs: { only: "all", max_minutes: "15" }, gate: "request",
+    });
+    assert.equal(resolveDispatchTarget("bill-details"), null, "there was never a plain target");
+    const { url, init } = buildDispatchRequest(t, "tok");
+    assert.equal(url, "https://api.github.com/repos/civitics-platform/civitics/actions/workflows/bill-details.yml/dispatches");
+    assert.equal(init.body, JSON.stringify({ ref: "main", inputs: { only: "all", max_minutes: "15" } }));
+    // The inputs are exactly what the workflow declares (a 422 otherwise), and "all" is one of only's choices.
+    const yml = readFileSync(join(__dirname, "..", "..", "..", "..", ".github", "workflows", "bill-details.yml"), "utf8").replace(/\r\n/g, "\n");
+    const block = /\n {2}workflow_dispatch:\n {4}inputs:\n([\s\S]*?)\n(?=\S)/.exec(yml)?.[1] ?? "";
+    const declared = [...block.matchAll(/^ {6}([a-z_]+):$/gm)].map((m) => m[1]);
+    assert.deepEqual(declared.sort(), Object.keys(t.inputs).sort());
+    const only = /^ {6}only:\n([\s\S]*?)(?=^ {6}[a-z_]+:$)/m.exec(block)?.[1] ?? "";
+    assert.match(only, /type: choice/);
+    assert.deepEqual([...only.matchAll(/^ {10}- ([a-z]+)$/gm)].map((m) => m[1]), ["voted", "all"]);
+  });
+
+  it("FIX-1453 (cc-328): vercel.json polls bill-details-request every 5 minutes, as it polls crs-summaries-request", () => {
+    const v = JSON.parse(readFileSync(join(__dirname, "..", "..", "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+    const at = (p: string) => v.crons.filter((c) => c.path === p).map((c) => c.schedule);
+    assert.deepEqual(at("/api/cron/gha-dispatch/bill-details-request"), ["*/5 * * * *"]);
+    assert.deepEqual(at("/api/cron/gha-dispatch/crs-summaries-request"), ["*/5 * * * *"]);
+    assert.deepEqual(at("/api/cron/gha-dispatch/bill-details"), []);
+    for (const c of v.crons) {
+      const stem = /^\/api\/cron\/gha-dispatch\/([a-z0-9-]+)$/.exec(c.path)?.[1];
+      if (stem) assert.ok(resolveDispatchTarget(stem), `${c.path}: every dispatch cron names an allowlisted target`);
+    }
   });
 });
 
@@ -226,6 +260,29 @@ describe("runGhaDispatch — crs-summaries-request fires only on the dispatcher'
     assert.match(fetches[0]!.url, /\/workflows\/crs-summaries\.yml\/dispatches$/);
     assert.equal(fetches[0]!.init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }));
     assert.deepEqual(log, ["readRequest crs-summaries", "record crs-summaries dispatched", "consume crs-summaries dispatched 204"]);
+  });
+});
+
+describe("runGhaDispatch — bill-details-request fires only on the dispatcher's stamp (FIX-1453, cc-328)", () => {
+  const bd = resolveDispatchTarget("bill-details-request") as DispatchTarget;
+
+  it("no pending request → no_request: fires nothing, stamps nothing, consumes nothing", async () => {
+    for (const request of [null, { requested_at: "2026-10-23T21:01:00Z", consumed_at: "2026-10-23T21:05:00Z" }]) {
+      const { deps, log, fetches } = mockDeps({ request });
+      assert.equal((await runGhaDispatch(bd, deps)).body["outcome"], "no_request");
+      assert.equal(fetches.length, 0);
+      assert.deepEqual(log, ["readRequest bill-details"]);
+    }
+  });
+
+  it("a pending request → dispatched with only all and max_minutes 15, stamped gha_dispatch_bill-details, consumed", async () => {
+    const { deps, log, fetches } = mockDeps({ request: { job: "bill-details", requested_at: "2026-10-23T21:00:00Z", consumed_at: null, reaped_at: null } });
+    const r = await runGhaDispatch(bd, deps);
+    assert.equal(r.body["outcome"], "dispatched");
+    assert.equal(fetches.length, 1);
+    assert.match(fetches[0]!.url, /\/workflows\/bill-details\.yml\/dispatches$/);
+    assert.equal(fetches[0]!.init.body, JSON.stringify({ ref: "main", inputs: { only: "all", max_minutes: "15" } }));
+    assert.deepEqual(log, ["readRequest bill-details", "record bill-details dispatched", "consume bill-details dispatched 204"]);
   });
 });
 

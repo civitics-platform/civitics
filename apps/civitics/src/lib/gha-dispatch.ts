@@ -9,7 +9,8 @@
  * slot. The `schedule:` triggers stay as the fallback — except for irs990,
  * audit and crs-summaries (FIX-1424, cc-292), which carry none: GitHub started
  * each 4–9 h late, and a second start hours after the dispatched one is exactly
- * what moving them fixes. crs-summaries is a dispatcher unit since cc-318.
+ * what moving them fixes. crs-summaries is a dispatcher unit since cc-318, and
+ * bill-details (which never had a schedule) since cc-328.
  *
  * The route (app/api/cron/gha-dispatch) owns auth and the stamp; this module
  * owns everything that can be tested without a network: the allowlist, the
@@ -89,6 +90,14 @@ export interface DispatchTarget {
  * gha_dispatch_crs-summaries, the stem's, which the canary reads. Its plain
  * Saturday target went with it, as FIX-1350 removed the legacy nightly slot:
  * `/api/cron/gha-dispatch/crs-summaries` is now outside the allowlist.
+ *
+ * FIX-1453 (cc-328): the bill-details walker is the same kind of unit, a
+ * mirror of crs-summaries (`stale_after 2 hours`, group proposals).
+ * `bill-details-request` (Vercel, every 5 min) fires only on the dispatcher's
+ * unconsumed gha_dispatch_request_bill-details and sends only "all" (which
+ * already takes the voted measures first) and max_minutes "15", two inputs
+ * bill-details.yml declares. It stamps gha_dispatch_bill-details. There was
+ * never a plain bill-details target.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
@@ -107,6 +116,10 @@ export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new M
   [
     "crs-summaries-request",
     { workflow: "crs-summaries.yml", stem: "crs-summaries", inputs: { max_minutes: "15" }, gate: "request" },
+  ],
+  [
+    "bill-details-request",
+    { workflow: "bill-details.yml", stem: "bill-details", inputs: { only: "all", max_minutes: "15" }, gate: "request" },
   ],
 ]);
 

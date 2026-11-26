@@ -4,11 +4,14 @@ name: bill-details
 # sponsor, cosponsors, actions, real titles and introduced dates
 # (packages/data/src/pipelines/congress/bill-details.ts).
 #
-# STARTED BY HAND, and only by hand: `gh workflow run bill-details.yml -f
-# only=voted -f max_minutes=120`. There is no schedule: block, no Vercel
-# gha-dispatch route and no job_registry row — how the walker is scheduled is
-# FIX-1453's decision, not this file's. check:job-registry reads only scheduled
-# workflows and dispatch crons, so an unscheduled one needs no row.
+# STARTED BY THE DISPATCHER (FIX-1453, cc-328): job_registry `bill-details`
+# (stale_after 2 hours, group proposals, a mirror of crs-summaries) arms a
+# request, and /api/cron/gha-dispatch/bill-details-request (Vercel, every 5 min)
+# fires this workflow with only=all and max_minutes=15 and consumes it. There is
+# no schedule: block. A hand run still works (`gh workflow run bill-details.yml
+# -f only=all -f max_minutes=15`); it shares the concurrency group and the key
+# with a dispatched run, so give it a box or run it under a manual hold
+# (docs/OPERATIONS.md §The bill-details walker).
 #
 # The walker is a bounded, resumable unit of the CRS walker's class (a paced
 # trickle that claims nothing and yields): it takes only measures whose
