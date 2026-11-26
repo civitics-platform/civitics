@@ -1,0 +1,64 @@
+{
+  "cc": "317",
+  "prompt": "cc-prompt-317-proposal-detail-page-wave-0-votes-for-every-voted-type-grouped-by-roll-recorded-counts-never-a-result-bill-number-latest-action-stage-path-one-read-function-class-p-push.md",
+  "started_at": "2026-11-26T00:11:57Z",
+  "finished_at": "2026-11-26T01:12:00Z",
+  "head_before": "44f20df0",
+  "head_after": "c969137b",
+  "commits": [
+    {
+      "sha": "b58a1af6",
+      "subject": "[skip vercel] chore(fixes): file FIX-1447 (the proposal page's bill-only, 100-row vote record) and FIX-1448 (stored rolls short of their members, no official totals) — cc-317"
+    },
+    {
+      "sha": "73209168",
+      "subject": "[skip vercel] feat(db): proposal_vote_rolls(uuid) — one row per roll of a proposal, its stored counts never a result (FIX-1447, cc-317 D1)"
+    },
+    {
+      "sha": "c0f0296c",
+      "subject": "[skip vercel] test(db): the FIX-1447 column-list anchor compares a parsed list, not a spaced regex (no-regex-spaces) — cc-317"
+    },
+    {
+      "sha": "b610930c",
+      "subject": "feat(proposals): FIX-1447 — the detail page shows every roll of every voted type, its recorded counts never as a result; number, latest action, stage path and source link from stored rows (cc-317 D2–D11)"
+    },
+    {
+      "sha": "879d7b78",
+      "subject": "[skip vercel] docs: a stored roll is not its official count (FIX-1448), never print a stored tally as a result, proposal_vote_rolls(uuid) is the per-roll read (FIX-1447) — CLAUDE.md votes section + PHASE_GOALS proposal-page line (cc-317)"
+    },
+    {
+      "sha": "ff361e18",
+      "subject": "[skip vercel] test(db): type the FIX-1447 clone test's query results (TS7022 under the data package's strict typecheck) — cc-317"
+    },
+    {
+      "sha": "92d185a3",
+      "subject": "[skip vercel] chore(fixes): record FIX-1447 on prod — Craig's look 2026-11-26 after the 00:45:13Z deploy: PN 858 lists its 2 rolls with question, date and “Recorded here” and members under one; HR 1 reads “HR 1 · 119th Congress · House” with a latest-action line, grouped rolls and a working congress.gov link; the regulation keeps its comment box (cc-317)"
+    },
+    {
+      "sha": "1f866936",
+      "subject": "feat(proposals): a summary over 700 characters opens collapsed to eight lines, with a native <details> to show it all (Craig's note on cc-317's look at HR 1, FIX-1447)"
+    },
+    {
+      "sha": "c969137b",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-317 — FIX-1447 closed local (b610930c) and recorded on prod by Craig's look (92d185a3); FIX-1448 filed, open (34 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1447"
+  ],
+  "fixes_filed": [
+    "FIX-1447",
+    "FIX-1448"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261126000000_fix1447_proposal_vote_rolls.sql"
+  ],
+  "prod_writes": "one class-P push of one file (CREATE OR REPLACE FUNCTION public.proposal_vote_rolls(uuid) plus GRANT EXECUTE on it and on vote_roll_class / vote_question_class; no table, no row), applied 2026-11-26 00:42:24Z. (1) gate wait from 00:42:20.176Z, ok=true on the first poll (db 00:42:17.089Z), census pass (4 renders / 5 events in 60 min, ratio 2.02, floor 6; edge 0 of 55 = 0.00 %). (2) blocked_tokens [] — no b: or a:nightly_next_start token. (3) claim 00:42:23.773Z to 00:42:24.805Z (1.0 s; 17 guarded holds set and cleared). (4) data_sync_log rows started inside the claim: NOT isolated — the read-back counted overlap (started_at <= claim end AND coalesce(completed_at, now()) >= claim start) = 55, which counts every row never closed; a start-only count would have been a 10th prod statement against the cap of nine. (5) dispatch_log ticks inside the claim: 0 (00:39:00Z and 00:41:00Z nothing_due either side). Read-back: proposal_vote_rolls(uuid) md5 35ee10d8653a61d2b9b4b96ec28eb69b, proconfig NULL, anon EXECUTE true on it and both helpers, head 20261126000000 / 571.",
+  "ci": "green",
+  "stopped_items": [
+    "Receipt fact (4), data_sync_log rows started inside the push's claim: not read. Prod statements sent: 9 (read 2, read 3 twice because the first failed to parse, reads 4/5/6, the read-back, two EXPLAINs); a 10th was over the prompt's cap. The read-back's overlap figure (55) is not that fact."
+  ],
+  "lane": "app",
+  "owed": []
+}
