@@ -34,9 +34,12 @@ always give the same bytes.
 ## How a week runs
 
 1. Cowork writes the prompts. Each one's front matter names its lane, its
-   project and a `when:` (`any`, a date, `after <ISO>`, or `<ISO>..<ISO>`).
-   The board lays out the week from those, from what reports still owe, and
-   from pg_cron and the nightly.
+   project and a `when:` (`any`, a date, `after cc-<n>[, …]`, `after <ISO>`,
+   or `<ISO>..<ISO>`). A `when:` is a condition, never an estimate: a prompt
+   that follows another names it (`after cc-317`) and is ready the moment that
+   report lands; an instant is for a timed receipt or a span to avoid
+   (FIX-1451). The board lays out the week from those, from what reports still
+   owe, and from pg_cron and the nightly.
 2. Claude Code runs `/cc <n>` in a worktree, lands its commits on `main`,
    writes the report and runs `pnpm cc:verify <n>`. Only then does it commit
    the report.

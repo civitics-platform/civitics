@@ -18,6 +18,7 @@ steps:
   - {id: s10, kind: op, ref: "FIX-1345", title: "the first MOVING fixes-housekeep run — a bot commit moves N >= 1 bullets to the archive, fixes:check:trunk green inside the run", after: 2026-11-02}
   - {id: s11, kind: cc, ref: "cc-261", title: "the receipts JSON carries a live job_registry snapshot; check:job-registry compares the seed fences with it — RETURNED / UPDATED print, unexplained live drift is red (FIX-1325)", done: 2026-11-02}
   - {id: s12, kind: op, ref: "FIX-1325", title: "the first prod receipts carrying job_registry — check:job-registry prints the RETURNED rows and nothing red", after: 2026-11-03}
+  - {id: s13, kind: cc, ref: "cc-326", title: "a prompt's when names the prompt it waits on (after cc-317); cc:prompt --start refuses one not ready; the board says waits on, then ready since (FIX-1451)", done: 2026-11-26}
 ---
 
 # The CC loop
@@ -47,3 +48,9 @@ the seed fences. The nightly's receipts job writes `job_registry` into the
 day's JSON, and `check:job-registry` reads the newest file that has it. A
 RETURN/MOVE now prints as `RETURNED`, and a column a migration changed prints
 as `UPDATED` with that file. A live value that no migration explains is red.
+
+With cc-326 (FIX-1451) a prompt's `when:` is a condition, not an estimate.
+A prompt that follows another names it (`when: after cc-317`) and is ready
+the moment that report lands. `pnpm cc:prompt` prints the status,
+`--start` refuses a prompt that is not ready, and the board shows `waits on
+cc-317` until the report lands, then `ready since` its `finished_at`.

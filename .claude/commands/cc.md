@@ -6,6 +6,7 @@ repo.
 ```
 /cc 122
 /cc 122 --dry-run      # locate and summarise the prompt, run nothing
+/cc 122 anyway         # run it although its `when:` does not hold yet (Step 1)
 ```
 
 Today Craig is the transport in both directions: he copies a prompt out of
@@ -58,7 +59,18 @@ pnpm cc:prompt <n>
 
 It finds the file, parses its front matter with the same reader `cc:verify`
 uses (`parseFrontMatter`), and prints `{path, name, front_matter, title,
-problems}`. It exits 1 in the three cases below that abort.
+problems, when_status}`. It exits 1 in the three cases below that abort.
+
+`when_status` (FIX-1451; absent when the prompt has no `when:`) is
+`{ready, waiting_on, opens_ms, reason}`: whether the prompt's condition holds
+now — every `after cc-<n>` it names has a report, any instant is past, any
+window is open. **When `when_status.ready` is false, stop here — before the
+worktree and the marker** — and tell Craig the one line: what it waits on, or
+when it opens (`reason`). Run it early only when his `/cc` message says so
+(`/cc 326 anyway`): then `--start --anyway` in Step 2, and say so in the
+report's first line. Never guess, never wait in a loop. A dependency that
+reported since this clone last fetched is one `git fetch` away; the script
+never fetches.
 
 - **Zero matches** → abort: `No cc-prompt-<n>-*.md in <promptsDir>. Check the
   number, or pass the path directly.` Do not guess a neighbouring number.
@@ -81,6 +93,11 @@ Before the first read, mark the run as in flight:
 ```bash
 pnpm cc:prompt <n> --start      # writes <promptsDir>/cc-<n>.running
 ```
+
+`--start` re-checks `when_status`: on a prompt that is not ready it writes NO
+marker, prints `cc:prompt — NOT READY: <reason>` and exits 1. `--start
+--anyway` (only on Craig's `/cc <n> anyway`) writes it and prints
+`cc:prompt — started early (--anyway): <reason>`.
 
 The marker (`{"cc", "started_at", "worktree", "prompt"}`) is what the board
 reads as `running`. Step 4 removes it; a crash leaves it, and the board renders

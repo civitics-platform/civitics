@@ -27,7 +27,7 @@ the checklist below.
    concurrent_with: [168, 170]  # optional; cc numbers that may be in flight
    ---
    ```
-   **`when:`** has five forms. Every instant must carry a zone (`Z` or
+   **`when:`** has six forms. Every instant must carry a zone (`Z` or
    `±HH:MM`); a zoneless one is refused, because it would shift by the
    writer's offset.
 
@@ -36,8 +36,20 @@ the checklist below.
    | `any` | no constraint | `any time` |
    | `2026-10-01` or `2026-10-01T16:30Z` | runs then | `runs Thu 10-01 16:30 UTC` |
    | `after 2026-09-29T16:30Z` | not before this; open-ended after it (FIX-1243) | `runs after Tue 09-29 16:30 UTC` |
+   | `after cc-317` / `after cc-317, cc-303` / `after cc-317, 2026-11-26T04:00Z` | once every named prompt has a report, and not before the instant if one is given — at most one (FIX-1451) | `waits on cc-317`, then `ready since Thu 11-26 01:12 UTC` |
    | `2026-10-01T23:15Z..2026-10-02T03:30Z` | a bounded window (FIX-1243) | `window Thu 10-01 23:15–03:30 UTC` |
    | (absent) | nothing drawn | — |
+
+   **A `when:` is a condition, never an estimate — name the prompt a run
+   waits on; write an instant only for a timed receipt or a span that must be
+   avoided (Craig, 2026-11-25).** A dependency is met when its
+   `docs/cc/reports/cc-<n>.md` exists (the checkout's, else `origin/main` as
+   last fetched); whether it did what this prompt needs stays a Phase 0 read
+   with a STOP row. `pnpm cc:prompt <n>` prints the status as `when_status`;
+   `--start` refuses a prompt that is not ready (a dep with no report, an
+   instant still ahead, a window not open or already closed), and `/cc` stops
+   there unless Craig says `/cc <n> anyway`. The list form needs no quotes —
+   the one reader keeps a plain scalar's commas.
 
    When `.claude/board.local.json` names a `tz`, the pill adds the local time.
    A `posture: prod-writes` card also reads "needs a supervised slot" and
@@ -266,7 +278,7 @@ and its database.
 | **B — bulk op** | a data set, CIC / DROP CONCURRENTLY, pg_repack, a backfill, an MV swap, anything with `--apply` and a manifest | (a)–(g) below in full under its own claim; the io cap and `box_is_saturated` | a condition the runner waits on |
 | **S — scheduled bulk** | weeklies, dailies, the crawls, USASpending — dispatcher rows | the dispatcher's own gates (budget row, phase lock, io cap, cooldown/backoff, group, `prod_session`) | the row's deadline rule |
 
-A class-P prompt carries `when: after <dependency landing>` and no window /
+A class-P prompt carries `when: after cc-<n>` (the prompt whose push it follows) or `any`, and no window /
 lapse / hard-stop rows; its STOP table keeps the box rows (`held`, the census,
 io) and drops the clock rows. A file with a class-B statement makes the whole
 push class B; the prompt names each file's class and the dry run's file list is
