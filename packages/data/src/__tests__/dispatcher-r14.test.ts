@@ -248,14 +248,16 @@ test("clone: from the FIX-1311 hold the file converts exactly its row, twice; th
 test("clone: the verdict guard converts on absent / insufficient_data / ok and quotes it; RAISEs on sustained_regression", async (t) => {
   const c = await clone(t);
   if (!c) return;
-  // Each case seeds on top of the clone's own 7 rated rows (4 baseline + 3 recent), inside a rolled-back transaction.
+  // FIX-1426 — each case deletes the pipeline's rows and seeds the verdict it asserts, inside a rolled-back
+  // transaction; the clone's standing count (it drifted from 7 rated rows to enough for ok) never decides one.
+  // rn 1–3 are the recent window, rn > 3 the baseline; insufficient_data is a baseline under 5 runs.
+  const fast = (hours: number[]): [number, number, number][] => hours.map((h) => [h, 60, 1701]);
   const cases: { want: string; rows: [number, number, number][] }[] = [
     { want: "absent", rows: [] },
-    { want: "insufficient_data", rows: [] },
-    // Three recent runs at the clone's own rate: its 7 rows become the baseline.
-    { want: "ok", rows: [[3, 60, 1701], [2, 60, 1701], [1, 60, 1701]] },
-    // Three recent runs at 3,600 s / 1,000 rows, far above the 7-row baseline.
-    { want: "sustained_regression", rows: [[3, 3600, 1000], [2, 3600, 1000], [1, 3600, 1000]] },
+    { want: "insufficient_data", rows: fast([4, 3, 2, 1]) },
+    { want: "ok", rows: fast([8, 7, 6, 5, 4, 3, 2, 1]) },
+    // A five-run baseline at 60 s / 1,701 rows, then three recent runs at 3,600 s / 1,000 rows.
+    { want: "sustained_regression", rows: [...fast([8, 7, 6, 5, 4]), [3, 3600, 1000], [2, 3600, 1000], [1, 3600, 1000]] },
   ];
   try {
     for (const k of cases) {
@@ -263,7 +265,7 @@ test("clone: the verdict guard converts on absent / insufficient_data / ok and q
       let msg: string | null = null;
       try {
         await c.query(REVERT());
-        if (k.want === "absent") await c.query("DELETE FROM public.data_sync_log WHERE pipeline = $1", [PIPELINE]);
+        await c.query("DELETE FROM public.data_sync_log WHERE pipeline = $1", [PIPELINE]);
         await seed(c, k.rows);
         assert.equal(await verdict(c), k.want, `the seed reads ${k.want}`);
         await c.query("SAVEPOINT s");

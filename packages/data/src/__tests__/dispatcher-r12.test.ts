@@ -248,31 +248,59 @@ test("clone: from the FIX-1311 hold each file converts exactly its row, twice; t
   }
 });
 
-test("clone: the verdict guard converts on the clone's ok / insufficient_data / absent and quotes it", async (t) => {
+const verdictOf = async (c: Client, pipeline: string): Promise<string> =>
+  ((await c.query<{ r: { pipelines: { pipeline: string; verdict: string }[] } }>(
+    "SELECT public.check_pipeline_rate_regression() AS r",
+  )).rows[0]!.r.pipelines).find((e) => e.pipeline === pipeline)?.verdict ?? "absent";
+
+/**
+ * FIX-1426 — a case seeds the verdict it asserts. The pipeline's own rows are
+ * deleted first, so the clone's standing count never decides it (it drifted
+ * from insufficient_data to ok and turned both cases red). Rows: [hours ago,
+ * span seconds, rows written], on the pipeline's own denominator.
+ */
+async function seedRated(c: Client, pipeline: string, rows: [number, number, number][]): Promise<void> {
+  await c.query("DELETE FROM public.data_sync_log WHERE pipeline = $1", [pipeline]);
+  const meta = JSON.stringify(pipeline === "run_rule_taggers" ? { source: "pg_cron", desired_rows: 720256 } : { source: "pg_cron" });
+  for (const [h, span, n] of rows) {
+    await c.query(
+      `INSERT INTO public.data_sync_log (pipeline, started_at, completed_at, rows_inserted, rows_updated, status, metadata)
+       VALUES ($1, now() - make_interval(hours => $2::int), now() - make_interval(hours => $2::int) + make_interval(secs => $3::int),
+               $4, 0, 'complete', $5::jsonb)`,
+      [pipeline, h, span, n, meta],
+    );
+  }
+}
+
+// rn 1–3 are the recent window, rn > 3 the baseline; insufficient_data is a baseline under 5 runs.
+const FAST = (hours: number[]): [number, number, number][] => hours.map((h) => [h, 60, 1000]);
+const SEEDS: { want: string; rows: [number, number, number][] }[] = [
+  { want: "absent", rows: [] },
+  { want: "insufficient_data", rows: FAST([4, 3, 2, 1]) },
+  { want: "ok", rows: FAST([8, 7, 6, 5, 4, 3, 2, 1]) },
+];
+
+test("clone: the verdict guard converts on a seeded ok / insufficient_data / absent and quotes it", async (t) => {
   const c = await clone(t);
   if (!c) return;
   try {
-    const els = new Map(
-      ((await c.query<{ r: { pipelines: { pipeline: string; verdict: string }[] } }>(
-        "SELECT public.check_pipeline_rate_regression() AS r",
-      )).rows[0]!.r.pipelines).map((e) => [e.pipeline, e.verdict]),
-    );
-    const seen = new Set<string>();
     for (const r of ROWS) {
-      await begin(c);
-      try {
-        await c.query(REVERT());
-        await c.query(FILE(r));
-        const note = (await holds(c)).find((h) => h.pipeline === r.pipeline)!.note;
-        const v = els.get(r.pipeline);
-        seen.add(v ?? "absent");
-        if (v) assert.ok(note.includes(`(${v}: recent_min `), `${r.pipeline}: the note quotes ${v}`);
-        else assert.ok(note.includes("(no rated rows)"), `${r.pipeline}: absent → no rated rows`);
-      } finally {
-        await c.query("ROLLBACK");
+      for (const k of SEEDS) {
+        await begin(c);
+        try {
+          await c.query(REVERT());
+          await seedRated(c, r.pipeline, k.rows);
+          assert.equal(await verdictOf(c, r.pipeline), k.want, `${r.pipeline}: the seed reads ${k.want}`);
+          await c.query(FILE(r));
+          const row: Hold = (await holds(c)).find((h) => h.pipeline === r.pipeline)!;
+          assert.equal(Number(row.cadence_hours), r.hours, `${r.pipeline}: ${k.want} converts`);
+          if (k.want === "absent") assert.ok(row.note.includes("(no rated rows)"), `${r.pipeline}: absent → no rated rows`);
+          else assert.ok(row.note.includes(`(${k.want}: recent_min `), `${r.pipeline}: the note quotes ${k.want}`);
+        } finally {
+          await c.query("ROLLBACK");
+        }
       }
     }
-    for (const v of ["ok", "insufficient_data", "absent"]) assert.ok(seen.has(v), `the clone exercises ${v}`);
   } finally {
     await c.end();
   }
@@ -287,19 +315,9 @@ test("clone: a seeded sustained_regression RAISEs and leaves the hold a hold", a
       let msg: string | null = null;
       try {
         await c.query(REVERT());
-        // Three slow recent runs (3,600 s each) on the pipeline's own denominator.
-        for (const h of [3, 2, 1]) {
-          await c.query(
-            `INSERT INTO public.data_sync_log (pipeline, started_at, completed_at, rows_inserted, rows_updated, status, metadata)
-             VALUES ($1, now() - make_interval(hours => $2::int), now() - make_interval(hours => $2::int) + interval '3600 seconds',
-                     1000, 0, 'complete', $3::jsonb)`,
-            [r.pipeline, h, JSON.stringify(r.pipeline === "run_rule_taggers" ? { source: "pg_cron", desired_rows: 720256 } : { source: "pg_cron" })],
-          );
-        }
-        const el: { pipeline: string; verdict: string } | undefined = ((await c.query<{ r: { pipelines: { pipeline: string; verdict: string }[] } }>(
-          "SELECT public.check_pipeline_rate_regression() AS r",
-        )).rows[0]!.r.pipelines).find((e) => e.pipeline === r.pipeline);
-        assert.equal(el?.verdict, "sustained_regression", `${r.pipeline}: the seed reads sustained`);
+        // A five-run fast baseline, then three slow recent runs (3,600 s each), on the pipeline's own denominator.
+        await seedRated(c, r.pipeline, [...FAST([8, 7, 6, 5, 4]), [3, 3600, 1000], [2, 3600, 1000], [1, 3600, 1000]]);
+        assert.equal(await verdictOf(c, r.pipeline), "sustained_regression", `${r.pipeline}: the seed reads sustained`);
         await c.query("SAVEPOINT s");
         try {
           await c.query(FILE(r));
