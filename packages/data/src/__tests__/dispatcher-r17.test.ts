@@ -26,7 +26,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { PIN_LINEAGE, read, stripComments } from "./lib/migration-text";
+import { PIN_LINEAGE, atCurrentPins, read, stripComments } from "./lib/migration-text";
 
 const ROOT = path.join(__dirname, "..", "..", "..", "..");
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -260,12 +260,15 @@ async function begin(c: Client): Promise<void> {
  * A fresh box, no session, ec-crawl the only looped row, the cooldown off and a
  * 1 MB caps ceiling: a DUE ec-crawl is excluded by `live` if the census sees a
  * unit and by `caps:` otherwise, and is never armed. The pipeline's last week is
- * cleared and one complete row an hour old is its anchor.
+ * cleared and one complete row an hour old is its anchor. cc-303: FIX-1444's hold
+ * is off here (stall_hold_minutes 0, no dispatcher_hold key): this file's failed
+ * cancel would otherwise strike and hold its own tick (dispatcher-r18 covers that).
  */
 async function stage(c: Client): Promise<void> {
   await c.query(`UPDATE public.platform_dials SET pause = false, io_time_pct_ceiling = 90, io_samples = 2, io_mbps_floor = 12,
-                   io_throttle_hold_min = 60, rearm_cooldown_seconds = 0, max_concurrent_units = 10, max_live_caps_mb = 1`);
-  await c.query("DELETE FROM public.pipeline_state WHERE key IN ('box_health_mem', 'prod_session')");
+                   io_throttle_hold_min = 60, rearm_cooldown_seconds = 0, max_concurrent_units = 10, max_live_caps_mb = 1,
+                   stall_hold_minutes = 0`);
+  await c.query("DELETE FROM public.pipeline_state WHERE key IN ('box_health_mem', 'prod_session', 'dispatcher_hold')");
   await c.query(
     `INSERT INTO public.pipeline_state (key, value, updated_at)
      VALUES ('box_health', jsonb_build_object('at', clock_timestamp(), 'startup_timeouts_10m', 0,
@@ -349,7 +352,7 @@ test("clone A: a failed unit's running row inside its run is closed by one tick;
   const c = await clone(t);
   if (!c) return;
   try {
-    assert.equal(await livePin(c), NOW, "the clone carries file A");
+    assert.equal(await livePin(c), atCurrentPins(NOW), "the clone carries file A (cc-303 moved the pin on: PIN_LINEAGE)");
     await begin(c);
     try {
       await stage(c);
