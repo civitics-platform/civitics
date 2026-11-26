@@ -30,8 +30,8 @@
       "schedule": "0 17 * * 2"
     },
     {
-      "path": "/api/cron/gha-dispatch/crs-summaries",
-      "schedule": "0 10 * * 6"
+      "path": "/api/cron/gha-dispatch/crs-summaries-request",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/platform-snapshot",

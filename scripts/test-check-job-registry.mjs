@@ -103,6 +103,17 @@ console.log("check:job-registry — fixtures");
     drift.problems.length === 0 && drift.warnings.length === 1 &&
       has(drift.warnings, "wf-scheduled: deadline_rule 'at 0 4 * * 1' differs from vercel.json's /api/cron/gha-dispatch/wf-scheduled schedule '0 17 * * 2'"),
     dump(drift));
+  // cc-318 (FIX-1455): a dispatched row started by its request poll, as crs-summaries is.
+  const polled = variant((root) => {
+    unscheduled(root);
+    mkdirSync(join(root, "apps", "civitics"), { recursive: true });
+    writeFileSync(join(root, "apps", "civitics", "vercel.json"), JSON.stringify({
+      crons: [{ path: "/api/cron/gha-dispatch/wf-scheduled-request", schedule: "*/5 * * * *" }],
+    }));
+    edit(root, SEED, (t) => t.replace("'gha:wf-scheduled.yml', 3, 'at 0 4 * * 1'", "'gha-dispatch:wf-scheduled', 3, 'stale_after 2 hours'"));
+  });
+  check("…a stale_after row with a */5 <stem>-request poll reads as started by it — PASSES, no at comparison",
+    polled.problems.length === 0 && polled.warnings.length === 0 && polled.stats.vercelDispatches === 1, dump(polled) + JSON.stringify(polled.stats));
 }
 {
   const r = variant((root) => edit(root, SEED, (t) => t.replace("('job-a', 'pg_cron', 'pipe_a', 'atomic', 'CALL public.proc_a();'", "('job-a', 'pg_cron', 'pipe_a', 'atomic', 'CALL public.proc_missing();'")));

@@ -1,13 +1,15 @@
 /**
  * FIX-1218 — /api/cron/gha-dispatch/<stem>   (nightly-request | sync-canary-check | platform-snapshot
- *                                             | irs990 | audit | crs-summaries)
+ *                                             | irs990 | audit | crs-summaries-request)
  *
  * N2 (FIX-1336, cc-243): `nightly-request` fires only on the dispatcher's
  * unconsumed request stamp (pipeline_state.gha_dispatch_request_nightly) and
  * consumes it. The legacy `nightly` slot, and the job_registry read that gated
  * it, were removed by FIX-1350 (cc-249): `/nightly` now gets the allowlist's
- * 400. The logic is runGhaDispatch() in lib/gha-dispatch.ts; this file wires
- * the deps.
+ * 400. FIX-1455 (cc-318): `crs-summaries-request` is the same door for the CRS
+ * walker (its request stamp, max_minutes "15"); the Saturday `crs-summaries`
+ * slot is gone the same way. The logic is runGhaDispatch() in
+ * lib/gha-dispatch.ts; this file wires the deps.
  *
  * ── WHY THIS ROUTE EXISTS ────────────────────────────────────────────────────
  *
@@ -26,13 +28,13 @@
  * run's rows for the nominal day and every phase is skipped (FIX-1218 D3). The
  * other two are idempotent by nature.
  *
- * FIX-1424 (cc-292): irs990 (`0 15 * * 2`), audit (`0 17 * * 2`) and
- * crs-summaries (`0 10 * * 6`) have NO `schedule:` fallback. GitHub started
- * each 4–9 h late (irs990 11-16 at 23:38Z, inside the post-landing pass; the
- * audit inside the stall, cancelled), and a second start hours after the
- * dispatched one is the failure the move removes. A dead dispatcher therefore
- * skips their week; gha_dispatch_<stem> and the canary are the signal, and
- * `gh workflow run <file>` is the by-hand start.
+ * FIX-1424 (cc-292): irs990 (`0 15 * * 2`) and audit (`0 17 * * 2`) have NO
+ * `schedule:` fallback, nor does crs-summaries (a dispatcher unit since cc-318).
+ * GitHub started each 4–9 h late (irs990 11-16 at 23:38Z, inside the
+ * post-landing pass; the audit inside the stall, cancelled), and a second start
+ * hours after the dispatched one is the failure the move removes. A dead
+ * dispatcher therefore skips their runs; gha_dispatch_<stem> and the canary are
+ * the signal, and `gh workflow run <file>` is the by-hand start.
  *
  * ── THE STAMP, ON EVERY CALL (rule 167) ──────────────────────────────────────
  *

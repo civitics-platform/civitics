@@ -9,7 +9,7 @@
  * slot. The `schedule:` triggers stay as the fallback — except for irs990,
  * audit and crs-summaries (FIX-1424, cc-292), which carry none: GitHub started
  * each 4–9 h late, and a second start hours after the dispatched one is exactly
- * what moving them fixes.
+ * what moving them fixes. crs-summaries is a dispatcher unit since cc-318.
  *
  * The route (app/api/cron/gha-dispatch) owns auth and the stamp; this module
  * owns everything that can be tested without a network: the allowlist, the
@@ -75,12 +75,20 @@ export interface DispatchTarget {
  * and was removed by FIX-1350 (cc-249); `/api/cron/gha-dispatch/nightly` is now
  * outside the allowlist. The others declare no inputs and read none.
  *
- * FIX-1424 (cc-292): irs990 (Tue 15:00Z), audit (Tue 17:00Z) and
- * crs-summaries (Sat 10:00Z) — the three prod-touching workflows that still
- * started on GitHub's `schedule:`. Each is a plain dispatch like
+ * FIX-1424 (cc-292): irs990 (Tue 15:00Z) and audit (Tue 17:00Z) — prod-touching
+ * workflows that started on GitHub's `schedule:`. Each is a plain dispatch like
  * sync-canary-check (no request stamp, no gate). Each declares
  * `workflow_dispatch: {}`, so no input is sent: an undeclared one is a 422.
  * The audit's workflow NAME is weekly-integrity-audit; the stem is the FILE's.
+ *
+ * FIX-1455 / FIX-1454 (cc-318): crs-summaries is a dispatcher unit
+ * (`stale_after 2 hours`), so its door is a request target like the nightly's:
+ * `crs-summaries-request` (Vercel, every 5 min) fires only on the dispatcher's
+ * unconsumed gha_dispatch_request_crs-summaries and sends max_minutes "15" —
+ * exactly the input crs-summaries.yml declares. It stamps
+ * gha_dispatch_crs-summaries, the stem's, which the canary reads. Its plain
+ * Saturday target went with it, as FIX-1350 removed the legacy nightly slot:
+ * `/api/cron/gha-dispatch/crs-summaries` is now outside the allowlist.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
@@ -96,7 +104,10 @@ export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new M
   ["platform-snapshot", { workflow: "platform-snapshot.yml", stem: "platform-snapshot", inputs: {} }],
   ["irs990", { workflow: "irs990.yml", stem: "irs990", inputs: {} }],
   ["audit", { workflow: "audit.yml", stem: "audit", inputs: {} }],
-  ["crs-summaries", { workflow: "crs-summaries.yml", stem: "crs-summaries", inputs: {} }],
+  [
+    "crs-summaries-request",
+    { workflow: "crs-summaries.yml", stem: "crs-summaries", inputs: { max_minutes: "15" }, gate: "request" },
+  ],
 ]);
 
 /** The allowlist lookup. `null` for anything not in it, including `../x`. */

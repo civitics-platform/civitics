@@ -98,6 +98,12 @@ const VERCEL_DISPATCH_RE = /^\/api\/cron\/gha-dispatch\/([a-z0-9-]+)$/;
 /**
  * FIX-1424 (cc-292) — the Vercel crons that START a workflow: stem → schedule,
  * from apps/civitics/vercel.json under `root`. No file (the fixtures) → empty.
+ *
+ * cc-318 (FIX-1455): a `<stem>-request` path is the dispatcher's request poll
+ * (the gha-dispatch.ts allowlist gates it on gha_dispatch_request_<stem>), so it
+ * starts `<stem>`: `crs-summaries-request` → crs-summaries, `nightly-request` →
+ * nightly. Its schedule is the POLL, not the row's rule, which is a dispatched
+ * one (stale_after / by), so the `at` comparison below never reads it.
  */
 export function vercelDispatchCrons(root, problems = []) {
   const f = join(root, "apps", "civitics", "vercel.json");
@@ -108,7 +114,7 @@ export function vercelDispatchCrons(root, problems = []) {
   catch (e) { problems.push(`apps/civitics/vercel.json does not parse: ${e.message}`); return out; }
   for (const c of Array.isArray(v?.crons) ? v.crons : []) {
     const m = VERCEL_DISPATCH_RE.exec(typeof c?.path === "string" ? c.path : "");
-    if (m) out.set(m[1], typeof c.schedule === "string" ? c.schedule : null);
+    if (m) out.set(m[1].replace(/-request$/, ""), typeof c.schedule === "string" ? c.schedule : null);
   }
   return out;
 }

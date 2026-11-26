@@ -33,18 +33,19 @@ function fakeFetch(status: number, body: string, calls: Call[] = []): typeof fet
 const nightly = resolveDispatchTarget("nightly-request") as DispatchTarget;
 
 describe("resolveDispatchTarget — the allowlist", () => {
-  it("knows exactly the six dispatched workflows (the nightly through its request target), keyed by path segment", () => {
+  it("knows exactly the six dispatched workflows (the nightly and crs-summaries through request targets), keyed by path segment", () => {
     assert.deepEqual([...GHA_DISPATCH_WORKFLOWS.keys()].sort(), [
       "audit",
-      "crs-summaries",
+      "crs-summaries-request",
       "irs990",
       "nightly-request",
       "platform-snapshot",
       "sync-canary-check",
     ]);
     for (const [key, t] of GHA_DISPATCH_WORKFLOWS) {
-      // N2 (FIX-1336): nightly-request is a second door to the same workflow and stamp.
-      assert.equal(t.stem, key === "nightly-request" ? "nightly" : key);
+      // N2 (FIX-1336): a <stem>-request key is the dispatcher's door to that workflow and stamp.
+      assert.equal(t.stem, key.replace(/-request$/, ""));
+      assert.equal(t.gate === "request", key.endsWith("-request"), `${key}: gated exactly when it is a request target`);
       assert.equal(t.workflow, `${t.stem}.yml`, "the file is always <stem>.yml — never caller input");
     }
   });
@@ -80,11 +81,21 @@ describe("resolveDispatchTarget — the allowlist", () => {
     assert.equal(resolveDispatchTarget("sync-canary-check")?.gate, undefined, "ungated: fires on every call");
   });
 
-  it("FIX-1424 (cc-292): irs990, audit and crs-summaries are plain dispatches — no inputs, no gate, the stem the file's", () => {
-    for (const stem of ["irs990", "audit", "crs-summaries"]) {
+  it("FIX-1424 (cc-292): irs990 and audit are plain dispatches — no inputs, no gate, the stem the file's", () => {
+    for (const stem of ["irs990", "audit"]) {
       const t = resolveDispatchTarget(stem) as DispatchTarget;
       assert.deepEqual(t, { workflow: `${stem}.yml`, stem, inputs: {} }, stem);
     }
+  });
+
+  it("FIX-1455 (cc-318): crs-summaries-request is the CRS walker's request target with max_minutes 15; the Saturday slot is gone", () => {
+    assert.deepEqual(resolveDispatchTarget("crs-summaries-request"), {
+      workflow: "crs-summaries.yml", stem: "crs-summaries", inputs: { max_minutes: "15" }, gate: "request",
+    });
+    assert.equal(resolveDispatchTarget("crs-summaries"), null, "the plain target is outside the allowlist: the route's 400");
+    const { url, init } = buildDispatchRequest(resolveDispatchTarget("crs-summaries-request") as DispatchTarget, "tok");
+    assert.equal(url, "https://api.github.com/repos/civitics-platform/civitics/actions/workflows/crs-summaries.yml/dispatches");
+    assert.equal(init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }), "exactly the input crs-summaries.yml declares");
   });
 });
 
@@ -192,6 +203,29 @@ describe("FIX-1350 (cc-249) — the legacy 0 21 nightly slot is gone", () => {
     const { deps, log } = mockDeps({});
     await runGhaDispatch(resolveDispatchTarget("platform-snapshot") as DispatchTarget, deps);
     assert.deepEqual(log, ["record platform-snapshot dispatched"]);
+  });
+});
+
+describe("runGhaDispatch — crs-summaries-request fires only on the dispatcher's stamp (FIX-1455, cc-318)", () => {
+  const crs = resolveDispatchTarget("crs-summaries-request") as DispatchTarget;
+
+  it("no pending request → no_request: the */5 poll fires nothing, stamps nothing, consumes nothing", async () => {
+    for (const request of [null, { requested_at: "2026-10-23T21:01:00Z", consumed_at: "2026-10-23T21:05:00Z" }]) {
+      const { deps, log, fetches } = mockDeps({ request });
+      assert.equal((await runGhaDispatch(crs, deps)).body["outcome"], "no_request");
+      assert.equal(fetches.length, 0);
+      assert.deepEqual(log, ["readRequest crs-summaries"]);
+    }
+  });
+
+  it("a pending request → dispatched with max_minutes 15, stamped gha_dispatch_crs-summaries, consumed", async () => {
+    const { deps, log, fetches } = mockDeps({ request: { job: "crs-summaries", requested_at: "2026-10-23T21:00:00Z", consumed_at: null, reaped_at: null } });
+    const r = await runGhaDispatch(crs, deps);
+    assert.equal(r.body["outcome"], "dispatched");
+    assert.equal(fetches.length, 1);
+    assert.match(fetches[0]!.url, /\/workflows\/crs-summaries\.yml\/dispatches$/);
+    assert.equal(fetches[0]!.init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }));
+    assert.deepEqual(log, ["readRequest crs-summaries", "record crs-summaries dispatched", "consume crs-summaries dispatched 204"]);
   });
 });
 
