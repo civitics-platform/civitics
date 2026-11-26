@@ -30,13 +30,26 @@ import { Client } from "pg";
 
 // The NEWEST definition of the function, because a source anchor guards the
 // LIVE body, not a superseded file. FIX-1279 (20261005200000) re-states the
-// FIX-1195 body verbatim apart from the six identity fields, and FIX-1278
+// FIX-1195 body verbatim apart from the six identity fields, FIX-1278
 // (20261006010000) re-states the FIX-1279 body verbatim plus the two
-// official_redirects statements, so the earlier anchors below read it unchanged.
+// official_redirects statements, and FIX-1427 (20261126005000) re-states the
+// FIX-1278 body verbatim plus the data_flags block, so the earlier anchors
+// below read it unchanged.
 const MIGRATION = path.join(
   __dirname, "..", "..", "..", "..", "..",
-  "supabase", "migrations", "20261006010000_fix1278_official_redirects.sql",
+  "supabase", "migrations", "20261126005000_fix1427_promote_moves_data_flags.sql",
 );
+const PRIOR = path.join(path.dirname(MIGRATION), "20261006010000_fix1278_official_redirects.sql");
+const REVERT = path.join(path.dirname(MIGRATION), "..", "..", "scripts", "fix1427-revert-promote-data-flags.sql");
+
+/** The function's dollar-quoted body text, from its CREATE OR REPLACE to `END $$;`. */
+function fnText(src: string): string {
+  const a = src.indexOf("CREATE OR REPLACE FUNCTION promote_candidate_to_elected(");
+  assert.notEqual(a, -1, "no CREATE OR REPLACE FUNCTION promote_candidate_to_elected(");
+  const b = src.indexOf("\nEND $$;", a);
+  assert.notEqual(b, -1, "no END $$;");
+  return src.slice(a, b + "\nEND $$;".length);
+}
 
 // ---------------------------------------------------------------------------
 // Source anchors — run everywhere, including CI with no database.
@@ -109,6 +122,22 @@ test("FIX-1278: the retired id is recorded BEFORE the elected row is deleted", (
   assert.ok(repoint > 0, "the chain-collapse UPDATE is missing — a redirect to the deleted row would dangle");
   assert.ok(record > 0, "the INSERT of the retired id is missing — its page 404s");
   assert.ok(repoint < record && record < del, "re-point, then record, then delete — in that order");
+});
+
+test("FIX-1427: the body is FIX-1278's verbatim plus the one data_flags block; the revert is FIX-1278's verbatim", () => {
+  const now = fnText(fs.readFileSync(MIGRATION, "utf8"));
+  const prior = fnText(fs.readFileSync(PRIOR, "utf8"));
+  const anchor = "  -- Derived, self-healing surfaces:";
+  const at = now.indexOf("  -- FIX-1427: data_flags (FIX-401)");
+  const end = now.indexOf(anchor);
+  assert.ok(at > 0 && end > at, "the block sits before the derived surfaces");
+  assert.equal(now.slice(0, at) + now.slice(end), prior, "nothing outside the block changed");
+  const block = now.slice(at, end);
+  // The candidate wins a collision (as user_follows), behind an EXISTS: service_role has no DELETE on data_flags.
+  assert.match(block, /IF EXISTS \(SELECT 1 FROM data_flags e[\s\S]*?\) THEN\n {4}DELETE FROM data_flags e\n {5}USING data_flags c\n/);
+  assert.match(block, /AND c\.flagger_user_id = e\.flagger_user_id\n\s+AND c\.reason = e\.reason;\n {2}END IF;/);
+  assert.ok(block.includes("  UPDATE data_flags SET entity_id = p_candidate_id\n    WHERE entity_type = 'official' AND entity_id = p_elected_id;\n"));
+  assert.equal(fnText(fs.readFileSync(REVERT, "utf8")), prior, "the revert restores the prior body verbatim");
 });
 
 test("FIX-1279: the migration is the newest definition of the function", () => {
@@ -324,6 +353,98 @@ test("FIX-1278: the promotion records the retired id and collapses chains", asyn
       { old_id: electedId, new_id: candId, reason: "promotion" },
       { old_id: earlier,   new_id: candId, reason: "test:earlier" },
     ], "exactly the retired id -> survivor, plus the earlier redirect re-pointed (no row targets the deleted id)");
+  } finally {
+    await client.query("ROLLBACK").catch(() => {});
+    await client.end().catch(() => {});
+  }
+});
+
+// FIX-1427 — a data flag on the retired id moves to the survivor; on a
+// collision (one reader, one reason, both rows) the candidate's row wins; a
+// flag of another entity_type that happens to carry the same uuid is left; the
+// redirect row is still filed. A service_role caller still promotes when no
+// flag collides (it holds no DELETE on data_flags, so the DELETE runs only on
+// a real collision).
+test("FIX-1427: the promotion moves data_flags, the candidate's row winning a collision", async (t) => {
+  const client = new Client({ connectionString: LOCAL_DB, connectionTimeoutMillis: 3000 });
+  try {
+    await client.connect();
+  } catch {
+    t.skip("no database reachable — behavioural half skipped (source anchors above still ran)");
+    return;
+  }
+  try {
+    await client.query("BEGIN");
+    const jur = await client.query<{ id: string }>("SELECT id FROM jurisdictions LIMIT 1");
+    const jurisdictionId = jur.rows[0]?.id;
+    assert.ok(jurisdictionId, "no jurisdictions row to hang the fixtures off");
+    // A flagger under the 20-a-day cap (the BEFORE INSERT trigger counts the last 24 hours).
+    const flagger = (await client.query<{ id: string }>(
+      `SELECT u.id FROM public.users u
+        WHERE (SELECT count(*) FROM public.data_flags d
+                WHERE d.flagger_user_id = u.id AND d.created_at > now() - interval '24 hours') < 10
+        ORDER BY u.id LIMIT 1`,
+    )).rows[0]?.id;
+    if (!flagger) {
+      t.skip("no users row to flag with");
+      return;
+    }
+
+    const ins = async (tier: string, role: string, src: Record<string, unknown>) =>
+      (await client.query<{ id: string }>(
+        `INSERT INTO officials (jurisdiction_id, full_name, role_title, tier, source_ids)
+         VALUES ($1, 'FIX1427 flags', $2, $3, $4::jsonb) RETURNING id`,
+        [jurisdictionId, role, tier, JSON.stringify(src)],
+      )).rows[0]!.id;
+    const flag = async (entityType: string, entityId: string, reason: string) =>
+      (await client.query<{ id: string }>(
+        `INSERT INTO public.data_flags (entity_type, entity_id, reason, flagger_user_id)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [entityType, entityId, reason, flagger],
+      )).rows[0]!.id;
+
+    const electedId = await ins("elected", "Representative", { congress_gov: "X001427" });
+    const candId    = await ins("candidate", "Candidate for Representative", { fec_candidate_id: "H2XX01427" });
+
+    const moves     = await flag("official", electedId, "misspelled");   // no twin → moves
+    const loser     = await flag("official", electedId, "wrong");        // twin on the candidate → deleted
+    const winner    = await flag("official", candId,    "wrong");        // the candidate's → kept
+    const otherType = await flag("proposal", electedId, "outdated");     // not an official ref → untouched
+
+    const res = (await client.query<{ r: { total_fks_moved: number } }>(
+      "SELECT public.promote_candidate_to_elected($1, $2) AS r", [electedId, candId],
+    )).rows[0]!.r;
+    assert.ok(res.total_fks_moved >= 1, "the moved flag is counted");
+
+    const rows = (await client.query<{ id: string; entity_type: string; entity_id: string; reason: string }>(
+      "SELECT id, entity_type, entity_id, reason FROM public.data_flags WHERE id = ANY($1::uuid[]) ORDER BY reason",
+      [[moves, loser, winner, otherType]],
+    )).rows;
+    assert.deepEqual(rows, [
+      { id: moves,     entity_type: "official", entity_id: candId,    reason: "misspelled" },
+      { id: otherType, entity_type: "proposal", entity_id: electedId, reason: "outdated" },
+      { id: winner,    entity_type: "official", entity_id: candId,    reason: "wrong" },
+    ], "moved, untouched, and the candidate's row kept; the elected's colliding row is gone");
+    const orphans = await client.query(
+      "SELECT 1 FROM public.data_flags WHERE entity_type = 'official' AND entity_id = $1", [electedId],
+    );
+    assert.equal(orphans.rowCount, 0, "no official flag keeps the retired id");
+
+    const redirect = await client.query<{ new_id: string; reason: string }>(
+      "SELECT new_id, reason FROM public.official_redirects WHERE old_id = $1", [electedId],
+    );
+    assert.deepEqual(redirect.rows, [{ new_id: candId, reason: "promotion" }], "the redirect is still filed");
+
+    // service_role, no colliding flag: the guarded DELETE never executes, so the promotion runs.
+    const e2 = await ins("elected", "Representative", { congress_gov: "X001428" });
+    const c2 = await ins("candidate", "Candidate for Representative", { fec_candidate_id: "H2XX01428" });
+    const f2 = await flag("official", e2, "other");
+    await client.query("SAVEPOINT sr");
+    await client.query("SET LOCAL ROLE service_role");
+    await client.query("SELECT public.promote_candidate_to_elected($1, $2)", [e2, c2]);
+    await client.query("RESET ROLE");
+    const moved2 = await client.query<{ entity_id: string }>("SELECT entity_id FROM public.data_flags WHERE id = $1", [f2]);
+    assert.equal(moved2.rows[0]?.entity_id, c2, "service_role promotes and moves the flag");
   } finally {
     await client.query("ROLLBACK").catch(() => {});
     await client.end().catch(() => {});

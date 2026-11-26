@@ -94,5 +94,25 @@ export const referentialChecks: Check = async (ctx) => {
       "enrichment_queue rows whose (entity_type, entity_id) does not resolve. Note: entity_id is TEXT in this table.",
   });
 
+  // FIX-1427 — a promotion moves data_flags since 20261126005000; any other
+  // delete of an officials row (a seed reset, a hand cleanup) still strands them.
+  // Official refs only: governing_body has no ENTITY_TABLES entry.
+  const flagOrphans = await ctx.query<{ id: string; entity_id: string }>(
+    `SELECT d.id::text AS id, d.entity_id::text AS entity_id
+       FROM data_flags d
+      WHERE d.entity_type = 'official'
+        AND NOT EXISTS (SELECT 1 FROM officials o WHERE o.id = d.entity_id)
+      ORDER BY d.created_at, d.id`,
+  );
+  out.push({
+    category: "referential.data_flags_orphan_officials",
+    severity: flagOrphans.length === 0 ? "info" : "warning",
+    expected: 0,
+    actual: flagOrphans.length,
+    sample: flagOrphans.slice(0, 10),
+    detail:
+      "data_flags rows with entity_type 'official' whose entity_id has no officials row (the admin queue shows '(name not found)'); official_redirects may name the survivor.",
+  });
+
   return out;
 };
