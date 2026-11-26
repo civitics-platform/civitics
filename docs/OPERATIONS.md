@@ -957,12 +957,33 @@ only measures whose `congress_gov` ref has no `metadata.detail.fetched_at`,
 voted measures first, 3–4 requests a measure at ~800 ms each, and writes each
 measure in one transaction. Nominations (`119-PN-…`) are never selected.
 
-> **Before a prod fill:** `proposal_cosponsors` is the source of the
-> `ec-crawl` unit's cosponsor arm (`rebuild_entity_connections_cosponsors`,
-> fingerprinted on that table's count). The first cosponsor rows on prod make
-> the next EC cycle derive `co_sponsorship` edges, and every cycle after a
-> fill re-derives the whole arm (cc-327 read 4). That is a decision to make
-> first; cc-327 stopped its fill on it.
+> **Do not run a prod fill yet (FIX-1459).** cc-328's 25-measure chunk
+> (2026-11-26 23:30–23:42Z) read **21.9 s of database time a measure** (max
+> 28.8 s; local 11–21 ms) and held the box at 63–75 % io for its 11 minutes.
+> The walker's per-measure read finds the first vote with
+> `min(votes.voted_at) WHERE bill_proposal_id = …`. On prod that plans as a
+> backward scan of `votes_voted_at` filtered row by row, and the walker reads
+> it twice a measure. Fix that read first, prove it with `EXPLAIN` on prod,
+> and run the 25-measure chunk again.
+
+**The cosponsor edges.** `proposal_cosponsors` is the source of the `ec-crawl`
+unit's cosponsor arm, `rebuild_entity_connections_cosponsors`. Each resolved,
+non-withdrawn cosponsor becomes one `co_sponsorship` edge (`evidence_source
+'cosponsorship'`, strength 0.7 original / 0.6). Craig accepted that edge family
+on 2026-11-26; it is off by default in the graph UI.
+
+- **The arm is a merge** since `20261126007000` (FIX-1456, on prod since
+  2026-11-26 22:17:35Z, md5 `675d2a68…`). It writes only the edges whose row
+  changed and analyzes `entity_connections` only when it wrote one. Each call
+  prints `[cosponsors] merge: deleted % / updated % / inserted % / untouched %`.
+  `edges_upserted` stays the set's size, the crawl sensor's denominator.
+- **When it runs:** the arm is fingerprinted on `count(*), max(created_at)` of
+  `proposal_cosponsors`. A new crawl cycle starts at most every 360 min, so the
+  first edges for new rows appear at the next cycle start.
+- **A withdrawal is invisible to that fingerprint** (FIX-1457): the table has
+  no `updated_at`.
+- **Revert:** `scripts/fix1456-revert-ec-cosponsors-arm.sql` restores the
+  delete-all + insert body, through the gate.
 
 Run it:
 
@@ -970,9 +991,25 @@ Run it:
 # local — the .env.local in force must point at Docker
 pnpm --filter @civitics/data data:bill-details -- --dry-run --limit 5
 pnpm --filter @civitics/data data:bill-details -- --apply --only voted --limit 10
-# prod, started by hand (there is no schedule — FIX-1453)
-gh workflow run bill-details.yml -f only=voted -f max_minutes=120
+# prod from the terminal (the PRIMARY checkout's packages/data; leaves .env.local alone)
+pnpm exec tsx --env-file=../../.env.local.prod src/pipelines/congress/bill-details.ts --apply --allow-prod --only voted --limit 25
+# prod on a runner, by hand
+gh workflow run bill-details.yml -f only=all -f max_minutes=15
 ```
+
+**The dispatcher row is built and held (FIX-1453).**
+- **The door is live:** `/api/cron/gha-dispatch/bill-details-request` polls
+  every 5 min, sending `only` "all" and `max_minutes` "15".
+- **The registry row is not:** it is a mirror of crs-summaries
+  (`stale_after 2 hours`, group `proposals`, `yield_to {nightly}`, budget
+  2,700 s), and it is what lets the dispatcher start the fill unattended. The
+  migration `20261126008000`, its test and `scripts/fix1453-revert-bill-details-row.sql`
+  are on `origin/feature/fix-328` at `0b631eaf`, off main, and wait on
+  FIX-1459.
+- **Until the row lands** the poll reads no request and fires nothing.
+- **Once it lands:** stop it by the row revert through the gate. Read it as the
+  CRS walker is read, with `job = 'bill-details'` and `pipeline =
+  'congress_bill_details'`.
 
 Read its row:
 
@@ -1850,10 +1887,12 @@ hand run shares the concurrency group and the key with a dispatched run:
   rewrites that row. So start a hand run with `-f max_minutes=15`, or under a
   manual hold.
 
-**bill-details is not a unit.** FIX-1453 stays open on the co_sponsorship-edge
-decision (cc-327 read 4; Craig kept it out of cc-318). Its hand runs share the
-key but not the group, since it has no registry row. A bill-details run beside a
-dispatched CRS run is two walkers on the key, ~9,000 requests/h against 20,000.
+**bill-details is not a unit yet.** Craig accepted the co_sponsorship edges
+(2026-11-26) and cc-328 built the row and its `bill-details-request` door. The
+door is deployed; the row is held on FIX-1459, the walker's 21.9 s per-measure
+read (§The bill-details walker). Until the row lands, its hand runs share the
+key but not the group. A bill-details run beside a dispatched CRS run is two
+walkers on the key, ~9,000 requests/h against 20,000.
 
 Read it:
 
