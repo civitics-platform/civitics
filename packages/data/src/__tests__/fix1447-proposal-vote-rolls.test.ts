@@ -56,7 +56,17 @@ test("D1: LANGUAGE sql STABLE, no SET, not SECURITY DEFINER — the shape that i
   const h = header(FILE(), SIG);
   assert.match(h, /\nLANGUAGE sql\nSTABLE\n$/);
   assert.doesNotMatch(h, /\bSET\b|SECURITY DEFINER|VOLATILE|STRICT/);
-  assert.match(h, /RETURNS TABLE \(\n  roll_call_id   text,\n  chamber        text,\n  vote_question  text,\n  roll_class     text,\n  voted_at       timestamptz,\n  source_url     text,\n  vote_result    text,\n  rows_on_record integer,\n  yes            integer,\n  no             integer,\n  present        integer,\n  not_voting     integer,\n  other          integer,\n  by_party       jsonb\n\)/);
+  const columns = [
+    ["roll_call_id", "text"], ["chamber", "text"], ["vote_question", "text"], ["roll_class", "text"],
+    ["voted_at", "timestamptz"], ["source_url", "text"], ["vote_result", "text"], ["rows_on_record", "integer"],
+    ["yes", "integer"], ["no", "integer"], ["present", "integer"], ["not_voting", "integer"], ["other", "integer"],
+    ["by_party", "jsonb"],
+  ];
+  const listed = h.slice(h.indexOf("RETURNS TABLE (") + "RETURNS TABLE (".length, h.indexOf("\n)"));
+  assert.deepEqual(
+    listed.split(",").map((c) => c.trim().split(/\s+/)),
+    columns,
+  );
 });
 
 test("D1: the body's one filter is the equality on bill_proposal_id; roll_class is vote_roll_class", () => {
