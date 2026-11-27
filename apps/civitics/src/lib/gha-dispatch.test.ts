@@ -44,6 +44,7 @@ describe("resolveDispatchTarget — the allowlist", () => {
       "nightly-request",
       "platform-snapshot",
       "sync-canary-check",
+      "vote-rolls-request",
     ]);
     for (const [key, t] of GHA_DISPATCH_WORKFLOWS) {
       // N2 (FIX-1336): a <stem>-request key is the dispatcher's door to that workflow and stamp.
@@ -118,6 +119,23 @@ describe("resolveDispatchTarget — the allowlist", () => {
     const only = /^ {6}only:\n([\s\S]*?)(?=^ {6}[a-z_]+:$)/m.exec(block)?.[1] ?? "";
     assert.match(only, /type: choice/);
     assert.deepEqual([...only.matchAll(/^ {10}- ([a-z]+)$/gm)].map((m) => m[1]), ["voted", "all"]);
+  });
+
+  it("FIX-1448 (cc-331): vote-rolls-request is the vote-rolls walker's request target — max_minutes 15, the one input vote-rolls.yml declares; no plain target", () => {
+    const t = resolveDispatchTarget("vote-rolls-request") as DispatchTarget;
+    assert.deepEqual(t, { workflow: "vote-rolls.yml", stem: "vote-rolls", inputs: { max_minutes: "15" }, gate: "request" });
+    assert.equal(resolveDispatchTarget("vote-rolls"), null, "there was never a plain target");
+    const { url, init } = buildDispatchRequest(t, "tok");
+    assert.equal(url, "https://api.github.com/repos/civitics-platform/civitics/actions/workflows/vote-rolls.yml/dispatches");
+    assert.equal(init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }));
+    const yml = readFileSync(join(__dirname, "..", "..", "..", "..", ".github", "workflows", "vote-rolls.yml"), "utf8").replace(/\r\n/g, "\n");
+    const block = /\n {2}workflow_dispatch:\n {4}inputs:\n([\s\S]*?)\n(?=\S)/.exec(yml)?.[1] ?? "";
+    const declared = [...block.matchAll(/^ {6}([a-z_]+):$/gm)].map((m) => m[1]);
+    assert.deepEqual(declared, ["max_minutes"]);
+    assert.doesNotMatch(yml, /^ {2}schedule:/m, "the dispatcher is the only starter");
+    const v = JSON.parse(readFileSync(join(__dirname, "..", "..", "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+    assert.deepEqual(v.crons.filter((c) => c.path === "/api/cron/gha-dispatch/vote-rolls-request").map((c) => c.schedule), ["*/5 * * * *"]);
+    assert.deepEqual(v.crons.filter((c) => c.path === "/api/cron/gha-dispatch/vote-rolls").map((c) => c.schedule), []);
   });
 
   it("FIX-1453 (cc-328): vercel.json polls bill-details-request every 5 minutes, as it polls crs-summaries-request", () => {
@@ -260,6 +278,29 @@ describe("runGhaDispatch — crs-summaries-request fires only on the dispatcher'
     assert.match(fetches[0]!.url, /\/workflows\/crs-summaries\.yml\/dispatches$/);
     assert.equal(fetches[0]!.init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }));
     assert.deepEqual(log, ["readRequest crs-summaries", "record crs-summaries dispatched", "consume crs-summaries dispatched 204"]);
+  });
+});
+
+describe("runGhaDispatch — vote-rolls-request fires only on the dispatcher's stamp (FIX-1448, cc-331)", () => {
+  const vr = resolveDispatchTarget("vote-rolls-request") as DispatchTarget;
+
+  it("no pending request → no_request: fires nothing, stamps nothing, consumes nothing", async () => {
+    for (const request of [null, { requested_at: "2026-10-23T21:01:00Z", consumed_at: "2026-10-23T21:05:00Z" }]) {
+      const { deps, log, fetches } = mockDeps({ request });
+      assert.equal((await runGhaDispatch(vr, deps)).body["outcome"], "no_request");
+      assert.equal(fetches.length, 0);
+      assert.deepEqual(log, ["readRequest vote-rolls"]);
+    }
+  });
+
+  it("a pending request → dispatched with max_minutes 15, stamped gha_dispatch_vote-rolls, consumed", async () => {
+    const { deps, log, fetches } = mockDeps({ request: { job: "vote-rolls", requested_at: "2026-10-23T21:00:00Z", consumed_at: null, reaped_at: null } });
+    const r = await runGhaDispatch(vr, deps);
+    assert.equal(r.body["outcome"], "dispatched");
+    assert.equal(fetches.length, 1);
+    assert.match(fetches[0]!.url, /\/workflows\/vote-rolls\.yml\/dispatches$/);
+    assert.equal(fetches[0]!.init.body, JSON.stringify({ ref: "main", inputs: { max_minutes: "15" } }));
+    assert.deepEqual(log, ["readRequest vote-rolls", "record vote-rolls dispatched", "consume vote-rolls dispatched 204"]);
   });
 });
 

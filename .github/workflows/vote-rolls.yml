@@ -1,0 +1,90 @@
+name: vote-rolls
+
+# FIX-1448 (cc-331) — the vote-rolls walker against prod: each federal roll's
+# own totals, result, title and majority requirement into public.vote_rolls
+# (packages/data/src/pipelines/congress/vote-rolls.ts).
+#
+# STARTED BY THE DISPATCHER: job_registry `vote-rolls` (stale_after 2 hours,
+# its own exclusion group, yield_to nightly; a mirror of bill-details but for
+# the group) arms a request, and /api/cron/gha-dispatch/vote-rolls-request
+# (Vercel, every 5 min) fires this workflow with max_minutes=15 and consumes
+# it. There is no schedule: block, and the dispatcher is the only starter: a
+# hand run shares the concurrency group with a dispatched one, so start one
+# only under a manual hold. Stop it: scripts/fix1448-revert-vote-rolls-row.sql
+# through the gate (docs/OPERATIONS.md §The vote-rolls walker).
+#
+# Each run: seed the rolls `votes` stores and vote_rolls lacks (an index walk),
+# read the Senate session lists not yet read (six, ever), then the per-roll
+# files — the House's from clerk.house.gov (750 ms apart, up to 500 a run), the
+# Senate's from senate.gov (SENATE_PACE_MS, up to 20 a run, never between
+# 15:00Z and the nightly's votes phase closing: the nightly's senate.gov
+# allowance comes first). It stops between rolls on max_minutes and when
+# prod_session_state() says a supervised session holds the box; a 403 / 429
+# still blocked after the retries stops that host for the run. A stop is not a
+# failure: the next run continues.
+#
+# Secrets: SUPABASE_SECRET_KEY (the run row) and SUPABASE_DB_PASSWORD (the
+# direct connection the writes use). No API key: both sources are public files.
+#
+# timeout-minutes: 60 — max_minutes 15, a blocked roll's 150 s of retries, the
+# install; the dispatcher's budget is 2,700 s. A SIGTERM at the cap is safe
+# (each write is one statement or one transaction) and the mark-killed step
+# closes the row.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_minutes:
+        description: "soft stop between rolls, in minutes"
+        required: true
+        default: "15"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vote-rolls
+  cancel-in-progress: false
+
+jobs:
+  vote-rolls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step binds its
+      # no-op guard to THIS run.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Vote rolls (prod, resumable)
+        env:
+          MAX_MINUTES: ${{ inputs.max_minutes }}
+        run: pnpm --filter @civitics/data data:vote-rolls:ci -- --max-minutes "$MAX_MINUTES"
+
+      # A SIGTERM at timeout-minutes strands the row at 'running'; this closes
+      # it. --window-hours 2 is sized on the 60-min cap (FIX-962). Never gates
+      # the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=congress_vote_rolls --window-hours 2

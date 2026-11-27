@@ -104,6 +104,16 @@ export interface DispatchTarget {
  * measure. From then on the dispatcher is the walker's only starter. Stop it by
  * scripts/fix1453-revert-bill-details-row.sql through the gate: with no row
  * this poll reads no request and fires nothing.
+ *
+ * FIX-1448 (cc-331): the vote-rolls walker is a third such unit
+ * (`stale_after 2 hours`, its own exclusion group: it shares no key and no host
+ * with the congress.gov walkers). `vote-rolls-request` (Vercel, every 5 min)
+ * fires only on the dispatcher's unconsumed gha_dispatch_request_vote-rolls
+ * and sends max_minutes "15", the one input vote-rolls.yml declares. It stamps
+ * gha_dispatch_vote-rolls. There was never a plain vote-rolls target. The door
+ * deploys before the registry row (cc-331 Item 4): with no row it reads no
+ * request and fires nothing. Stop it by scripts/fix1448-revert-vote-rolls-row.sql
+ * through the gate.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
@@ -126,6 +136,10 @@ export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new M
   [
     "bill-details-request",
     { workflow: "bill-details.yml", stem: "bill-details", inputs: { only: "all", max_minutes: "15" }, gate: "request" },
+  ],
+  [
+    "vote-rolls-request",
+    { workflow: "vote-rolls.yml", stem: "vote-rolls", inputs: { max_minutes: "15" }, gate: "request" },
   ],
 ]);
 
