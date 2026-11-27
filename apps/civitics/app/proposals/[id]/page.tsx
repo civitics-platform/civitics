@@ -19,7 +19,7 @@ import { assertRenderNotDegraded } from "@/lib/degraded-render";
 import { canonicalForEntity, entityPath, SITE_ORIGIN } from "@/lib/canonical";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
-import { getCachedProposal } from "../_lib/get-proposal";
+import { getCachedCongressRefs, getCachedProposal } from "../_lib/get-proposal";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 import { PrintLetterhead, PrintProvenance } from "../../components/print/PrintRecord";
 import { EntityTags, type EntityTag } from "../../components/tags/EntityTags";
@@ -41,6 +41,26 @@ import {
   type VoteRoll,
 } from "@/lib/proposal-detail/vote-rolls";
 import { stagePath } from "@/lib/proposal-detail/stage-path";
+import {
+  ACTIONS_VISIBLE,
+  actionLines,
+  actionText,
+  actionsCountLine,
+  billHeading,
+  cosponsorCountLine,
+  cosponsorRecordLine,
+  detailStatus,
+  earlierActionsLabel,
+  isCongressMeasure,
+  notCollectedLine,
+  orderCosponsors,
+  partyAbbr,
+  policyArea,
+  sponsorLine,
+  withdrawnLabel,
+  type ActionRow,
+  type CosponsorRow,
+} from "@/lib/proposal-detail/bill-record";
 import {
   chamberLabel,
   identityLine,
@@ -72,7 +92,11 @@ export async function generateMetadata(
     ? data.summary_plain.slice(0, 160)
     : `${data.type} · ${data.status}`;
   // FIX-1447 (D5): "HR 1 — <title>" when a number exists and the title is not it.
-  const title = metadataTitle(data.title, data.bill_details);
+  // FIX-1462 (B2): the title is the page's heading — the shorter of the stored
+  // and short titles. The ref read is cached; the page reuses it.
+  const status = isCongressMeasure(data.bill_details) ? detailStatus(await getCachedCongressRefs(data.id)) : null;
+  const shortTitle = status?.kind === "collected" ? status.detail.short_title : null;
+  const title = metadataTitle(billHeading(data.title, shortTitle).heading, data.bill_details);
 
   return {
     title,
@@ -318,14 +342,65 @@ export default async function ProposalDetailPage({
     "proposals:detail-breadcrumb",
   );
 
-  const [rollsRes, relatedRes, aiSummaryRes, relatedInitiativesRes, breadcrumbRes, tagsRes] = await Promise.all([
+  // FIX-1462 (cc-332 B1): the bill-details fill, federal bills and resolutions
+  // only — the ref's stamp (cached; generateMetadata read it first), the
+  // cosponsor rows with their officials, and the congress_gov actions. Each
+  // read that fails prints nothing for its block.
+  const congress = isCongressMeasure(bd);
+  const congressRefsPromise = congress ? getCachedCongressRefs(p.id) : Promise.resolve(null);
+  const cosponsorsPromise = congress
+    ? withDbTimeout(
+        supabase
+          .from("proposal_cosponsors")
+          .select("official_id,is_original_cosponsor,date_added,date_withdrawn,official:officials(id,full_name,party,district_name,role_title)")
+          .eq("proposal_id", p.id)
+          .limit(600),
+        3000,
+        "proposals:detail-cosponsors",
+      )
+    : Promise.resolve(null);
+  const actionsPromise = congress
+    ? withDbTimeout(
+        supabase
+          .from("proposal_actions")
+          .select("action_at,description,action_date:metadata->>action_date,action_time:metadata->>action_time,system:metadata->source_system->>code")
+          .eq("proposal_id", p.id)
+          .eq("source", "congress_gov")
+          .order("action_at", { ascending: false })
+          .limit(400),
+        3000,
+        "proposals:detail-actions",
+      )
+    : Promise.resolve(null);
+
+  const [rollsRes, relatedRes, aiSummaryRes, relatedInitiativesRes, breadcrumbRes, tagsRes, congressRefs, cosponsorsRes, actionsRes] = await Promise.all([
     rollsPromise,
     withDbTimeout(relatedQuery, 3000, "proposals:detail-related"),
     aiSummaryPromise,
     relatedInitiativesQuery,
     breadcrumbPromise,
     tagsPromise,
+    congressRefsPromise,
+    cosponsorsPromise,
+    actionsPromise,
   ]);
+
+  // B1–B7: what the fill printed for this measure; null blocks print nothing.
+  const status = congress ? detailStatus(congressRefs) : null;
+  const detail = status?.kind === "collected" ? status.detail : null;
+  const titles = billHeading(p.title, detail?.short_title);
+  const sponsor = detail ? sponsorLine(detail, bd?.sponsor ?? null) : null;
+  const notCollected = status ? notCollectedLine(status) : null;
+  const rowsOf = <T,>(res: { data: unknown; error: unknown } | null): T[] | null =>
+    res && !res.error && Array.isArray(res.data) ? (res.data as T[]) : null;
+  const cosponsorRows = detail ? rowsOf<CosponsorRow>(cosponsorsRes) : null;
+  const cosponsorCount = cosponsorCountLine(detail);
+  const cosponsorRecord = cosponsorRows ? cosponsorRecordLine(detail?.cosponsor_count, cosponsorRows) : null;
+  const cosponsorList = cosponsorRows ? orderCosponsors(cosponsorRows) : null;
+  const actionRows = rowsOf<ActionRow>(actionsRes);
+  const actions = actionRows ? actionLines(actionRows) : [];
+  const actionsCount = actionsCountLine(detail);
+  const policy = policyArea(detail);
 
   // FIX-1447 (D4): members are listed for ONE roll — the newest final roll,
   // else the newest roll. Started here so it runs beside the breadcrumb reads.
@@ -394,7 +469,7 @@ export default async function ProposalDetailPage({
     ((officialRes.data ?? []) as unknown as OfficialRoll[]).map((o) => [o.roll_call_id, o] as const),
   );
   const officialOf = (r: VoteRoll) => officialByRoll.get(r.roll_call_id) ?? null;
-  const rollCtx: RollContext = { measureTitle: p.title, number };
+  const rollCtx: RollContext = { measureTitle: p.title, shortTitle: detail?.short_title, number };
   const anyOfficialCount = rolls.some((r) => officialCountLine(officialOf(r)) !== null);
   const tags = (tagsRes.data ?? []) as EntityTag[];
   const related = (relatedRes.data ?? []) as RelatedProposal[];
@@ -502,7 +577,7 @@ export default async function ProposalDetailPage({
             )}
             <a href="/proposals" className="hover:text-accent transition-colors">Proposals</a>
             <span>/</span>
-            <span className="text-ink truncate max-w-[200px] sm:max-w-none">{p.title}</span>
+            <span className="text-ink truncate max-w-[200px] sm:max-w-none">{titles.heading}</span>
           </nav>
 
           {/* SF-P2 (FIX-599): inherited demonstration banner when this proposal
@@ -551,11 +626,19 @@ export default async function ProposalDetailPage({
             </p>
           )}
 
-          {/* Title */}
+          {/* Title — FIX-1462 (B2): the shorter of the stored and short titles; the other under it */}
           <h1 className="font-serif text-2xl font-bold tracking-tight text-ink sm:text-3xl leading-snug max-w-4xl">
-            {p.title}
+            {titles.heading}
             {p.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
           </h1>
+          {titles.sub && (
+            <p className="mt-1 max-w-4xl text-sm leading-snug text-ink-soft">
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft/70">
+                {titles.sub.label}
+              </span>{" "}
+              {titles.sub.text}
+            </p>
+          )}
 
           {/* Topic tags — FIX-1447 (D10), as ProposalCard shows them */}
           {tags.length > 0 && (
@@ -592,8 +675,25 @@ export default async function ProposalDetailPage({
                 {source.label}
               </a>
             )}
-            <ProposalShareButton title={p.title} id={p.id} />
+            <ProposalShareButton title={titles.heading} id={p.id} />
           </div>
+
+          {/* Sponsor — FIX-1462 (B3): the source's sponsor, linked when it resolved;
+              B7: the sentence instead, for a measure the fill has not reached */}
+          {sponsor && (
+            <p className="mt-3 max-w-4xl text-sm text-ink-soft">
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft/70">Sponsor</span>{" "}
+              {sponsor.href ? (
+                <a href={sponsor.href} className="text-ink hover:text-accent hover:underline transition-colors">
+                  {sponsor.name}
+                </a>
+              ) : (
+                <span className="text-ink">{sponsor.name}</span>
+              )}
+              {sponsor.tag && <span className="font-mono text-xs text-ink-soft"> · {sponsor.tag}</span>}
+            </p>
+          )}
+          {notCollected && <p className="mt-3 max-w-4xl text-xs text-ink-soft">{notCollected}</p>}
 
           {/* Latest action — FIX-1447 (D6): the stored text and its date */}
           {latest && (
@@ -686,6 +786,61 @@ export default async function ProposalDetailPage({
                     <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">
                       Congressional Research Service
                     </p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Cosponsors — FIX-1462 (B4): the source's count; the rows on record
+                under it, by party, and listed behind a <details> */}
+            {cosponsorCount && (
+              <section>
+                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
+                  Cosponsors
+                </h2>
+                <div className="border border-rule bg-card p-5 space-y-2">
+                  <p className="text-sm font-semibold text-ink">{cosponsorCount}</p>
+                  {cosponsorRecord && (
+                    <p className="font-mono text-xs tabular-nums text-ink-soft">{cosponsorRecord}</p>
+                  )}
+                  {cosponsorList && cosponsorList.active.length + cosponsorList.withdrawn.length > 0 && (
+                    <details className="pt-1">
+                      <summary className="cursor-pointer font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent hover:underline">
+                        List the {cosponsorList.active.length.toLocaleString("en-US")} on record
+                        {cosponsorList.withdrawn.length > 0 ? ` and ${cosponsorList.withdrawn.length} withdrawn` : ""}
+                      </summary>
+                      <ul className="mt-2 divide-y divide-rule/60 border-t border-rule">
+                        {[...cosponsorList.active, ...cosponsorList.withdrawn].map((c) => {
+                          const dot = PARTY_DOT[c.official?.party?.toLowerCase() ?? ""] ?? "bg-rule";
+                          const party = partyAbbr(c.official?.party);
+                          return (
+                            <li key={c.official_id} className="flex items-center gap-2 py-2 min-w-0">
+                              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot}`} />
+                              {c.official?.id ? (
+                                <a
+                                  href={`/officials/${c.official.id}`}
+                                  className={`text-sm truncate hover:text-accent hover:underline transition-colors ${c.date_withdrawn ? "text-ink-soft" : "text-ink"}`}
+                                >
+                                  {c.official.full_name}
+                                </a>
+                              ) : (
+                                <span className="text-sm text-ink truncate">{c.official?.full_name ?? "Unknown"}</span>
+                              )}
+                              {party && <span className="font-mono text-xs text-ink-soft/70">{party}</span>}
+                              {c.official?.district_name && (
+                                <span className="text-xs text-ink-soft/70">{c.official.district_name}</span>
+                              )}
+                              {c.is_original_cosponsor && !c.date_withdrawn && (
+                                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-soft">original</span>
+                              )}
+                              {c.date_withdrawn && (
+                                <span className="text-xs text-ink-soft">{withdrawnLabel(c)}</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </details>
                   )}
                 </div>
               </section>
@@ -786,6 +941,39 @@ export default async function ProposalDetailPage({
                       })}
                     </div>
                   </div>
+                )}
+              </section>
+            )}
+
+            {/* Actions — FIX-1462 (B5): newest first, one line per date and text,
+                eight shown and the rest behind a <details>; the count is the source's */}
+            {actions.length > 0 && (
+              <section>
+                <h2 className="mb-2 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
+                  Actions
+                </h2>
+                {actionsCount && <p className="mb-1 text-xs text-ink-soft">{actionsCount}</p>}
+                {detail?.action_count != null && actions.length < detail.action_count && (
+                  <p className="mb-3 max-w-2xl text-xs leading-relaxed text-ink-soft">
+                    Congress.gov lists some actions more than once, under each chamber&apos;s system or each committee; each is printed once here.
+                  </p>
+                )}
+                <ol className="border border-rule bg-card divide-y divide-rule/60">
+                  {actions.slice(0, ACTIONS_VISIBLE).map((a, i) => (
+                    <li key={i} className="px-4 py-2.5 text-sm text-ink">{actionText(a)}</li>
+                  ))}
+                </ol>
+                {actions.length > ACTIONS_VISIBLE && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent hover:underline">
+                      {earlierActionsLabel(actions.length - ACTIONS_VISIBLE)}
+                    </summary>
+                    <ol className="mt-2 border border-rule bg-card divide-y divide-rule/60">
+                      {actions.slice(ACTIONS_VISIBLE).map((a, i) => (
+                        <li key={i} className="px-4 py-2.5 text-sm text-ink">{actionText(a)}</li>
+                      ))}
+                    </ol>
+                  </details>
                 )}
               </section>
             )}
@@ -917,6 +1105,7 @@ export default async function ProposalDetailPage({
                   <DetailRow label="Congress" value={`${ordinal(bd.congress_number)} Congress`} />
                 )}
                 {chamber && <DetailRow label="Chamber" value={chamber} />}
+                {policy && <DetailRow label="Policy area" value={policy} />}
                 <DetailRow label="Status" value={statusBadge.label} />
                 {proposalRow.last_action_at && (
                   <DetailRow label="Last action" value={formatDate(proposalRow.last_action_at)} />
