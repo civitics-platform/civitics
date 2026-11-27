@@ -2420,7 +2420,9 @@ custom rule that does exist is security, not caching".
 
 `/api/cron/front-door-watch`, every 15 minutes from a Vercel cron entry in
 `apps/civitics/vercel.json`. Emails `ADMIN_EMAIL` on the Resend rails with
-subjects `[Civitics][FRONT DOOR DOWN]` / `[Civitics][FRONT DOOR RECOVERED]`.
+subjects `[Civitics][FRONT DOOR DOWN]` / `[Civitics][FRONT DOOR RECOVERED]`,
+and since FIX-1446 `[Civitics][DATABASE UNREACHABLE]` /
+`[Civitics][DATABASE REACHABLE AGAIN]`.
 
 **What it watches that nothing else could.** The Supabase front door (Cloudflare
 → Kong → PostgREST/pooler) can wedge on its own and stay wedged after Postgres
@@ -2439,7 +2441,10 @@ FIX-1286, `FRONT_DOOR_AUTO_RESTART`); the hand restart is the fallback**
 (dashboard → Project Settings → General → Restart project). Prod is armed
 (`mode: "arm"` on every tick since 2026-10-07 04:00Z) — see "Auto-restart" below. **Postgres is usually healthy during this failure;
 do not go hunting for a slow query first.** Confirm the restart landed with
-`pg_postmaster_start_time()` afterwards.
+`pg_postmaster_start_time()` afterwards. **A `DATABASE UNREACHABLE` page is not
+this failure, and the watchdog never restarts for it:** read the dashboard's
+Disk IO % consumed and whether the database answers at all; a restart is
+yours, by hand (FIX-1446, below).
 
 **Two instruments, both Postgres-free by design** (FIX-1130 puts that in scope
 explicitly — the detector must not need a Postgres connection to report that the
@@ -2459,6 +2464,27 @@ was designed in and **removed**: on 2026-09-01 the front door served up to 67.7%
 5xx in a bucket while healthy (statement timeouts under I/O load — see
 `docs/audits/front-door-degradation-2026-09-01.md`), so that arm would have paged
 with the restart runbook attached, which was both wrong and harmful advice.
+
+**The 503 arm pages "database unreachable" and never restarts (FIX-1446).** On
+2026-11-23 the front door served 99.1% 5xx at 01:00Z (192 × 503 of 216) with
+0 × 52x; every tick read `ok`, nothing paged, and Craig found the site down at
+01:53Z. A 503 is PostgREST answering and unable to reach Postgres; a statement
+timeout answers 500 / 504 (09-01's afternoon was 583 × 500 and 112 × 504, not
+one 503). A bucket is 503-RED at `n_503 >= 10 AND n_503/requests >= 0.5`, and
+the watchdog pages `[Civitics][DATABASE UNREACHABLE]` when the two newest closed
+buckets are both 503-RED — on its edge, then hourly, like DOWN — and
+`[Civitics][DATABASE REACHABLE AGAIN]` once when they clear. A wedge outranks
+it: a tick that is both reads DOWN. The restart decision does not see it (a
+503 tick is "any other tick" and clears the hold), so **the remediation is
+yours**: read the dashboard's Disk IO % consumed and whether the database
+answers at all; on 11-23 the disk IO budget was spent in the pass after a
+landing, and a dashboard restart cleared it. Calibrated on the seven days the
+Logs API held on 2026-11-27 (671 buckets): outside the outage not one bucket
+carries a 503, and replayed it pages 11-23 at the 01:30Z tick (about 22 min
+before Craig) with the all-clear at 02:00Z — three minutes before his restart,
+while 01:45Z still read 62% 5xx of 500 / 504, which no arm pages. The fixtures
+are `OUTAGE_1123` and `WEEK_1120` in `packages/db/src/__fixtures__/front-door-series.ts`;
+the rule and its distribution are "THE 503 ARM" in `front-door-verdict.ts`.
 
 **Dedup is stateless** — the verdict keeps no state, so DOWN pages on the
 transition tick and thereafter at most once an hour (the probe arm marks every
