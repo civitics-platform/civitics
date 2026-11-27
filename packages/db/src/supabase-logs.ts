@@ -347,14 +347,22 @@ export interface LogsEdgeBucket {
   n5xx: number;
   /** Cloudflare-class 520–526: the front-door wedge signature (FIX-1130). */
   n52x: number;
+  /**
+   * 503: PostgREST answering but unable to reach Postgres (FIX-1446). Absent
+   * only on an answer whose SQL did not count it — the recorded pre-FIX-1446
+   * shapes the tests replay; `sqlEdgeBuckets` always does.
+   */
+  n503?: number;
 }
 
 /**
- * Per-bucket requests / 5xx / 52x over `edge_logs`. The ClickHouse form of the
+ * Per-bucket requests / 5xx / 52x / 503 over `edge_logs`. The ClickHouse form of the
  * old `timestamp_seconds(div(unix_seconds(t.timestamp), N) * N)` + double
  * `unnest` down to `r.status_code`: one edge row is one response, so `count()`
  * is the old `count(*)` after the unnest. Re-validated against cc-151's
- * 08:45 / 09:00 / 09:15 buckets (0/136, 1/279, 2/183 — identical).
+ * 08:45 / 09:00 / 09:15 buckets (0/136, 1/279, 2/183 — identical). The 503
+ * count (FIX-1446) is one more `countIf`; read back against cc-313's 11-23
+ * mix (01:00Z: 503:192 of 216) on 2026-11-27.
  */
 export function sqlEdgeBuckets(bucketSeconds: number): string {
   if (!Number.isInteger(bucketSeconds) || bucketSeconds <= 0) {
@@ -366,7 +374,8 @@ SELECT
   toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${bucketSeconds} SECOND)) AS b,
   count() AS requests,
   countIf(${status} >= 500) AS n_5xx,
-  countIf(${status} BETWEEN 520 AND 526) AS n_52x
+  countIf(${status} BETWEEN 520 AND 526) AS n_52x,
+  countIf(${status} = 503) AS n_503
 FROM logs
 WHERE source = 'edge_logs'
   AND ${TIME_FILTER}
@@ -375,7 +384,7 @@ ORDER BY b`;
 }
 
 export async function queryEdgeBuckets(opts: Omit<QueryLogsOptions, "sql"> & { bucketSeconds: number }): Promise<LogsAnswer<LogsEdgeBucket>> {
-  const a = await queryLogs<{ b: unknown; requests: unknown; n_5xx: unknown; n_52x: unknown }>({
+  const a = await queryLogs<{ b: unknown; requests: unknown; n_5xx: unknown; n_52x: unknown; n_503?: unknown }>({
     ...opts,
     sql: sqlEdgeBuckets(opts.bucketSeconds),
   });
@@ -384,6 +393,8 @@ export async function queryEdgeBuckets(opts: Omit<QueryLogsOptions, "sql"> & { b
     requests: Number(r.requests) || 0,
     n5xx: Number(r.n_5xx) || 0,
     n52x: Number(r.n_52x) || 0,
+    // An answer with no n_503 column did not count it: absent, not 0.
+    ...(r.n_503 === undefined ? {} : { n503: Number(r.n_503) || 0 }),
   }));
 }
 

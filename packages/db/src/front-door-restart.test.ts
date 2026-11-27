@@ -261,7 +261,7 @@ type Tick = {
   downTicksAfter: string | null;
 };
 
-const toBucket = (r: FrontDoorRow): FrontDoorBucket => ({ startMs: r[0], requests: r[1], n5xx: r[2], n52x: r[3] });
+const toBucket = (r: FrontDoorRow): FrontDoorBucket => ({ startMs: r[0], requests: r[1], n5xx: r[2], n52x: r[3], n503: r[4] ?? 0 });
 const hhmm = (iso: string) => iso.slice(11, 16);
 
 function replayRestart(
@@ -407,6 +407,40 @@ describe("replay — 2026-11-23 and the week of 11-20", () => {
       assert.ok(ticks.every((t) => t.action === "none" && t.downTicksAfter === null), probe);
     });
   }
+
+  test("the 503 arm's ticks are any other tick: 01:32 db_unreachable and 02:02 db_reachable, both none", () => {
+    const { ticks } = replayRestart(OUTAGE_1123, { probe: "answers" });
+    for (const [hm, state] of [["01:32", "db_unreachable"], ["02:02", "db_reachable"]] as const) {
+      const t = tickAt(ticks, hm);
+      assert.equal(t.state, state, hm);
+      assert.equal(t.action, "none", hm);
+      assert.equal(t.reason, `front door not DOWN (${state})`);
+      assert.equal(t.downTicksAfter, null);
+    }
+    assert.deepEqual(
+      ticks.filter((t) => t.state !== "ok").map((t) => `${hhmm(t.at)} ${t.state}`),
+      ["01:32 db_unreachable", "02:02 db_reachable"],
+    );
+  });
+});
+
+describe("FIX-1446 — the 503 arm does not move the restart", () => {
+  const v503: Pick<FrontDoorVerdict, "state" | "red"> = { state: "db_unreachable", red: [false, false, false, false] };
+  // Three counted DOWN ticks held, as the MGET would read them.
+  const held = parseRestartState([new Date(T - 45 * MIN).toISOString(), null, null, null, "3"]);
+
+  test("a db_unreachable or db_reachable tick does not count, and clears a held count as any not-DOWN tick does", () => {
+    for (const state of ["db_unreachable", "db_reachable"] as const) {
+      assert.deepEqual(countDownTick({ ...v503, state }, held), { logsDown: false, downTicks: 0 }, state);
+      const d = decideRestart({ ...BASE, verdictState: state, logsDown: false, downTicks: 0 });
+      assert.equal(d.action, "none", state);
+      assert.equal(d.reason, `front door not DOWN (${state})`);
+    }
+    assert.deepEqual(
+      planRestartStateCommands({ logsDown: false, state: held, nowMs: T, restartIssued: false, wouldRestartEmailed: false }),
+      [["DEL", FRONT_DOOR_RESTART_KEYS.downTicks, FRONT_DOOR_RESTART_KEYS.downSince, FRONT_DOOR_RESTART_KEYS.wouldRestartSent]],
+    );
+  });
 });
 
 describe("replay — six healthy days", () => {

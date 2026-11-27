@@ -262,6 +262,22 @@ test("queryEdgeBuckets returns ms buckets from the recorded D2 shape — cc-151'
   assert.deepEqual(bad, { kind: "dark", detail: 'Logs API bucket is not epoch seconds: "2026-09-24T09:15:00"' });
 });
 
+test("FIX-1446: the edge builder counts 503, and the helper carries it as n503 when the answer has it", async () => {
+  assert.match(sqlEdgeBuckets(900), /countIf\(toInt32OrZero\(log_attributes\['response\.status_code'\]\) = 503\) AS n_503/);
+  // cc-323's B1 read of 11-23 01:00Z and 01:15Z.
+  const a = await queryEdgeBuckets({
+    startMs: Date.parse("2026-11-23T01:00:00Z"), endMs: Date.parse("2026-11-23T01:30:00Z"), bucketSeconds: 900, token: "t", timeoutMs: 1000,
+    fetchImpl: stubFetch(200, { result: [
+      { b: 1795395600, requests: 216, n_5xx: 214, n_52x: 0, n_503: 192 },
+      { b: 1795396500, requests: 152, n_5xx: 120, n_52x: 0, n_503: "120" },
+    ] }),
+  });
+  assert.deepEqual(a, { kind: "rows", rows: [
+    { startMs: Date.parse("2026-11-23T01:00:00Z"), requests: 216, n5xx: 214, n52x: 0, n503: 192 },
+    { startMs: Date.parse("2026-11-23T01:15:00Z"), requests: 152, n5xx: 120, n52x: 0, n503: 120 },
+  ] });
+});
+
 test("queryCancellationBuckets returns the 09:30:26 burst minute as one ms bucket of 6", async () => {
   const a = await queryCancellationBuckets({
     startMs: Date.parse("2026-09-24T09:19:11Z"), endMs: Date.parse("2026-09-24T09:34:11Z"), token: "t", timeoutMs: 1000,

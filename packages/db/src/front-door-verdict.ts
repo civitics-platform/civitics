@@ -47,7 +47,8 @@
  *
  * A 5xx-ratio arm at 0.2 would have fired on six buckets that afternoon, two of
  * them consecutive — i.e. it would have paged. The 52x rule fires on none of
- * them. That is why this module reads one number.
+ * them. That is why the wedge rule reads one number. (The 503 arm below reads
+ * a second, and only pages.)
  *
  * ── THE RED RULE, AND THE MARGIN IT SITS IN ───────────────────────────────────
  *
@@ -69,6 +70,42 @@
  * and every non-outage bucket in nine days of retention runs at <= 7.1%. The
  * 0.5 threshold is not tuned to a cliff edge, it is sitting in the middle of a
  * gap with nothing in it.
+ *
+ * ── THE 503 ARM (FIX-1446) ────────────────────────────────────────────────────
+ *
+ * On 2026-11-23 the front door served 5xx on 74% of requests at 00:00Z and
+ * 99.1% at 01:00Z (192 x 503 of 216) with 0 x 52x. Every tick read `ok` and
+ * nothing paged: Craig found the site down at 01:53Z and restarted it at
+ * 02:03Z. A 503 is PostgREST answering and saying it cannot reach Postgres —
+ * that day, the disk IO budget spent in the pass after a landing. A statement
+ * timeout answers 500 or 504, never 503: 09-01's afternoon (up to 67.7% 5xx
+ * with the front door up) was 583 x 500 and 112 x 504, plus one 520 and one
+ * 525 — not one 503.
+ *
+ * A bucket is 503-RED when `n_503 >= 10 AND n_503 / requests >= 0.5`. The
+ * state is DB_UNREACHABLE when the two newest closed buckets are both 503-RED,
+ * the shape DOWN uses, and it sits below DOWN: a wedge outranks it. Calibrated
+ * on every bucket the Logs API held on 2026-11-27, 11-20 05:15Z -> 11-27 05:00Z
+ * (671 buckets: two landings, the 11-23 restart, four days of crawl):
+ *
+ *   661 buckets outside 11-22 23:45Z -> 11-23 02:15Z
+ *     n_503   p50 0   p90 0   p99 0   max 0    — every one is exactly 0
+ *     n_5xx   p50 0   p90 2   p99 5   max 9    — all 459 of them plain 500
+ *   the outage: 00:45Z 30 of 65 (46.2%), 01:00Z 192 of 216 (88.9%),
+ *               01:15Z 120 of 152 (78.9%); no other bucket in it has a 503
+ *
+ * The gap is emptier than the 52x rule's: nothing outside the outage carries a
+ * single 503. Replayed, 11-23 reads DB_UNREACHABLE at the 01:30Z tick only
+ * (the 01:30Z bucket was clean, 2 x 500 of 295) and DB_REACHABLE at 02:00Z:
+ * a page about 22 minutes before Craig found the site down, and an all-clear
+ * three before his restart, with 01:45Z at 62% 5xx of 500 and 504. The week
+ * reads it nowhere else. It is slower than hoped: 00:00-00:15Z were 500 / 504
+ * (statement timeouts, which this arm must not page on) and 00:45Z sat at 46%,
+ * under the ratio.
+ *
+ * IT PAGES AND NEVER RESTARTS (Craig, 2026-11-23). front-door-restart.ts counts
+ * only the wedge rule's DOWN; a DB_UNREACHABLE tick is any other tick there,
+ * and clears the hold. A restart on this state is the owner's, by hand.
  *
  * ── WHY FOUR BUCKETS, AND WHY THE NEWEST IS DISCARDED ─────────────────────────
  *
@@ -103,6 +140,11 @@ export type FrontDoorBucket = {
   requests: number;
   n5xx: number;
   n52x: number;
+  /**
+   * FIX-1446: 503, PostgREST answering but unable to reach Postgres. Absent
+   * reads as 0, so a caller that omits it gets the pre-FIX-1446 verdicts.
+   */
+  n503?: number;
 };
 
 /** Result of the direct, Postgres-independent liveness probe. */
@@ -150,14 +192,20 @@ export type FrontDoorVerdict = {
   /**
    * `corroborator_unavailable` (FIX-1219): the direct probe answered, but the
    * Logs corroborator returned nothing, so the 52x wedge rule could not be
-   * evaluated. Never `ok`, and never paged: shouldSend() sends on `down` and
-   * `recovered` only, and a probe that gets no answer is still `down` whatever
-   * the corroborator did.
+   * evaluated. Never `ok`, and never paged: shouldSend() never sends it, and
+   * a probe that gets no answer is still `down` whatever the corroborator did.
+   *
+   * `db_unreachable` / `db_reachable` (FIX-1446): the 503 arm's page and its
+   * all-clear. Both page; neither is `down`, so neither moves the restart.
    */
-  state: "ok" | "down" | "recovered" | "corroborator_unavailable";
-  /** Per-bucket RED evaluation, oldest first, aligned with the input. */
+  state: "ok" | "down" | "recovered" | "corroborator_unavailable" | "db_unreachable" | "db_reachable";
+  /** Per-bucket RED (52x) evaluation, oldest first, aligned with the input. */
   red: boolean[];
-  /** True when this tick is the DOWN edge (newest two RED, the one before green). */
+  /**
+   * True when this tick is the edge of the paging state it reports: DOWN's
+   * (newest two RED, the one before green), or DB_UNREACHABLE's (newest two
+   * 503-RED, the one before not).
+   */
   isDownEdge: boolean;
   /** Human-readable one-liner naming why. */
   reason: string;
@@ -180,6 +228,24 @@ export const RED_MIN_52X = 3;
  */
 export const RED_MIN_52X_RATIO = 0.5;
 
+/**
+ * Minimum absolute 503 count for a bucket to be 503-RED (FIX-1446).
+ *
+ * The 661 buckets retained on 2026-11-27 outside the 11-23 outage carry no 503
+ * at all (p50/p90/p99/max 0); its two 503-RED buckets carry 192 and 120. Ten
+ * keeps a near-empty bucket — 08-31's wedge held buckets of five requests —
+ * from turning one stray 503 into a page.
+ */
+export const RED_MIN_503 = 10;
+
+/**
+ * Minimum 503 share of a bucket's requests for it to be 503-RED (FIX-1446).
+ *
+ * 11-23's 503-RED buckets ran 88.9% and 78.9%; its 00:45Z bucket ran 46.2% and
+ * is not RED. Every other retained bucket ran 0%.
+ */
+export const RED_MIN_503_RATIO = 0.5;
+
 /** Bucket width. Matches the route's fifteen-minute Vercel cron tick. */
 export const BUCKET_MS = 15 * 60 * 1000;
 
@@ -191,6 +257,14 @@ export function bucketIsRed(b: FrontDoorBucket): boolean {
   if (b.n52x < RED_MIN_52X) return false;
   if (b.requests <= 0) return false;
   return b.n52x / b.requests >= RED_MIN_52X_RATIO;
+}
+
+/** Is PostgREST failing to reach Postgres in this bucket? See "THE 503 ARM" in the module header. */
+export function bucketIs503Red(b: FrontDoorBucket): boolean {
+  const n503 = b.n503 ?? 0;
+  if (n503 < RED_MIN_503) return false;
+  if (b.requests <= 0) return false;
+  return n503 / b.requests >= RED_MIN_503_RATIO;
 }
 
 /**
@@ -213,7 +287,7 @@ export function alignBuckets(
   const out: FrontDoorBucket[] = [];
   for (let i = BUCKET_COUNT; i >= 1; i--) {
     const startMs = endBoundaryMs - i * BUCKET_MS;
-    out.push(byStart.get(startMs) ?? { startMs, requests: 0, n5xx: 0, n52x: 0 });
+    out.push(byStart.get(startMs) ?? { startMs, requests: 0, n5xx: 0, n52x: 0, n503: 0 });
   }
   return out;
 }
@@ -246,6 +320,14 @@ export function floorToBucket(ms: number): number {
  * buckets are then zero-filled, so "no RED" means nothing, and `ok` would be a
  * claim this tick cannot make. Omitting `corroborator` is the pre-FIX-1219
  * call, and its verdicts are unchanged.
+ *
+ * DB_UNREACHABLE (FIX-1446) when the two newest closed buckets are both
+ * 503-RED, and DB_REACHABLE on its exact edge — the two newest not 503-RED,
+ * the one before them 503-RED — anchored as RECOVERED is. Precedence, in order:
+ * the probe with no answer (DOWN), the corroborator blind, the wedge rule's
+ * DOWN, DB_UNREACHABLE, RECOVERED, DB_REACHABLE, OK. So a wedge outranks the
+ * 503 arm, and where an all-clear of each would fall on one tick RECOVERED is
+ * the one sent. Buckets without `n503` read 0 and get today's verdicts exactly.
  */
 export function decideFrontDoorVerdict(
   buckets: FrontDoorBucket[],
@@ -292,12 +374,32 @@ export function decideFrontDoorVerdict(
         `(newest: ${n.n52x}/${n.requests})`,
     };
   }
+  const [, u1, u2, u3] = buckets.map(bucketIs503Red) as [boolean, boolean, boolean, boolean];
+  if (u3 && u2) {
+    const n = buckets[3]!;
+    return {
+      state: "db_unreachable",
+      red,
+      isDownEdge: !u1,
+      reason:
+        `the two newest closed buckets are both >= ${Math.round(RED_MIN_503_RATIO * 100)}% 503 ` +
+        `(newest: ${n.n503 ?? 0}/${n.requests})`,
+    };
+  }
   if (!b3 && !b2 && b1) {
     return {
       state: "recovered",
       red,
       isDownEdge: false,
       reason: "the two newest closed buckets are clean and the one before them was 52x-saturated",
+    };
+  }
+  if (!u3 && !u2 && u1) {
+    return {
+      state: "db_reachable",
+      red,
+      isDownEdge: false,
+      reason: "the two newest closed buckets are clear of 503 and the one before them was 503-saturated",
     };
   }
   return { state: "ok", red, isDownEdge: false, reason: "no sustained 52x, front door answering" };
@@ -311,10 +413,13 @@ export function decideFrontDoorVerdict(
  * 08-31 wedge that is ~17 emails rather than ~68, without any stored state.
  *
  * RECOVERED sends on its edge, which by construction occurs once.
+ *
+ * DB_UNREACHABLE pages exactly as DOWN does, edge then hourly, and DB_REACHABLE
+ * sends once, as RECOVERED does (FIX-1446).
  */
 export function shouldSend(verdict: FrontDoorVerdict, nowMs: number): boolean {
-  if (verdict.state === "recovered") return true;
-  if (verdict.state !== "down") return false;
+  if (verdict.state === "recovered" || verdict.state === "db_reachable") return true;
+  if (verdict.state !== "down" && verdict.state !== "db_unreachable") return false;
   if (verdict.isDownEdge) return true;
   return new Date(nowMs).getUTCMinutes() < 15;
 }
@@ -333,10 +438,63 @@ export const FRONT_DOOR_RUNBOOK =
   "not go looking for a slow query first. On 2026-08-31 the front door stayed " +
   "wedged about 17 hours after the database had recovered.";
 
+/**
+ * FIX-1446 — what the DATABASE UNREACHABLE page says in place of the restart
+ * runbook. It names no restart rule because there is none: the restart is the
+ * owner's (Craig, 2026-11-23).
+ */
+export const DB_UNREACHABLE_RUNBOOK =
+  "PostgREST is answering but cannot reach Postgres. This is not the 52x wedge " +
+  "and the watchdog will not restart the project for it. On 2026-11-23 this was " +
+  "the disk IO budget spent in the pass after a landing: look at the dashboard's " +
+  "Disk IO % consumed and whether the database answers at all. A restart from " +
+  "the dashboard cleared it then; that is the owner's decision.";
+
+/** The DATABASE REACHABLE AGAIN all-clear. It clears the 503 page only. */
+const DB_REACHABLE_TEXT =
+  "No action needed for the DATABASE UNREACHABLE alert above it: the two newest " +
+  "closed buckets are clear of 503. This clears that alert only. Plain 500 / 504 " +
+  "(statement timeouts) are not this detector's and are never paged, so read the " +
+  "table: on 2026-11-23 this all-clear would have come at 02:00Z with 01:45Z at " +
+  "62% 5xx of 500 and 504, three minutes before the restart that ended it.";
+
 function fmtBucket(b: FrontDoorBucket, red: boolean): string {
   const t = new Date(b.startMs).toISOString().slice(11, 16);
   const pct = b.requests ? ((100 * b.n52x) / b.requests).toFixed(1) : "0.0";
-  return `${t}  ${String(b.requests).padStart(6)} req  ${String(b.n5xx).padStart(5)} 5xx  ${String(b.n52x).padStart(5)} 52x  ${pct.padStart(6)}%  ${red ? "RED" : "ok"}`;
+  const n503 = b.n503 ?? 0;
+  const pct503 = b.requests ? ((100 * n503) / b.requests).toFixed(1) : "0.0";
+  const mark = red ? "RED" : bucketIs503Red(b) ? "503-RED" : "ok";
+  return `${t}  ${String(b.requests).padStart(6)} req  ${String(b.n5xx).padStart(5)} 5xx  ${String(b.n52x).padStart(5)} 52x ${pct.padStart(6)}%  ${String(n503).padStart(5)} 503 ${pct503.padStart(6)}%  ${mark}`;
+}
+
+/** Subject, title and closing paragraph, by state. Every unpaged state reads as RECOVERED, as before FIX-1446. */
+function emailHead(verdict: FrontDoorVerdict): { subject: string; title: string; text: string } {
+  switch (verdict.state) {
+    case "down":
+      return {
+        subject: `[Civitics][FRONT DOOR DOWN] Supabase REST is not answering — ${verdict.reason}`,
+        title: "FRONT DOOR DOWN",
+        text: FRONT_DOOR_RUNBOOK,
+      };
+    case "db_unreachable":
+      return {
+        subject: `[Civitics][DATABASE UNREACHABLE] the front door is answering 503 — ${verdict.reason}`,
+        title: "DATABASE UNREACHABLE",
+        text: DB_UNREACHABLE_RUNBOOK,
+      };
+    case "db_reachable":
+      return {
+        subject: "[Civitics][DATABASE REACHABLE AGAIN] the front door has stopped answering 503",
+        title: "DATABASE REACHABLE AGAIN",
+        text: DB_REACHABLE_TEXT,
+      };
+    default:
+      return {
+        subject: `[Civitics][FRONT DOOR RECOVERED] Supabase REST is answering again`,
+        title: "FRONT DOOR RECOVERED",
+        text: "No action needed. This is the all-clear for the alert above it.",
+      };
+  }
 }
 
 /** Render the alert email. Plain `<pre>` on purpose — this is read at 3am. */
@@ -349,11 +507,11 @@ export function renderFrontDoorEmail(args: {
   /** FIX-1285: the restart decision's one line (front-door-restart.ts `restartLine`). */
   restartLine?: string | null;
 }): { subject: string; html: string } {
-  const { verdict, buckets, probe, probeUrl, nowMs, restartLine } = args;
-  const down = verdict.state === "down";
-  const subject = down
-    ? `[Civitics][FRONT DOOR DOWN] Supabase REST is not answering — ${verdict.reason}`
-    : `[Civitics][FRONT DOOR RECOVERED] Supabase REST is answering again`;
+  const { verdict, buckets, probe, probeUrl, nowMs } = args;
+  const { subject, title, text } = emailHead(verdict);
+  // FIX-1446: the 503 arm never restarts, so its emails carry no restart line.
+  const restartLine =
+    verdict.state === "db_unreachable" || verdict.state === "db_reachable" ? null : args.restartLine;
 
   const table = buckets.map((b, i) => fmtBucket(b, verdict.red[i] ?? false)).join("\n");
   const probeLines = probe.attempts
@@ -364,7 +522,7 @@ export function renderFrontDoorEmail(args: {
     .join("\n");
 
   const html = `<pre style="font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace">
-${down ? "FRONT DOOR DOWN" : "FRONT DOOR RECOVERED"} — ${new Date(nowMs).toISOString()}
+${title} — ${new Date(nowMs).toISOString()}
 
 ${verdict.reason}
 
@@ -375,12 +533,14 @@ Direct liveness probe — ${probeUrl}
 ${probeLines}
   verdict: ${probe.answered ? "front door ANSWERED (any status &lt; 500 counts; 401 is healthy here)" : "front door did NOT answer"}
 
-${down ? FRONT_DOOR_RUNBOOK : "No action needed. This is the all-clear for the alert above it."}
+${text}
 ${restartLine ? `\n${restartLine.replace(/</g, "&lt;")}\n` : ""}
 
 A bucket is RED at >= ${RED_MIN_52X} Cloudflare-class 52x responses AND >= ${Math.round(
     RED_MIN_52X_RATIO * 100,
   )}% of that bucket's requests.
+It is 503-RED at >= ${RED_MIN_503} x 503 AND >= ${Math.round(RED_MIN_503_RATIO * 100)}%: PostgREST answering
+but unable to reach Postgres. That pages and never restarts (FIX-1446).
 This detector deliberately ignores plain 5xx: on 2026-09-01 the front door served
 up to 67.7% 5xx while healthy, from statement timeouts under I/O load.
 </pre>`;

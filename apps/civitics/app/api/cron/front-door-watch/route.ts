@@ -24,6 +24,10 @@
  * GitHub Actions run is not a page. This route replays the same day and
  * declares DOWN at 06:47.)
  *
+ * (FIX-1446: it also pages DATABASE UNREACHABLE when the edge answers 503 —
+ * PostgREST unable to reach Postgres, 11-23's outage — and never restarts for
+ * it. The rule is front-door-verdict.ts's "THE 503 ARM".)
+ *
  * ── WHY VERCEL CRON AND NOT GHA, AND WHY ITS OWN ROUTE ────────────────────────
  *
  * GHA cron does not honour sub-hourly schedules here — measured at eight
@@ -349,6 +353,8 @@ export async function GET(request: NextRequest) {
       requests: b.requests,
       n_5xx: b.n5xx,
       n_52x: b.n52x,
+      // FIX-1446: the 503 arm's count. `red` stays the 52x wedge rule's.
+      n_503: b.n503 ?? 0,
       red: verdict.red[i] ?? false,
     })),
     // FIX-1285. `none` on a healthy tick; see front-door-restart.ts for the rest.
@@ -401,6 +407,8 @@ export async function GET(request: NextRequest) {
             // A blind tick still ran, so it stays "complete": the rollup registry
             // counts only complete rows, and a watch that ran must not read as a
             // watch that stopped. The canary reads the state, report-only (FIX-1219).
+            // db_unreachable / db_reachable (FIX-1446) are "complete" too: the
+            // status vocabulary is not widened, and the state is in the metadata.
             metadata: metadata as Json,
           });
         },

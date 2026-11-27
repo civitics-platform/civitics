@@ -31,6 +31,10 @@ import {
   BUCKET_COUNT,
   RED_MIN_52X,
   RED_MIN_52X_RATIO,
+  bucketIs503Red,
+  DB_UNREACHABLE_RUNBOOK,
+  RED_MIN_503,
+  RED_MIN_503_RATIO,
   corroboratorLabel,
   isLogsEndpointGone,
   type FrontDoorBucket,
@@ -53,6 +57,8 @@ const toBucket = (r: Row): FrontDoorBucket => ({
   requests: r[1],
   n5xx: r[2],
   n52x: r[3],
+  // FIX-1446: a four-element row was pulled before anyone counted 503.
+  n503: r[4] ?? 0,
 });
 
 /** A probe that answered — isolates the logs arm in these replays. */
@@ -65,8 +71,10 @@ const PROBE_OK: FrontDoorProbe = {
  * Replay a series the way the cron actually sees it: at each 15-minute tick,
  * evaluate the four buckets that closed before it, and record what would be
  * sent. Returns one entry per email that would leave the building.
+ * `offsetMs` is where in the slot the tick fires: :02 by default, :00:28 for
+ * the instants prod's ticks actually land at (FIX-1446's 11-23 replay).
  */
-function replay(rows: Row[]): Array<{ at: string; state: string }> {
+function replay(rows: Row[], offsetMs = 2 * 60 * 1000): Array<{ at: string; state: string }> {
   const byStart = new Map<number, FrontDoorBucket>();
   for (const r of rows) byStart.set(r[0], toBucket(r));
   const starts = rows.map((r) => r[0]).sort((a, b) => a - b);
@@ -77,7 +85,7 @@ function replay(rows: Row[]): Array<{ at: string; state: string }> {
   // Tick at :02 past each boundary, so the boundary's bucket is closed and the
   // on-the-hour tick lands inside the minute<15 hourly-dedup window.
   for (let t = first + BUCKET_COUNT * BUCKET_MS; t <= last + BUCKET_MS; t += BUCKET_MS) {
-    const nowMs = t + 2 * 60 * 1000;
+    const nowMs = t + offsetMs;
     const endBoundary = floorToBucket(nowMs);
     const present: FrontDoorBucket[] = [];
     for (let i = BUCKET_COUNT; i >= 1; i--) {
@@ -436,5 +444,179 @@ describe("the Logs corroborator unavailable (FIX-1219)", () => {
     assert.equal(isLogsEndpointGone(404), true);
     assert.equal(isLogsEndpointGone(503), false);
     assert.equal(isLogsEndpointGone(401), false);
+  });
+});
+
+// FIX-1446 — the 503 arm. On 11-23 the edge answered 503 (PostgREST unable to
+// reach Postgres) on 89 % and 79 % of two consecutive buckets with 0 x 52x, and
+// nothing paged. These replay the real series the thresholds were read from.
+describe("the 503 arm (FIX-1446)", () => {
+  const at = (iso: string) => Date.parse(iso);
+  const b = (requests: number, n503: number, extra: Partial<FrontDoorBucket> = {}): FrontDoorBucket => ({
+    startMs: 0,
+    requests,
+    n5xx: n503,
+    n52x: 0,
+    n503,
+    ...extra,
+  });
+  const window = (rows: FrontDoorBucket[], end: number) =>
+    alignBuckets(rows.map((r, i) => ({ ...r, startMs: end - (rows.length - i) * BUCKET_MS })), end);
+  const G = b(300, 0);
+  const U = b(216, 192); // 11-23 01:00Z
+  const OUTAGE_FROM = at("2026-11-22T23:45:00Z");
+  const OUTAGE_TO = at("2026-11-23T02:15:00Z");
+
+  test("the thresholds are exactly the calibrated values", () => {
+    assert.equal(RED_MIN_503, 10);
+    assert.equal(RED_MIN_503_RATIO, 0.5);
+  });
+
+  test("11-23's 01:00Z and 01:15Z are 503-RED; 00:45Z at 46.2 % is not, and is the only near miss", () => {
+    const red = OUTAGE_1123.filter((r) => bucketIs503Red(toBucket(r))).map((r) => new Date(r[0]).toISOString());
+    assert.deepEqual(red, ["2026-11-23T01:00:00.000Z", "2026-11-23T01:15:00.000Z"]);
+    const r0045 = OUTAGE_1123.find((r) => r[0] === at("2026-11-23T00:45:00Z"))!;
+    assert.deepEqual(r0045, [at("2026-11-23T00:45:00Z"), 65, 53, 0, 30]);
+    assert.equal(bucketIs503Red(toBucket(r0045)), false);
+  });
+
+  test("the count floor, the ratio, an empty bucket and a row with no 503 count", () => {
+    assert.equal(bucketIs503Red(b(9, 9)), false, "nine of nine is under the floor of ten");
+    assert.equal(bucketIs503Red(b(20, 10)), true, "ten of twenty is exactly the ratio");
+    assert.equal(bucketIs503Red(b(21, 10)), false);
+    assert.equal(bucketIs503Red(b(0, 0)), false);
+    assert.equal(bucketIs503Red({ startMs: 0, requests: 100, n5xx: 100, n52x: 0 }), false, "absent n503 reads 0");
+  });
+
+  test("09-01's statement-timeout afternoon (583 x 500 + 112 x 504 + one 520 + one 525) is never 503-RED", () => {
+    // The audit's seven hours (12:00 through 18:59Z), as one bucket and as the
+    // fixture's buckets: every 5xx there was 500 or 504, so n_503 is 0.
+    assert.equal(bucketIs503Red({ startMs: 0, requests: 3775, n5xx: 697, n52x: 2, n503: 0 }), false);
+    const afternoon = HEALTHY.filter((r) => r[0] >= at("2026-09-01T12:00:00Z") && r[0] < at("2026-09-01T19:00:00Z"));
+    assert.equal(afternoon.length, 27);
+    assert.deepEqual(
+      [afternoon.reduce((s, r) => s + r[1], 0), afternoon.reduce((s, r) => s + r[2], 0)],
+      [3775, 697],
+      "the audit's 3,775 requests and 697 5xx",
+    );
+    assert.ok(afternoon.every((r) => !bucketIs503Red(toBucket(r))));
+    assert.deepEqual(replay(afternoon).filter((s) => s.state.startsWith("db_")), []);
+  });
+
+  test("11-23 replayed at prod's :00:28 ticks: DATABASE UNREACHABLE at 01:30:28Z, DATABASE REACHABLE AGAIN at 02:00:28Z, nothing else", () => {
+    const sent = replay(OUTAGE_1123, 28_000);
+    assert.deepEqual(sent, [
+      { at: "2026-11-23T01:30:28.000Z", state: "db_unreachable" },
+      { at: "2026-11-23T02:00:28.000Z", state: "db_reachable" },
+    ]);
+    // Craig found the site down at 01:53Z and restarted it at 02:03Z.
+    assert.equal(Math.floor((at("2026-11-23T01:53:00Z") - at(sent[0]!.at)) / 60000), 22);
+    assert.ok(at(sent[1]!.at) < at("2026-11-23T02:03:00Z"), "the all-clear lands before the restart, not after it");
+    // The :02 grid the other replays use reads the same two ticks.
+    assert.deepEqual(
+      replay(OUTAGE_1123).map((s) => s.at.slice(11, 16) + " " + s.state),
+      ["01:32 db_unreachable", "02:02 db_reachable"],
+    );
+  });
+
+  test("the week of 11-20 pages only the 11-23 outage — no 503 anywhere else, not one single 503-RED bucket outside it", () => {
+    const outside = WEEK_1120.filter((r) => r[0] < OUTAGE_FROM || r[0] >= OUTAGE_TO);
+    assert.equal(outside.length, 661);
+    assert.equal(Math.max(...outside.map((r) => r[4] ?? 0)), 0);
+    assert.deepEqual(outside.filter((r) => bucketIs503Red(toBucket(r))), []);
+    assert.deepEqual(replay(WEEK_1120, 28_000), [
+      { at: "2026-11-23T01:30:28.000Z", state: "db_unreachable" },
+      { at: "2026-11-23T02:00:28.000Z", state: "db_reachable" },
+    ]);
+  });
+
+  test("it pages like DOWN: on its edge, then the :00 tick only; DATABASE REACHABLE AGAIN once", () => {
+    const end = at("2026-11-23T02:00:00Z");
+    const edge = decideFrontDoorVerdict(window([G, G, U, U], end), PROBE_OK);
+    assert.equal(edge.state, "db_unreachable");
+    assert.equal(edge.isDownEdge, true);
+    assert.equal(shouldSend(edge, at("2026-11-23T02:47:28Z")), true, "the edge sends whatever the minute");
+    const steady = decideFrontDoorVerdict(window([U, U, U, U], end), PROBE_OK);
+    assert.equal(steady.state, "db_unreachable");
+    assert.equal(steady.isDownEdge, false);
+    assert.equal(shouldSend(steady, at("2026-11-23T03:00:28Z")), true);
+    for (const m of ["03:15:28", "03:30:28", "03:45:28"]) {
+      assert.equal(shouldSend(steady, at("2026-11-23T" + m + "Z")), false, m);
+    }
+    const back = decideFrontDoorVerdict(window([U, U, G, G], end), PROBE_OK);
+    assert.equal(back.state, "db_reachable");
+    assert.equal(shouldSend(back, at("2026-11-23T02:17:28Z")), true);
+    // One tick later the 503-RED bucket has slid to index 0: ok, no email.
+    const after = decideFrontDoorVerdict(window([U, G, G, G], end), PROBE_OK);
+    assert.equal(after.state, "ok");
+    assert.equal(shouldSend(after, at("2026-11-23T03:00:28Z")), false);
+  });
+
+  test("precedence: a wedge outranks it, the probe and the blind corroborator are unchanged, RECOVERED beats DB_REACHABLE", () => {
+    const end = at("2026-11-23T02:00:00Z");
+    // 10 x 52x + 10 x 503 of 20: RED and 503-RED at once — DOWN.
+    const both = b(20, 10, { n5xx: 20, n52x: 10 });
+    assert.equal(bucketIsRed(both) && bucketIs503Red(both), true);
+    const v = decideFrontDoorVerdict(window([G, G, both, both], end), PROBE_OK);
+    assert.equal(v.state, "down");
+    assert.match(v.reason, /Cloudflare 52x/);
+    const dark: FrontDoorProbe = { answered: false, attempts: [{ status: null, ms: 5000, error: "timeout" }] };
+    assert.equal(decideFrontDoorVerdict(window([G, G, U, U], end), dark).state, "down");
+    assert.equal(
+      decideFrontDoorVerdict(window([G, G, U, U], end), PROBE_OK, { kind: "dark", detail: "HTTP 429" }).state,
+      "corroborator_unavailable",
+    );
+    // The one bucket before the two clean ones is both RED and 503-RED: RECOVERED is the all-clear sent.
+    assert.equal(decideFrontDoorVerdict(window([G, both, G, G], end), PROBE_OK).state, "recovered");
+  });
+
+  test("a caller that omits n503 gets today's verdicts exactly", () => {
+    const strip = (rows: Row[]) => rows.map((r) => [r[0], r[1], r[2], r[3]] as Row);
+    assert.deepEqual(replay(strip(OUTAGE_1123)), []);
+    assert.deepEqual(replay(strip(OUTAGE_0831)), replay(OUTAGE_0831));
+  });
+
+  test("the DATABASE UNREACHABLE email: its subject, the four buckets with a 503 column, the owner's text, no restart line", () => {
+    const end = at("2026-11-23T01:30:00Z");
+    const rows = alignBuckets(OUTAGE_1123.map(toBucket), end);
+    const v = decideFrontDoorVerdict(rows, PROBE_OK);
+    assert.equal(v.state, "db_unreachable");
+    const { subject, html } = renderFrontDoorEmail({
+      verdict: v,
+      buckets: rows,
+      probe: PROBE_OK,
+      probeUrl: "https://example.supabase.co/rest/v1/",
+      nowMs: at("2026-11-23T01:30:28Z"),
+      restartLine: "Auto-restart (FIX-1285, FRONT_DOOR_AUTO_RESTART=arm): none — front door not DOWN (db_unreachable)",
+    });
+    assert.equal(
+      subject,
+      "[Civitics][DATABASE UNREACHABLE] the front door is answering 503 — the two newest closed buckets are both >= 50% 503 (newest: 120/152)",
+    );
+    assert.ok(html.includes(DB_UNREACHABLE_RUNBOOK));
+    assert.match(html, /^DATABASE UNREACHABLE — 2026-11-23T01:30:28\.000Z$/m);
+    assert.match(html, /^01:00 +216 req +214 5xx +0 52x +0\.0% +192 503 +88\.9% +503-RED$/m);
+    assert.match(html, /^00:45 +65 req +53 5xx +0 52x +0\.0% +30 503 +46\.2% +ok$/m);
+    assert.doesNotMatch(html, /Auto-restart/, "the 503 arm never restarts, so it carries no restart line");
+    assert.doesNotMatch(html, /Restart project/, "not the wedge runbook");
+    assert.ok(!html.includes("undefined"));
+  });
+
+  test("the DATABASE REACHABLE AGAIN email clears the 503 page only, and says plain 500 / 504 are not paged", () => {
+    const end = at("2026-11-23T02:00:00Z");
+    const rows = alignBuckets(OUTAGE_1123.map(toBucket), end);
+    const v = decideFrontDoorVerdict(rows, PROBE_OK);
+    assert.equal(v.state, "db_reachable");
+    const { subject, html } = renderFrontDoorEmail({
+      verdict: v,
+      buckets: rows,
+      probe: PROBE_OK,
+      probeUrl: "https://example.supabase.co/rest/v1/",
+      nowMs: at("2026-11-23T02:00:28Z"),
+    });
+    assert.ok(subject.startsWith("[Civitics][DATABASE REACHABLE AGAIN]"));
+    assert.match(html, /This clears that alert only/);
+    assert.match(html, /500 \/ 504/);
+    assert.match(html, /^01:45 +136 req +84 5xx +3 52x +2\.2% +0 503 +0\.0% +ok$/m);
   });
 });

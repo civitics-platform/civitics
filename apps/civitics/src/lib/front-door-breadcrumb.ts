@@ -36,12 +36,21 @@ export interface BreadcrumbBucket {
   requests: number;
   n_5xx: number;
   n_52x: number;
+  /** FIX-1446's 503 count. Absent on rows written before it. */
+  n_503?: number;
+  /** The 52x wedge rule's RED, never the 503 arm's. */
   red: boolean;
 }
 
 /** What this tick knows, carried onto a backfill. */
 export interface BackfillCarry {
   buckets: BreadcrumbBucket[];
+  /**
+   * The verdict's state, carried as written: ok | down | recovered |
+   * corroborator_unavailable | db_unreachable | db_reachable (the last two
+   * FIX-1446's). Nothing here branches on it, and only `down` makes the row
+   * `partial` (the route).
+   */
   state: string;
   reason: string;
   mode: string;

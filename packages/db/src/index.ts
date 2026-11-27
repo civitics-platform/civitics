@@ -565,6 +565,11 @@ export {
   FRONT_DOOR_RUNBOOK,
   RED_MIN_52X,
   RED_MIN_52X_RATIO,
+  // FIX-1446 — the 503 arm: pages "database unreachable", never restarts.
+  bucketIs503Red,
+  DB_UNREACHABLE_RUNBOOK,
+  RED_MIN_503,
+  RED_MIN_503_RATIO,
   BUCKET_MS,
   BUCKET_COUNT,
 } from "./front-door-verdict";

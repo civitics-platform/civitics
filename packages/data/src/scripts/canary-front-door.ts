@@ -22,6 +22,11 @@
  * rollup registry's `rollup:front_door_watch` (cadence 0.25 h). Here, no rows
  * in the window raises nothing.
  *
+ * FIX-1446's two states, `db_unreachable` and `db_reachable` (the 503 arm's
+ * page and its all-clear), are not blind: the watch read the buckets and paged
+ * from the route, as it does for `down`. They raise nothing here, and the
+ * detail names them.
+ *
  * Pure: the PostgREST read lives in canary-check.ts.
  */
 
@@ -31,6 +36,12 @@ export const KEY_FRONT_DOOR_BLIND = "front_door_corroborator_unavailable";
 export const FRONT_DOOR_WINDOW_MINUTES = 60;
 
 export const BLIND_STATE = "corroborator_unavailable";
+
+/** FIX-1446: what the detail adds for the 503 arm's states, which are not blind and not this key's. */
+const STATE_NOTE: Record<string, string> = {
+  db_unreachable: " (FIX-1446: the watch paged DATABASE UNREACHABLE itself — not blind)",
+  db_reachable: " (FIX-1446: the 503 page's all-clear — not blind)",
+};
 
 export interface FrontDoorWatchRow {
   started_at: string;
@@ -63,7 +74,8 @@ export function classifyFrontDoorWatch(rows: readonly FrontDoorWatchRow[]): Fron
       firings,
       blind: blindRows.length,
       detail: newest
-        ? `front-door watch newest firing ${newest.started_at} reads ${String(newest.metadata?.state ?? "(no state)")}`
+        ? `front-door watch newest firing ${newest.started_at} reads ${String(newest.metadata?.state ?? "(no state)")}` +
+          (STATE_NOTE[String(newest.metadata?.state)] ?? "")
         : `no front-door watch firing in the last ${FRONT_DOOR_WINDOW_MINUTES} min (staleness is the rollup registry's)`,
     };
   }

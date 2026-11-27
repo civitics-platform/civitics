@@ -45,3 +45,14 @@ test("a pre-FIX-1219 row (state ok, logs_api absent) is not blind — the old si
   const c = classifyFrontDoorWatch([{ started_at: "2026-09-24T23:45:28Z", metadata: { state: "ok", reason: "no sustained 52x" } }]);
   assert.equal(c.tier, null);
 });
+
+test("FIX-1446: the 503 arm's states are not blind — they raise nothing, and the detail names them", () => {
+  const down = classifyFrontDoorWatch([row("2026-11-23T01:30:28Z", "db_unreachable"), row("2026-11-23T01:15:28Z", "ok")]);
+  assert.equal(down.tier, null);
+  assert.equal(down.blind, 0);
+  assert.match(down.detail, /reads db_unreachable \(FIX-1446: the watch paged DATABASE UNREACHABLE itself — not blind\)/);
+  const back = classifyFrontDoorWatch([row("2026-11-23T02:00:28Z", "db_reachable")]);
+  assert.equal(back.tier, null);
+  assert.match(back.detail, /reads db_reachable \(FIX-1446: the 503 page's all-clear — not blind\)/);
+  assert.doesNotMatch(classifyFrontDoorWatch([row("01:00", "ok")]).detail, /FIX-1446/);
+});
