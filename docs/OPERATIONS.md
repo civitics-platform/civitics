@@ -957,25 +957,34 @@ only measures whose `congress_gov` ref has no `metadata.detail.fetched_at`,
 voted measures first, 3–4 requests a measure at ~800 ms each, and writes each
 measure in one transaction. Nominations (`119-PN-…`) are never selected.
 
-> **Do not run a prod fill yet (FIX-1459).**
->
-> - **Before (cc-328):** the 25-measure chunk (2026-11-26 23:30–23:42Z) read
->   **21.9 s of database time a measure** (max 28.8 s; local 11–21 ms) and
->   held the box at 63–75 % io for 11 minutes. The first-vote subquery
->   (`min(votes.voted_at) WHERE bill_proposal_id = …`) planned as a backward
->   walk of `votes_voted_at` filtered row by row: one statement a measure,
->   within ~1.2 s of the 30 s `MEASURE_STATEMENT_TIMEOUT`.
-> - **The walk is gone (cc-329, `bdd69660`).** The first vote is its own
->   statement, `FIRST_VOTE_SQL`, behind an `OFFSET 0` fence, read only when
->   the placeholder rule consults it. Its prod plan is `Aggregate → Index Scan
->   using votes_bill`.
-> - **Prod timings, ten reads (2026-11-27 03:05–03:10Z):** 1.5–35 ms, except
->   one. That one was 118-HR-21 (57 rolls, 18,408 rows), read cold: **978 ms**,
->   1,281 heap pages at ~0.76 ms each.
-> - **Why the fill still waits:** cc-329's bar for that read is 500 ms, so its
->   second chunk did not run. A bitmap form of the same statement was tried
->   and showed no cold advantage. Every form without an index reads all of a
->   measure's heap rows. The open choice is the next prompt's.
+**What the walker costs prod (FIX-1459).** Two 25-measure chunks from the
+terminal, with `--only voted`:
+
+| | cc-328 (2026-11-26 23:30–23:42Z) | cc-330 (2026-11-27 04:00:57–04:03:40Z) |
+|---|---|---|
+| first-vote read | `min()` subquery, a backward walk of `votes_voted_at` | `FIRST_VOTE_SQL` behind an `OFFSET 0` fence (`bdd69660`), read only when the placeholder rule consults it |
+| database ms a measure | 21,948 (max 28,833) | **393** (max 3,703) |
+| seconds a measure | 27.12 | 6.46 |
+| the box | 63–75 % io for 11 minutes | flat |
+
+- **The fence is load-bearing.** A bare `min(voted_at) … WHERE
+  bill_proposal_id = $1` lets the planner answer it from `votes_voted_at`, a
+  backward walk that read most of `votes`' 1.02 M rows, within ~1.2 s of the
+  30 s `MEASURE_STATEMENT_TIMEOUT`. Behind the fence, prod plans `Aggregate →
+  Index Scan using votes_bill`.
+- **The floor from a terminal is ~230 ms a measure.** In cc-330's chunk the
+  six measures that read the first vote took 274–400 ms. Of the 19 that did
+  not, the first took 3,703 ms (one roll) and the other 18 took 225–270 ms.
+- **The cold tail is accepted, not fixed.** Ten prod reads of the statement ran
+  in 1.5–35 ms. The heaviest measure, read disk-cold, took **978 ms**: 118-HR-21,
+  57 rolls, 18,408 rows, 1,281 heap pages at ~0.76 ms each.
+  - Every form without an index reads all of a measure's heap rows, so the
+    floor is the measure's pages, not the plan. That read is ~10 MB once,
+    against the ~22 s at 70 % io it replaced.
+  - So the guard is the run's own figures: `db_ms/measure` on its row, not a
+    bar on the read.
+  - `votes (bill_proposal_id, voted_at)` would make it index-only. It was not
+    built: a class-S index on 1.02 M rows for one reader.
 
 **The cosponsor edges.** `proposal_cosponsors` is the source of the `ec-crawl`
 unit's cosponsor arm, `rebuild_entity_connections_cosponsors`. Each resolved,
@@ -1003,30 +1012,35 @@ Run it:
 pnpm --filter @civitics/data data:bill-details -- --dry-run --limit 5
 pnpm --filter @civitics/data data:bill-details -- --apply --only voted --limit 10
 # prod from the terminal (the PRIMARY checkout's packages/data; leaves .env.local alone)
+# — only under a manual hold while the dispatcher row is live (below)
 pnpm exec tsx --env-file=../../.env.local.prod src/pipelines/congress/bill-details.ts --apply --allow-prod --only voted --limit 25
-# prod on a runner, by hand
-gh workflow run bill-details.yml -f only=all -f max_minutes=15
 ```
 
-**The dispatcher row is built and held (FIX-1453).**
-- **The door is live:** `/api/cron/gha-dispatch/bill-details-request` polls
-  every 5 min, sending `only` "all" and `max_minutes` "15".
-- **The registry row is not:** it is a mirror of crs-summaries
-  (`stale_after 2 hours`, group `proposals`, `yield_to {nightly}`, budget
-  2,700 s), and it is what lets the dispatcher start the fill unattended. The
-  migration `20261126008000`, its test and `scripts/fix1453-revert-bill-details-row.sql`
-  are on `origin/feature/fix-328` at `0b631eaf`, off main, and wait on
-  FIX-1459. cc-329 did not push them (its first-vote read missed the 500 ms
-  bar above).
-- **Until the row lands** the poll reads no request and fires nothing.
-- **Once it lands:** stop it by the row revert through the gate. Read it as the
-  CRS walker is read, with `job = 'bill-details'` and `pipeline =
-  'congress_bill_details'`.
+**The dispatcher row is live (FIX-1453).** `20261126008000`, pushed by cc-330
+on 2026-11-27, is a mirror of crs-summaries (§The CRS walker as a dispatcher
+unit): `stale_after 2 hours`, group `proposals`, `yield_to {nightly}`, budget
+2,700 s. It arms `gha_dispatch_request_bill-details`, and
+`/api/cron/gha-dispatch/bill-details-request` (every 5 min) fires
+`bill-details.yml` with `only` "all" and `max_minutes` "15" and consumes it.
 
-Read its row:
+- **The dispatcher is the walker's only starter.** A hand run, from a runner
+  or the terminal, shares the group and the key with a dispatched one. Start
+  one only under a manual hold.
+- **The pace:** 15 minutes when 2 hours stale, about ten runs a day. `only`
+  "all" takes the voted measures first, then the rest. An empty selection
+  reports `metadata.next_due_at` now + 12 h, and the row rests on it.
+- **Stop it:** `scripts/fix1453-revert-bill-details-row.sql` through the gate,
+  from the PRIMARY:
+  `node scripts/db-query.mjs --prod --call --yes-i-mean-prod --timeout 30s --file scripts/fix1453-revert-bill-details-row.sql`.
+  With no row the poll reads no request and fires nothing. `pause` stops
+  everything. A run in flight stops between measures on a claimed session, or
+  by `gh run cancel`.
+
+Read it:
 
 ```powershell
-node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, metadata->>'stop' AS stop, metadata->>'measures_stamped' AS stamped, metadata->>'remaining' AS remaining, metadata->>'heartbeat_at' AS heartbeat FROM public.data_sync_log WHERE pipeline = 'congress_bill_details' ORDER BY started_at DESC LIMIT 3"
+node scripts/db-query.mjs --prod --timeout 15s "SELECT ticked_at, decision, reason, unit_ms FROM public.dispatch_log WHERE job = 'bill-details' ORDER BY id DESC LIMIT 6"
+node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, metadata->>'stop' AS stop, metadata->>'measures_stamped' AS stamped, metadata->>'remaining' AS remaining, round((metadata->>'db_ms_total')::numeric / nullif((metadata->>'measures_stamped')::int, 0)) AS db_ms_a_measure, metadata->>'db_ms_max' AS db_ms_max FROM public.data_sync_log WHERE pipeline = 'congress_bill_details' ORDER BY started_at DESC LIMIT 3"
 gh run list --workflow bill-details.yml -L 3
 ```
 
@@ -1899,14 +1913,11 @@ hand run shares the concurrency group and the key with a dispatched run:
   rewrites that row. So start a hand run with `-f max_minutes=15`, or under a
   manual hold.
 
-**bill-details is not a unit yet.** Craig accepted the co_sponsorship edges
-(2026-11-26) and cc-328 built the row and its `bill-details-request` door. The
-door is deployed; the row is held on FIX-1459. cc-329 took the walker's 21.9 s
-per-measure read off the `votes_voted_at` walk, but its cold worst case (978 ms)
-missed the 500 ms bar, so the row stayed held (§The bill-details walker).
-Until the row lands, its hand runs share the
-key but not the group. A bill-details run beside a dispatched CRS run is two
-walkers on the key, ~9,000 requests/h against 20,000.
+**bill-details is a unit too** since cc-330 (`20261126008000`), a mirror of
+this row with its own job, `unit_call` and pipeline (§The bill-details walker).
+The two share group `proposals`, so the pick never arms one beside the other:
+one walker on the congress.gov key at a time. A `group busy: proposals` skip is
+the other walker's run, not a miss.
 
 Read it:
 

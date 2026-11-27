@@ -4,17 +4,18 @@ name: bill-details
 # sponsor, cosponsors, actions, real titles and introduced dates
 # (packages/data/src/pipelines/congress/bill-details.ts).
 #
-# STARTED BY THE DISPATCHER once its registry row lands (FIX-1453, cc-328):
-# job_registry `bill-details` (stale_after 2 hours, group proposals, a mirror of
-# crs-summaries) arms a request, and /api/cron/gha-dispatch/bill-details-request
-# (Vercel, every 5 min) fires this workflow with only=all and max_minutes=15 and
-# consumes it. The request target is live; the ROW IS NOT: cc-328's prod chunk
-# read 21.9 s of database time a measure (FIX-1459, the first-vote read), so
-# 20261126008000 was held back. Until it lands the poll reads no request and
-# this workflow starts only by hand. There is no schedule: block. A hand run
+# STARTED BY THE DISPATCHER (FIX-1453): job_registry `bill-details`
+# (20261126008000, pushed by cc-330; stale_after 2 hours, group proposals, a
+# mirror of crs-summaries) arms a request, and
+# /api/cron/gha-dispatch/bill-details-request (Vercel, every 5 min) fires this
+# workflow with only=all and max_minutes=15 and consumes it. cc-328 held the
+# row until FIX-1459 took the first-vote read off the votes_voted_at walk
+# (cc-328's chunk: 21.9 s of database time a measure; cc-330's: 393 ms). There
+# is no schedule: block, and the dispatcher is the only starter: a hand run
 # (`gh workflow run bill-details.yml -f only=all -f max_minutes=15`) shares the
-# concurrency group and the key with a dispatched run, so give it a box or run
-# it under a manual hold (docs/OPERATIONS.md §The bill-details walker).
+# concurrency group and the key with a dispatched run, so start one only under
+# a manual hold. Stop it: scripts/fix1453-revert-bill-details-row.sql through
+# the gate (docs/OPERATIONS.md §The bill-details walker).
 #
 # The walker is a bounded, resumable unit of the CRS walker's class (a paced
 # trickle that claims nothing and yields): it takes only measures whose

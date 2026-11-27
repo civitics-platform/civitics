@@ -10,8 +10,8 @@
  * audit and crs-summaries (FIX-1424, cc-292), which carry none: GitHub started
  * each 4–9 h late, and a second start hours after the dispatched one is exactly
  * what moving them fixes. crs-summaries is a dispatcher unit since cc-318;
- * bill-details (which never had a schedule) has its request target since
- * cc-328 and waits on its registry row (FIX-1459).
+ * bill-details (which never had a schedule) is one since cc-330: its request
+ * target since cc-328, its registry row (20261126008000) after FIX-1459.
  *
  * The route (app/api/cron/gha-dispatch) owns auth and the stamp; this module
  * owns everything that can be tested without a network: the allowlist, the
@@ -100,8 +100,10 @@ export interface DispatchTarget {
  * bill-details.yml declares. It stamps gha_dispatch_bill-details. There was
  * never a plain bill-details target. The registry row that arms it
  * (20261126008000) was held back by cc-328's prod chunk (FIX-1459: 21.9 s of
- * database time a measure), so until it lands this poll reads no request and
- * fires nothing.
+ * database time a measure) and pushed by cc-330, after its chunk read 393 ms a
+ * measure. From then on the dispatcher is the walker's only starter. Stop it by
+ * scripts/fix1453-revert-bill-details-row.sql through the gate: with no row
+ * this poll reads no request and fires nothing.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [
