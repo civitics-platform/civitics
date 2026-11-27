@@ -26,14 +26,18 @@ import { EntityTags, type EntityTag } from "../../components/tags/EntityTags";
 import { Icon } from "@civitics/graph";
 import { proposalTypeLabel } from "@/lib/proposal-detail/labels";
 import {
-  ON_RECORD_NOTE,
+  OFFICIAL_ROLL_COLUMNS,
   groupMembers,
   groupRolls,
   headlineRoll,
+  officialCountLine,
+  onRecordNote,
   partySplit,
   rollHeading,
   rollLines,
   type MemberVote,
+  type OfficialRoll,
+  type RollContext,
   type VoteRoll,
 } from "@/lib/proposal-detail/vote-rolls";
 import { stagePath } from "@/lib/proposal-detail/stage-path";
@@ -340,6 +344,20 @@ export default async function ProposalDetailPage({
       )
     : Promise.resolve({ data: [] });
 
+  // FIX-1461 (cc-332 V1): each roll's own row — the chamber's result, official
+  // count, requirement and title — by primary key, beside the members read. A
+  // roll with no row, or a read that fails, prints exactly the stored lines.
+  const officialPromise = rolls.length > 0
+    ? withDbTimeout(
+        supabase
+          .from("vote_rolls")
+          .select(OFFICIAL_ROLL_COLUMNS)
+          .in("roll_call_id", rolls.map((r) => r.roll_call_id)),
+        3000,
+        "proposals:detail-vote-rolls-official",
+      )
+    : Promise.resolve({ data: [] });
+
   // Resolve breadcrumb entity names (jurisdiction + governing body).
   const bcMeta = (breadcrumbRes.data ?? null) as {
     jurisdiction_id: string | null;
@@ -368,9 +386,16 @@ export default async function ProposalDetailPage({
     bcInstitution = (gRes.data as { id: string; name: string } | null) ?? null;
   }
 
-  const members = ((await membersPromise).data ?? []) as unknown as MemberVote[];
+  const [membersRes, officialRes] = await Promise.all([membersPromise, officialPromise]);
+  const members = (membersRes.data ?? []) as unknown as MemberVote[];
   const memberGroups = groupMembers(members);
   const rollGroups = groupRolls(rolls);
+  const officialByRoll = new Map(
+    ((officialRes.data ?? []) as unknown as OfficialRoll[]).map((o) => [o.roll_call_id, o] as const),
+  );
+  const officialOf = (r: VoteRoll) => officialByRoll.get(r.roll_call_id) ?? null;
+  const rollCtx: RollContext = { measureTitle: p.title, number };
+  const anyOfficialCount = rolls.some((r) => officialCountLine(officialOf(r)) !== null);
   const tags = (tagsRes.data ?? []) as EntityTag[];
   const related = (relatedRes.data ?? []) as RelatedProposal[];
   const cachedAiSummary: string | null =
@@ -667,13 +692,14 @@ export default async function ProposalDetailPage({
             )}
 
             {/* Vote Record — FIX-1447 (D2–D4): every roll of every type, grouped by
-                class. The counts are what Civitics stores; never a result. */}
+                class. The recorded counts are what Civitics stores, never a result;
+                FIX-1461: the result and official count beside them are the chamber's. */}
             {rolls.length > 0 && (
               <section>
                 <h2 className="mb-2 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   Vote Record
                 </h2>
-                <p className="mb-4 max-w-2xl text-xs leading-relaxed text-ink-soft">{ON_RECORD_NOTE}</p>
+                <p className="mb-4 max-w-2xl text-xs leading-relaxed text-ink-soft">{onRecordNote(anyOfficialCount)}</p>
 
                 <div className="space-y-6">
                   {rollGroups.map((g) => (
@@ -683,7 +709,7 @@ export default async function ProposalDetailPage({
                       </h3>
                       <ul className="border border-rule bg-card divide-y divide-rule/60">
                         {g.shown.map((r) => (
-                          <RollItem key={`${r.chamber}:${r.roll_call_id}`} roll={r} isHeadline={r === headline} />
+                          <RollItem key={`${r.chamber}:${r.roll_call_id}`} roll={r} official={officialOf(r)} ctx={rollCtx} isHeadline={r === headline} />
                         ))}
                       </ul>
                       {g.more.length > 0 && (
@@ -693,7 +719,7 @@ export default async function ProposalDetailPage({
                           </summary>
                           <ul className="mt-2 border border-rule bg-card divide-y divide-rule/60">
                             {g.more.map((r) => (
-                              <RollItem key={`${r.chamber}:${r.roll_call_id}`} roll={r} isHeadline={r === headline} />
+                              <RollItem key={`${r.chamber}:${r.roll_call_id}`} roll={r} official={officialOf(r)} ctx={rollCtx} isHeadline={r === headline} />
                             ))}
                           </ul>
                         </details>
@@ -708,7 +734,7 @@ export default async function ProposalDetailPage({
                     <h3 className="mb-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink">
                       How members voted
                     </h3>
-                    <p className="mb-3 text-xs text-ink-soft">{rollHeading(headline)}</p>
+                    <p className="mb-3 text-xs text-ink-soft">{rollHeading(headline, officialOf(headline))}</p>
                     <div className="space-y-2">
                       {memberGroups.map((mg) => {
                         const style = VOTE_STYLES[mg.vote] ?? { label: mg.label, color: "bg-ink/5 text-ink-soft border-rule" };
@@ -964,12 +990,29 @@ function CollapsibleText({ text }: { text: string }) {
 // FIX-1447 (D2): one roll — its question, chamber and date, the source's result
 // when one is stored, what Civitics recorded, and the official roll. Never a
 // verdict derived from the counts; the wording lives in vote-rolls.ts.
-function RollItem({ roll, isHeadline }: { roll: VoteRoll; isHeadline: boolean }) {
-  const l = rollLines(roll);
+// FIX-1461 (V2–V8): with the roll's vote_rolls row, its own title, result and
+// requirement, official count, party totals and tie-breaker, as the chamber
+// printed them. Without one, exactly the lines above.
+function RollItem({
+  roll,
+  official,
+  ctx,
+  isHeadline,
+}: {
+  roll: VoteRoll;
+  official: OfficialRoll | null;
+  ctx: RollContext;
+  isHeadline: boolean;
+}) {
+  const l = rollLines(roll, official, ctx);
   return (
     <li className="px-4 py-3 space-y-1">
       <p className="text-sm text-ink">{l.heading}</p>
+      {l.title && <p className="line-clamp-2 text-xs text-ink-soft">{l.title}</p>}
       {l.result && <p className="text-sm font-semibold text-ink">{l.result}</p>}
+      {l.tieBreaker && <p className="text-xs text-ink">{l.tieBreaker}</p>}
+      {l.official && <p className="font-mono text-xs tabular-nums text-ink">{l.official}</p>}
+      {l.byParty && <p className="font-mono text-xs tabular-nums text-ink-soft">{l.byParty}</p>}
       <p className="font-mono text-xs tabular-nums text-ink-soft">{l.recorded}</p>
       <div className="flex flex-wrap items-center gap-3 text-xs">
         {roll.source_url && (
