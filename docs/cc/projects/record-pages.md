@@ -10,7 +10,7 @@ steps:
   - {id: s3, kind: cc, ref: "cc-327", title: "wave 1, the bill half — the congress.gov bill-details walker (FIX-1452) and the proposal_actions source key"}
   - {id: s3b, kind: design, ref: "FIX-1453", title: "the bill-details walker's schedule: a dispatcher unit beside crs-summaries (cc-318's D3 row — stale_after 2 hours, group proposals, yield_to nightly, 15-minute runs through a bill-details-request target). Waits on the co_sponsorship-edge decision (cc-327 read 4): a dispatched walker would run the fill. cc-318 moved only crs-summaries; the dispatcher's one-row end it needs (FIX-1454) is on prod"}
   - {id: s3c, kind: cc, ref: "cc-328", title: "the cosponsor EC arm becomes a merge (FIX-1456, on prod); bill-details-request deployed; the 25-measure prod chunk read 21.9 s of database time a measure, so the dispatcher row is held on FIX-1459", done: 2026-11-26}
-  - {id: s3d, kind: cc, ref: "cc-329", title: "fix the walker's first-vote read (FIX-1459), prove it with EXPLAIN on prod and a 25-measure chunk, then land and push the held row (0b631eaf) and read the first dispatched run (FIX-1453)"}
+  - {id: s3d, kind: cc, ref: "cc-330", title: "fix the walker's first-vote read (cc-329, FIX-1459), prove it with a 25-measure prod chunk (cc-330: 393 ms of database time a measure), then push the held row (20261126008000) and read the first dispatched run (FIX-1453: 132 measures, reaped succeeded: GHA)", done: 2026-11-27}
   - {id: s4, kind: cc, ref: "", title: "per-roll official totals and results (FIX-1448)"}
   - {id: s5, kind: cc, ref: "", title: "bill and officials pages show sponsor, cosponsors, actions"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
@@ -44,6 +44,20 @@ COLLECT blocks) and `handoff-2026-11-25e-app-lane-…` (the sizing).
   backward scan of `votes_voted_at` (FIX-1459). So the dispatcher row was held
   (`0b631eaf` on `origin/feature/fix-328`). The chunk's 701 cosponsor rows
   give the next crawl cycle the first edges.
+
+- **cc-329** took the first-vote read off that walk (`bdd69660`: its own
+  statement behind an `OFFSET 0` fence, read only when the placeholder rule
+  consults it; prod plans `votes_bill`). The cold worst case read 978 ms against
+  its 500 ms bar, so no chunk ran. The merged cosponsor arm's first cycle wrote
+  the 701 `co_sponsorship` edges (FIX-1456 on prod).
+- **cc-330** accepted the ~1 s cold tail and ran the second 25-measure chunk:
+  393 ms of database time a measure (max 3,703), against cc-328's 21,948
+  (FIX-1459 on prod). Then it pushed the held row (`20261126008000`, 04:44:59Z
+  11-27), so the dispatcher runs the fill: 15 minutes when 2 hours stale,
+  voted measures first. The first dispatched run (06:05–06:21Z) stamped 132
+  voted measures at 113 ms of database time a measure and reaped `succeeded:
+  GHA` (FIX-1453 on prod). FIX-1452 stays open until the voted measures are
+  filled.
 
 The later steps have no prompt yet, so they carry no `ref`. How the
 walker is scheduled is FIX-1453's (s3b). cc-318 made the CRS walker a dispatcher

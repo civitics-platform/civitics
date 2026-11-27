@@ -1029,6 +1029,19 @@ unit): `stale_after 2 hours`, group `proposals`, `yield_to {nightly}`, budget
 - **The pace:** 15 minutes when 2 hours stale, about ten runs a day. `only`
   "all" takes the voted measures first, then the rest. An empty selection
   reports `metadata.next_due_at` now + 12 h, and the row rests on it.
+- **Any run's row is the clock, a terminal run's too.** The row first came due
+  2 h after cc-330's terminal chunk ended (04:03:40Z), not at the push
+  (04:44:59Z). So a hand run restarts the 2 h clock.
+- **The first dispatched run** (2026-11-27, GHA `45949645788`):
+  - armed 06:05:00Z; the request consumed 06:05:32Z;
+  - row `b83cca73` `partial` (stop `max_minutes`) 06:05:58–06:21:03Z;
+  - reaped `succeeded: GHA` 06:23:00Z.
+  - **132 voted measures** stamped, 490 requests, 6.85 s a measure.
+  - **113 ms of database time a measure** (median 50, p90 122). From a
+    runner that is below the terminal's ~230 ms floor.
+  - The max, 5,381 ms on 119-SRES-817 (2 rolls), ran inside
+    `refresh-derived-mvs-daily` (06:01–06:09Z), which also held the one io
+    sample over 50 %.
 - **Stop it:** `scripts/fix1453-revert-bill-details-row.sql` through the gate,
   from the PRIMARY:
   `node scripts/db-query.mjs --prod --call --yes-i-mean-prod --timeout 30s --file scripts/fix1453-revert-bill-details-row.sql`.
