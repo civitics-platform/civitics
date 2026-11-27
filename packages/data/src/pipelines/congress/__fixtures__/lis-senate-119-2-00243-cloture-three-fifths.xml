@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><roll_call_vote>
+  <congress>119</congress>
+  <session>2</session>
+  <congress_year>2026</congress_year>
+  <vote_number>243</vote_number>
+  <vote_date>September 24, 2026,  11:46 AM</vote_date>
+  <modify_date>September 24, 2026,  01:05 PM</modify_date>
+  <vote_question_text>On the Cloture Motion S. 4668</vote_question_text>
+  <vote_document_text>A bill to protect the name, image, and likeness rights of, and provide protections for, student athletes and to promote fair competition among intercollegiate athletics, and for other purposes.</vote_document_text>
+  <vote_result_text>Cloture Motion Agreed to (74-25, 3/5 majority required)</vote_result_text>
+  <question>On the Cloture Motion</question>
+  <vote_title>Motion to Invoke Cloture: S. 4668, as Amended</vote_title>
+  <majority_requirement>3/5</majority_requirement>
+  <vote_result>Cloture Motion Agreed to</vote_result>
+  <document>
+    <document_congress>119</document_congress>
+    <document_type>S.</document_type>
+    <document_number>4668</document_number>
+    <document_name>S. 4668</document_name>
+    <document_title>A bill to protect the name, image, and likeness rights of, and provide protections for, student athletes and to promote fair competition among intercollegiate athletics, and for other purposes.</document_title>
+    <document_short_title/>
+  </document>
+  <amendment>
+    <amendment_number/>
+    <amendment_to_amendment_number/>
+    <amendment_to_amendment_to_amendment_number/>
+    <amendment_to_document_number/>
+    <amendment_to_document_short_title/>
+    <amendment_purpose>No Statement of Purpose on File.</amendment_purpose>
+  </amendment>
+  <count>
+    <yeas>74</yeas>
+    <nays>25</nays>
+    <present/>
+    <absent>1</absent>
+  </count>
+  <tie_breaker>
+    <by_whom/>
+    <tie_breaker_vote/>
+  </tie_breaker>
+  <members>
+    <member>
+      <member_full>Alsobrooks (D-MD)</member_full>
+      <last_name>Alsobrooks</last_name>
+      <first_name>Angela</first_name>
+      <party>D</party>
+      <state>MD</state>
+      <vote_cast>Nay</vote_cast>
+      <lis_member_id>S428</lis_member_id>
+    </member>
+    <member>
+      <member_full>Armstrong (R-OK)</member_full>
+      <last_name>Armstrong</last_name>
+      <first_name>Alan</first_name>
+      <party>R</party>
+      <state>OK</state>
+      <vote_cast>Yea</vote_cast>
+      <lis_member_id>S440</lis_member_id>
+    </member>
+    <member>
+      <member_full>Baldwin (D-WI)</member_full>
+      <last_name>Baldwin</last_name>
+      <first_name>Tammy</first_name>
+      <party>D</party>
+      <state>WI</state>
+      <vote_cast>Yea</vote_cast>
+      <lis_member_id>S354</lis_member_id>
+    </member>
+  </members>
+</roll_call_vote>

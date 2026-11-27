@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><vote_summary>
+  <congress>117</congress>
+  <session>1</session>
+  <congress_year>2021</congress_year>
+  <votes>
+    <vote>
+      <vote_number>00477</vote_number>
+      <vote_date>02-Dec</vote_date>
+      <issue>H.R. 6119</issue>
+      <question>On Passage of the Bill
+         </question>
+      <result>Passed</result>
+      <vote_tally>
+        <yeas>69</yeas>
+        <nays>28</nays>
+      </vote_tally>
+      <title>H.R. 6119; A bill making further continuing appropriations for the fiscal year ending September 30, 2022, and for other purposes.</title>
+    </vote>
+    <vote>
+      <vote_number>00476</vote_number>
+      <vote_date>02-Dec</vote_date>
+      <issue>H.R. 6119</issue>
+      <question>On the Amendment
+        <measure>S.Amdt. 4868</measure></question>
+      <result>Rejected</result>
+      <vote_tally>
+        <yeas>48</yeas>
+        <nays>50</nays>
+      </vote_tally>
+      <title>Marshall Amdt. No. 4868; To prohibit the use of Federal funds for implementing or enforcing COVID-19 vaccine mandates.</title>
+    </vote>
+    <vote>
+      <vote_number>00001</vote_number>
+      <vote_date>06-Jan</vote_date>
+      <issue>n/a</issue>
+      <question>On the Objection (Shall the Objection Submitted by the Gentleman from Arizona, Mr. Gosar, and the Senator from Texas, Mr. Cruz, and Others Be Sustained?)
+         </question>
+      <result>Not Sustained</result>
+      <vote_tally>
+        <yeas>6</yeas>
+        <nays>93</nays>
+      </vote_tally>
+      <title>Shall the Objection Submitted by the Gentleman from Arizona, Mr. Gosar, and the Senator from Texas, Mr. Cruz, and Others Be Sustained?</title>
+    </vote>
+  </votes>
+</vote_summary>

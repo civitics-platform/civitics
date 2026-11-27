@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><roll_call_vote>
+  <congress>117</congress>
+  <session>1</session>
+  <congress_year>2021</congress_year>
+  <vote_number>477</vote_number>
+  <vote_date>December 2, 2021,  09:05 PM</vote_date>
+  <modify_date>December 2, 2021,  09:34 PM</modify_date>
+  <vote_question_text>On Passage of the Bill H.R. 6119</vote_question_text>
+  <vote_document_text/>
+  <vote_result_text>Bill Passed (69-28, 3/5 majority required)</vote_result_text>
+  <question>On Passage of the Bill</question>
+  <vote_title>H.R. 6119</vote_title>
+  <majority_requirement>3/5</majority_requirement>
+  <vote_result>Bill Passed</vote_result>
+  <document>
+    <document_congress>117</document_congress>
+    <document_type>H.R.</document_type>
+    <document_number>6119</document_number>
+    <document_name>H.R. 6119</document_name>
+    <document_title/>
+    <document_short_title/>
+  </document>
+  <amendment>
+    <amendment_number/>
+    <amendment_to_amendment_number/>
+    <amendment_to_amendment_to_amendment_number/>
+    <amendment_to_document_number/>
+    <amendment_to_document_short_title/>
+    <amendment_purpose>No Statement of Purpose on File.</amendment_purpose>
+  </amendment>
+  <count>
+    <yeas>69</yeas>
+    <nays>28</nays>
+    <present/>
+    <absent>3</absent>
+  </count>
+  <tie_breaker>
+    <by_whom/>
+    <tie_breaker_vote/>
+  </tie_breaker>
+  <members>
+    <member>
+      <member_full>Baldwin (D-WI)</member_full>
+      <last_name>Baldwin</last_name>
+      <first_name>Tammy</first_name>
+      <party>D</party>
+      <state>WI</state>
+      <vote_cast>Yea</vote_cast>
+      <lis_member_id>S354</lis_member_id>
+    </member>
+    <member>
+      <member_full>Barrasso (R-WY)</member_full>
+      <last_name>Barrasso</last_name>
+      <first_name>John</first_name>
+      <party>R</party>
+      <state>WY</state>
+      <vote_cast>Nay</vote_cast>
+      <lis_member_id>S317</lis_member_id>
+    </member>
+    <member>
+      <member_full>Bennet (D-CO)</member_full>
+      <last_name>Bennet</last_name>
+      <first_name>Michael</first_name>
+      <party>D</party>
+      <state>CO</state>
+      <vote_cast>Yea</vote_cast>
+      <lis_member_id>S330</lis_member_id>
+    </member>
+  </members>
+</roll_call_vote>

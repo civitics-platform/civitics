@@ -93,8 +93,8 @@ test("the revert deletes the one row the file wrote, guarded on it, and nothing 
   assert.doesNotMatch(sql, /\b(UPDATE|DROP|INSERT INTO|ALTER)\b/i);
 });
 
-test("the version is above every other migration", () => {
-  const all = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+test("the version was above every other migration at its landing", () => {
+  const all = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql") && f < "20261127000000").sort(); // cc-331 (FIX-1448) lands after
   assert.equal(all[all.length - 1], FILE_NAME);
 });
 

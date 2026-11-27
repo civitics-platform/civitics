@@ -75,6 +75,16 @@ import {
   writeSenateUnstored,
   SENATE_PACE_MS,
 } from "./senate-unstored";
+import {
+  detailUpsertRow,
+  houseRollFields,
+  rollIdentity,
+  senateRollFields,
+  writeVoteRollRows,
+  type DetailSource,
+  type DetailUpsert,
+  type RollFields,
+} from "./vote-roll-row";
 import { XMLParser } from "fast-xml-parser";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect } from "../../lib/heavy-rebuild";
@@ -680,6 +690,27 @@ export function senateBillRef(
   };
 }
 
+/**
+ * FIX-1448 (cc-331 D3) — a roll's vote_rolls row from the XML already parsed:
+ * no new request. A roll whose row cannot be built gets none and is counted;
+ * the walker (vote-rolls.ts) seeds and fills it later.
+ */
+export function buildRollRow(
+  rollCallId: string,
+  url: string,
+  source: DetailSource,
+  read: () => RollFields,
+  at: string = new Date().toISOString(),
+): DetailUpsert | null {
+  try {
+    const id = rollIdentity(rollCallId);
+    if (!id) return null;
+    return detailUpsertRow({ ...id, source_url: url }, source, at, read());
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
@@ -835,6 +866,8 @@ export async function runVotesPipeline(
     resultStr:     string;
     legisNum:      string;
     recordedVotes: unknown[];
+    /** FIX-1448: the roll's vote_rolls row, or null when it could not be built. */
+    rollRow:       DetailUpsert | null;
   }
   const houseRollBuffer: HouseRollItem[] = [];
   const houseBillArgs = new Map<string, BillProposalArgs>();
@@ -924,7 +957,8 @@ export async function runVotesPipeline(
           }
         }
 
-        houseRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, legisNum, recordedVotes });
+        const rollRow = buildRollRow(rollCallId, url, "clerk_xml", () => houseRollFields(meta));
+        houseRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, legisNum, recordedVotes, rollRow });
       } catch (err) {
         console.error(`    House roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
@@ -1021,6 +1055,8 @@ export async function runVotesPipeline(
     /** FIX-1408: "S.Amdt. 454", or null. */
     amendmentNumber: string | null;
     memberList:   unknown[];
+    /** FIX-1448: the roll's vote_rolls row, or null when it could not be built. */
+    rollRow:      DetailUpsert | null;
   }
   const senateRollBuffer: SenateRollItem[] = [];
   const senateBillArgs = new Map<string, BillProposalArgs>();
@@ -1104,7 +1140,8 @@ export async function runVotesPipeline(
         for (const line of warnings) console.warn(line);
         if (billKey && args && !senateBillArgs.has(billKey)) senateBillArgs.set(billKey, args);
 
-        senateRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, resultText, amendmentNumber, memberList });
+        const rollRow = buildRollRow(rollCallId, url, "lis_roll_xml", () => senateRollFields(root));
+        senateRollBuffer.push({ rollCallId, url, session, billKey, votedAt, voteQuestion, resultStr, resultText, amendmentNumber, memberList, rollRow });
       } catch (err) {
         console.error(`    Senate roll ${rollNum} (session ${session}): unexpected error —`, err);
       }
@@ -1195,6 +1232,24 @@ export async function runVotesPipeline(
     )));
   }
 
+  // FIX-1448 (cc-331 D3): each roll whose vote rows were written gets its
+  // vote_rolls row — the source's own totals, result and title. A failed write
+  // is logged and counted, never fatal: the votes are already written, and the
+  // walker (vote-rolls.ts) is the net.
+  const landedRolls = new Set([...houseWrite.landed, ...senateWrite.landed]);
+  const rollRowsLanded = [...houseRollBuffer, ...senateRollBuffer].filter((r) => landedRolls.has(r.rollCallId));
+  const rollRows = rollRowsLanded.map((r) => r.rollRow).filter((r): r is DetailUpsert => r !== null);
+  const rollRowsUnbuilt = rollRowsLanded.length - rollRows.length;
+  const rollRowWrite = await writeVoteRollRows(
+    rollRows,
+    (chunk) => db.from("vote_rolls").upsert(chunk, { onConflict: "roll_call_id" }),
+    (line) => console.warn(line),
+  );
+  console.info(
+    `\n  FIX-1448: vote_rolls ${rollRowWrite.written} row(s) written for ${rollRowsLanded.length} landed roll(s)` +
+      `, ${rollRowWrite.failed} not written, ${rollRowsUnbuilt} not built`,
+  );
+
   if (houseUnmatched > 0) {
     console.info(`\n  House unmatched bioguide IDs (no official in DB): ${houseUnmatched}`);
   }
@@ -1269,6 +1324,12 @@ export async function runVotesPipeline(
         // FIX-1261: novel bills minted by the vote path, by status. `failed`
         // never appears: the mint reads the question (bill-status.ts).
         minted: countMinted(mintedArgs),
+        // FIX-1448: the landed rolls' vote_rolls rows. Not in rows_failed: the
+        // votes landed, and the walker fills a row this run did not write.
+        vote_rolls_written: rollRowWrite.written,
+        vote_rolls_failed: rollRowWrite.failed,
+        vote_rolls_unbuilt: rollRowsUnbuilt,
+        vote_rolls_failures: rollRowWrite.failures,
       },
     });
 

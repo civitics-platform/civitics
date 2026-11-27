@@ -6405,6 +6405,102 @@ export type Database = {
         }
         Relationships: []
       }
+      vote_rolls: {
+        Row: {
+          by_party: Json | null
+          chamber: string
+          congress: number
+          created_at: string
+          detail_error: string | null
+          detail_error_at: string | null
+          detail_fetched_at: string | null
+          detail_source: string | null
+          document_text: string | null
+          list_fetched_at: string | null
+          majority_requirement: string | null
+          metadata: Json
+          nay: number | null
+          not_voting: number | null
+          present: number | null
+          question: string | null
+          result: string | null
+          result_text: string | null
+          roll_call_id: string
+          roll_number: number
+          session: number
+          source_modified_at: string | null
+          source_url: string
+          tie_breaker: Json | null
+          title: string | null
+          updated_at: string
+          vote_date: string | null
+          voted_at: string | null
+          yea: number | null
+        }
+        Insert: {
+          by_party?: Json | null
+          chamber: string
+          congress: number
+          created_at?: string
+          detail_error?: string | null
+          detail_error_at?: string | null
+          detail_fetched_at?: string | null
+          detail_source?: string | null
+          document_text?: string | null
+          list_fetched_at?: string | null
+          majority_requirement?: string | null
+          metadata?: Json
+          nay?: number | null
+          not_voting?: number | null
+          present?: number | null
+          question?: string | null
+          result?: string | null
+          result_text?: string | null
+          roll_call_id: string
+          roll_number: number
+          session: number
+          source_modified_at?: string | null
+          source_url: string
+          tie_breaker?: Json | null
+          title?: string | null
+          updated_at?: string
+          vote_date?: string | null
+          voted_at?: string | null
+          yea?: number | null
+        }
+        Update: {
+          by_party?: Json | null
+          chamber?: string
+          congress?: number
+          created_at?: string
+          detail_error?: string | null
+          detail_error_at?: string | null
+          detail_fetched_at?: string | null
+          detail_source?: string | null
+          document_text?: string | null
+          list_fetched_at?: string | null
+          majority_requirement?: string | null
+          metadata?: Json
+          nay?: number | null
+          not_voting?: number | null
+          present?: number | null
+          question?: string | null
+          result?: string | null
+          result_text?: string | null
+          roll_call_id?: string
+          roll_number?: number
+          session?: number
+          source_modified_at?: string | null
+          source_url?: string
+          tie_breaker?: Json | null
+          title?: string | null
+          updated_at?: string
+          vote_date?: string | null
+          voted_at?: string | null
+          yea?: number | null
+        }
+        Relationships: []
+      }
       votes: {
         Row: {
           agenda_item_id: string | null
