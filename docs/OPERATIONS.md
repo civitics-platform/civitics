@@ -1428,14 +1428,34 @@ on every call (`dispatched` / `refused` / `error`). `nightly-request`,
 `sync-canary-check` and `platform-snapshot` keep a `schedule:` fallback. irs990
 (Tue 15:00Z, after Sunday's fec_bulk and the post-landing pass) and the audit
 (Tue 17:00Z) have none since cc-292. A second start hours later is what moving
-them fixed. The canary reports `gha_dispatch_refused` and `gha_dispatch_stale`
-(169 h for irs990, the audit and crs-summaries; an absent stamp is not stale
-before each stem's first slot). Those two registry rows read
+them fixed. Those two registry rows read
 `gha-dispatch:<stem>` on their `at` slot; the dispatcher never loops an `at`
 row. crs-summaries is a dispatcher unit since cc-318: the tick arms it and
 `crs-summaries-request` fires it (§The CRS walker as a dispatcher unit).
 `fixes-housekeep.yml` and `refresh-disposable-emails.yml` touch no database and
 stay on `schedule:`.
+
+**What the canary watches (FIX-1218, FIX-1460).** `gha_dispatch_refused` (the
+stem's last stamp is not `dispatched`) and `gha_dispatch_stale`, both
+report-only. Since cc-324 the stems come from `job_registry`: every row whose
+`unit_call` is `gha-dispatch:<stem>`, so a new row is watched with no code
+edit. Each is judged by its rule:
+
+| rule | stems today | stale when |
+|---|---|---|
+| `at` / `by <cron>` — a slot | nightly, sync-canary-check (25 h); platform-snapshot (0.5 h); irs990, audit (169 h) | the stamp is older than the cron's period plus slack: weekly 169 h, daily 25 h, sub-hourly three periods. An absent stamp is stale only once the row's `updated_at` is older than that limit (and not before a `DISPATCH_FIRST_SLOT` entry) |
+| `stale_after …` — a request-gated walker | crs-summaries, bill-details | **by its request, not its stamp's age** (a walker rests for days on `next_due_at`, and a hold leaves it unarmed for hours): `gha_dispatch_request_<stem>` reaped `missed`, or unconsumed 25 min after `requested_at`, or a `dispatch_log` `missed` row in the last 24 h newer than the stem's stamp. No request key means never armed: not stale |
+| anything else, or a cron it cannot size | — | `unjudged (<rule>)` in the detail, counted in neither condition |
+
+The `dispatch_log` read is the one that sees a dead route. Step 3b reaps a
+request `missed` at +20 min and the ARM re-arms in the same tick, replacing the
+key, so at the daily read the key shows only a fresh request. The stale detail
+names the condition and the request's instant, and ends with each stale stem's
+Vercel path (`<stem>-request` for a `by` / `stale_after` row). A failed or
+empty registry read falls back to `FALLBACK_DISPATCH_STALE_HOURS` (the six-stem
+hand list as it stood, crs-summaries at its old 169 h). The stale detail then
+begins `registry unread — judged on the fallback list`, and the meta row's
+`metadata.gha_dispatch_source` reads `fallback`, not `registry`.
 
 - **Run one by hand:** `gh workflow run irs990.yml` (or `audit.yml`,
   `crs-summaries.yml`). The concurrency group serializes it against a
