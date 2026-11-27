@@ -111,9 +111,10 @@ export interface DispatchTarget {
  * fires only on the dispatcher's unconsumed gha_dispatch_request_vote-rolls
  * and sends max_minutes "15", the one input vote-rolls.yml declares. It stamps
  * gha_dispatch_vote-rolls. There was never a plain vote-rolls target. The door
- * deploys before the registry row (cc-331 Item 4): with no row it reads no
- * request and fires nothing. Stop it by scripts/fix1448-revert-vote-rolls-row.sql
- * through the gate.
+ * deployed first (08:50Z 11-27) and the registry row (20261127001000) was
+ * pushed after cc-331's prod chunk (09:13Z): from then on the dispatcher is
+ * the walker's only starter. Stop it by scripts/fix1448-revert-vote-rolls-row.sql
+ * through the gate: with no row this poll reads no request and fires nothing.
  */
 export const GHA_DISPATCH_WORKFLOWS: ReadonlyMap<string, DispatchTarget> = new Map<string, DispatchTarget>([
   [

@@ -11,7 +11,7 @@ steps:
   - {id: s3b, kind: design, ref: "FIX-1453", title: "the bill-details walker's schedule: a dispatcher unit beside crs-summaries (cc-318's D3 row — stale_after 2 hours, group proposals, yield_to nightly, 15-minute runs through a bill-details-request target). Waits on the co_sponsorship-edge decision (cc-327 read 4): a dispatched walker would run the fill. cc-318 moved only crs-summaries; the dispatcher's one-row end it needs (FIX-1454) is on prod"}
   - {id: s3c, kind: cc, ref: "cc-328", title: "the cosponsor EC arm becomes a merge (FIX-1456, on prod); bill-details-request deployed; the 25-measure prod chunk read 21.9 s of database time a measure, so the dispatcher row is held on FIX-1459", done: 2026-11-26}
   - {id: s3d, kind: cc, ref: "cc-330", title: "fix the walker's first-vote read (cc-329, FIX-1459), prove it with a 25-measure prod chunk (cc-330: 393 ms of database time a measure), then push the held row (20261126008000) and read the first dispatched run (FIX-1453: 132 measures, reaped succeeded: GHA)", done: 2026-11-27}
-  - {id: s4, kind: cc, ref: "", title: "per-roll official totals and results (FIX-1448)"}
+  - {id: s4, kind: cc, ref: "cc-331", title: "per-roll official totals and results (FIX-1448): vote_rolls, the nightly's write, the walker and its dispatcher unit"}
   - {id: s5, kind: cc, ref: "", title: "bill and officials pages show sponsor, cosponsors, actions"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
 ---
@@ -66,3 +66,13 @@ fill that waits on the edge decision. When that is decided, the row is one
 INSERT and the request target one allowlist line and one Vercel cron (cc-318's
 D3 / D8; OPERATIONS §The CRS walker as a dispatcher unit is the model). The
 walker already reports `metadata.next_due_at` on an empty selection (cc-318 D7).
+- **cc-331** built `public.vote_rolls` (FIX-1448, `20261127000000`): one row
+  per federal roll with the source's own yea / nay / present / not voting,
+  result, title and majority requirement, because `votes` stores only members
+  with an `officials` row. The nightly writes the row for each new roll; the
+  vote-rolls walker seeds every stored roll, reads the six Senate session lists
+  (every Senate roll gets its result, the 1,893 empty ones included) and then
+  the per-roll files. Its prod chunk ran at 43 ms of database time a roll, and
+  its dispatcher row (`20261127001000`, its own group) runs it 15 minutes when
+  2 hours stale. FIX-1448 stays open until the House is whole. cc-332 is the
+  display.

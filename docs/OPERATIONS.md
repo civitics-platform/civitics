@@ -909,6 +909,7 @@ Pipelines run as Node.js scripts in `packages/data/`. They are NOT part of the N
 | `data:fec-bulk` | FEC bulk files → financial_relationships | Free |
 | `data:usaspending-bulk` | USASpending.gov bulk archives → financial_relationships (contract/grant), both categories; `-assistance` for grants only; `:prod` for a supervised prod run (claims the session; see `packages/data/CLAUDE.md` → USASpending) | Free |
 | `data:bill-details` | Congress.gov → sponsor, cosponsors, actions, titles, introduced dates of federal measures (FIX-1452; see "The bill-details walker" below) | Free |
+| `data:vote-rolls` | clerk.house.gov / senate.gov → each federal roll's own totals, result, title and majority requirement into `vote_rolls` (FIX-1448; see "The vote-rolls walker" below) | Free |
 | `data:regulations` | Regulations.gov → proposals | Free |
 | `data:openstates` | OpenStates → state legislators | Free |
 | `data:courtlistener` | CourtListener → judges | Free |
@@ -1071,6 +1072,126 @@ consecutive 429/5xx answers, and when a supervised session holds the box
 (`prod_session_state()`'s `defer`), so claiming the session is the clean stop.
 `gh run cancel <id>` is also safe: the open measure's transaction rolls back,
 and the workflow's mark-killed step closes the row.
+
+### The vote-rolls walker (FIX-1448)
+
+`public.vote_rolls` (cc-331, `20261127000000`) holds one row per federal roll:
+what the roll's own source prints. That is its totals (`yea`, `nay`,
+`present`, `not_voting`), its result and result text, title, question,
+majority requirement, the tie-breaker when cast, and the House's party totals.
+`votes` is not the official count: it holds a row only for a member with an
+`officials` row. Read a roll's count and result from here.
+
+- **NULL** means the file read does not carry the field. An empty element
+  inside a present totals block is 0.
+- **`detail_source`** says which per-roll file filled the row: `clerk_xml` or
+  `lis_roll_xml`. A Senate row with `list_fetched_at` and no detail carries
+  only its session list's fields: the question, the title (`<vote_title>;
+  <document text>`), the short result (`Agreed to`), yeas, nays and the date.
+- **The merge** (`vote-roll-row.ts`): a list fills only what is NULL and never
+  a per-roll file's field. A later per-roll read replaces an earlier one.
+
+Who writes it:
+
+1. **The nightly's votes phase** (`votes.ts`) upserts the row for each new
+   roll whose vote rows it writes, from the XML it already parsed. A failed
+   write is logged and counted on the `congress_votes` row's metadata
+   (`vote_rolls_written` / `_failed` / `_unbuilt`) and never fails the phase.
+2. **The walker** (`packages/data/src/pipelines/congress/vote-rolls.ts`,
+   `data:vote-rolls`) is the backfill and the net. Each run, in order:
+   - **seed:** a row for every federal `roll_call_id` in `votes` that has none.
+     The read is a loose walk of `votes_roll_call` (`SEED_SQL`), one index
+     probe a roll, never a scan of `votes`. Other shapes are counted.
+   - **Senate lists:** one GET of `vote_menu_<congress>_<session>.xml` for
+     each session with an unlisted, undetailed row. Six, ever.
+   - **House files:** rows with no detail, newest first, from
+     clerk.house.gov, 750 ms plus jitter apart, up to `--house-limit` (500).
+   - **Senate files:** the same from senate.gov at `SENATE_PACE_MS`, up to
+     `--senate-limit` (20).
+
+**senate.gov's allowance is the nightly's first (D6).** senate.gov serves
+programmatic clients a few dozen GETs and then answers 403 (FIX-1372). The
+walker asks senate.gov nothing from 15:00Z until the nightly's votes phase
+(`congress_votes`) has closed, or 06:00Z if it never does, and takes at most
+20 Senate rolls a run. `--senate-limit 0` sends senate.gov nothing, the lists
+included.
+
+**Stops.** Between rolls: `--max-minutes`, and a supervised session holding the
+box. Per host: its limit; a 403 / 429 still blocked after 30 s and 120 s stops
+that host for the run; so do three transients in a row. A non-roll body (the
+clerk answers a missing roll 200 with an error) or a 404 is stamped in
+`detail_error` and not asked again for 7 days. A stop is not a failure.
+
+**What it cost prod: cc-331's chunk** (2026-11-27 09:00:42–09:02:15Z, from
+the terminal: `--house-limit 50 --senate-limit 10`):
+
+| step | figure |
+|---|---|
+| seed | 4,802 roll ids (5 synthetic, not seeded), 4,797 rows inserted in 536 ms. The read alone, `EXPLAIN (ANALYZE, BUFFERS)` at 09:00Z: 1,906 ms, 4,802 index-only probes of `votes_roll_call`, 15,626 buffers hit, 3,174 read, 1,890 heap fetches |
+| six Senate lists | 6 GETs, all 200; 2,223 Senate rows filled, 0 missing from a list; 829 ms of database time |
+| 50 House + 10 Senate files | 66 GETs (16 to senate.gov with the lists), all 200, no retry; 43 ms of database time a roll (median 27, p90 33, max 898) |
+| the run | 89.7 s |
+
+- **Source against stored:** the 50 newest House rolls store 21,611 rows
+  against 21,620 source casts; the 10 newest Senate rolls 1,000 / 1,000. No
+  roll stores more rows than its source counts.
+- **The lists filled every Senate result.** All 1,893 Senate rolls whose
+  stored `vote_result` is empty (FIX-1260 fixed the read for new rolls only)
+  now carry the list's result in `vote_rolls`.
+
+Run it:
+
+```powershell
+# local — the .env.local in force must point at Docker
+pnpm --filter @civitics/data data:vote-rolls -- --dry-run --house-limit 5 --senate-limit 0
+pnpm --filter @civitics/data data:vote-rolls -- --apply --house-limit 20 --senate-limit 5
+# prod from the terminal (the PRIMARY checkout's packages/data; leaves .env.local alone)
+# — only under a manual hold while the dispatcher row is live (below)
+pnpm exec tsx --env-file=../../.env.local.prod src/pipelines/congress/vote-rolls.ts --apply --allow-prod --house-limit 50 --senate-limit 10
+```
+
+**The dispatcher row is live.** `20261127001000` (cc-331, pushed 2026-11-27
+09:13:15Z) is a mirror of bill-details: `stale_after 2 hours`, `yield_to
+{nightly}`, budget 2,700 s. Its exclusion group is its own, `vote-rolls`: it
+shares no key and no host with the congress.gov walkers. It arms
+`gha_dispatch_request_vote-rolls`, and `/api/cron/gha-dispatch/vote-rolls-request`
+(every 5 min) fires `vote-rolls.yml` with `max_minutes` "15" and consumes it.
+
+- **The unit.** Anchor: the newest closed `congress_vote_rolls` row, a
+  terminal run's included, or the `metadata.next_due_at` (now + 12 h) a run
+  with nothing left reports. End: step 3b ends the request on that one row
+  (`reaped … succeeded: GHA`). Orphan: a run open at its budget is reaped; a
+  SIGTERM at the workflow's 60-min cap is closed by the mark-killed step.
+  Shared: senate.gov and clerk.house.gov with the nightly; the seed's index
+  walk of `votes_roll_call`. It writes only `vote_rolls`.
+- **The dispatcher is the walker's only starter.** A hand run shares the
+  concurrency group with a dispatched one. Start one only under a manual hold.
+- **The pace.** 15 minutes when 2 hours stale: up to 500 House and 20 Senate
+  rolls a run. The House (~2,570 rolls on prod) takes about six runs. The
+  Senate trickle (~2,200) takes about two weeks of runs outside the quiet span.
+- **The first due** was two hours after cc-331's chunk row closed (09:02:14Z),
+  not at the push.
+
+Read it:
+
+```powershell
+node scripts/db-query.mjs --prod --timeout 15s "SELECT ticked_at, decision, reason, unit_ms FROM public.dispatch_log WHERE job = 'vote-rolls' ORDER BY id DESC LIMIT 6"
+node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, metadata->>'stop' AS stop, metadata->>'rolls_detailed' AS detailed, metadata->'house'->>'stop' AS house_stop, metadata->'senate'->>'stop' AS senate_stop, metadata->>'senate_window' AS window, metadata->>'remaining_house' AS house_left, metadata->>'remaining_senate' AS senate_left, round((metadata->>'db_ms_total')::numeric / nullif((metadata->>'rolls_detailed')::int, 0)) AS db_ms_a_roll FROM public.data_sync_log WHERE pipeline = 'congress_vote_rolls' ORDER BY started_at DESC LIMIT 3"
+node scripts/db-query.mjs --prod --timeout 15s "SELECT chamber, count(*) AS rolls, count(*) FILTER (WHERE detail_fetched_at IS NOT NULL) AS detailed, count(*) FILTER (WHERE list_fetched_at IS NOT NULL) AS listed, count(*) FILTER (WHERE detail_error IS NOT NULL) AS errors FROM public.vote_rolls GROUP BY chamber"
+gh run list --workflow vote-rolls.yml -L 3
+```
+
+`partial` is a stop on purpose (a host's limit, a block, the quiet span,
+`max_minutes`), and the next run continues. `skipped` means a held session
+before the first write; `failed` is a database error (stop `db_error`). The
+summary line names each host's stop, the window and `db_ms/roll`.
+
+**Stop it:** `scripts/fix1448-revert-vote-rolls-row.sql` through the gate, from
+the PRIMARY:
+`node scripts/db-query.mjs --prod --call --yes-i-mean-prod --timeout 30s --file scripts/fix1448-revert-vote-rolls-row.sql`.
+With no row the poll reads no request and fires nothing. A run in flight stops
+between rolls on a claimed session, or by `gh run cancel`. `vote_rolls` rows
+stay: nothing reads them until cc-332.
 
 ### Recency Guards
 
