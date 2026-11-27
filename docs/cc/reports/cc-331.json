@@ -1,0 +1,49 @@
+{
+  "cc": "331",
+  "prompt": "cc-prompt-331-fix1448-vote-rolls-table-one-row-per-roll-source-totals-and-results-nightly-writes-it-house-backfill-walker-senate-session-lists-then-a-paced-trickle-dispatched.md",
+  "started_at": "2026-11-27T07:47:51Z",
+  "finished_at": "2026-11-27T11:25:00Z",
+  "head_before": "0a2837c6",
+  "head_after": "7ccce8c6",
+  "commits": [
+    {
+      "sha": "e86eed66",
+      "subject": "feat(votes): FIX-1448 vote_rolls, one row per federal roll with the source's own totals, result, title and majority requirement; the nightly writes it for each new roll from the XML it already parses (cc-331 Item 1)"
+    },
+    {
+      "sha": "22661960",
+      "subject": "feat(vote-rolls): the vote-rolls walker, its workflow and its request target — seeds vote_rolls from votes' roll ids by an index walk, reads the six Senate session lists, then the House's and the Senate's per-roll files, paced and bounded; /api/cron/gha-dispatch/vote-rolls-request every 5 min (cc-331 Item 2)"
+    },
+    {
+      "sha": "7a54019d",
+      "subject": "test(votes): the nightly's failed-write case takes no unused argument — @civitics/data lint is clean (cc-331 Item 1)"
+    },
+    {
+      "sha": "750325eb",
+      "subject": "[skip vercel] feat(db): FIX-1448 vote-rolls becomes a dispatcher unit, a mirror of bill-details but for its own exclusion group — one job_registry INSERT (stale_after 2 hours, group vote-rolls, yield_to nightly, budget 2700 s, pipeline congress_vote_rolls) — 20261127001000 (cc-331 Item 4)"
+    },
+    {
+      "sha": "7ccce8c6",
+      "subject": "[skip vercel] docs: the vote-rolls walker in OPERATIONS — what vote_rolls holds and who writes it, the order, senate.gov's quiet span, the stops, the prod chunk (4,797 rows seeded in 536 ms, six lists, 60 roll files at 43 ms of database time a roll), the live dispatcher row and how to read and stop it; root CLAUDE.md §votes names vote_rolls as where a roll's official count and result live; record-pages s4 is cc-331's (cc-331 Item 6)"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261127000000_fix1448_vote_rolls.sql",
+    "supabase/migrations/20261127001000_fix1448_vote_rolls_registry_row.sql"
+  ],
+  "prod_writes": "three, and the dispatcher's first run after them. (1) Push A, one class-P file, 20261127000000 (public.vote_rolls: 29 columns, the updated_at trigger, RLS, one SELECT policy for anon and authenticated, SELECT to anon and authenticated and SELECT/INSERT/UPDATE to service_role), applied 09:00:14-09:00:15Z 11-27 from the primary through the gate. The first wait (08:51:29-08:58:29Z) did not open: d:cron-job-budget-watchdog, the 08:50:00 run at 1.64 s against the 1.0 s bar; the STOP table's one more wait opened at 09:00:00Z. Receipt: (1) wait 60.7 s, ok=true on the second poll, census pass (4 renders / 4 events in 60 min, ratio 2.02, floor 6; edge 0 of 307 = 0.00 %, P99 floor 3 at p0 0.23 %); (2) blocked_tokens [d:cron-job-budget-watchdog]; (3) claim 09:00:14.469Z -> 09:00:15.583Z (1.1 s), 17 guarded holds set and cleared; (4) data_sync_log rows started inside the claim: 0; (5) dispatch_log ticks inside the claim: 0. Read-back 09:00:23Z: head 20261127000000 / 580, 0 rows, RLS on, the policy, acl anon=r authenticated=r service_role=arw, 29 columns, dispatch_one_unit d0f5bf5b59120716ab15e73c805435d2. (2) The vote-rolls chunk from the primary's terminal (--apply --allow-prod --house-limit 50 --senate-limit 10), data_sync_log a0e949f3 partial 09:00:44.161Z to 09:02:14.750Z, stop done: 4,797 vote_rolls rows seeded (4,802 roll ids, 5 synthetic not seeded) in 536 ms; six Senate session lists filled 2,223 of 2,223 Senate rows (0 missing); 50 House and 10 Senate roll files detailed; 66 GETs, all 200, no retry; 43 ms of database time a roll (median 27, p90 33, max 898). D8 receipt: the 50 House rolls store 21,611 rows against 21,620 source casts, 0 rolls over the source, 0 Passed with stored yes <= no; the 10 Senate rolls 1,000 / 1,000; all 1,893 Senate rolls with an empty stored vote_result now carry the source's result; the ring 08:58-09:12Z load1 max 0.6, io max 6.3 %. (3) Push B, one class-P file, 20261127001000 (one job_registry INSERT, vote-rolls), applied 09:13:15Z 11-27 from the primary through the gate. Receipt: (1) wait 0.7 s, ok=true on the first poll, census pass (2 renders / 2 events in 60 min, ratio 1.01, floor 6; edge 0 of 307); (2) blocked_tokens []; (3) claim 09:13:14.992Z -> 09:13:15.974Z (1.0 s), 17 guarded holds set and cleared; (4) 0; (5) 0. Read-back 09:13:22Z: the row whole as written, 38 eligible, head 20261127001000 / 581, the pin. After Push B the dispatcher ran the walker: armed 11:03:00Z (dispatch_log 34200), consumed 11:05:39Z (HTTP 204), GHA 45987578801, data_sync_log ee6dab8f partial 11:06:08-11:15:24Z, stop done: 500 House and 20 Senate rolls detailed, 520 GETs, no retry, 4 ms of database time a roll (max 19); reaped 11:17:00Z succeeded: GHA (34207, unit_ms 556,260). vote_rolls after it: House 550 of 2,574 detailed, Senate 30 of 2,223 detailed and all 2,223 listed, 0 detail errors. No votes row was written.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": [
+    {
+      "fix": "FIX-1448",
+      "what": "the backfill: every stored House roll has its detail row (count against the distinct stored rolls) and every stored Senate roll has at least its session list's fields; Senate detail rows so far and the blocked stops by run; rolls whose stored rows exceed the source's total (0); the nightly's first new roll written with its row; every dispatched vote-rolls run's reap reason, rolls a run and db_ms a roll; then 'record FIX-1448 on prod' if the House is whole and the lists are in",
+      "after": "2026-11-30T16:00Z"
+    }
+  ]
+}
