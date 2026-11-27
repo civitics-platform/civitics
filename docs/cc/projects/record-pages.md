@@ -12,7 +12,8 @@ steps:
   - {id: s3c, kind: cc, ref: "cc-328", title: "the cosponsor EC arm becomes a merge (FIX-1456, on prod); bill-details-request deployed; the 25-measure prod chunk read 21.9 s of database time a measure, so the dispatcher row is held on FIX-1459", done: 2026-11-26}
   - {id: s3d, kind: cc, ref: "cc-330", title: "fix the walker's first-vote read (cc-329, FIX-1459), prove it with a 25-measure prod chunk (cc-330: 393 ms of database time a measure), then push the held row (20261126008000) and read the first dispatched run (FIX-1453: 132 measures, reaped succeeded: GHA)", done: 2026-11-27}
   - {id: s4, kind: cc, ref: "cc-331", title: "per-roll official totals and results (FIX-1448): vote_rolls, the nightly's write, the walker and its dispatcher unit"}
-  - {id: s5, kind: cc, ref: "", title: "bill and officials pages show sponsor, cosponsors, actions"}
+  - {id: s5, kind: cc, ref: "cc-332", title: "the bill page shows official roll counts and results, sponsor, cosponsors, actions"}
+  - {id: s5b, kind: cc, ref: "", title: "the officials page shows bills sponsored and cosponsored, after the fill is whole"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
 ---
 
@@ -76,3 +77,19 @@ walker already reports `metadata.next_due_at` on an empty selection (cc-318 D7).
   its dispatcher row (`20261127001000`, its own group) runs it 15 minutes when
   2 hours stale. FIX-1448 stays open until the House is whole. cc-332 is the
   display.
+- **cc-332** put both on the bill page, with no migration
+  (`apps/civitics/src/lib/proposal-detail/vote-rolls.ts`, `bill-record.ts`).
+  Each roll now prints the source's result with a requirement that has a
+  fraction ("Result: Failed · two-thirds required"). Beside it are the official
+  count (present and not voting only when the file carried them), "N of M
+  member votes on record", the roll's title, a tie-breaker, and on final and
+  advance rolls the clerk's party totals (FIX-1461). For federal bills and
+  resolutions the page also prints: the shorter of the stored and short titles
+  as the heading; the sponsor; the source's cosponsor count with the rows on
+  record and their party split; the actions, one line per date and text; the
+  policy area; and a "not collected yet" sentence for a measure the walker
+  has not reached (FIX-1462). On prod at 11-27 23:50Z, 1,249 of 9,782
+  congress_gov refs were stamped. 504 of those hold fewer cosponsor rows than
+  the source counts, 450 of them in the 117th and 118th Congresses; each
+  ref's `detail.cosponsors_unresolved` names the members who did not resolve.
+  The officials page's "bills sponsored" waits for the whole fill (s5b).
