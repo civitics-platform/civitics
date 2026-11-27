@@ -1126,6 +1126,62 @@ plan Index Only Scans carrying `(from_id >= $1) AND (from_id < $2)` under
 scan type is not the receipt: the first full stats pass on the new body is.
 *FIX-1443 · `20261122002000` (cc-311 built it, cc-312 landed it on the ruling, cc-314 pushed it) · cc-307 read 3, cc-311 reads 1–3 and D3–D5, cc-314 Item 2*
 
+**First passes on the new bodies (cc-320, read 2026-11-27 03:30Z).** The
+first cycle after the push (first unit 11-25 06:41Z) ran no donations window.
+It ran the first full stats pass on the bounded body, 07:37 → 14:47Z, every
+window after 01:26:15Z. The walls (s), in window order:
+
+| pass | w1 … w16 | Σ | median | w1 / w16 | upserted / deleted |
+|---|---|---:|---:|---:|---:|
+| 11-24 16:23 → 23:47Z (old) | 49.5 · 68.0 · 45.6 · 45.1 · 51.2 · 32.3 · 27.1 · 28.2 · 24.5 · 19.4 · 20.9 · 18.9 · 12.8 · 12.2 · 8.6 · 5.9 | 470.2 | 25.8 | 8.39 | 3,397 / 0 |
+| 11-25 07:37 → 14:47Z (new) | 20.9 · 24.1 · 16.2 · 17.2 · 19.7 · 17.3 · 20.5 · 15.9 · 17.2 · 18.6 · 14.6 · 14.6 · 14.9 · 14.4 · 14.5 · 7.1 | 267.7 | 16.7 | 2.94 | 236 / 143 |
+
+- **What changed:** the fall from window 1 is gone, and the sum is under the
+  quiet floor (421.5 s).
+- **What did not:** the windows are not level with window 16. Windows 1–15
+  read 14.4–24.1 s, 2.0–3.4× window 16's 7.1 s. Window 16 reads exactly what
+  the old body's sixteenth read, which took 5.9 s the day before. The clone's
+  bounded windows were level (1,437 / 1,366 / 1,449 ms).
+- **Not the box:** both prod passes ran on a quiet box (ring io median 0.2 %).
+- **Not read:** the reads that would say why (entries, buffers and heap
+  fetches per window) execute a scan, so they were not run.
+- **The deletes:** the 143 equal the 143 S-numbered rows whose vote edges
+  cc-316's merge moved to their PN proposals (`edges_on_stubs` 13,767 → 0).
+  The old pass deleted none.
+
+**The search side** (`refresh_derived_mvs` daily, `rebuild_entity_search_index`
+`unit_seconds`):
+
+| 11-23 | 11-24 (old) | 11-25 (new) | 11-26 (new) |
+|---:|---:|---:|---:|
+| 227.1 s | 210.8 s | 193.5 s | 158.8 s |
+
+**Donations: no window has run on the merge body.**
+
+- Every cycle since 11-24 carries `donations_target_at`
+  2026-11-22 23:11:09.910385Z.
+- 0 FR `donation` / `ie_support` / `ie_oppose` rows have `updated_at` past it
+  (an index range on `financial_relationships_donation_updated_at`, 03:31Z
+  11-27).
+- So the arm takes 0 s and writes nothing until the FEC drop moves FR.
+- The last windows were the 11-24 cycle's sixteen, on the old body:
+  2,553–4,407 rows each, 2.96–7.41 s/krow, median 4.52.
+- The EC cursor's `backoff_until` has not moved since 11-24 11:01:31Z (the
+  old-body window 6).
+
+**The counters,** cc-314's block (11-25 01:23:09.618Z) → 11-27 03:33:03Z, WAL
+`41A/50002E80` → `421/AB018190` (29.4 GiB, every writer):
+
+| table | Δ ins | Δ upd | Δ del | the writers, named |
+|---|---:|---:|---:|---|
+| `entity_connections` | 14,124 | 344 | 13,769 | cc-316's `_votes_full()` merge, 13,423 / 344 / 13,769 by its own counter read; the cosponsor arm, 701 inserted (11-27 03:11Z) |
+| `entity_connection_stats_mv` | 139 | 97 | 143 | the new pass: 236 upserted (= ins + upd), 143 deleted |
+
+Nothing is left over on either table. The donations windows' own share is 0,
+so the counters cannot yet tell "about the changed pairs" from 11-22's 5.25×.
+That waits for Sun 11-29's landing.
+*FIX-1443, FIX-1441 · cc-320 B1–B6*
+
 ### C17. A sensor that reads load cannot see an idle, spent box. Replay a proposed hold against the ARMS, give a unit's stall to the box, and size the quiet after a spend from the spend.
 
 On 11-22/23 nine arms went in between 23:23Z and the 02:03:20Z restart. Each
