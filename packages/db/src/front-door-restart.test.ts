@@ -57,7 +57,14 @@ import {
   type FrontDoorProbe,
   type FrontDoorVerdict,
 } from "./front-door-verdict";
-import { HEALTHY, OUTAGE_0831, OUTAGE_1006, type FrontDoorRow } from "./__fixtures__/front-door-series";
+import {
+  HEALTHY,
+  OUTAGE_0831,
+  OUTAGE_1006,
+  OUTAGE_1123,
+  WEEK_1120,
+  type FrontDoorRow,
+} from "./__fixtures__/front-door-series";
 
 const MIN = 60 * 1000;
 const T = Date.parse("2026-10-06T17:47:28Z");
@@ -380,6 +387,24 @@ describe("replay — 2026-10-06", () => {
       assert.deepEqual(actions(ticks, "restart").map(hhmm), ["17:47", "18:47"]);
       // 77 min after the first RED quarter (16:30); the hand restart came 00:46.
       assert.equal((Date.parse(actions(ticks, "restart")[0]!) - Date.parse("2026-10-06T16:30:00Z")) / MIN, 77);
+    });
+  }
+});
+
+// FIX-1446 — 11-23 was 503, not 52x: the armed restart must not see it, and
+// with the 503 arm built (FIX-1446) it still must not. The restart is Craig's.
+describe("replay — 2026-11-23 and the week of 11-20", () => {
+  for (const probe of BOTH) {
+    test(`${probe}: armed, the 11-23 outage restarts nothing — not one counted tick`, () => {
+      const { ticks } = replayRestart(OUTAGE_1123, { probe });
+      assert.equal(ticks.length, 29);
+      assert.ok(ticks.every((t) => t.action === "none" && t.downTicksAfter === null), probe);
+    });
+
+    test(`${probe}: armed, the week of 11-20 restarts nothing — not one counted tick`, () => {
+      const { ticks } = replayRestart(WEEK_1120, { probe });
+      assert.equal(ticks.length, 668);
+      assert.ok(ticks.every((t) => t.action === "none" && t.downTicksAfter === null), probe);
     });
   }
 });

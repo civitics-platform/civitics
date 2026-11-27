@@ -37,7 +37,14 @@ import {
   type FrontDoorCorroborator,
   type FrontDoorProbe,
 } from "./front-door-verdict";
-import { OUTAGE_0831, HEALTHY, type FrontDoorRow } from "./__fixtures__/front-door-series";
+import {
+  OUTAGE_0831,
+  HEALTHY,
+  OUTAGE_1006,
+  OUTAGE_1123,
+  WEEK_1120,
+  type FrontDoorRow,
+} from "./__fixtures__/front-door-series";
 
 type Row = FrontDoorRow;
 
@@ -196,6 +203,54 @@ describe("six healthy days — the false-positive budget is zero", () => {
       );
     }
     assert.equal(red.length, 4);
+  });
+});
+
+// FIX-1446 — every email the 52x arm sends over every real series, pinned
+// before the 503 arm is built beside it. These are the contract: the new arm
+// may add its own emails to 11-23, and must not move one of these.
+describe("the 52x arm's emails, pinned (the FIX-1446 contract)", () => {
+  const emails = (rows: Row[]) => replay(rows).map((s) => `${s.at.slice(5, 16)} ${s.state}`);
+  const hourly = (from: number, to: number, day: string) =>
+    Array.from({ length: to - from + 1 }, (_, i) => `${day}T${String(from + i).padStart(2, "0")}:02 down`);
+
+  test("2026-08-31: DOWN at 06:47 and 07:02, then hourly 08:02-23:02, and one RECOVERED at 23:32 — 19 emails", () => {
+    assert.deepEqual(emails(OUTAGE_0831), [
+      "08-31T06:47 down",
+      "08-31T07:02 down",
+      ...hourly(8, 23, "08-31"),
+      "08-31T23:32 recovered",
+    ]);
+  });
+
+  test("2026-10-06: DOWN at 17:02, then hourly to 00:02, and one RECOVERED at 01:02 — 9 emails", () => {
+    assert.deepEqual(emails(OUTAGE_1006), [
+      ...hourly(17, 23, "10-06"),
+      "10-07T00:02 down",
+      "10-07T01:02 recovered",
+    ]);
+  });
+
+  test("six healthy days as one series: the 08-29 event's two DOWN and its RECOVERED, nothing else", () => {
+    assert.deepEqual(emails(HEALTHY), ["08-29T06:47 down", "08-29T07:02 down", "08-29T07:47 recovered"]);
+  });
+
+  test("2026-11-23: not one bucket is 52x-RED, so the 52x arm sends nothing — the outage nobody was paged for", () => {
+    // 5xx was 74 % at 00:00Z and 99.1 % at 01:00Z, with 0 x 52x until 01:45Z.
+    assert.deepEqual(OUTAGE_1123.filter((r) => bucketIsRed(toBucket(r))), []);
+    assert.deepEqual(
+      emails(OUTAGE_1123).filter((e) => e.endsWith(" down") || e.endsWith(" recovered")),
+      [],
+    );
+  });
+
+  test("the week of 11-20 (671 buckets): no bucket is 52x-RED and the 52x arm sends nothing", () => {
+    assert.equal(WEEK_1120.length, 671);
+    assert.deepEqual(WEEK_1120.filter((r) => bucketIsRed(toBucket(r))), []);
+    assert.deepEqual(
+      emails(WEEK_1120).filter((e) => e.endsWith(" down") || e.endsWith(" recovered")),
+      [],
+    );
   });
 });
 
