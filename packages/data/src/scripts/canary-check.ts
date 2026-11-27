@@ -31,12 +31,15 @@ import {
   withUnchangedRuns,
 } from "./canary-transitions";
 import {
+  GHA_DISPATCH_UNIT_PREFIX,
   KEY_DISPATCH_REFUSED,
   KEY_DISPATCH_STALE,
-  DISPATCH_STALE_HOURS,
+  MISSED_LOOKBACK_HOURS,
+  type DispatchRegistryRow,
   type GhaDispatchCanary,
+  type MissedRequestRow,
   classifyGhaDispatch,
-  dispatchStampKey,
+  planGhaDispatchReads,
 } from "./canary-gha-dispatch";
 import {
   FRONT_DOOR_WINDOW_MINUTES,
@@ -790,24 +793,54 @@ async function fetchFrontDoorWatch(now: Date): Promise<FrontDoorCanary | null> {
   return classifyFrontDoorWatch((data ?? []) as FrontDoorWatchRow[]);
 }
 
-// FIX-1218 — the GHA dispatcher's per-call stamps, one PostgREST read of three
-// pipeline_state rows. The classifier lives in ./canary-gha-dispatch.ts; both
-// keys are report-only because every dispatched workflow keeps its schedule:
-// fallback — a dead dispatcher costs lateness, never a night.
+// FIX-1218 — the GHA dispatcher's per-call stamps. The classifier lives in
+// ./canary-gha-dispatch.ts; both keys are report-only.
+//
+// FIX-1460 (cc-324) — three PostgREST reads, in order: the job_registry rows
+// whose unit_call is gha-dispatch:<stem> (the stems and their rules; a failed
+// or empty read classifies on the fallback list, never returns null), every
+// stem's stamp and request key, and the last 24 h of dispatch_log `missed`
+// rows for the request-judged stems. Only a failed pipeline_state read is
+// "unknown"; a failed dispatch_log read judges on the request keys alone.
 async function fetchGhaDispatch(now: Date): Promise<GhaDispatchCanary | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
-  const { data, error } = await db
-    .from("pipeline_state")
-    .select("key, value")
-    .in("key", Object.keys(DISPATCH_STALE_HOURS).map(dispatchStampKey));
+  let registry: DispatchRegistryRow[] | null = null;
+  const reg = await db
+    .from("job_registry")
+    .select("job, unit_call, deadline_rule, updated_at")
+    .like("unit_call", `${GHA_DISPATCH_UNIT_PREFIX}%`)
+    .order("job");
+  if (reg.error) {
+    console.warn(`[canary-check] gha_dispatch registry read failed (non-fatal; the fallback list judges): ${reg.error.message}`);
+  } else {
+    registry = (reg.data ?? []) as DispatchRegistryRow[];
+  }
+  const plan = planGhaDispatchReads(registry);
+  const { data, error } = await db.from("pipeline_state").select("key, value").in("key", plan.keys);
   if (error) {
     console.warn(`[canary-check] gha_dispatch read failed (non-fatal): ${error.message}`);
     return null;
   }
   const rows: Record<string, Record<string, unknown>> = {};
   for (const r of (data ?? []) as Array<{ key: string; value: Record<string, unknown> }>) rows[r.key] = r.value;
-  return classifyGhaDispatch(rows, now);
+  let missed: MissedRequestRow[] | null = null;
+  if (plan.missedJobnames.length > 0) {
+    const m = await db
+      .from("dispatch_log")
+      .select("armed_jobname, ticked_at, armed_for")
+      .eq("decision", "missed")
+      .in("armed_jobname", plan.missedJobnames)
+      .gte("ticked_at", new Date(now.getTime() - MISSED_LOOKBACK_HOURS * 3_600_000).toISOString())
+      .order("ticked_at", { ascending: false })
+      .limit(200);
+    if (m.error) {
+      console.warn(`[canary-check] gha_dispatch missed-request read failed (non-fatal; the request keys judge alone): ${m.error.message}`);
+    } else {
+      missed = (m.data ?? []) as MissedRequestRow[];
+    }
+  }
+  return classifyGhaDispatch(rows, now, registry, missed);
 }
 
 /**
@@ -1991,9 +2024,12 @@ async function main(): Promise<number> {
     nightlyCheckUnavailable, conditions, failures, reportOnly, fecDrop, prodSession,
     holdStale, boxHealth,
   );
-  // FIX-1218 — the three dispatcher stamps on EVERY run, fresh or not, so the
-  // dispatcher's own uptime is greppable after the fact.
+  // FIX-1218 — the dispatcher stamps on EVERY run, fresh or not, so the
+  // dispatcher's own uptime is greppable after the fact. FIX-1460: one per
+  // registry stem, with its rule and how it was judged; `_source` says whether
+  // the registry or the fallback list named them.
   metadata["gha_dispatch"] = ghaDispatch?.stamps ?? null;
+  metadata["gha_dispatch_source"] = ghaDispatch?.source ?? null;
   const meta = await writeMetaRow(metadata, now);
   if (!meta.ok) {
     // FIX-980 — the row IS the evidence this process ran. A run that leaves
