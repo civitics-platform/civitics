@@ -224,7 +224,7 @@ test("D3: a failed vote_rolls write is counted and logged, never thrown — the 
     buildRollRow(`2025-house-${String(i + 1).padStart(3, "0")}`, "u", "clerk_xml", () => houseRollFields(meta))!);
   const lines: string[] = [];
   let calls = 0;
-  const out = await writeVoteRollRows(rows, async (chunk) => {
+  const out = await writeVoteRollRows(rows, async () => {
     calls++;
     if (calls === 2) return { error: { message: 'relation "public.vote_rolls" does not exist' } };
     if (calls === 3) throw new Error("fetch failed");
