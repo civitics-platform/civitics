@@ -1,0 +1,41 @@
+{
+  "cc": "324",
+  "prompt": "cc-prompt-324-fix1460-gha-dispatch-canary-reads-stems-and-limits-from-the-registry-a-request-gated-walker-judged-by-its-request-not-its-stamps-age-bill-details-watched.md",
+  "started_at": "2026-11-27T05:00:22Z",
+  "finished_at": "2026-11-27T05:16:00Z",
+  "head_before": "65865f24",
+  "head_after": "06c6c346",
+  "commits": [
+    {
+      "sha": "93df1806",
+      "subject": "feat(canary): FIX-1460 the GHA-dispatch canary reads its stems and their limits from job_registry — a slot (at/by) by its cron's period plus slack (169 / 25 h, three periods sub-hourly), a request-gated walker (stale_after: crs-summaries, bill-details) by its request (reaped missed, unconsumed 25 min, or a dispatch_log missed row in 24 h newer than its stamp), anything else unjudged; the hand list stays as the fallback for a registry read that fails (cc-324 Item 1)"
+    },
+    {
+      "sha": "5fb5176d",
+      "subject": "[skip vercel] docs(ops): the GHA-dispatch canary reads its stems from job_registry — the rule classes and how each is judged (a walker by its request, not its stamp's age), why the dispatch_log missed read is the one that sees a dead route, and the fallback list with its detail line and metadata.gha_dispatch_source (cc-324 Item 2)"
+    },
+    {
+      "sha": "06c6c346",
+      "subject": "[skip vercel] chore(fixes): sync after FIX-1460 — done.log records FIX-1460 local-only (93df1806, cc-324 Item 1) and cc-330's FIX-1459 prod-only (122afbba), which was on main unsynced"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1460"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Read 4's STOP branch was taken (a branch, not a stop): the dispatcher re-arms a walker in the same tick that 3b reaps it `missed`, which replaces the key, so a daily read never sees D2's two key conditions while the route is dead and the row stays due. I added the prompt's fallback, the last 24 h of dispatch_log `missed` rows, as a third condition (stale when a miss is newer than the stem's last stamp). I kept D2's two key conditions alongside it rather than replacing them, because each can still be seen: a re-arm held back by a hold or an exclusion leaves `missed` on the key, and a dispatcher that stops ticking leaves the request unconsumed."
+  ],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1460",
+      "what": "the first sync-canary-check run on the new code (its 05:00Z slot): metadata.gha_dispatch lists every gha-dispatch registry stem on prod (bill-details once cc-330's row is there), crs-summaries judged by its request while it rests, gha_dispatch_stale and gha_dispatch_refused both tier null, no fallback line (metadata.gha_dispatch_source = registry)",
+      "after": "2026-11-28T06:00Z"
+    }
+  ]
+}
