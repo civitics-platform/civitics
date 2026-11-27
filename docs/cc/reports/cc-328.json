@@ -1,0 +1,89 @@
+{
+  "cc": "328",
+  "prompt": "cc-prompt-328-cosponsor-ec-arm-becomes-a-merge-then-bill-details-is-a-dispatcher-unit-two-rulings-first-25-measure-chunk-on-prod-the-dispatcher-runs-the-fill-voted-first.md",
+  "started_at": "2026-11-26T21:45:45Z",
+  "finished_at": "2026-11-27T00:10:00Z",
+  "head_before": "e276c794",
+  "head_after": "49e87ec6",
+  "commits": [
+    {
+      "sha": "b36cd734",
+      "subject": "[skip vercel] chore(fixes): file FIX-1456 (the cosponsor arm rewrites every co_sponsorship edge on each cycle its source moves) and FIX-1457 (the cosponsor arm's fingerprint cannot see a withdrawal) — cc-328 Item 0"
+    },
+    {
+      "sha": "8784bef8",
+      "subject": "[skip vercel] chore(fixes): file FIX-1458 (the cosponsor arm's trailing ANALYZE of entity_connections costs more than its merge — 3.6 to 4.2 s against about 1 s for a 15-minute run's rows, cc-328 read 3) — cc-328 D3"
+    },
+    {
+      "sha": "9b7c3c02",
+      "subject": "feat(ec-cosponsors): FIX-1456 the cosponsor arm merges its set — delete-gone / update-changed / insert-new in its own scope, edges_upserted stays the set's size, the trailing ANALYZE only on a write — 20261126007000, arm d534e163 → 675d2a68 (cc-328 Item 1)"
+    },
+    {
+      "sha": "c2510e50",
+      "subject": "feat(gha-dispatch): the bill-details walker starts through its request target — /api/cron/gha-dispatch/bill-details-request every 5 min with only all and max_minutes 15; bill-details.yml is no longer started only by hand (cc-328 Item 3)"
+    },
+    {
+      "sha": "4a5cad31",
+      "subject": "[skip vercel] chore(fixes): file FIX-1459 (the bill-details walker's per-measure first-vote read plans as a backward scan of votes_voted_at on prod — 21.9 s of database time a measure in cc-328's chunk, against a 5 s stop) — cc-328 Item 2"
+    },
+    {
+      "sha": "46ce8ed1",
+      "subject": "[skip vercel] docs(gha-dispatch): the bill-details request target is live and its registry row is not — the comments in gha-dispatch.ts and bill-details.yml say so (cc-328 Item 3, the chunk's STOP row)"
+    },
+    {
+      "sha": "61ab54f6",
+      "subject": "[skip vercel] docs: the bill-details walker in OPERATIONS — do not run a prod fill until FIX-1459, the cosponsor arm is a merge (FIX-1456, its NOTICE, when it runs, the revert), the terminal prod form, the dispatcher row built and held off main; record-pages gains cc-328 (s3c) and the next step (s3d) (cc-328 Item 5)"
+    },
+    {
+      "sha": "49e87ec6",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-328 — FIX-1456 closed local (9b7c3c02); 20261126007000 pushed to prod 2026-11-26 22:17:35Z (cosponsor arm 675d2a68); the 25-measure chunk read 21.9 s of database time a measure, so 20261126008000 (the bill-details row) was held off main and FIX-1453 stays OPEN; filed FIX-1457, FIX-1458, FIX-1459; delta +3 (34 open)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1456"
+  ],
+  "fixes_filed": [
+    "FIX-1456",
+    "FIX-1457",
+    "FIX-1458",
+    "FIX-1459"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20261126007000_fix1456_ec_cosponsors_arm_merge.sql"
+  ],
+  "prod_writes": "two. (A) one class-P push of one file, 20261126007000 (CREATE OR REPLACE rebuild_entity_connections_cosponsors, d534e163 → 675d2a68, grants restated), applied 2026-11-26 22:17:35Z. (1) gate wait 22:17:30.726Z to 22:17:31.079Z (0.4 s), ok=true on the first poll, census pass (3 renders / 4 events in 60 min, ratio 1.52, floor 6; edge 2 of 275 = 0.73 % within 1 %, P99 floor 3 at p0 0.23 %). (2) blocked_tokens []. (3) claim 22:17:34.588Z to 22:17:35.648Z (1.1 s; 17 guarded holds set and cleared). (4) data_sync_log rows started inside the claim: 0. (5) dispatch_log ticks inside the claim: 0 (22:17:00Z nothing_due before it). Read-back 22:17:45Z: arm 675d2a6836402c235107e0f8a1686ae8, proconfig NULL, grants anon f / authenticated f / service_role t, head 20261126007000 (578), 0 proposal_cosponsors rows, 0 co_sponsorship edges. (B) the 25-measure bill-details chunk from the terminal (--only voted --limit 25 --apply --allow-prod), data_sync_log dd559c76 partial 23:30:33.512Z to 23:41:52.461Z, stop limit: 25 refs stamped (metadata.detail), +701 proposal_cosponsors rows (of 707 at source, 6 unresolved; all non-withdrawn), +526 proposal_actions rows (of 527, 1 dup_key), bill_details.primary_sponsor_id set on 25 (10 → 35), 4 titles filled, 3 placeholder introduced dates replaced; 97 requests; 21,948 ms of database time a measure (max 28,833; 548.7 s in all) and 27.12 s a measure — the STOP row fired (over 5 s). No Push B: 20261126008000 (the bill-details registry row) was not pushed and is not on main. The 701 cosponsor rows will give the next ec-crawl cycle its first co_sponsorship edges (the merged arm; not yet run at the report).",
+  "ci": "green",
+  "stopped_items": [
+    "Push B, Item 4 and FIX-1453's record: not done. The chunk's STOP row fired twice — 21,948 ms of database time a measure against 5 s, and ring samples over 50 % io (63.3–74.8 % through the chunk, 57.8 % at 23:42:22Z, the window holding its last measure). Cause read on prod (pg_stat_activity, EXPLAIN): the walker's per-measure read finds the first vote with min(votes.voted_at) WHERE bill_proposal_id = …, planned as a Limit over an Index Scan Backward of votes_voted_at filtered row by row, and called twice a measure. Filed FIX-1459. Item 3's code landed without its migration (the STOP row's branch): the bill-details-request target and cron are deployed (Vercel 23:58:47Z) and read no request; the migration 20261126008000, its test and scripts/fix1453-revert-bill-details-row.sql are commit 0b631eaf, held on origin/feature/fix-328, off main. FIX-1453 stays open.",
+    "Item 4's cosponsor-arm read: not reached. The first ec-crawl cycle after the chunk starts at the next 360-min cycle boundary (the last began 21:07Z, so about 03:1xZ 11-27). FIX-1456 closed local-only; its prod record and both receipts are owed below.",
+    "D9 kept: the walker's code is not changed, although its read is the fault (FIX-1459).",
+    "migrations_pushed lists one file, not the prompt's two: 20261126008000 was held.",
+    "Branch CI for the code-only landing ran on a new branch, feature/fix-328-code (run 45913632481), because origin/feature/fix-328 holds 0b631eaf and the local branch moved back to c2510e50 (git reset --keep) to land without it.",
+    "Permission denial, logged as the reading asks: `git push -q -f origin feature/fix-328` was refused by the auto-mode classifier. The -f was my mistake (a force-push, which the rules forbid; the push was a plain fast-forward). Re-run without -f; nothing was force-pushed."
+  ],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": [
+    {
+      "fix": "FIX-1456",
+      "what": "the merged cosponsor arm's first cycle on prod after the chunk: its unit seconds and rows, the [cosponsors] merge NOTICE (inserted 701), co_sponsorship edges equal the 701 non-withdrawn proposal_cosponsors rows, no backoff tripped; then 'record FIX-1456 on prod'",
+      "after": "2026-11-27T04:00Z"
+    },
+    {
+      "fix": "FIX-1456",
+      "what": "three days of the merged arm on prod: per cycle its unit seconds and the rows it wrote beside the day's new cosponsor rows; co_sponsorship edges equal the non-withdrawn rows at each read; ec-vacuum-analyze's arms on its line",
+      "after": "2026-11-30T16:00Z"
+    },
+    {
+      "fix": "FIX-1452",
+      "what": "the fill, once FIX-1459 is fixed and the row is pushed: every voted measure of cc-327's read 5 stamped or named as failed; sponsors set vs unresolved; cosponsor rows vs the sum of the source's counts; action rows; titles and introduced dates filled, replaced and kept-differs; HR 1 of the 119th's three figures (25 of 1,566 voted measures stamped by cc-328's chunk)",
+      "after": "2026-11-28T06:00Z"
+    },
+    {
+      "fix": "FIX-1453",
+      "what": "after FIX-1459 lands and the held row (0b631eaf) is pushed: three days of dispatched bill-details runs — runs per day, measures per run, every reap reason, missed rows, the runs skipped under the weekend holds, the first run that rested on next_due_at",
+      "after": "2026-11-30T16:00Z"
+    }
+  ]
+}
