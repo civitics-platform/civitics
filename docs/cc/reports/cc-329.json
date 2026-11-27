@@ -1,0 +1,50 @@
+{
+  "cc": "329",
+  "prompt": "cc-prompt-329-fix1459-walker-first-vote-read-off-the-voted-at-walk-explain-and-second-25-measure-chunk-on-prod-then-the-held-bill-details-row-pushed-first-dispatched-run.md",
+  "started_at": "2026-11-27T02:29:37Z",
+  "finished_at": "2026-11-27T03:17:13Z",
+  "head_before": "5bf3e0d0",
+  "head_after": "88b6846c",
+  "commits": [
+    {
+      "sha": "b0cf6989",
+      "subject": "[skip vercel] chore(fixes): file FIX-1460 (the GHA-dispatch canary lists its stems by hand: bill-details is not watched and crs-summaries is still at its Saturday-slot 169 h) — cc-329 Item 0"
+    },
+    {
+      "sha": "bdd69660",
+      "subject": "fix(bill-details): FIX-1459 the walker's first-vote read comes off the votes_voted_at walk — its own statement behind an OFFSET 0 fence (min() over a votes_bill scan), read only when the placeholder rule consults it, the same helper dry and applied (cc-329 Item 1)"
+    },
+    {
+      "sha": "8c544e2d",
+      "subject": "[skip vercel] docs: the bill-details walker in OPERATIONS — the votes_voted_at walk is gone (bdd69660, prod plan Aggregate -> Index Scan using votes_bill; ten prod reads 1.5-35 ms) but the cold worst case read 978 ms against cc-329's 500 ms bar, so the fill and the held row still wait on FIX-1459; record-pages s3d gains cc-329 (cc-329 Item 5)"
+    },
+    {
+      "sha": "44b06ac3",
+      "subject": "[skip vercel] chore(fixes): record FIX-1456 on prod — the merged cosponsor arm's first cycle after cc-328's chunk: ec-crawl armed 03:09:00Z 11-27, the rebuild_entity_connections_cosponsors unit ran 03:11:02-03:11:13Z (outcome ok, 701 rows, 11.1 s), the crawl reaped succeeded: CALL at 03:13:00Z (unit_ms 22,167); 701 co_sponsorship edges (official -> proposal, strength 0.6 / 0.7) against 701 non-withdrawn proposal_cosponsors rows created before the unit began (cc-329 Item 4)"
+    },
+    {
+      "sha": "88b6846c",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-329 — FIX-1459 closed local (bdd69660) then reopened: the votes_voted_at walk is gone on prod (Index Scan using votes_bill, ten reads 1.5-35 ms) but the cold worst case read 978 ms against the 500 ms bar, so no second chunk ran and 20261126008000 stays held (FIX-1453 open); FIX-1456 recorded on prod (44b06ac3: 701 edges, the arm's unit 11.1 s); filed FIX-1460; delta +1 (fixes:status 35 -> 36, live bullets 34 -> 35)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1456"
+  ],
+  "fixes_filed": [
+    "FIX-1460"
+  ],
+  "fixes_reopened": [
+    "FIX-1459"
+  ],
+  "migrations_pushed": [],
+  "prod_writes": "none. No chunk and no Push B: the D5 (a) STOP row fired (a first-vote read of 978 ms against 500 ms), and Push B follows the chunk. Prod was read only, by 12 read-only db-query --prod statements (one of them timed out at 15 s), and nothing was written. EXPLAIN (ANALYZE) ran only on SELECTs inside the READ ONLY transaction.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2, the chunk: not run. The D5 (a) STOP row fired. The fenced statement names votes_bill and never votes_voted_at, but 118-HR-21 (the unstamped voted measure with the most stored rolls: 57 rolls, 18,408 rows) read in 978.5 ms cold, 1,281 heap pages at ~0.76 ms each, against the 500 ms bar. The next form was tried: a bitmap heap scan of votes_bill for the same statement. On prod it ran in 1.5-34 ms on four heavy measures, but the index-scan control ran in 15-35 ms on three others, because none of those seven was disk-cold. So the trial does not separate the forms, and no form without an index avoids reading every heap row of the measure. No second chunk ran; FIX-1459 is reopened with the figures.",
+    "Item 3 not reached: Push B (20261126008000), the cherry-pick of 0b631eaf, D6's re-reads, D7's comment edits, the first dispatched run's reads and FIX-1453's record. The chunk is its precondition (cc-328 D8's order). The comments in gha-dispatch.ts and bill-details.yml still say the row is held, which is true. FIX-1453 stays open.",
+    "Read 1's first prod statement (pg_indexes joined to pg_class by relname) was cancelled at its 15 s timeout with the box idle (pg_stat_activity empty). Re-read by pg_index / indexrelid, it returned in under a second. One statement of the budget was spent on that."
+  ],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": []
+}
