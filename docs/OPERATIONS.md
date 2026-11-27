@@ -957,14 +957,25 @@ only measures whose `congress_gov` ref has no `metadata.detail.fetched_at`,
 voted measures first, 3–4 requests a measure at ~800 ms each, and writes each
 measure in one transaction. Nominations (`119-PN-…`) are never selected.
 
-> **Do not run a prod fill yet (FIX-1459).** cc-328's 25-measure chunk
-> (2026-11-26 23:30–23:42Z) read **21.9 s of database time a measure** (max
-> 28.8 s; local 11–21 ms) and held the box at 63–75 % io for its 11 minutes.
-> The walker's per-measure read finds the first vote with
-> `min(votes.voted_at) WHERE bill_proposal_id = …`. On prod that plans as a
-> backward scan of `votes_voted_at` filtered row by row, and the walker reads
-> it twice a measure. Fix that read first, prove it with `EXPLAIN` on prod,
-> and run the 25-measure chunk again.
+> **Do not run a prod fill yet (FIX-1459).**
+>
+> - **Before (cc-328):** the 25-measure chunk (2026-11-26 23:30–23:42Z) read
+>   **21.9 s of database time a measure** (max 28.8 s; local 11–21 ms) and
+>   held the box at 63–75 % io for 11 minutes. The first-vote subquery
+>   (`min(votes.voted_at) WHERE bill_proposal_id = …`) planned as a backward
+>   walk of `votes_voted_at` filtered row by row: one statement a measure,
+>   within ~1.2 s of the 30 s `MEASURE_STATEMENT_TIMEOUT`.
+> - **The walk is gone (cc-329, `bdd69660`).** The first vote is its own
+>   statement, `FIRST_VOTE_SQL`, behind an `OFFSET 0` fence, read only when
+>   the placeholder rule consults it. Its prod plan is `Aggregate → Index Scan
+>   using votes_bill`.
+> - **Prod timings, ten reads (2026-11-27 03:05–03:10Z):** 1.5–35 ms, except
+>   one. That one was 118-HR-21 (57 rolls, 18,408 rows), read cold: **978 ms**,
+>   1,281 heap pages at ~0.76 ms each.
+> - **Why the fill still waits:** cc-329's bar for that read is 500 ms, so its
+>   second chunk did not run. A bitmap form of the same statement was tried
+>   and showed no cold advantage. Every form without an index reads all of a
+>   measure's heap rows. The open choice is the next prompt's.
 
 **The cosponsor edges.** `proposal_cosponsors` is the source of the `ec-crawl`
 unit's cosponsor arm, `rebuild_entity_connections_cosponsors`. Each resolved,
@@ -1005,7 +1016,8 @@ gh workflow run bill-details.yml -f only=all -f max_minutes=15
   2,700 s), and it is what lets the dispatcher start the fill unattended. The
   migration `20261126008000`, its test and `scripts/fix1453-revert-bill-details-row.sql`
   are on `origin/feature/fix-328` at `0b631eaf`, off main, and wait on
-  FIX-1459.
+  FIX-1459. cc-329 did not push them (its first-vote read missed the 500 ms
+  bar above).
 - **Until the row lands** the poll reads no request and fires nothing.
 - **Once it lands:** stop it by the row revert through the gate. Read it as the
   CRS walker is read, with `job = 'bill-details'` and `pipeline =
@@ -1889,8 +1901,10 @@ hand run shares the concurrency group and the key with a dispatched run:
 
 **bill-details is not a unit yet.** Craig accepted the co_sponsorship edges
 (2026-11-26) and cc-328 built the row and its `bill-details-request` door. The
-door is deployed; the row is held on FIX-1459, the walker's 21.9 s per-measure
-read (§The bill-details walker). Until the row lands, its hand runs share the
+door is deployed; the row is held on FIX-1459. cc-329 took the walker's 21.9 s
+per-measure read off the `votes_voted_at` walk, but its cold worst case (978 ms)
+missed the 500 ms bar, so the row stayed held (§The bill-details walker).
+Until the row lands, its hand runs share the
 key but not the group. A bill-details run beside a dispatched CRS run is two
 walkers on the key, ~9,000 requests/h against 20,000.
 

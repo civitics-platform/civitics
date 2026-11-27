@@ -10,7 +10,7 @@ steps:
   - {id: s3, kind: cc, ref: "cc-327", title: "wave 1, the bill half — the congress.gov bill-details walker (FIX-1452) and the proposal_actions source key"}
   - {id: s3b, kind: design, ref: "FIX-1453", title: "the bill-details walker's schedule: a dispatcher unit beside crs-summaries (cc-318's D3 row — stale_after 2 hours, group proposals, yield_to nightly, 15-minute runs through a bill-details-request target). Waits on the co_sponsorship-edge decision (cc-327 read 4): a dispatched walker would run the fill. cc-318 moved only crs-summaries; the dispatcher's one-row end it needs (FIX-1454) is on prod"}
   - {id: s3c, kind: cc, ref: "cc-328", title: "the cosponsor EC arm becomes a merge (FIX-1456, on prod); bill-details-request deployed; the 25-measure prod chunk read 21.9 s of database time a measure, so the dispatcher row is held on FIX-1459", done: 2026-11-26}
-  - {id: s3d, kind: cc, ref: "", title: "fix the walker's first-vote read (FIX-1459), prove it with EXPLAIN on prod and a 25-measure chunk, then land and push the held row (0b631eaf) and read the first dispatched run (FIX-1453)"}
+  - {id: s3d, kind: cc, ref: "cc-329", title: "fix the walker's first-vote read (FIX-1459), prove it with EXPLAIN on prod and a 25-measure chunk, then land and push the held row (0b631eaf) and read the first dispatched run (FIX-1453)"}
   - {id: s4, kind: cc, ref: "", title: "per-roll official totals and results (FIX-1448)"}
   - {id: s5, kind: cc, ref: "", title: "bill and officials pages show sponsor, cosponsors, actions"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
