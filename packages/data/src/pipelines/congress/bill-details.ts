@@ -66,10 +66,9 @@ import {
   BILL_TYPES,
   billPath,
   buildBioguideResolver,
-  decideIntroduced,
+  decideIntroducedReading,
   decideTitle,
   httpStatusOf,
-  isNumberTitle,
   isTransient,
   needsCosponsors,
   needsTitles,
@@ -357,8 +356,6 @@ interface CurrentRow {
   bill_number: string | null;
   has_bill_details: boolean;
   primary_sponsor_id: string | null;
-  /** The measure's first roll's date — the vote path's introduced_at placeholder. */
-  first_vote: string | null;
 }
 
 async function readCurrent(c: Client, t: Target, lock: boolean): Promise<CurrentRow | null> {
@@ -370,8 +367,7 @@ async function readCurrent(c: Client, t: Target, lock: boolean): Promise<Current
   if (ref.rows.length === 0) return null;
   const p = await c.query<Omit<CurrentRow, "stamped">>(
     `SELECT p.title, p.introduced_at::text AS introduced_at, bd.bill_number,
-            (bd.proposal_id IS NOT NULL) AS has_bill_details, bd.primary_sponsor_id,
-            (SELECT min(v.voted_at)::date::text FROM public.votes v WHERE v.bill_proposal_id = p.id) AS first_vote
+            (bd.proposal_id IS NOT NULL) AS has_bill_details, bd.primary_sponsor_id
        FROM public.proposals p
        LEFT JOIN public.bill_details bd ON bd.proposal_id = p.id
       WHERE p.id = $1${lock ? " FOR UPDATE OF p" : ""}`,
@@ -381,10 +377,33 @@ async function readCurrent(c: Client, t: Target, lock: boolean): Promise<Current
   return { stamped: ref.rows[0]!.stamped, ...p.rows[0]! };
 }
 
-/** D6, with cc-327's one deviation: the placeholder date is passed only while the title is still the number. */
-function introducedOutcome(cur: CurrentRow, f: FetchedMeasure): FillOutcome {
-  const placeholder = isNumberTitle(cur.title, cur.bill_number) ? cur.first_vote : null;
-  return decideIntroduced(cur.introduced_at, f.detail.introducedDate, placeholder);
+/**
+ * The measure's first roll's date — the vote path's introduced_at placeholder.
+ *
+ * FIX-1459: the OFFSET 0 fence is load-bearing; do not tidy it away. A bare
+ * `min(voted_at) … WHERE bill_proposal_id = $1` lets the planner answer the min
+ * from votes_voted_at (voted_at DESC) as a backward walk under LIMIT 1 that
+ * filters every row on bill_proposal_id. A measure's rolls sit on a few dates,
+ * so on prod that walk read most of votes' 1.02 M rows: 18–29 s a measure in
+ * cc-328's chunk. Behind the fence min() aggregates a votes_bill scan, whatever
+ * the statistics say.
+ */
+export const FIRST_VOTE_SQL =
+  `SELECT min(s.voted_at)::date::text AS first_vote
+     FROM (SELECT v.voted_at FROM public.votes v WHERE v.bill_proposal_id = $1 OFFSET 0) s`;
+
+async function readFirstVote(c: Client, proposalId: string): Promise<string | null> {
+  const r = await c.query<{ first_vote: string | null }>(FIRST_VOTE_SQL, [proposalId]);
+  return r.rows[0]?.first_vote ?? null;
+}
+
+/**
+ * D6, with cc-327's one deviation: the placeholder date counts only while the
+ * title is still the number. It is read only on that branch (FIX-1459).
+ */
+function introducedOutcome(c: Client, t: Target, cur: CurrentRow, f: FetchedMeasure): Promise<FillOutcome> {
+  return decideIntroducedReading(cur.introduced_at, f.detail.introducedDate, cur.title, cur.bill_number,
+    () => readFirstVote(c, t.proposal_id));
 }
 
 function sponsorOutcome(cur: CurrentRow, r: BioguideResolution | null): MeasureWrite["sponsor"] {
@@ -447,7 +466,7 @@ export async function writeMeasure(
       cosponsorsResolved: cos.rows.length,
       actionsInserted: f.actions.rows.length,
       title: decideTitle(cur.title, cur.bill_number, f.detail.title),
-      introduced: introducedOutcome(cur, f),
+      introduced: await introducedOutcome(c, t, cur, f),
       dbMs: Date.now() - started,
     };
   }
@@ -530,7 +549,7 @@ export async function writeMeasure(
 
     // Decided on the values read under the row lock, so no re-assert is needed.
     const title = decideTitle(cur.title, cur.bill_number, f.detail.title);
-    const introduced = introducedOutcome(cur, f);
+    const introduced = await introducedOutcome(c, t, cur, f);
     const setTitle = title === "filled";
     const setIntroduced = introduced === "filled" || introduced === "replaced_placeholder";
     if (setTitle || setIntroduced) {

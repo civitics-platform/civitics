@@ -10,7 +10,9 @@
  *      together, and a second run takes nothing;
  *   2. a measure whose write fails leaves no row and no stamp, and the run
  *      goes on;
- *   3. a held session stops the loop before the next measure.
+ *   3. a held session stops the loop before the next measure;
+ *   4. the first-vote read (FIX-1459): its statement plans off votes_voted_at,
+ *      and the placeholder outcomes come out the same dry and applied.
  *
  * Runs via:  CIVITICS_CLONE_TESTS=1 tsx --test src/pipelines/congress/bill-details.test.ts
  */
@@ -22,6 +24,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import {
+  FIRST_VOTE_SQL,
   isMeasureLocalDbError,
   parseCliArgs,
   runBillDetails,
@@ -347,6 +350,71 @@ test("clone: a held session stops the loop before the next measure", async (t) =
          FROM public.external_source_refs WHERE id = ANY ($1::uuid[]) ORDER BY external_id`,
       [[first.refId, second.refId]])).rows;
     assert.deepEqual(stamps, [{ external_id: "999-HR-3", stamped: true }, { external_id: "999-HR-4", stamped: false }]);
+  } finally {
+    await c.query("ROLLBACK").catch(() => undefined);
+    await c.end();
+  }
+});
+
+test("clone: the first-vote statement plans off votes_voted_at (FIX-1459)", async (t) => {
+  const c = await clone(t);
+  if (!c) return;
+  try {
+    // the measure with the most stored rolls: the walk's worst case, and the fence's
+    const pid: string = (await c.query(
+      `SELECT bill_proposal_id AS pid FROM public.votes GROUP BY 1 ORDER BY count(DISTINCT roll_call_id) DESC, 1 LIMIT 1`,
+    )).rows[0].pid;
+    const plan = (await c.query(`EXPLAIN ${FIRST_VOTE_SQL}`.replace("$1", `'${pid}'::uuid`))).rows
+      .map((r: Record<string, string>) => r["QUERY PLAN"]).join("\n");
+    assert.doesNotMatch(plan, /votes_voted_at/, plan);
+    assert.match(plan, /votes_bill/, plan);
+  } finally {
+    await c.end();
+  }
+});
+
+test("clone: the placeholder outcomes come out the same dry and applied, from a stored roll", async (t) => {
+  const c = await clone(t);
+  if (!c) return;
+  try {
+    await c.query("BEGIN");
+    const [o1] = await threeOfficials(c);
+    const officials = [{ id: o1, source_ids: { congress_gov: hr1.detail.bill!.sponsors![0]!.bioguideId! } }];
+    // HR 1's source date is 2025-05-20. HR 7's stored date is its first roll's (a placeholder);
+    // HR 8's stored date is not, and HR 9 has a real title, so its first roll is never read.
+    const ph = await seed(c, "999-HR-7", { title: null, billNumber: "HR 7", introduced: "2026-01-15", lastAction: "2026-01-20" });
+    const kept = await seed(c, "999-HR-8", { title: null, billNumber: "HR 8", introduced: "2026-01-10", lastAction: "2026-01-19" });
+    const real = await seed(c, "999-HR-9", { title: "A stored title", billNumber: "HR 9", introduced: "2026-01-15", lastAction: "2026-01-18" });
+    for (const [i, s] of [ph, kept, real].entries()) {
+      await c.query(
+        `INSERT INTO public.votes (bill_proposal_id, official_id, vote, voted_at, roll_call_id, chamber)
+         VALUES ($1, $2, 'yes', '2026-01-15 15:00:00+00', $3, 'House'),
+                ($1, $2, 'no',  '2026-02-03 15:00:00+00', $4, 'House')`,
+        [s.id, o1, `999-cc329-${i}-a`, `999-cc329-${i}-b`],
+      );
+    }
+    const run = (apply: boolean): Promise<RunSummary> => runBillDetails({
+      client: c, get: stubGet([]), apply, only: "all", limit: null, maxMinutes: null,
+      isHeld: notHeld, tx: SAVEPOINT_TX, keys: [ph.key, kept.key, real.key], officials, log: () => undefined,
+    });
+
+    const dry = await run(false);
+    const applied = await run(true);
+    for (const s of [dry, applied]) {
+      assert.equal(s.measures_stamped, 3);
+      assert.equal(s.introduced_replaced_placeholder, 1);
+      assert.equal(s.introduced_kept_differs, 2);
+    }
+    const rows = (await c.query(
+      `SELECT bd.bill_number, p.introduced_at::text AS intro, x.metadata -> 'detail' ->> 'introduced_outcome' AS outcome
+         FROM public.proposals p JOIN public.bill_details bd ON bd.proposal_id = p.id
+         JOIN public.external_source_refs x ON x.entity_id = p.id AND x.source = 'congress_gov'
+        WHERE p.id = ANY ($1::uuid[]) ORDER BY bd.bill_number`, [[ph.id, kept.id, real.id]])).rows;
+    assert.deepEqual(rows, [
+      { bill_number: "HR 7", intro: "2025-05-20", outcome: "replaced_placeholder" },
+      { bill_number: "HR 8", intro: "2026-01-10", outcome: "kept_differs" },
+      { bill_number: "HR 9", intro: "2026-01-15", outcome: "kept_differs" },
+    ]);
   } finally {
     await c.query("ROLLBACK").catch(() => undefined);
     await c.end();

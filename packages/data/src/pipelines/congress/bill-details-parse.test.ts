@@ -14,6 +14,7 @@ import {
   actionSourceKey,
   buildBioguideResolver,
   decideIntroduced,
+  decideIntroducedReading,
   decideTitle,
   httpStatusOf,
   isNumberTitle,
@@ -302,4 +303,52 @@ test("isNumberTitle: the stored title is exactly the bill number", () => {
   assert.equal(isNumberTitle(null, "S 2403"), false);
   assert.equal(isNumberTitle("", ""), false);
   assert.equal(isNumberTitle("S 2403", null), false);
+});
+
+/** A first-vote reader that counts its calls (FIX-1459). */
+function counted(firstVote: string | null): { read: () => Promise<string | null>; calls: () => number } {
+  let n = 0;
+  return { read: async () => { n += 1; return firstVote; }, calls: () => n };
+}
+
+test("decideIntroducedReading: the first vote is not read when the title is real, the stored date is NULL, or stored equals source", async () => {
+  const real = counted("2026-09-16");
+  assert.equal(await decideIntroducedReading("2026-09-16", "2025-07-23", "A bill to …", "S 2403", real.read), "kept_differs");
+  assert.equal(real.calls(), 0, "a real title: the placeholder rule does not apply");
+  const noDate = counted("2026-09-16");
+  assert.equal(await decideIntroducedReading(null, "2025-07-23", "S 2403", "S 2403", noDate.read), "filled");
+  assert.equal(noDate.calls(), 0, "a NULL stored date is filled without it");
+  const same = counted("2026-09-16");
+  assert.equal(await decideIntroducedReading("2025-07-23", "2025-07-23", "S 2403", "S 2403", same.read), "same");
+  assert.equal(same.calls(), 0, "stored equals source");
+  const noSource = counted("2026-09-16");
+  assert.equal(await decideIntroducedReading("2026-09-16", null, "S 2403", "S 2403", noSource.read), "no_source");
+  assert.equal(noSource.calls(), 0, "the source has no date");
+});
+
+test("decideIntroducedReading: read once when the three conditions hold; replaced_placeholder / kept_differs as before", async () => {
+  // 119-S-2403 on the clone: titled "S 2403", introduced_at 2026-09-16 = its first vote; the source says 2025-07-23.
+  const hit = counted("2026-09-16");
+  assert.equal(await decideIntroducedReading("2026-09-16", "2025-07-23", "S 2403", "S 2403", hit.read), "replaced_placeholder");
+  assert.equal(hit.calls(), 1);
+  const miss = counted("2026-09-16");
+  assert.equal(await decideIntroducedReading("2026-09-10", "2025-07-23", " S 2403 ", "S 2403", miss.read), "kept_differs");
+  assert.equal(miss.calls(), 1, "a stored date that is not the first vote's is kept");
+  const unvoted = counted(null);
+  assert.equal(await decideIntroducedReading("2026-09-16", "2025-07-23", "S 2403", "S 2403", unvoted.read), "kept_differs");
+  assert.equal(unvoted.calls(), 1, "no stored roll: no placeholder evidence");
+});
+
+test("decideIntroducedReading: every outcome equals the eager form's (the placeholder passed while the title is the number)", async () => {
+  const dates = [null, "2025-07-23", "2026-09-16", "2026-09-16T00:00:00+00"];
+  const sources = [null, "", "2025-07-23", "2026-09-16"];
+  const titles: Array<[string | null, string | null]> = [["S 2403", "S 2403"], ["A bill to …", "S 2403"], [null, "S 2403"], ["S 2403", null], ["", ""]];
+  const firstVotes = [null, "2026-09-16", "2025-07-23"];
+  let compared = 0;
+  for (const stored of dates) for (const source of sources) for (const [title, bn] of titles) for (const fv of firstVotes) {
+    const eager = decideIntroduced(stored, source, isNumberTitle(title, bn) ? fv : null);
+    assert.equal(await decideIntroducedReading(stored, source, title, bn, async () => fv), eager, JSON.stringify({ stored, source, title, bn, fv }));
+    compared += 1;
+  }
+  assert.equal(compared, 4 * 4 * 5 * 3);
 });

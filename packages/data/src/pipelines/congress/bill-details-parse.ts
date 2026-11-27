@@ -507,3 +507,20 @@ export function decideIntroduced(stored: string | null, source: string | null, p
 export function isNumberTitle(stored: string | null, billNumber: string | null): boolean {
   return billNumber !== null && (stored ?? "").trim() === billNumber.trim() && billNumber.trim() !== "";
 }
+
+/**
+ * decideIntroduced with its placeholder read only when the decision consults
+ * it (FIX-1459): a stored date that differs from the source's, on a measure
+ * still titled by its number. `firstVote` is then called once; on every other
+ * branch it is not called, and the outcome is what decideIntroduced gives.
+ */
+export async function decideIntroducedReading(
+  stored: string | null,
+  source: string | null,
+  title: string | null,
+  billNumber: string | null,
+  firstVote: () => Promise<string | null>,
+): Promise<FillOutcome> {
+  const consults = !!source && stored !== null && stored.slice(0, 10) !== source && isNumberTitle(title, billNumber);
+  return decideIntroduced(stored, source, consults ? await firstVote() : null);
+}
