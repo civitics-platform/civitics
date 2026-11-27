@@ -1,0 +1,43 @@
+{
+  "cc": "323",
+  "prompt": "cc-prompt-323-fix1446-front-door-watchdog-503-arm-pages-database-unreachable-never-restarts-calibrated-on-seven-retained-days-fixture-from-the-11-23-outage-deploy.md",
+  "started_at": "2026-11-27T05:00:21Z",
+  "finished_at": "2026-11-27T05:51:00Z",
+  "head_before": "65865f24",
+  "head_after": "4bdd7f05",
+  "commits": [
+    {
+      "sha": "6fea41d9",
+      "subject": "[skip vercel] test(front-door): the 11-23 outage and the week around it become fixtures with n_503 as a fifth element, and every email the 52x arm sends over every real series is pinned — 08-31 19, 10-06 9, six healthy days 3, 11-23 0, the week 0; armed, neither new series restarts anything (FIX-1446's contract, cc-323 Item 1)"
+    },
+    {
+      "sha": "64ce2bd7",
+      "subject": "feat(front-door): FIX-1446 the watchdog gains a 503 arm that pages DATABASE UNREACHABLE when the two newest closed buckets are both >= 10 x 503 and >= 50 % 503, and DATABASE REACHABLE AGAIN on its edge; it never restarts, a wedge outranks it, and replayed it pages 11-23 at 01:30:28Z and nowhere else in the seven retained days (cc-323 Item 2)"
+    },
+    {
+      "sha": "5b9a6f52",
+      "subject": "[skip vercel] docs(operations): the front-door section names the 503 arm — what DATABASE UNREACHABLE pages on, that the watchdog never restarts for it, and what to read instead (Disk IO % consumed, whether the database answers); the runbook paragraph gains the one line, and the subjects list the two new emails (cc-323 Item 3)"
+    },
+    {
+      "sha": "4bdd7f05",
+      "subject": "[skip vercel] chore(fixes): sync after FIX-1446 — done.log records FIX-1446 local-only (64ce2bd7, cc-323 Item 2); the deploy (Vercel success 05:21:53Z 11-27) read clean on its first two ticks, 05:30:28Z and 05:45:28Z, both ok with n_503 on every bucket and the restart block unchanged"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1446"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "ops",
+  "owed": [
+    {
+      "fix": "FIX-1446",
+      "what": "the 503 arm through the weekend: every front-door-watch tick from the deploy to the read counted by state — 0 db_unreachable outside a real outage across Saturday's restart, both landings and Monday's pass; the highest n_503 share in any bucket and what ran in it; if it paged, the email's instant beside the edge's 5xx buckets",
+      "after": "2026-11-30T16:00Z"
+    }
+  ]
+}
