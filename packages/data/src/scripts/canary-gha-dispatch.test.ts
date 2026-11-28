@@ -349,7 +349,7 @@ test("FIX-1460 D4 (read 5): a walker's refusal is on its stamp — refused, and 
   assert.equal(c.stale.tier, null);
 });
 
-test("FIX-1460 clone: the canary's registry read, as service_role, returns the seven gha-dispatch stems and every rule sizes", async (t) => {
+test("FIX-1460 clone: the canary's registry read, as service_role, returns the eight gha-dispatch stems and every rule sizes", async (t) => {
   if (process.env["CIVITICS_CLONE_TESTS"] !== "1") {
     t.skip("set CIVITICS_CLONE_TESTS=1 to run against the migrated clone");
     return;
@@ -376,6 +376,8 @@ test("FIX-1460 clone: the canary's registry read, as service_role, returns the s
         ["nightly", "by 0 21 * * *", "slot", 25],
         ["platform-snapshot", "at */10 * * * *", "slot", 0.5],
         ["sync-canary-check", "at 0 5 * * *", "slot", 25],
+        // cc-331 (FIX-1448, 20261127001000): the vote-rolls walker, request-gated like bill-details.
+        ["vote-rolls", "stale_after 2 hours", "request", null],
       ],
     );
   } finally {
