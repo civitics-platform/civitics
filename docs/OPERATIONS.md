@@ -1199,6 +1199,76 @@ With no row the poll reads no request and fires nothing. A run in flight stops
 between rolls on a claimed session, or by `gh run cancel`. `vote_rolls` rows
 stay: nothing reads them until cc-332.
 
+### The votes re-read walker (FIX-1466)
+
+The nightly never re-reads a roll it has stored. So a roll written with a
+short member map stays short with no error. From about 2026-04-24 to 06-09
+the map was built from the first 1,000 `officials` rows (FIX-545 fixed the
+read). That cut 154 House rolls of the 119th and four Senate rolls, and the
+117th–118th House backfill of 04-29 dropped 43 / 35 sitting members whole
+(cc-341). The walker (`packages/data/src/pipelines/congress/votes-reread.ts`,
+`data:votes-reread`, pipeline `congress_votes_reread`) repairs a roll from its
+own file:
+
+- **What it inserts.** It fetches each roll's file from its stored
+  `source_url`, then parses and resolves it with the nightly's parser and
+  `buildOfficialMaps` (under the nightly's floor). A member with no stored row
+  gets one by `INSERT … ON CONFLICT (roll_call_id, official_id) DO NOTHING`.
+  The cast comes from the file. Every roll-level field is copied from the
+  roll's stored rows: proposal, date, question, session, chamber, URL and the
+  metadata's roll keys. A roll re-pointed since keeps its proposal. The
+  `primary_source*` columns come from the parent proposal.
+- **What it never does.** It never updates or deletes a stored row. A stored
+  cast that differs from the file is counted and named on the sync row
+  (`disagreement_rolls`). A roll is skipped and named (`skipped`) when any of
+  these holds: its rows sit on two proposals; they disagree on a roll field;
+  the file carries a cast `mapVote` does not know; it would insert more rows
+  than the file's members minus its stored rows; or its casts differ on more
+  than 1 % of its members. A member with no `officials` row (FIX-1464) is
+  counted in `unmatched_top`. The former-members backfill will run this
+  walker again once their rows exist.
+- **Scope.** `--manifest <tsv>` (the first column), `--only-ids a,b`, or
+  `--chamber house` (every stored House roll) / `senate` (the sitting
+  Congress's rolls whose stored yes + no are under 90 % of `vote_rolls`' yea +
+  nay).
+- **Stops.** It stops between rolls on `--limit`, `--max-minutes` and a held
+  supervised session. Each roll is one transaction. House GETs are 750 ms
+  apart. senate.gov gets `SENATE_PACE_MS` and the vote-rolls walker's quiet
+  span. A 403 / 429 still blocked after 30 s and 120 s stops that host, and so
+  do three fetch failures in a row.
+- **Resume.** Each run's `data_sync_log` row carries `metadata.done`, the
+  rolls it finished, range-encoded (`{"2025-house-###": "3-295"}`), refreshed
+  every minute. A later run leaves every finished roll out; `--refetch`
+  ignores the cursor. Re-running a finished scope reads nothing.
+
+```powershell
+# local — the .env.local in force must point at Docker
+pnpm --filter @civitics/data data:votes-reread -- --dry-run --manifest ../../docs/audits/2026-11-28-short-rolls-manifest.tsv --limit 5
+pnpm --filter @civitics/data data:votes-reread -- --apply --chamber house --limit 100
+# prod from the terminal (the PRIMARY checkout's packages/data; session:held free)
+pnpm exec tsx --env-file=../../.env.local.prod src/pipelines/congress/votes-reread.ts --apply --allow-prod --manifest ../../docs/audits/2026-11-28-short-rolls-manifest.tsv --max-minutes 4
+# prod on a runner: workflow_dispatch only, no registry row, run by hand
+gh workflow run votes-reread.yml -f chamber=house -f max_minutes=45
+```
+
+```powershell
+node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, rows_inserted, rows_failed, metadata->>'rolls_read' AS read, metadata->>'rolls_changed' AS changed, metadata->>'stop' AS stop, metadata->>'remaining' AS remaining, metadata->>'db_ms_per_roll' AS db_ms_a_roll, metadata->>'unmatched_distinct' AS unmatched FROM public.data_sync_log WHERE pipeline = 'congress_votes_reread' ORDER BY started_at DESC LIMIT 3"
+```
+
+**Undo.** A run's rows are the rows of its rolls whose `created_at` falls
+inside its sync row's `started_at`–`completed_at`, and `rows_inserted` counts
+them. Removing them is a delete by that predicate. Write it as a file and run
+it only on Craig's word. The `votes` delete triggers queue each pair for the
+vote arm (FIX-1422).
+
+**The nightly no longer stores a short roll (FIX-1467).** The member maps have
+a floor: under 400 House bioguides or 90 senators, the votes phase throws
+before it writes anything. In the sitting Congress, a roll that resolves
+under 97 % of its recorded votes is not stored. It is named `short_roll` on
+the `congress_votes` row (`short_rolls`), counted in `rows_failed`, and
+fetched again the next night; a Senate one never enters the FIX-1407 unstored
+record. The backfill path (`CONGRESS_OVERRIDE`) keeps the floor only.
+
 ### Recency Guards
 
 Pipelines check when they last ran and refuse to re-run too soon:

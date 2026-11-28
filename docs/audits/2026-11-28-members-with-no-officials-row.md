@@ -207,6 +207,20 @@ answer yet: the 119th's 110 detailed rolls are short 0 of 10,998, and the
 117th–118th carry no present / not-voting counts. The local clone's yea / nay
 comparison puts 95.5 % of the Senate's gap in the 117th and 118th.
 
+> **2026-11-28, cc-341 read 4 (FIX-1466).** Not all of the House's 117th–118th
+> gap is former members. The backfill of 04-29 ran with the votes writer's
+> member map cut at 1,000 `officials` rows. So sitting members who have a
+> bioguide-keyed row today have no vote in that Congress at all: **43 in the
+> 118th** (of 375 with a row, 454 who sat) and **35 in the 117th** (of 303,
+> 457). Read 4 excludes four whose House term ended on 3 January of the
+> Congress's first year (Budd and Welch; Luján and Marshall). These members ×
+> the rolls of their tenure are about **40,000** of the 118th's 108,694 and
+> about **30,000** of the 117th's 156,512. The 119th's cut-map rolls outside
+> FIX-1465's 54 add 2,718 (65 rolls of 2025, 35 of April 2026). So the
+> former-member share of FIX-1464's 269,778 is nearer **197,000**: a distinct
+> person counts once, while a seat counts once a roll. cc-341's Write 2 sync
+> rows give the measured figure. The members are listed in cc-341's report.
+
 **3. The code that would create the rows.** `officials.ts` preloads
 bioguide-keyed rows with no tier filter (`existingMap`, last write wins on a
 duplicate bioguide, 0 today). It updates a match, deleting `source_ids` and

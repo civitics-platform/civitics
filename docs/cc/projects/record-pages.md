@@ -16,6 +16,7 @@ steps:
   - {id: s5b, kind: cc, ref: "", title: "the officials page shows bills sponsored and cosponsored, after the fill is whole"}
   - {id: s5c, kind: cc, ref: "cc-340", title: "the vote-rolls walker reads first the Senate rolls whose list result reads against its count (FIX-1463); a prod census of the members with no officials row (FIX-1464) and the 54 short House rolls of 2026-05 (FIX-1465)"}
   - {id: s5d, kind: design, ref: "", title: "former members get officials rows (FIX-1464): the design waits on the census — docs/audits/2026-11-28-members-with-no-officials-row.md lists what its first prompt decides"}
+  - {id: s5e, kind: cc, ref: "cc-341", title: "the cut member map's rolls repaired from their own files by the re-read walker (FIX-1465, FIX-1466): Write 1 the 158 short 119th rolls, Write 2 every House roll on Craig's go; the nightly refuses a short map or roll (FIX-1467)"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
 ---
 
@@ -106,3 +107,15 @@ walker already reports `metadata.next_due_at` on an empty selection (cc-318 D7).
   118th, and for every unresolved cosponsor and sponsor (FIX-1464). The census
   also found a second cause: 54 House rolls of May–June 2026 store a quarter
   of their votes (FIX-1465). The backfill is s5d's design.
+- **cc-341** found FIX-1465 wider than 54 rolls. From about 04-24 to 06-09 the
+  votes writer's member map held only the first 1,000 `officials` rows
+  (FIX-545 fixed the read, nothing repaired the rolls). On prod at 11-28 that
+  left 154 House rolls of the 119th short by more than 10 (19,735 votes) and
+  four Senate rolls short (170). The 117th–118th House backfill of 04-29 ran
+  inside the window: 43 sitting members with a row have no 118th vote and 35
+  no 117th vote (FIX-1466). The re-read walker (`votes-reread.ts`) inserts
+  what a stored roll's own file says it is missing and changes no stored row.
+  Write 1 takes the 158 short 119th rolls from the terminal; Write 2, on
+  Craig's go, takes every House roll from `votes-reread.yml`. The nightly now
+  refuses a member map under its floor and a 119th roll under 97 % resolved
+  (FIX-1467).
