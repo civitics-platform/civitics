@@ -19,6 +19,8 @@
  *   4. SENATE DETAIL — the same from senate.gov at SENATE_PACE_MS, up to
  *      --senate-limit. The per-roll file adds present / not voting, the
  *      majority requirement and the tie-breaker; it replaces the list's fields.
+ *      Rows whose list result reads against its count go first (cc-340 D1,
+ *      READS_AGAINST_COUNT_SQL), then the same newest-first order.
  *
  * STOPS. Between rolls: --max-minutes, and a supervised session holding the box
  * (`prod_session_state()`'s `defer`). Per host: its limit; a 403 / 429 that is
@@ -89,6 +91,32 @@ const HEARTBEAT_MS = 5 * 60_000;
 /** cc-318 D7: how long a run that found nothing left rests its row. */
 const EMPTY_REST_MS = 12 * 60 * 60_000;
 const FAILURES_KEPT = 25;
+
+/**
+ * cc-340 D1 (FIX-1463) — a Senate session list's result words, as cc-340 read 2
+ * found them on prod 2026-11-28: every list-only Senate row's result by
+ * sign(yea − nay). A list carries no requirement and no tie-breaker. So a
+ * negative word over more yeas (three-fifths, two-thirds, a veto sustained, an
+ * acquittal) and any word over a tie (the Vice President's vote) read against
+ * the count until the roll's own file replaces them. `Not Sustained` (1 row,
+ * yea < nay) was in neither of the prompt's sets; it is placed here by hand.
+ * The affirmative set is the rest of read 2's vocabulary, and the pick does
+ * not read it.
+ */
+export const LIST_RESULT_WORDS = {
+  negative: ["Rejected", "Veto Sustained", "Not Guilty", "Not Sustained"],
+  affirmative: ["Agreed to", "Confirmed", "Passed", "Sustained", "Well Taken"],
+} as const;
+
+/**
+ * D1: the Senate pick's first key, bound to LIST_RESULT_WORDS.negative as $5.
+ * It is true only for a Senate row whose counts are both there and read
+ * against its result: a tie, or more yeas under a negative word. A NULL count
+ * makes the expression NULL, which DESC would sort first, so COALESCE makes it
+ * false. A House row is always false.
+ */
+export const READS_AGAINST_COUNT_SQL =
+  `COALESCE(chamber = 'Senate' AND (yea = nay OR (yea > nay AND result = ANY ($5::text[]))), false)`;
 
 /** D6: the quiet span opens at 15:00Z and runs at most 15 h (to 06:00Z). */
 export const SENATE_QUIET_START_HOUR = 15;
@@ -455,9 +483,9 @@ async function selectDetail(o: RunOptions, chamber: Chamber, limit: number): Pro
       WHERE chamber = $1 AND detail_fetched_at IS NULL
         AND (detail_error_at IS NULL OR detail_error_at < now() - make_interval(days => $2))
         AND ($3::text[] IS NULL OR roll_call_id = ANY ($3::text[]))
-      ORDER BY congress DESC, session DESC, roll_number DESC
+      ORDER BY ${READS_AGAINST_COUNT_SQL} DESC, congress DESC, session DESC, roll_number DESC
       LIMIT $4`,
-    [chamber, PARSE_RETRY_DAYS, o.onlyIds ?? null, limit],
+    [chamber, PARSE_RETRY_DAYS, o.onlyIds ?? null, limit, [...LIST_RESULT_WORDS.negative]],
   )).rows;
 }
 
