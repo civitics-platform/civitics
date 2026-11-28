@@ -1,0 +1,70 @@
+{
+  "cc": "341",
+  "prompt": "cc-prompt-341-fix1465-is-wider-april-to-june-member-map-cut-never-repaired-re-read-walker-inserts-only-missing-member-votes-nightly-refuses-a-short-roll-measured-chunk-then-house-on-go.md",
+  "started_at": "2026-11-28T07:59:50Z",
+  "finished_at": "2026-11-28T10:49:00Z",
+  "head_before": "384d1c05",
+  "head_after": "f9ebe98d",
+  "commits": [
+    {
+      "sha": "f67143e1",
+      "subject": "[skip vercel] docs(fixes): file the cut member map's unrepaired rolls and the nightly's missing short-roll refusal; the Write 1 manifest (cc-341 Item 0)"
+    },
+    {
+      "sha": "f236299f",
+      "subject": "fix(votes): FIX-1467 the nightly never stores a short roll again (cc-341 Item 2)"
+    },
+    {
+      "sha": "c791e00f",
+      "subject": "[skip vercel] feat(votes): the re-read walker and its workflow_dispatch-only workflow (cc-341 Item 1)"
+    },
+    {
+      "sha": "52b5724a",
+      "subject": "[skip vercel] docs: OPERATIONS §The votes re-read walker; the census note; record-pages s5e (cc-341 Item 4)"
+    },
+    {
+      "sha": "c5e0d17a",
+      "subject": "[skip vercel] chore(fixes): close FIX-1465 on prod — Write 1 (cc-341)"
+    },
+    {
+      "sha": "d02c2fc2",
+      "subject": "[skip vercel] docs: the re-read walker's prod cost and the census's measured note (cc-341)"
+    },
+    {
+      "sha": "c4879340",
+      "subject": "[skip vercel] chore(fixes): close FIX-1466 on prod — Write 2 (cc-341)"
+    },
+    {
+      "sha": "f9ebe98d",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-341 — delta -1"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1465",
+    "FIX-1466",
+    "FIX-1467"
+  ],
+  "fixes_filed": [
+    "FIX-1466",
+    "FIX-1467"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "Write 1 (terminal, the re-read walker on the 158-roll manifest, 2026-11-28 09:13:43-09:17:44Z): 19,334 rows INSERTED into votes, one transaction a roll, sync row f2788d83-b6b9-4740-a434-d0c340d0afca. Write 2 (on Craig's go; votes-reread.yml runs 46131421412 and 46135166352, 09:38:57-10:35:05Z): 69,852 rows INSERTED into votes on 1,905 House rolls, sync rows 5ba0cc30-8c51-441b-95b3-b9d6f0700f04 and 7d68fdc1-4295-4531-9138-e1950b0a2d9f. Insert-only: no votes row updated or deleted. Plus each run's own data_sync_log row.",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": [
+    {
+      "fix": "FIX-1466",
+      "what": "prod, a day after Write 2: cc-340's read-5 table again (the 119th House shortfall near its members-with-no-row floor, about 2,400; the 117th and 118th down by 29,679 and 40,160 to about 126,833 and 68,534); the vote arm's pass that took the new rows, by its log row; one sitting member read 4 named (e.g. Steny Hoyer, H000874) now shows 117th and 118th votes on their page (Craig's look)",
+      "after": "2026-12-01T16:00Z"
+    },
+    {
+      "fix": "FIX-1467",
+      "what": "prod, the first nightly after the landing (11-28 20:20Z): the congress_votes row closes complete with no MemberMapFloorError, and its metadata.short_rolls lists the rolls refused as short (expected none)",
+      "after": "2026-11-29T00:00Z"
+    }
+  ]
+}
