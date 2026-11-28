@@ -1,0 +1,58 @@
+{
+  "cc": "340",
+  "prompt": "cc-prompt-340-vote-rolls-walker-reads-first-the-senate-rolls-whose-list-result-reads-against-its-count-prod-census-of-members-with-no-officials-row-behind-both-on-record-shortfalls.md",
+  "started_at": "2026-11-28T03:34:48Z",
+  "finished_at": "2026-11-28T04:37:00Z",
+  "head_before": "42a98ff8",
+  "head_after": "f9fac4ec",
+  "commits": [
+    {
+      "sha": "69d2c2d7",
+      "subject": "[skip vercel] chore(fixes): file FIX-1463 (cc-340 Item 0)"
+    },
+    {
+      "sha": "360a37bb",
+      "subject": "[skip vercel] test(canary): the registry read returns eight gha-dispatch stems (cc-340 Phase 0 read 1)"
+    },
+    {
+      "sha": "a64180e8",
+      "subject": "fix(vote-rolls): FIX-1463 the walker's Senate pick takes first the rolls whose list result reads against its count (cc-340 Item 1)"
+    },
+    {
+      "sha": "bf8b2e34",
+      "subject": "[skip vercel] docs(audits): the census of members with no officials row; files FIX-1464 and FIX-1465 (cc-340 Item 2)"
+    },
+    {
+      "sha": "de03a830",
+      "subject": "[skip vercel] docs: OPERATIONS §The vote-rolls walker and record-pages s5c / s5d (cc-340 Item 3)"
+    },
+    {
+      "sha": "f9fac4ec",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-340 — delta +2"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1463"
+  ],
+  "fixes_filed": [
+    "FIX-1463",
+    "FIX-1464",
+    "FIX-1465"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 1's CLI dry run (--dry-run --house-limit 0 --senate-limit 20, local) ran at 04:00Z inside D6's quiet span, and local records no closed congress_votes phase, so it selected nothing (stop=window, 0 GETs). The twenty below come from the same runVoteRolls driven against local with apply=false, the clock at 10:00Z and every GET answered 404 by a stub: the real pick, no network."
+  ],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": [
+    {
+      "fix": "FIX-1463",
+      "what": "prod, after the dispatched runs: 0 list-only Senate rolls whose result reads against its count (cc-332 read 2's statement, 107 on 11-27, 106 on 11-28); tie_breaker rows above 0; senate-119-1-00372 detailed, and Craig's look that HR 1's Senate passage prints the tie-breaking vote; every vote-rolls run since the landing reaped succeeded with 20 Senate rolls or a named stop",
+      "after": "2026-11-30T16:00Z"
+    }
+  ]
+}
