@@ -14,6 +14,8 @@ steps:
   - {id: s4, kind: cc, ref: "cc-331", title: "per-roll official totals and results (FIX-1448): vote_rolls, the nightly's write, the walker and its dispatcher unit"}
   - {id: s5, kind: cc, ref: "cc-332", title: "the bill page shows official roll counts and results, sponsor, cosponsors, actions"}
   - {id: s5b, kind: cc, ref: "", title: "the officials page shows bills sponsored and cosponsored, after the fill is whole"}
+  - {id: s5c, kind: cc, ref: "cc-340", title: "the vote-rolls walker reads first the Senate rolls whose list result reads against its count (FIX-1463); a prod census of the members with no officials row (FIX-1464) and the 54 short House rolls of 2026-05 (FIX-1465)"}
+  - {id: s5d, kind: design, ref: "", title: "former members get officials rows (FIX-1464): the design waits on the census — docs/audits/2026-11-28-members-with-no-officials-row.md lists what its first prompt decides"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
 ---
 
@@ -93,3 +95,14 @@ walker already reports `metadata.next_due_at` on an empty selection (cc-318 D7).
   the source counts, 450 of them in the 117th and 118th Congresses; each
   ref's `detail.cosponsors_unresolved` names the members who did not resolve.
   The officials page's "bills sponsored" waits for the whole fill (s5b).
+- **cc-340** moved the Senate rolls whose session-list result reads against
+  its own count to the front of the walker's Senate pick (FIX-1463). On prod at
+  11-28 03:40Z there were 132 of them: 67 more-yeas rows under a negative word
+  (three-fifths, two-thirds, a veto sustained, an acquittal) and 65 ties, 39 of
+  them under an affirmative word. Its census
+  (`docs/audits/2026-11-28-members-with-no-officials-row.md`) found at least 185
+  members of the 117th–119th Congresses with no `officials` row. They account
+  for 92.5 % of the House's missing member votes, which fall in the 117th and
+  118th, and for every unresolved cosponsor and sponsor (FIX-1464). The census
+  also found a second cause: 54 House rolls of May–June 2026 store a quarter
+  of their votes (FIX-1465). The backfill is s5d's design.
