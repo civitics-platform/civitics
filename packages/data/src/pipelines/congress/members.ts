@@ -6,9 +6,12 @@
  * pagination.next) and relative paths.
  */
 
-// Default: 119th Congress (2025–2027). Overridable via CONGRESS_OVERRIDE env var
+/** The Congress sitting now (2025–2027). */
+export const SITTING_CONGRESS = 119;
+
+// Default: the sitting Congress. Overridable via CONGRESS_OVERRIDE env var
 // so the backfill script can iterate 117, 118, 119 in a single run.
-export const CURRENT_CONGRESS = Number(process.env["CONGRESS_OVERRIDE"] ?? 119);
+export const CURRENT_CONGRESS = Number(process.env["CONGRESS_OVERRIDE"] ?? SITTING_CONGRESS);
 
 const CONGRESS_API_BASE = "https://api.congress.gov/v3";
 

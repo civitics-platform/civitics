@@ -22,9 +22,11 @@ import {
 } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import {
+  assertMemberMapFloor,
   buildBioguideMap,
   buildSenatorNameStateMap,
   senateNameKey,
+  shortRollGuard,
   type MapCollision,
 } from "./votes-maps";
 import {
@@ -33,6 +35,7 @@ import {
   mapLegislationType,
   mapVote,
   CURRENT_CONGRESS,
+  SITTING_CONGRESS,
 } from "./members";
 import {
   resolveBillsBatch,
@@ -302,7 +305,7 @@ function parseSenateDate(dateStr: string): string | null {
 // buildOfficialMaps helper
 // ---------------------------------------------------------------------------
 
-interface OfficialMaps {
+export interface OfficialMaps {
   /** bioguideId → official UUID (for House members) */
   officialMap: Map<string, string>;
   /** "lastName:stateAbbr" → official UUID (for Senate members) */
@@ -328,7 +331,8 @@ function reportCollisions(mapLabel: string, collisions: readonly MapCollision[])
   }
 }
 
-async function buildOfficialMaps(
+/** The member maps every votes writer resolves with: this nightly and the re-read walker (votes-reread.ts). */
+export async function buildOfficialMaps(
   db: ReturnType<typeof createAdminClient>,
   senateGovBodyId: string
 ): Promise<OfficialMaps> {
@@ -749,6 +753,17 @@ export async function runVotesPipeline(
   try {
 
   // -------------------------------------------------------------------------
+  // Step 0: Build official lookup maps (needed for XML vote feeds). FIX-1467:
+  // first, so a map under its floor throws before this run writes anything.
+  // -------------------------------------------------------------------------
+
+  const { officialMap, senatorByNameState } = await buildOfficialMaps(db, senateGovBodyId);
+  assertMemberMapFloor({ house: officialMap.size, senate: senatorByNameState.size });
+  // FIX-1467: the sitting Congress refuses a roll too few of whose recorded
+  // votes resolve; the backfill path (CONGRESS_OVERRIDE) keeps the floor only.
+  const refuseShort = shortRollGuard(CURRENT_CONGRESS, SITTING_CONGRESS);
+
+  // -------------------------------------------------------------------------
   // Step 1: Sync bills from Congress.gov API
   //
   // Must run BEFORE XML vote feeds so bill_details rows with proper titles
@@ -827,12 +842,6 @@ export async function runVotesPipeline(
 
     console.info(`  Proposals upserted so far: ${proposalsUpserted}`);
   }
-
-  // -------------------------------------------------------------------------
-  // Step 2: Build official lookup maps (needed for XML vote feeds)
-  // -------------------------------------------------------------------------
-
-  const { officialMap, senatorByNameState } = await buildOfficialMaps(db, senateGovBodyId);
 
   // -------------------------------------------------------------------------
   // Congress → session → calendar year mapping. Each Congress runs two
@@ -1015,6 +1024,8 @@ export async function runVotesPipeline(
     },
     insert: async (records) => await db.from("votes").insert(records),
     log: (line) => console.info(line),
+    recorded: (roll) => roll.recordedVotes.length,
+    short: refuseShort,
   });
   votesInserted += houseWrite.inserted;
   skippedRolls.push(...houseWrite.skipped);
@@ -1201,6 +1212,8 @@ export async function runVotesPipeline(
     },
     insert: async (records) => await db.from("votes").insert(records),
     log: (line) => console.info(line),
+    recorded: (roll) => roll.memberList.length,
+    short: refuseShort,
   });
   votesInserted += senateWrite.inserted;
   skippedRolls.push(...senateWrite.skipped);
@@ -1268,6 +1281,17 @@ export async function runVotesPipeline(
     }
   }
 
+  // FIX-1467: rolls not stored because too few of their recorded votes resolve.
+  const shortRolls = [...houseWrite.unstored, ...senateWrite.unstored]
+    .filter((u) => u.reason === "short_roll")
+    .map((u) => u.roll);
+  if (shortRolls.length > 0) {
+    console.warn(
+      `\n  ⚠ FIX-1467: ${shortRolls.length} roll(s) not stored — too few of their recorded votes resolve ` +
+        `(a short member map?); each is fetched again next run: ${shortRolls.join(", ")}`,
+    );
+  }
+
   if (skippedRolls.length > 0) {
     console.warn(
       `\n  ⚠ FIX-1238: ${skippedRolls.length} roll(s) skipped — their bill has no bill_details row ` +
@@ -1305,12 +1329,14 @@ export async function runVotesPipeline(
     // bill_details row, or whose insert failed for any other reason. It used
     // to be a hard-coded 0 while a 433-row roll failed every night.
     // FIX-1256: plus every bill key not bound to exactly one proposal.
+    // FIX-1467: plus every roll refused as short.
     await completeSync(logId, {
       inserted: votesInserted,
       updated: proposalsUpserted,
-      failed: skippedRolls.length + insertFailures.length + billKeyConflicts.length,
+      failed: skippedRolls.length + insertFailures.length + billKeyConflicts.length + shortRolls.length,
       estimatedMb,
       metadata: {
+        short_rolls: shortRolls,
         skipped_rolls: skippedRolls,
         insert_failures: insertFailures,
         bill_key_conflicts: billKeyConflicts,

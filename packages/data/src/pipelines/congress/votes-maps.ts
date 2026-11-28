@@ -143,6 +143,63 @@ export function buildBioguideMap(rows: readonly BioguideRow[]): BuiltMap {
 }
 
 /**
+ * FIX-1467 — the smallest member maps the votes writer may write with. From
+ * about 2026-04-24 to 06-09 `buildOfficialMaps` read only the first 1,000
+ * `officials` rows (PostgREST's cap; FIX-545 paginated the read), and every
+ * roll written in that window stored only the members the cut map held, with
+ * no error (FIX-1466). A House map holds every bioguide-keyed row (542 on prod
+ * 2026-11-28) and the Senate map the sitting senators (about 100), so a map
+ * under these is a broken read, not a smaller Congress.
+ */
+export const MEMBER_MAP_FLOOR = { house: 400, senate: 90 } as const;
+
+export class MemberMapFloorError extends Error {
+  constructor(readonly sizes: { house: number; senate: number }) {
+    super(
+      `FIX-1467: the member maps are under their floor — ${sizes.house} House bioguides ` +
+        `(floor ${MEMBER_MAP_FLOOR.house}), ${sizes.senate} senators (floor ${MEMBER_MAP_FLOOR.senate}). ` +
+        `A cut map stores every roll short and nothing re-reads it; no vote is written this run.`,
+    );
+    this.name = "MemberMapFloorError";
+  }
+}
+
+/** Throws MemberMapFloorError when either map is under MEMBER_MAP_FLOOR. */
+export function assertMemberMapFloor(sizes: { house: number; senate: number }): void {
+  if (sizes.house < MEMBER_MAP_FLOOR.house || sizes.senate < MEMBER_MAP_FLOOR.senate) {
+    throw new MemberMapFloorError(sizes);
+  }
+}
+
+/**
+ * FIX-1467 — the share of a roll's recorded votes that must resolve before the
+ * nightly stores a roll of the sitting Congress. Prod 2026-11-28 (cc-341 read
+ * 3): every whole 119th House roll resolves at least 97.6 % (within 10 of
+ * about 432), while the cut map's rolls resolved 22.8–45 % (the 54 of
+ * FIX-1465), 87.2–95.8 % (April 2026) and 93.8–94.9 % (2025). The prompt's 90 %
+ * would have stored the last two; Craig chose 97 % (cc-341).
+ */
+export const SHORT_ROLL_SHARE = 0.97;
+
+/** True when `resolved` of a roll's `recorded` votes is under SHORT_ROLL_SHARE. */
+export function isShortRoll(resolved: number, recorded: number): boolean {
+  return recorded > 0 && resolved < SHORT_ROLL_SHARE * recorded;
+}
+
+/**
+ * The nightly's short-roll refusal, or none: the sitting Congress refuses a
+ * short roll; the backfill path (CONGRESS_OVERRIDE) does not, because a 117th
+ * roll resolves about 60 % until former members have rows (FIX-1464). Its map
+ * floor still applies.
+ */
+export function shortRollGuard(
+  currentCongress: number,
+  sittingCongress: number,
+): ((resolved: number, recorded: number) => boolean) | undefined {
+  return currentCongress === sittingCongress ? isShortRoll : undefined;
+}
+
+/**
  * `lastname:STATE` → official id, for the Senate branch.
  *
  * Rows must already be scoped to current members (see

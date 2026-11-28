@@ -25,6 +25,9 @@
  * - An insert failure is never recorded, nor is a blocked, transient or
  *   past-the-end answer — only a roll that parsed and was skipped before its
  *   insert (`writeRollVotes`' `unstored`).
+ * - `short_roll` (FIX-1467) is never recorded either, and drops an earlier
+ *   entry for the roll: the member map is short, not the roll, so the next
+ *   night fetches it again.
  * - `tail_closed` (D3): a past year's session whose tail walk ended past the
  *   end with no blocked or transient roll in it. Later runs skip its tail.
  *
@@ -208,6 +211,12 @@ export function mergeSenateUnstored(
     const key = sessionOf(roll);
     if (key === null || run.stored.has(roll)) continue;
     const into = sessionFor(key);
+    // FIX-1467: a short roll is the member map's, not the roll's: never
+    // recorded, so the next night fetches it again.
+    if (reason === "short_roll") {
+      delete into.rolls[roll];
+      continue;
+    }
     if (!(roll in into.rolls)) added++;
     into.rolls[roll] = { reason, seen_at: today };
   }

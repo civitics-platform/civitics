@@ -220,6 +220,12 @@ export interface WriteRollsDeps<R extends RollForWrite, V> {
   build(roll: R, proposalId: string, votedAtIso: string): V[];
   insert(records: V[]): Promise<{ error: { code?: string | null; message: string } | null }>;
   log(line: string): void;
+  /**
+   * FIX-1467: the roll's recorded votes, and whether `built` of them is too
+   * few to store (votes-maps.ts `shortRollGuard`). Absent: never refused.
+   */
+  recorded?(roll: R): number;
+  short?(built: number, recorded: number): boolean;
 }
 
 /**
@@ -234,7 +240,9 @@ export type UnstoredReason =
   | SkipReason
   | "no_matchable_records"
   /** FIX-1417: a member's cast mapVote does not know; the whole roll is held back. */
-  | "unknown_cast";
+  | "unknown_cast"
+  /** FIX-1467: too few of the roll's recorded votes resolve; retried the next night. */
+  | "short_roll";
 
 export interface WriteRollsResult {
   inserted: number;
@@ -299,6 +307,13 @@ export async function writeRollVotes<R extends RollForWrite, V>(
     if (records.length === 0) {
       deps.log(`    ${roll.rollCallId}: no matchable vote records`);
       out.unstored.push({ roll: roll.rollCallId, reason: "no_matchable_records" });
+      continue;
+    }
+    // FIX-1467: a roll stored short is never re-read, so it is not stored.
+    const recorded = deps.recorded?.(roll) ?? 0;
+    if (deps.short?.(records.length, recorded)) {
+      deps.log(`    ⚠ ${roll.rollCallId}: ${records.length} of ${recorded} recorded votes resolve — not stored; retried next run (FIX-1467)`);
+      out.unstored.push({ roll: roll.rollCallId, reason: "short_roll" });
       continue;
     }
     const { error } = await deps.insert(records);
