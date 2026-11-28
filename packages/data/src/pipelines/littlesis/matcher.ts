@@ -14,7 +14,11 @@
  *   high   — exact canonical match, single candidate (or single after state-narrow)
  *   medium — single candidate, narrowing wasn't possible (state hint missing) but
  *            no other candidates competed
- *   queue  — 2-3+ candidates that survive narrowing → human-in-loop FIX-252
+ *            (an official always also agrees on the first three letters of the
+ *            first name — FIX-1468; a lone surname alone is not a match)
+ *   queue  — 2-3+ candidates that survive narrowing → human-in-loop FIX-252, or
+ *            a lone surname whose first name disagrees
+ *            (`lone_surname_first_mismatch`)
  *   miss   — zero candidates; the entity becomes a hop-1 financial_entity if a
  *            future edge references it
  */
@@ -287,6 +291,18 @@ export type MatchResult =
   | { kind: "queue";  candidates: Array<{ id: string; type: string; reason: string }>; reason: string }
   | { kind: "miss" };
 
+/**
+ * FIX-1468 — the lone-surname branch's first name: `first_name`, or the first
+ * token of `full_name` when the row carries none (17,157 of prod's 39,380 rows,
+ * 2026-11-28; 9,494 of them PLUM appointees). The surname key already falls
+ * back to `full_name`'s last token in `buildMatchIndex`; this is the other end
+ * of the same name. Letters only, upper-cased, like the LittleSis side.
+ */
+function officialFirstName(o: OfficialRow): string {
+  const first = o.first_name?.trim() || (o.full_name ?? "").trim().split(/\s+/)[0] || "";
+  return first.toUpperCase().replace(/[^A-Z]/g, "");
+}
+
 // ---------------------------------------------------------------------------
 // Person match (LittleSis primary_ext === "Person")
 //
@@ -317,11 +333,26 @@ export function matchPerson(ent: LittleSisEntity, idx: MatchIndex): MatchResult 
       : officials;
     const pool = stateNarrowed.length > 0 ? stateNarrowed : officials;
 
+    // FIX-1468 (cc-342 G3) — a lone surname needs the first name. This branch
+    // bound on the surname alone (the state hint narrows the pool; it does
+    // not name the person), so on prod 2026-11-28 5,920 officials each held
+    // two or more LittleSis people — one row held 547. The lone row now takes
+    // the test the next branch applies, FIX-929's rule for fec-bulk's lone
+    // surname: its first name starts with the first three letters of the
+    // LittleSis first token. Shorter token, or a disagreement → the queue.
     if (pool.length === 1) {
+      const only = pool[0]!;
+      if (lsFirst.length >= 3 && officialFirstName(only).startsWith(lsFirst.slice(0, 3))) {
+        return {
+          kind: stateHint && stateNarrowed.length === 1 ? "high" : "medium",
+          civitics_type: "official",
+          civitics_id:   only.id,
+        };
+      }
       return {
-        kind: stateHint && stateNarrowed.length === 1 ? "high" : "medium",
-        civitics_type: "official",
-        civitics_id:   pool[0]!.id,
+        kind: "queue",
+        reason: "lone_surname_first_mismatch",
+        candidates: [{ id: only.id, type: "official", reason: "lone_surname" }],
       };
     }
 
