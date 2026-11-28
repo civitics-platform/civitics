@@ -1,0 +1,54 @@
+{
+  "cc": "332",
+  "prompt": "cc-prompt-332-bill-page-prints-each-rolls-official-count-result-and-requirement-from-vote-rolls-and-sponsor-cosponsors-actions-short-title-from-the-bill-details-fill-no-push-prod-reads.md",
+  "started_at": "2026-11-27T23:31:47Z",
+  "finished_at": "2026-11-28T01:10:00Z",
+  "head_before": "89882458",
+  "head_after": "5fe50040",
+  "commits": [
+    {
+      "sha": "06aea47a",
+      "subject": "[skip vercel] chore(fixes): file FIX-1461 and FIX-1462 (cc-332 Item 0)"
+    },
+    {
+      "sha": "f4ead49c",
+      "subject": "feat(proposals): FIX-1461 the bill page prints each roll's own result, official count and vote requirement from vote_rolls (cc-332 Item 1)"
+    },
+    {
+      "sha": "48298aec",
+      "subject": "feat(proposals): FIX-1462 the bill page prints a measure's sponsor, cosponsors, actions, short title and policy area from the bill-details fill (cc-332 Item 2)"
+    },
+    {
+      "sha": "32813f14",
+      "subject": "[skip vercel] docs: record-pages s5 is cc-332's and s5b follows it; root CLAUDE.md on majority_requirement (cc-332 Item 4)"
+    },
+    {
+      "sha": "e9d1ef03",
+      "subject": "[skip vercel] chore(fixes): record FIX-1461 on prod — Craig's look at www.civitics.com after 32813f14 deployed (cc-332 Item 5)"
+    },
+    {
+      "sha": "c6b8e7f7",
+      "subject": "[skip vercel] chore(fixes): record FIX-1462 on prod — Craig's look at www.civitics.com after 32813f14 deployed (cc-332 Item 5)"
+    },
+    {
+      "sha": "5fe50040",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-332 — delta 0"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1461",
+    "FIX-1462"
+  ],
+  "fixes_filed": [
+    "FIX-1461",
+    "FIX-1462"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": []
+}
