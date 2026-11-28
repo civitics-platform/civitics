@@ -238,13 +238,103 @@ export async function insertFiling(
 // Officer batched upsert + officials name-match
 // ---------------------------------------------------------------------------
 
+/** An `officials` row as the officer name index reads it. */
+export interface OfficialNameRow {
+  id:         string;
+  full_name:  string | null;
+  first_name: string | null;
+  last_name:  string | null;
+  tier:       string | null;
+  is_active:  boolean | null;
+}
+
+/** A name key two or more rows hold that the rule could not settle: no officer binds to it. */
+export interface RefusedNameKey {
+  key:   string;
+  /** Sorted. */
+  ids:   string[];
+  /** In `ids`' order: the row's tier, plus " (inactive)" when it is not active. */
+  tiers: string[];
+}
+
+export interface OfficialsByName {
+  byName:  Map<string, string>;
+  /** Keys held by two or more rows that resolved to their one active elected-tier row. */
+  settled: number;
+  /** Keys held by two or more rows that resolve to nobody: the count, and the first twenty by key. */
+  refused: { count: number; examples: RefusedNameKey[] };
+}
+
+export const REFUSED_NAME_EXAMPLES = 20;
+
 /**
- * Pre-load an officials lookup map keyed on canonical full name. We canonicalize
- * with the same `canonicalizePersonName` so the lookup is symmetric with
- * the officer-side canonicalization.
+ * FIX-1468 (cc-342 G1) — the officer name index, by one stated rule.
  *
- * Bench: with ~5k elected officials + ~10k tier=candidate rows, this is a
- * single 15k-row SELECT, well under 100ms.
+ * Each row is reachable by two keys, canonical first + last and canonical
+ * `full_name`, in ONE namespace. Before cc-342 the first + last key was
+ * `map.set` (the LAST id read won) and the `full_name` key set-if-unset (the
+ * FIRST won), over a keyset read by `id` — so which of two namesakes an officer
+ * bound to was decided by uuid order, at `match_confidence 1.0`. On prod
+ * 2026-11-28, 2,943 keys were held by more than one row, 68 of them with a
+ * sitting member of Congress.
+ *
+ * Now: a key held by one row resolves to it. A key held by several resolves to
+ * its single active elected-tier row when there is exactly one, else to
+ * NOBODY — `votes-maps.ts`' FIX-940 shape, a refused slot reported rather than
+ * a coin. A former member is still a legitimate target when no other row holds
+ * the name; the hazard is a collision settled by row order. Pure, and
+ * independent of row order (./name-index.test.ts).
+ */
+export function buildOfficialNameIndex(rows: Iterable<OfficialNameRow>): OfficialsByName {
+  const held = new Map<string, Map<string, OfficialNameRow>>();
+  const claim = (key: string, row: OfficialNameRow): void => {
+    if (!key) return;
+    const rs = held.get(key) ?? new Map<string, OfficialNameRow>();
+    rs.set(row.id, row);
+    held.set(key, rs);
+  };
+  for (const row of rows) {
+    // Build canonical from first+last so apostrophes/middle-init quirks in
+    // full_name don't trip us up; full_name is the second door to the same row.
+    claim(canonicalizePersonName([row.first_name ?? "", row.last_name ?? ""].join(" ")), row);
+    claim(canonicalizePersonName(row.full_name ?? ""), row);
+  }
+
+  const byName = new Map<string, string>();
+  const refused: RefusedNameKey[] = [];
+  let settled = 0;
+  for (const [key, rs] of held) {
+    if (rs.size === 1) {
+      byName.set(key, rs.keys().next().value as string);
+      continue;
+    }
+    const elected = [...rs.values()].filter((r) => r.tier === "elected" && r.is_active === true);
+    if (elected.length === 1) {
+      byName.set(key, elected[0]!.id);
+      settled++;
+      continue;
+    }
+    const ids = [...rs.keys()].sort();
+    refused.push({
+      key,
+      ids,
+      tiers: ids.map((id) => {
+        const r = rs.get(id)!;
+        return `${r.tier ?? "(no tier)"}${r.is_active === true ? "" : " (inactive)"}`;
+      }),
+    });
+  }
+  refused.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return { byName, settled, refused: { count: refused.length, examples: refused.slice(0, REFUSED_NAME_EXAMPLES) } };
+}
+
+/**
+ * Pre-load the officials name index (`buildOfficialNameIndex`) keyed on
+ * canonical full name. We canonicalize with the same `canonicalizePersonName`
+ * so the lookup is symmetric with the officer-side canonicalization.
+ *
+ * Bench: ~39k rows on prod 2026-11-28 (19.6k of them tier=candidate), forty
+ * 1,000-row keyset pages.
  *
  * FIX-1419 (cc-291 D5): each page read is tried three times, 5 s and then 15 s
  * apart, on the page that failed, with the keyset cursor unchanged. Mon
@@ -258,23 +348,19 @@ export async function loadOfficialsByCanonicalName(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   opts: { sleep?: (ms: number) => Promise<void> } = {},
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+): Promise<OfficialsByName> {
+  const rows: OfficialNameRow[] = [];
   // Pull in pages (Supabase default cap is 1000 rows per request).
   const PAGE = 1000;
   const tries = OFFICIALS_PAGE_RETRY_DELAYS_MS.length + 1;
   let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   for (;;) {
-    type OfficialNameRow = {
-      id: string; full_name: string | null;
-      first_name: string | null; last_name: string | null;
-    };
     const cursor: string | null = afterId;
     const data: OfficialNameRow[] | null = await retryWithBackoff(async () => {
       const { data: page, error }: { data: OfficialNameRow[] | null; error: { message: string } | null } =
         await afterKey(db
           .from("officials")
-          .select("id, full_name, first_name, last_name")
+          .select("id, full_name, first_name, last_name, tier, is_active")
           // FIX-760 total order / FIX-984 keyset key — the same column serves both.
           .order("id")
           .limit(PAGE), "id", cursor);
@@ -290,18 +376,11 @@ export async function loadOfficialsByCanonicalName(
         ),
     });
     if (!data || data.length === 0) break;
-    for (const row of data) {
-      // Build canonical from first+last so apostrophes/middle-init quirks in
-      // full_name don't trip us up.
-      const fullCanon = canonicalizePersonName([row.first_name ?? "", row.last_name ?? ""].join(" "));
-      if (fullCanon) map.set(fullCanon, row.id);
-      const flatCanon = canonicalizePersonName(row.full_name ?? "");
-      if (flatCanon && !map.has(flatCanon)) map.set(flatCanon, row.id);
-    }
+    rows.push(...data);
     if (data.length < PAGE) break;
     afterId = data[data.length - 1]!.id;
   }
-  return map;
+  return buildOfficialNameIndex(rows);
 }
 
 export interface OfficerInsertInput {

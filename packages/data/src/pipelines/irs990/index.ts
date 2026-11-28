@@ -163,8 +163,21 @@ export async function runIrs990Pipeline(overrides: Partial<Irs990Deps> = {}): Pr
 
     // Load officials lookup once (re-used across all years).
     console.info("  Loading officials → canonical-name map...");
-    const officialsByName = await deps.loadOfficialsByCanonicalName(db);
+    const officials = await deps.loadOfficialsByCanonicalName(db);
+    const officialsByName = officials.byName;
     console.info(`    ${officialsByName.size.toLocaleString()} canonical names indexed`);
+    // FIX-1468 (cc-342 G1): a name two or more rows hold binds to its one
+    // active elected-tier row, or to nobody. Say how many of each, and name the
+    // first twenty refused.
+    if (officials.settled > 0 || officials.refused.count > 0) {
+      console.info(
+        `    shared names: ${officials.settled.toLocaleString()} settled on their one active elected row, ` +
+          `${officials.refused.count.toLocaleString()} refused — no officer binds to a refused name`,
+      );
+      for (const r of officials.refused.examples) {
+        console.info(`      refused ${r.key}: ${r.ids.map((id, i) => `${id} ${r.tiers[i]}`).join(", ")}`);
+      }
+    }
 
     const watermark = await deps.loadIndexWatermark(db);
     const seedFp = fingerprintSeedEins(SEED_NONPROFITS.map((s) => s.ein));
@@ -404,7 +417,11 @@ export async function runIrs990Pipeline(overrides: Partial<Irs990Deps> = {}): Pr
     }
 
     const outcome = irs990RunOutcome(zipsFailed, unresolved, zipsViaUnzip);
-    if (outcome.metadata) result.metadata = outcome.metadata;
+    // FIX-1468: the refused count rides the sync row; like FIX-1400's keys it
+    // appears only when it has something to say.
+    const metadata: Record<string, unknown> = { ...(outcome.metadata ?? {}) };
+    if (officials.refused.count > 0) metadata["officials_names_refused"] = officials.refused.count;
+    if (Object.keys(metadata).length > 0) result.metadata = metadata;
     await deps.completeSync(logId, result, outcome.status);
     console.info(`\n  IRS 990 ${outcome.status}: ${result.inserted} rows inserted, ${result.failed} failed, ${result.estimatedMb.toFixed(1)} MB XML processed`);
     if (zipsFailed.length > 0) console.warn(`  ZIPs failed: ${zipsFailed.map((z) => `${z.zip} (${z.error})`).join("; ")}`);

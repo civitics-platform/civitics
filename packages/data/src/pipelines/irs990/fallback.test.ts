@@ -184,7 +184,7 @@ function runDeps(calls: RunCalls, extra: Partial<Irs990Deps>): Partial<Irs990Dep
     failSync:                     async () => { throw new Error("test: failSync not expected"); },
     db:                           () => ({}),
     years:                        () => [2025],
-    loadOfficialsByCanonicalName: async () => new Map(),
+    loadOfficialsByCanonicalName: async () => ({ byName: new Map(), settled: 0, refused: { count: 0, examples: [] } }),
     loadIndexWatermark:           async () => ({}),
     saveIndexWatermark:           async () => { calls.watermarkSaves++; },
     headIrsFile:                  async () => ({ lastModified: "Mon, 09 Nov 2026 00:00:00 GMT", etag: null, contentLength: null }),
@@ -247,4 +247,23 @@ test("a clean run is still complete, with no new metadata key", async () => {
   await runIrs990Pipeline(runDeps(calls2, { extractObjectIdXmls: async () => ({ xmls: new Map(), via: "stream" }) }));
   assert.equal(calls2.complete[0]!.status, "complete");
   assert.deepEqual(calls2.complete[0]!.metadata, { object_ids_unresolved: [UNRESOLVED_ID] });
+});
+
+test("FIX-1468: the officials names the index refused ride the sync row, and only when there are some", async () => {
+  const calls: RunCalls = { complete: [], watermarkSaves: 0 };
+  const refusedIndex = async () => ({
+    byName:  new Map<string, string>(),
+    settled: 1,
+    refused: { count: 2, examples: [
+      { key: "JOHN SMITH", ids: ["a", "b"], tiers: ["elected", "elected"] },
+      { key: "MARK GREEN", ids: ["c", "d"], tiers: ["former (inactive)", "candidate"] },
+    ] },
+  });
+  await runIrs990Pipeline(runDeps(calls, {
+    loadOfficialsByCanonicalName: refusedIndex,
+    filterUningestedObjectIds:    async () => new Set([UNRESOLVED_ID]),
+    extractObjectIdXmls:          async () => { throw new Error("test: no ZIP should be opened"); },
+  }));
+  assert.equal(calls.complete[0]!.status, "complete");
+  assert.deepEqual(calls.complete[0]!.metadata, { officials_names_refused: 2 });
 });

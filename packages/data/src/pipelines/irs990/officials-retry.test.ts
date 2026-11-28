@@ -21,7 +21,10 @@ import {
   loadOfficialsByCanonicalName,
 } from "./writer";
 
-type Row = { id: string; full_name: string | null; first_name: string | null; last_name: string | null };
+type Row = {
+  id: string; full_name: string | null; first_name: string | null; last_name: string | null;
+  tier: string | null; is_active: boolean | null;
+};
 type Answer = { data: Row[] | null; error: { message: string } | null };
 
 const TIMEOUT = { data: null, error: { message: "canceling statement due to statement timeout" } };
@@ -32,7 +35,10 @@ function rows(from: number, n: number): Row[] {
     String.fromCharCode(97 + (i % 26)) + String.fromCharCode(97 + (Math.floor(i / 26) % 26)) + String.fromCharCode(97 + (Math.floor(i / 676) % 26));
   return Array.from({ length: n }, (_, k) => {
     const i = from + k;
-    return { id: `id-${String(i).padStart(5, "0")}`, full_name: null, first_name: `Ann${name(i)}`, last_name: `Lee${name(i)}` };
+    return {
+      id: `id-${String(i).padStart(5, "0")}`, full_name: null, first_name: `Ann${name(i)}`, last_name: `Lee${name(i)}`,
+      tier: "candidate", is_active: true,
+    };
   });
 }
 
@@ -76,7 +82,7 @@ test("D5: the second page fails twice and succeeds on its third try, on the same
   const page2 = rows(1000, 3);
   const { db, cursors } = fakeDb([{ data: page1, error: null }, TIMEOUT, TIMEOUT, { data: page2, error: null }]);
   const sleeps: number[] = [];
-  const map = await loadOfficialsByCanonicalName(db, { sleep: async (ms) => void sleeps.push(ms) });
+  const { byName: map } = await loadOfficialsByCanonicalName(db, { sleep: async (ms) => void sleeps.push(ms) });
 
   const last1 = page1[999]!.id;
   assert.deepEqual(cursors, [null, last1, last1, last1], "every retry re-reads the page after the same id");
@@ -91,7 +97,7 @@ test("D5: the second page fails twice and succeeds on its third try, on the same
 test("D5: the first page fails once — the retry starts from the beginning again", async () => {
   const { db, cursors } = fakeDb([TIMEOUT, { data: rows(0, 2), error: null }]);
   const sleeps: number[] = [];
-  const map = await loadOfficialsByCanonicalName(db, { sleep: async (ms) => void sleeps.push(ms) });
+  const { byName: map } = await loadOfficialsByCanonicalName(db, { sleep: async (ms) => void sleeps.push(ms) });
   assert.deepEqual(cursors, [null, null]);
   assert.deepEqual(sleeps, [5_000]);
   assert.equal(map.size, 2);
