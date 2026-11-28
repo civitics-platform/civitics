@@ -1107,7 +1107,13 @@ Who writes it:
    - **House files:** rows with no detail, newest first, from
      clerk.house.gov, 750 ms plus jitter apart, up to `--house-limit` (500).
    - **Senate files:** the same from senate.gov at `SENATE_PACE_MS`, up to
-     `--senate-limit` (20).
+     `--senate-limit` (20). They run in one order, but rows whose list result
+     reads against their count go first. Those are a tie (the Vice President's
+     vote lives only in the per-roll file), or more yeas than nays under a
+     word in `LIST_RESULT_WORDS.negative` (`Rejected`, `Veto Sustained`, `Not
+     Guilty`, `Not Sustained`: three-fifths, two-thirds, an acquittal). A row
+     with NULL counts never goes first (FIX-1463, cc-340; 132 such rolls on
+     11-28).
 
 **senate.gov's allowance is the nightly's first (D6).** senate.gov serves
 programmatic clients a few dozen GETs and then answers 403 (FIX-1372). The
