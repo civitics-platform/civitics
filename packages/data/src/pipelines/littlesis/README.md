@@ -66,7 +66,10 @@ Confidence levels:
 
 - **high** — exact canonical match, single candidate (or single after state-narrow)
 - **medium** — single candidate, narrowing wasn't possible but no other candidates competed
-- **queue** — 2+ candidates that survive narrowing → `external_relationships_review_queue`
+- **queue** — 2+ candidates that survive narrowing → `external_relationships_review_queue`,
+  or a lone surname whose first name disagrees (`lone_surname_first_mismatch`, FIX-1468:
+  a lone official binds only when its first name — or `full_name`'s first token — starts
+  with the first three letters of the LittleSis first token)
 - **miss** — zero candidates; entity becomes a hop-1 `financial_entity` if a future edge references it
 
 Ambiguous matches are stored in `external_relationships_review_queue` for
