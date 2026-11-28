@@ -12,7 +12,10 @@
  *   3. D6: inside the quiet span senate.gov is asked nothing and the House goes
  *      on; once the nightly's votes phase has closed, the Senate goes on;
  *   4. a held session stops the run before the next roll;
- *   5. a non-roll body is stamped and rested PARSE_RETRY_DAYS.
+ *   5. a non-roll body is stamped and rested PARSE_RETRY_DAYS;
+ *   6. cc-340 D1: the Senate pick takes first the rows whose list result reads
+ *      against its count, in today's order, then the rest in today's order; a
+ *      House row and a row with a NULL count never go first.
  *
  * Runs via:  CIVITICS_CLONE_TESTS=1 tsx --test src/pipelines/congress/vote-rolls.test.ts
  */
@@ -25,7 +28,9 @@ import { Client } from "pg";
 import {
   DEFAULT_HOUSE_LIMIT,
   DEFAULT_SENATE_LIMIT,
+  LIST_RESULT_WORDS,
   PARSE_RETRY_DAYS,
+  READS_AGAINST_COUNT_SQL,
   SEED_SQL,
   parseCliArgs,
   quietSpanStart,
@@ -98,6 +103,21 @@ test("D6: quiet from 15:00Z until the nightly's votes phase closes, 06:00Z at th
 test("the seed read is the LATERAL loose walk, never a scan", () => {
   assert.match(SEED_SQL, /WITH RECURSIVE r AS/);
   assert.match(SEED_SQL, /CROSS JOIN LATERAL \(SELECT v\.roll_call_id FROM public\.votes v\s+WHERE v\.roll_call_id > r\.roll_call_id\s+ORDER BY v\.roll_call_id LIMIT 1\) n/);
+});
+
+test("cc-340 D1: read 2's nine list words, each in exactly one set; the key reads the negative set as $5 and a NULL count as false", () => {
+  assert.deepEqual([...LIST_RESULT_WORDS.negative], ["Rejected", "Veto Sustained", "Not Guilty", "Not Sustained"]);
+  assert.deepEqual([...LIST_RESULT_WORDS.affirmative], ["Agreed to", "Confirmed", "Passed", "Sustained", "Well Taken"]);
+  // cc-340 read 2 (prod, 2026-11-28): every result word on a list-only Senate row.
+  const read2 = ["Agreed to", "Confirmed", "Not Guilty", "Not Sustained", "Passed", "Rejected", "Sustained", "Veto Sustained", "Well Taken"];
+  const neg: readonly string[] = LIST_RESULT_WORDS.negative;
+  const aff: readonly string[] = LIST_RESULT_WORDS.affirmative;
+  for (const w of read2) assert.equal(Number(neg.includes(w)) + Number(aff.includes(w)), 1, w);
+  assert.deepEqual([...neg, ...aff].sort(), [...read2].sort(), "no word read 2 did not find");
+  assert.equal(
+    READS_AGAINST_COUNT_SQL,
+    "COALESCE(chamber = 'Senate' AND (yea = nay OR (yea > nay AND result = ANY ($5::text[]))), false)",
+  );
 });
 
 test("summaryLine names both hosts' stops, the window and the database time a roll", () => {
@@ -180,13 +200,13 @@ function opts(c: Client, calls: string[], over: Partial<RunOptions> = {}): RunOp
   };
 }
 
-async function inTx(t: { skip: (m: string) => void }, fn: (c: Client) => Promise<void>): Promise<void> {
+async function inTx(t: { skip: (m: string) => void }, fn: (c: Client) => Promise<void>, scope: readonly string[] = SCOPE): Promise<void> {
   const c = await clone(t);
   if (!c) return;
   try {
     await c.query("BEGIN");
     try {
-      await c.query("DELETE FROM public.vote_rolls WHERE roll_call_id = ANY ($1::text[])", [SCOPE]);
+      await c.query("DELETE FROM public.vote_rolls WHERE roll_call_id = ANY ($1::text[])", [scope]);
       await fn(c);
     } finally {
       await c.query("ROLLBACK");
@@ -318,4 +338,77 @@ test(`clone: a non-roll body is stamped with its reason and rested ${PARSE_RETRY
     assert.equal(s2.house.selected, 0, "rested");
     assert.equal(s2.remaining_house, 0);
   });
+});
+
+// cc-340 D1: rows of the 100th Congress, which no stored roll reaches, written
+// inside the test's transaction as a session list would leave them.
+type ListedSeed = { id: string; result: string | null; yea: number | null; nay: number | null };
+const sen = (session: 1 | 2, n: number) => `senate-100-${session}-${String(n).padStart(5, "0")}`;
+const down = (from: number, to: number) => Array.from({ length: from - to + 1 }, (_, i) => from - i);
+const AGAINST: Array<Pick<ListedSeed, "result" | "yea" | "nay">> = [
+  { result: "Agreed to", yea: 50, nay: 50 },
+  { result: "Rejected", yea: 58, nay: 41 },
+  { result: "Confirmed", yea: 50, nay: 50 },
+  { result: "Veto Sustained", yea: 61, nay: 37 },
+  { result: "Not Guilty", yea: 57, nay: 43 },
+  { result: "Rejected", yea: 50, nay: 50 },
+  { result: "Passed", yea: 50, nay: 50 },
+];
+/** 25 rows the key selects — session 2's 1–10 and session 1's 1–15 — all older than every row it does not. */
+const KEYED: ListedSeed[] = [
+  ...down(10, 1).map((n) => ({ id: sen(2, n), ...AGAINST[n % AGAINST.length]! })),
+  ...down(15, 1).map((n) => ({ id: sen(1, n), ...AGAINST[n % AGAINST.length]! })),
+];
+/** Newer rows that read with their count, or carry a NULL. */
+const UNKEYED: ListedSeed[] = [
+  { id: sen(2, 55), result: "Agreed to", yea: 60, nay: 40 },
+  { id: sen(2, 54), result: "Rejected", yea: 40, nay: 60 },
+  { id: sen(2, 53), result: null, yea: null, nay: null },
+  { id: sen(2, 52), result: "Rejected", yea: null, nay: 45 },
+  { id: sen(2, 51), result: null, yea: 60, nay: 40 },
+  { id: sen(2, 50), result: "Passed", yea: 70, nay: 30 },
+];
+/** The House: an older tie and a newer row with no counts. The key never reads a House row. */
+const HOUSE: ListedSeed[] = [
+  { id: "1988-house-002", result: null, yea: null, nay: null },
+  { id: "1987-house-001", result: "Failed", yea: 200, nay: 200 },
+];
+const D1_SCOPE = [...KEYED, ...UNKEYED, ...HOUSE].map((r) => r.id);
+
+async function seedListed(c: Client, rows: readonly ListedSeed[]): Promise<void> {
+  await c.query(
+    `INSERT INTO public.vote_rolls (roll_call_id, chamber, congress, session, roll_number, source_url, result, yea, nay, list_fetched_at)
+     SELECT roll_call_id, chamber, congress, session, roll_number, source_url, result, yea, nay,
+            CASE WHEN chamber = 'Senate' THEN now() END
+       FROM jsonb_populate_recordset(NULL::public.vote_rolls, $1::jsonb)`,
+    [JSON.stringify(rows.map((r) => ({ ...rollIdentity(r.id)!, result: r.result, yea: r.yea, nay: r.nay })))],
+  );
+}
+
+const senateFiles = (calls: string[]) =>
+  calls.filter((u) => u.includes("senate.gov")).map((u) => /vote_(\d{3})_([12])_(\d{5})\.xml$/.exec(u)).map((m) => (m ? `senate-${m[1]}-${m[2]}-${m[3]}` : "not a roll file"));
+
+test("clone: cc-340 D1 — with --senate-limit 20 the Senate pick is twenty rows the key selects, in today's order; the rest follow in today's order; a House row and a NULL count never go first", async (t) => {
+  await inTx(t, async (c) => {
+    await seedListed(c, [...KEYED, ...UNKEYED, ...HOUSE]);
+    const calls: string[] = [];
+    // Every file answers 404 (stubFetch): each roll is stamped and rested, so the second run takes the next ones.
+    const s = await runVoteRolls(opts(c, calls, { onlyIds: D1_SCOPE, houseLimit: 10, senateLimit: 20 }));
+    assert.equal(s.stop, "done", s.stop_detail ?? "");
+    assert.equal(s.lists_selected, 0, "every Senate row carries its list");
+    assert.deepEqual([s.senate.selected, s.senate.not_parsed, s.senate.stop], [20, 20, "limit"]);
+    assert.deepEqual(senateFiles(calls), [...down(10, 1).map((n) => sen(2, n)), ...down(15, 6).map((n) => sen(1, n))]);
+    assert.deepEqual(calls.filter((u) => u.includes("clerk")), [
+      "https://clerk.house.gov/evs/1988/roll002.xml",
+      "https://clerk.house.gov/evs/1987/roll001.xml",
+    ], "the House pick is today's order: the newer row with no counts before the older tie");
+
+    const again: string[] = [];
+    const s2 = await runVoteRolls(opts(c, again, { onlyIds: D1_SCOPE, houseLimit: 10, senateLimit: 20 }));
+    assert.deepEqual([s2.senate.selected, s2.senate.stop, s2.house.selected], [11, "none_left", 0]);
+    assert.deepEqual(senateFiles(again), [
+      ...down(5, 1).map((n) => sen(1, n)),
+      sen(2, 55), sen(2, 54), sen(2, 53), sen(2, 52), sen(2, 51), sen(2, 50),
+    ], "the key's last five, then the rest newest first, the NULL rows in their own place");
+  }, D1_SCOPE);
 });
