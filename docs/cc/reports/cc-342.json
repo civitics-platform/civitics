@@ -1,0 +1,58 @@
+{
+  "cc": "342",
+  "prompt": "cc-prompt-342-name-keyed-official-resolvers-never-decide-by-row-order-irs990-plum-book-littlesis-lone-surname-needs-first-name-prod-census-of-collisions-and-changed-bindings-no-repair.md",
+  "started_at": "2026-11-28T07:58:00Z",
+  "finished_at": "2026-11-28T09:28:00Z",
+  "head_before": "384d1c05",
+  "head_after": "d1b6d583",
+  "commits": [
+    {
+      "sha": "de5f9bf6",
+      "subject": "[skip vercel] chore(fixes): file FIX-1468 — irs990, plum-book and LittleSis bind an official by name and let row order settle a collision; 2,917 full-name keys held by more than one officials row on prod 11-28, 68 with a sitting member (cc-342 Item 0)"
+    },
+    {
+      "sha": "46a08ee2",
+      "subject": "fix(irs990): FIX-1468 the officer name index settles a shared name by one rule — a key one row holds resolves to it; a key several rows hold resolves to its single active elected-tier row, else to nobody; first + last and full_name share the one namespace; the loader returns the refused keys (count and twenty examples), the run prints them and the sync row carries officials_names_refused (1,980 of prod's 2,943 shared keys, 11-28) (cc-342 Item 1, G1)"
+    },
+    {
+      "sha": "f1bc900b",
+      "subject": "fix(plum-book): FIX-1468 the name match is an ordered read and a stated rule — the read selects tier and is_active and orders by id; a sitting member of Congress (a bioguide, active, elected) is dropped; one row left links, two or more link none (name_ambiguous) and the appointee takes the unmatched path; phase 3b never writes is_active on a row that carries source_ids.congress_gov (cc-342 Item 2, G2)"
+    },
+    {
+      "sha": "5bbe3805",
+      "subject": "fix(littlesis): FIX-1468 a lone surname needs the first name — matchPerson's one-row pool binds only when the official's first name (or full_name's first token when the row has none) starts with the first three letters of the LittleSis first token; a shorter token or a disagreement queues as lone_surname_first_mismatch; the multi-row branches are unchanged (cc-342 Item 3, G3)"
+    },
+    {
+      "sha": "eeaf1beb",
+      "subject": "[skip vercel] docs(audits): the census of the name-keyed official resolvers on prod 11-28 — 2,943 shared irs990 keys (1,980 now to nobody, 39 of 68 sitting members' names bound elsewhere before), 12 of 58 officer bindings, 69 of 191 PLUM name links and at least 31,354 of 41,443 LittleSis bindings on a row the rules would not choose (FIX-1469, filed open, lane fec); no run re-derives them; 190 of the 192 members with no bioguide row already hold their FEC stub; record-pages gets s5e (cc-342 Item 4)"
+    },
+    {
+      "sha": "81463522",
+      "subject": "[skip vercel] docs: record-pages names cc-342's step s5f, not s5e — cc-341's Item 4 (feature/fix-341, 52b5724a) takes s5e for the re-read walker (cc-342 Item 4)"
+    },
+    {
+      "sha": "d1b6d583",
+      "subject": "[skip vercel] chore(fixes): sync status after cc-342 — FIX-1468 closed local (5bbe3805, code-only, no runtime action); FIX-1469 filed open (lane fec, the existing bindings); the sync also records cc-341's FIX-1467 (f236299f, on trunk, not yet synced); cc-342's delta +1 (filed two, closed one)"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1468"
+  ],
+  "fixes_filed": [
+    "FIX-1468",
+    "FIX-1469"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "read 3c, the lone-surname LittleSis bindings whose first names disagree: unread. No table stores a LittleSis name for an official binding (external_source_refs keeps the id only), and the entities dump is a GET outside the posture. The fan-in lower bound (31,354) and the lone-surname population (24,352) stand in",
+    "the review queue's re-insert count: EXPLAIN only (Seq Scan plus Sort of about 922 K littlesis rows); not run",
+    "permission denied, the early rebase after Item 0: D=/c/Users/Craig/AppData/Local/Temp/claude/c--Users-Craig-Documents-Civitics-App/37059fc6-26a0-4fac-b5fb-69c83b496969/scratchpad/cc342/draft && cp packages/data/src/pipelines/littlesis/README.md $D/littlesis/README.md && git checkout -- packages/data/src/pipelines/littlesis/README.md && git rebase -q origin/main && cp $D/littlesis/README.md packages/data/src/pipelines/littlesis/README.md && git log --oneline -3 && git status -s — stopped; the rebase ran at Item 5 on a clean tree",
+    "read 1 was not green before the edit: pass 2 failed fix1416-nomination-rolls D8 (14,073 vs 13,767 vote edges) while cc-341's re-read walker wrote 23,345 votes into the local clone; not a stale expectation, so no fix commit; it passed in the post-edit run"
+  ],
+  "lane": "app",
+  "project": "record-pages",
+  "owed": []
+}
