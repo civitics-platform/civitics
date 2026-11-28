@@ -1,0 +1,108 @@
+name: votes-reread
+
+# FIX-1466 (cc-341) — the votes re-read walker against prod: reads each stored
+# roll's own file again and INSERTS the member votes the roll is missing
+# (packages/data/src/pipelines/congress/votes-reread.ts). A stored row is never
+# updated or deleted.
+#
+# STARTED BY HAND ONLY: there is no schedule: block and no job_registry row
+# (cc-341: it is run by hand until the former-members work makes it a unit).
+# `gh workflow run votes-reread.yml -f chamber=house -f max_minutes=45`.
+# Start it only with session:held free; it yields to a supervised session on
+# its own, between rolls.
+#
+# Each run: the nightly's member maps (under the nightly's floor), the scope
+# (`house`: every stored House roll; `senate`: the sitting Congress's rolls
+# whose stored yes + no are under 90 % of yea + nay), less every roll an
+# earlier run finished (the sync rows' metadata.done), then one GET a roll —
+# clerk.house.gov 750 ms apart, senate.gov at SENATE_PACE_MS and never in the
+# Senate's quiet span — and one INSERT … ON CONFLICT DO NOTHING transaction a
+# roll. It stops between rolls on max_minutes, on limit, and when
+# prod_session_state() says a supervised session holds the box; a 403 / 429
+# still blocked after the retries, or three fetch failures in a row, stop that
+# host for the run. A stop is not a failure: the next run continues.
+#
+# Secrets: SUPABASE_SECRET_KEY (the member maps and the run row) and
+# SUPABASE_DB_PASSWORD (the direct connection the reads and inserts use). No
+# API key: both sources are public files.
+#
+# timeout-minutes: 60 — max_minutes 45, a blocked roll's 150 s of retries, the
+# install. A SIGTERM at the cap is safe (each roll is one transaction; the
+# heartbeat keeps metadata.done a minute fresh) and the mark-killed step closes
+# the row.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chamber:
+        description: "house (every stored House roll) or senate (the sitting Congress's short rolls)"
+        required: true
+        default: house
+        type: choice
+        options:
+          - house
+          - senate
+      max_minutes:
+        description: "soft stop between rolls, in minutes"
+        required: true
+        default: "45"
+      limit:
+        description: "most rolls to read this run (empty: no limit)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: votes-reread
+  cancel-in-progress: false
+
+jobs:
+  votes-reread:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step binds its
+      # no-op guard to THIS run.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Votes re-read (prod, resumable)
+        env:
+          CHAMBER:     ${{ inputs.chamber }}
+          MAX_MINUTES: ${{ inputs.max_minutes }}
+          LIMIT:       ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+          args=(--chamber "$CHAMBER" --max-minutes "$MAX_MINUTES")
+          if [ -n "$LIMIT" ]; then args+=(--limit "$LIMIT"); fi
+          pnpm --filter @civitics/data data:votes-reread:ci -- "${args[@]}"
+
+      # A SIGTERM at timeout-minutes strands the row at 'running'; this closes
+      # it. --window-hours 2 is sized on the 60-min cap (FIX-962). Never gates
+      # the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=congress_votes_reread --window-hours 2

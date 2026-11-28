@@ -171,6 +171,8 @@
     "data:bill-details:ci": "tsx src/pipelines/congress/bill-details.ts --apply --allow-prod",
     "data:vote-rolls": "tsx --env-file=../../.env.local src/pipelines/congress/vote-rolls.ts",
     "data:vote-rolls:ci": "tsx src/pipelines/congress/vote-rolls.ts --apply --allow-prod",
+    "data:votes-reread": "tsx --env-file=../../.env.local src/pipelines/congress/votes-reread.ts",
+    "data:votes-reread:ci": "tsx src/pipelines/congress/votes-reread.ts --apply --allow-prod",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
     "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",
     "data:box-health:series": "tsx --env-file=../../.env.local src/scripts/box-health-series.ts",
