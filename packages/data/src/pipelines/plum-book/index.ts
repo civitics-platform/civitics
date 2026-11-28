@@ -22,6 +22,7 @@
 
 import { createAdminClient, rowsOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
+import { plumLinkUpdate, resolvePlumNameMatch, type PlumNameRow } from "./resolve";
 
 // ---------------------------------------------------------------------------
 // FTM types
@@ -426,10 +427,9 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       if (!officialByPlumId.has(r.personId)) unknownNames.add(normNameKey(r.personName));
     }
 
-    const officialByLowerName = new Map<
-      string,
-      { id: string; source_ids: Record<string, string> | null }
-    >();
+    // FIX-1468 (cc-342 G2): EVERY row a key returns, not the first — the
+    // match is decided in phase 3 by resolvePlumNameMatch (./resolve.ts).
+    const officialByLowerName = new Map<string, PlumNameRow[]>();
     // Batch ilike queries: PostgREST supports `.in()` on normal columns, but
     // for case-insensitive we need ilike. Use paginated OR queries in chunks.
     const nameArr = [...unknownNames];
@@ -449,18 +449,16 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       const batch = rowsOrThrow(
         await db
           .from("officials")
-          .select("id, full_name, source_ids")
-          .or(orFilter),
+          .select("id, full_name, tier, is_active, source_ids")
+          .or(orFilter)
+          .order("id"),
         "plum-book name-match preload",
-      ) as Array<{ id: string; full_name: string; source_ids: Record<string, string> | null }>;
+      ) as Array<PlumNameRow & { full_name: string }>;
       for (const o of batch) {
-        const key = normNameKey(o.full_name as string);
-        if (!officialByLowerName.has(key)) {
-          officialByLowerName.set(key, {
-            id:         o.id as string,
-            source_ids: o.source_ids as Record<string, string> | null,
-          });
-        }
+        const key = normNameKey(o.full_name);
+        const rows = officialByLowerName.get(key) ?? [];
+        rows.push({ id: o.id, tier: o.tier, is_active: o.is_active, source_ids: o.source_ids });
+        officialByLowerName.set(key, rows);
       }
     }
 
@@ -488,20 +486,26 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     const toInsert: NewOfficial[] = [];
     const toLink:   LinkUpdate[]  = [];
     const seenPlumIds = new Set<string>();
+    // FIX-1468: appointees whose name two or more non-member rows hold, and
+    // whose name only a sitting member holds — each takes the unmatched path.
+    let nameAmbiguous = 0;
+    let nameSittingMember = 0;
 
     for (const r of resolved) {
       if (officialByPlumId.has(r.personId) || seenPlumIds.has(r.personId)) continue;
       seenPlumIds.add(r.personId);
 
-      const byName = officialByLowerName.get(normNameKey(r.personName));
-      if (byName) {
-        officialByPlumId.set(r.personId, byName.id);
+      const byName = resolvePlumNameMatch(officialByLowerName.get(normNameKey(r.personName)) ?? []);
+      if (byName.kind === "link") {
+        officialByPlumId.set(r.personId, byName.row.id);
         toLink.push({
-          id: byName.id, plumId: r.personId,
-          existingSourceIds: byName.source_ids,
+          id: byName.row.id, plumId: r.personId,
+          existingSourceIds: byName.row.source_ids,
           isCurrent: r.isCurrent, roleTitle: r.posTitle.slice(0, 200),
         });
       } else {
+        if (byName.kind === "ambiguous") nameAmbiguous++;
+        else if (byName.sitting.length > 0) nameSittingMember++;
         if (!federalJurisdictionId) continue;
         toInsert.push({
           full_name:       r.personName,
@@ -514,6 +518,12 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
         });
       }
     }
+
+    console.info(
+      `  Name matches: ${toLink.length} linked, ${nameAmbiguous} name_ambiguous, ` +
+        `${nameSittingMember} held only by a sitting member (FIX-1468)`,
+    );
+    result.metadata = { ...(result.metadata ?? {}), name_ambiguous: nameAmbiguous, name_sitting_member: nameSittingMember };
 
     // Phase 3a: Batch insert new officials, get back IDs
     const OFFICIAL_BATCH = 500;
@@ -536,15 +546,12 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     }
 
     // Phase 3b: Update name-matched officials to add plum_id (individual —
-    // these are few ~hundreds, from Wikidata/Congress pipelines)
+    // these are few ~hundreds, from Wikidata/Congress pipelines). FIX-1468:
+    // is_active only on a row with no bioguide — plumLinkUpdate.
     for (const u of toLink) {
       const { error } = await db
         .from("officials")
-        .update({
-          source_ids: { ...(u.existingSourceIds ?? {}), plum_id: u.plumId },
-          is_active:  u.isCurrent,
-          updated_at: new Date().toISOString(),
-        })
+        .update(plumLinkUpdate(u.existingSourceIds, u.plumId, u.isCurrent, new Date().toISOString()))
         .eq("id", u.id);
       if (!error) result.updated++;
     }
