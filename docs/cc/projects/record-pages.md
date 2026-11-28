@@ -15,6 +15,7 @@ steps:
   - {id: s5, kind: cc, ref: "cc-332", title: "the bill page shows official roll counts and results, sponsor, cosponsors, actions"}
   - {id: s5b, kind: cc, ref: "", title: "the officials page shows bills sponsored and cosponsored, after the fill is whole"}
   - {id: s5c, kind: cc, ref: "cc-340", title: "the vote-rolls walker reads first the Senate rolls whose list result reads against its count (FIX-1463); a prod census of the members with no officials row (FIX-1464) and the 54 short House rolls of 2026-05 (FIX-1465)"}
+  - {id: s5e, kind: cc, ref: "cc-342", title: "guards first: irs990, plum-book and LittleSis resolve an official by name under a stated rule and a refusal, never by row order (FIX-1468); a prod census of today's collisions, of the existing bindings the rules would not choose (FIX-1469), and of the 192 members with no bioguide row"}
   - {id: s5d, kind: design, ref: "", title: "former members get officials rows (FIX-1464): the design waits on the census — docs/audits/2026-11-28-members-with-no-officials-row.md lists what its first prompt decides"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
 ---
@@ -106,3 +107,16 @@ walker already reports `metadata.next_due_at` on an empty selection (cc-318 D7).
   118th, and for every unresolved cosponsor and sponsor (FIX-1464). The census
   also found a second cause: 54 House rolls of May–June 2026 store a quarter
   of their votes (FIX-1465). The backfill is s5d's design.
+- **cc-342** put the guards in before any former-member row exists (FIX-1468).
+  irs990's officer index resolves a shared name to its one active elected
+  row, else to nobody; on prod at 11-28 that sends 1,980 of 2,943 shared keys
+  to nobody. plum-book drops sitting members, links one row or none, and never
+  writes a member's `is_active`. LittleSis binds a lone surname only on a
+  first-name agreement. Its census
+  (`docs/audits/2026-11-28-name-keyed-resolvers-census.md`) found existing
+  bindings the rules would not choose: 12 of 58 irs990 officers, 69 of 191
+  PLUM name links, and at least 31,354 of 41,443 LittleSis bindings. No run
+  re-derives them (FIX-1469). It also found that **190 of the 192** members
+  with no bioguide row already have an `officials` row, the FEC candidate stub
+  that claims their `id.fec`. So s5d is mostly a promotion of those stubs,
+  not an insert.
