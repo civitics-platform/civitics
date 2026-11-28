@@ -15,7 +15,7 @@ steps:
   - {id: s5, kind: cc, ref: "cc-332", title: "the bill page shows official roll counts and results, sponsor, cosponsors, actions"}
   - {id: s5b, kind: cc, ref: "", title: "the officials page shows bills sponsored and cosponsored, after the fill is whole"}
   - {id: s5c, kind: cc, ref: "cc-340", title: "the vote-rolls walker reads first the Senate rolls whose list result reads against its count (FIX-1463); a prod census of the members with no officials row (FIX-1464) and the 54 short House rolls of 2026-05 (FIX-1465)"}
-  - {id: s5e, kind: cc, ref: "cc-342", title: "guards first: irs990, plum-book and LittleSis resolve an official by name under a stated rule and a refusal, never by row order (FIX-1468); a prod census of today's collisions, of the existing bindings the rules would not choose (FIX-1469), and of the 192 members with no bioguide row"}
+  - {id: s5f, kind: cc, ref: "cc-342", title: "guards first: irs990, plum-book and LittleSis resolve an official by name under a stated rule and a refusal, never by row order (FIX-1468); a prod census of today's collisions, of the existing bindings the rules would not choose (FIX-1469), and of the 192 members with no bioguide row"}
   - {id: s5d, kind: design, ref: "", title: "former members get officials rows (FIX-1464): the design waits on the census — docs/audits/2026-11-28-members-with-no-officials-row.md lists what its first prompt decides"}
   - {id: s5e, kind: cc, ref: "cc-341", title: "the cut member map's rolls repaired from their own files by the re-read walker (FIX-1465, FIX-1466): Write 1 the 158 short 119th rolls, Write 2 every House roll on Craig's go; the nightly refuses a short map or roll (FIX-1467)"}
   - {id: s6, kind: cc, ref: "", title: "wave 2: AI enrichment"}
