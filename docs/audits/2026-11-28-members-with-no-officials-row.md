@@ -220,6 +220,17 @@ comparison puts 95.5 % of the Senate's gap in the 117th and 118th.
 > former-member share of FIX-1464's 269,778 is nearer **197,000**: a distinct
 > person counts once, while a seat counts once a roll. cc-341's Write 2 sync
 > rows give the measured figure. The members are listed in cc-341's report.
+>
+> **Measured, 2026-11-28 10:35Z (cc-341 Write 2).** The re-read walker read
+> all 2,574 House rolls from their files. It inserted 29,679 member votes on
+> the 117th's 913 rolls and 40,160 on the 118th's 979. Write 1 had already
+> added 19,334 on 158 short 119th rolls, and Write 2 added 13 more on 2026's.
+> What the files still carry and no `officials` row matches is the former-member
+> share. That is 126,833 casts in the 117th (about 139 a roll) and 68,534 in
+> the 118th (about 70). With the 119th's remainder, about 2,400 (ten departed
+> members, and vacancies), FIX-1464's figure is about **197,800**, not 269,778.
+> Read 4 again finds no sitting member with a row and no vote in their
+> Congress, only the four boundary terms.
 
 **3. The code that would create the rows.** `officials.ts` preloads
 bioguide-keyed rows with no tier filter (`existingMap`, last write wins on a

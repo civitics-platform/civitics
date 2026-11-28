@@ -1255,6 +1255,16 @@ gh workflow run votes-reread.yml -f chamber=house -f max_minutes=45
 node scripts/db-query.mjs --prod --timeout 15s "SELECT status, started_at, completed_at, rows_inserted, rows_failed, metadata->>'rolls_read' AS read, metadata->>'rolls_changed' AS changed, metadata->>'stop' AS stop, metadata->>'remaining' AS remaining, metadata->>'db_ms_per_roll' AS db_ms_a_roll, metadata->>'unmatched_distinct' AS unmatched FROM public.data_sync_log WHERE pipeline = 'congress_votes_reread' ORDER BY started_at DESC LIMIT 3"
 ```
 
+**What it cost prod (cc-341, 2026-11-28).**
+
+- **Write 1**, from the terminal, on the manifest: 158 rolls and 19,334 rows
+  in 235 s, at 419 ms of database time a roll (median 237, max 7.9 s).
+- **Write 2**, `votes-reread.yml`, on the House: run `46131421412` ran 45 min
+  and stopped at `max_minutes` with 411 rolls left; run `46135166352` took
+  8.4 min. Together 2,420 rolls and 69,852 rows, at 315 and 248 ms a roll.
+- **Throughout:** no retry, no fetch failure, no skipped roll, no cast
+  disagreement. load1 stayed at or under 0.8 and io% at or under 34.9.
+
 **Undo.** A run's rows are the rows of its rolls whose `created_at` falls
 inside its sync row's `started_at`–`completed_at`, and `rows_inserted` counts
 them. Removing them is a delete by that predicate. Write it as a file and run
